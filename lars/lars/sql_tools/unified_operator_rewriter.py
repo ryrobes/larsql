@@ -162,6 +162,10 @@ def rewrite_all_operators(sql: str) -> str:
                 applied.extend(inline_result.applied)
                 log.info(f"[unified_rewriter] Applied {len(inline_result.applied)} inline operator rewrites")
 
+        # Phase 4: Skill syntax (skill::name() and skill() function)
+        # Must run after other rewrites - transforms skill calls to executable form
+        result = _rewrite_skill_syntax(result)
+
         log.debug(f"[unified_rewriter] Rewrite complete: changed={changed}, applied={applied}")
 
         # Always return clean SQL (without directive prefix)
@@ -201,6 +205,56 @@ def _rewrite_vector_search_functions(sql: str) -> str:
 
     except Exception as e:
         log.warning(f"[unified_rewriter] Vector search rewrite failed: {e}")
+        return sql
+
+
+def _rewrite_skill_syntax(sql: str) -> str:
+    """
+    Rewrite skill syntax to executable form.
+
+    Handles:
+    - skill::name() namespace syntax → skill('name', json_object(...))
+    - SKILL name ... END block syntax
+    - skill() function → read_json_auto(skill(...)) for table output
+
+    Args:
+        sql: SQL to rewrite
+
+    Returns:
+        Rewritten SQL with skill calls transformed
+
+    Example:
+        SELECT * FROM skill::list_skills()
+        → SELECT * FROM read_json_auto(skill('list_skills', '{}'))
+
+        SELECT * FROM skill('say', {'text': 'hello'})
+        → SELECT * FROM read_json_auto(skill('say', json_object('text', 'hello')))
+    """
+    try:
+        from .semantic_operators import (
+            _rewrite_skill_namespace_syntax,
+            _rewrite_skill_block_syntax,
+            _rewrite_skill_function,
+        )
+
+        # Quick check - skip if no skill syntax present
+        sql_lower = sql.lower()
+        if 'skill::' not in sql_lower and 'skill(' not in sql_lower and 'skill ' not in sql_lower:
+            return sql
+
+        # Phase 1: skill::name() namespace syntax
+        result = _rewrite_skill_namespace_syntax(sql)
+
+        # Phase 2: SKILL name ... END block syntax
+        result = _rewrite_skill_block_syntax(result)
+
+        # Phase 3: skill() function wrapping for table output
+        result = _rewrite_skill_function(result)
+
+        return result
+
+    except Exception as e:
+        log.warning(f"[unified_rewriter] Skill syntax rewrite failed: {e}")
         return sql
 
 

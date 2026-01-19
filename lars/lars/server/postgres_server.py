@@ -171,6 +171,16 @@ class ClientConnection:
             from ..sql_tools.udf import register_dynamic_sql_functions
             register_dynamic_sql_functions(self.duckdb_conn)
 
+            # Register promoted metrics as SQL operators (BI of Intent)
+            try:
+                from ..bi.metric_registry import register_promoted_metrics
+                promoted_count = register_promoted_metrics(self.duckdb_conn)
+                if promoted_count > 0:
+                    styled_print(f"[{self.session_id}]   {S.DB} Registered {promoted_count} promoted metric(s)")
+            except Exception as e:
+                # Non-fatal - BI tables may not exist yet
+                pass
+
             # Lazy ATTACH: configured sql_connections/*.yaml attached on first reference.
             # Non-fatal if config loading fails.
             try:
@@ -445,7 +455,7 @@ class ClientConnection:
                             'aggmtransspace', 'agginitval', 'aggminitval'],
             'PG_CONVERSION': ['oid', 'conname', 'connamespace', 'conowner', 'conforencoding',
                              'contoencoding', 'conproc', 'condefault'],
-            'PG_ENUM': ['oid', 'enumtypid', 'enumsortorder', 'enumlabel'],
+            # NOTE: PG_ENUM removed - DuckDB 1.4.2+ has built-in pg_catalog.pg_enum
             'PG_TRIGGER': ['oid', 'tgrelid', 'tgparentid', 'tgname', 'tgfoid', 'tgtype',
                           'tgenabled', 'tgisinternal', 'tgconstrrelid', 'tgconstrindid',
                           'tgconstraint', 'tgdeferrable', 'tginitdeferred', 'tgnargs',
@@ -482,7 +492,9 @@ class ClientConnection:
                 # This is a query with a missing primary table - return empty
                 columns = MISSING_PRIMARY_TABLES[primary_table]
                 extracted = self._expected_result_columns(query)
-                if extracted:
+                # Only override with extracted columns if it's not just ['*']
+                # SELECT * should use the predefined columns, not literal '*'
+                if extracted and extracted != ['*']:
                     columns = extracted
                 return pd.DataFrame(columns=columns)
 
@@ -629,7 +641,7 @@ class ClientConnection:
             'pg_opfamily',
             'pg_aggregate',
             'pg_conversion',
-            'pg_enum',
+            # NOTE: pg_enum removed - DuckDB 1.4.2+ has it built-in
             'pg_range',
             # Access method tables
             'pg_am',
@@ -769,10 +781,11 @@ class ClientConnection:
         import re
 
         # Tables that DuckDB doesn't have (used in regular JOINs)
+        # NOTE: pg_enum removed - DuckDB 1.4.2+ has it built-in
         MISSING_TABLES = {
             'pg_trigger', 'pg_rewrite', 'pg_policy', 'pg_policies', 'pg_rules',
             'pg_operator', 'pg_opclass', 'pg_opfamily', 'pg_aggregate',
-            'pg_cast', 'pg_collation', 'pg_conversion', 'pg_enum', 'pg_range',
+            'pg_cast', 'pg_collation', 'pg_conversion', 'pg_range',
             'pg_extension', 'pg_language', 'pg_foreign_data_wrapper',
             'pg_foreign_server', 'pg_foreign_table', 'pg_event_trigger',
             'pg_publication', 'pg_subscription', 'pg_replication_slots',
@@ -1469,13 +1482,23 @@ class ClientConnection:
         rows = []
 
         # Relations (pg_class) - includes tables/views/sequences, with DataGrip's translate() mapping.
+        # NOTE: DuckDB's pg_catalog.pg_class is EMPTY - synthesize from information_schema.tables
         try:
             rel_df = self.duckdb_conn.execute(
                 f"""
-                SELECT oid, relnamespace, relkind, relname
-                FROM pg_catalog.pg_class
-                WHERE relnamespace IN ({placeholders})
-                  AND relkind IN ('r','m','v','p','f','S')
+                SELECT
+                    ABS(hash(t.table_schema || '.' || t.table_name) % 2147483647)::INTEGER as oid,
+                    COALESCE(n.oid, 0) as relnamespace,
+                    CASE t.table_type
+                        WHEN 'BASE TABLE' THEN 'r'
+                        WHEN 'VIEW' THEN 'v'
+                        WHEN 'LOCAL TEMPORARY' THEN 'r'
+                        ELSE 'r'
+                    END as relkind,
+                    t.table_name as relname
+                FROM information_schema.tables t
+                LEFT JOIN pg_catalog.pg_namespace n ON n.nspname = t.table_schema
+                WHERE n.oid IN ({placeholders})
                 """,
                 schema_ids,
             ).fetchdf()
@@ -1833,7 +1856,12 @@ class ClientConnection:
                         elif isinstance(val, bytes):
                             row_values.append(val.hex())
                         elif hasattr(val, 'item'):  # numpy types
-                            row_values.append(val.item())
+                            # .item() only works on single-element arrays
+                            try:
+                                row_values.append(val.item())
+                            except ValueError:
+                                # Multi-element array - convert to list
+                                row_values.append(val.tolist() if hasattr(val, 'tolist') else list(val))
                         else:
                             row_values.append(val)
                     rows_to_insert.append(tuple(row_values))
@@ -2128,12 +2156,15 @@ class ClientConnection:
             styled_print(f"[{self.session_id}]      {S.OK} pg_namespace created")
 
             # pg_class - Tables, views, sequences, indexes
+            # NOTE: DuckDB's pg_catalog.pg_class is EMPTY - synthesize from information_schema.tables
+            # Join with pg_namespace to get proper namespace OIDs
             self.duckdb_conn.execute("""
                 CREATE OR REPLACE VIEW main.pg_pg_class AS
                 SELECT
-                    table_name as relname,
-                    0 as relnamespace,
-                    CASE table_type
+                    ABS(hash(t.table_schema || '.' || t.table_name) % 2147483647)::INTEGER as oid,
+                    t.table_name as relname,
+                    COALESCE(n.oid, 0) as relnamespace,
+                    CASE t.table_type
                         WHEN 'BASE TABLE' THEN 'r'
                         WHEN 'VIEW' THEN 'v'
                         WHEN 'LOCAL TEMPORARY' THEN 'r'
@@ -2161,7 +2192,8 @@ class ClientConnection:
                     0 as relrewrite,
                     0 as relfrozenxid,
                     0 as relminmxid
-                FROM information_schema.tables
+                FROM information_schema.tables t
+                LEFT JOIN pg_catalog.pg_namespace n ON n.nspname = t.table_schema
             """)
 
             # pg_tables - Simplified table list
@@ -3541,20 +3573,8 @@ class ClientConnection:
             except Exception as e:
                 pass
 
-            # pg_enum - enum types (empty stub)
-            try:
-                self.duckdb_conn.execute("""
-                    CREATE OR REPLACE VIEW pg_catalog.pg_enum AS
-                    SELECT
-                        0::INTEGER as oid,
-                        0::INTEGER as enumtypid,
-                        0::REAL as enumsortorder,
-                        ''::VARCHAR as enumlabel
-                    WHERE false
-                """)
-                stubs_created.append("pg_enum")
-            except Exception as e:
-                pass
+            # NOTE: pg_enum stub removed - DuckDB 1.4.2+ has built-in pg_catalog.pg_enum
+            # with correct columns: oid, enumtypid, enumsortorder, enumlabel
 
             # pg_cast - type casts (minimal stub)
             try:
@@ -4589,6 +4609,25 @@ class ClientConnection:
                 try:
                     # Get expected columns from the query
                     expected_cols = self._expected_result_columns(query) or ['id', 'state_number', 'name', 'description', 'owner']
+
+                    # Expand '*' or 'n.*' to actual pg_namespace columns
+                    # DuckDB's pg_namespace has: oid, nspname, nspowner, nspacl
+                    pg_namespace_cols = ['oid', 'nspname', 'nspowner', 'nspacl']
+                    expanded_cols = []
+                    for col in expected_cols:
+                        if col == '*' or col.endswith('.*'):
+                            expanded_cols.extend(pg_namespace_cols)
+                        else:
+                            expanded_cols.append(col)
+                    # Deduplicate while preserving order (pandas can't handle duplicate column names)
+                    seen = set()
+                    unique_cols = []
+                    for col in expanded_cols:
+                        if col not in seen:
+                            seen.add(col)
+                            unique_cols.append(col)
+                    expected_cols = unique_cols
+
                     print(f"[{self.session_id}]      Expected columns: {expected_cols}")
 
                     # Get schema data from DuckDB's pg_catalog
@@ -4611,7 +4650,9 @@ class ClientConnection:
                             elif col_lower == 'description':
                                 row_dict[col] = None
                             elif col_lower in ('owner', 'nspowner'):
-                                row_dict[col] = self.user_name
+                                row_dict[col] = int(row['nspowner']) if 'nspowner' in row else self.user_name
+                            elif col_lower == 'nspacl':
+                                row_dict[col] = None  # ACL not supported
                             else:
                                 row_dict[col] = None
                         result_data.append(row_dict)
@@ -4641,6 +4682,8 @@ class ClientConnection:
                                     new_row[col] = desc
                                 elif col_lower in ('owner', 'nspowner'):
                                     new_row[col] = self.user_name
+                                elif col_lower == 'nspacl':
+                                    new_row[col] = None  # ACL not supported
                                 else:
                                     new_row[col] = None
                             result_df = pd.concat([result_df, pd.DataFrame([new_row])], ignore_index=True)
@@ -5095,26 +5138,44 @@ class ClientConnection:
 
                     print(f"[{self.session_id}]      Extracted WHERE: {where_clause[:200]}")
 
-                    # Query pg_catalog.pg_class with ONLY core columns that definitely exist
-                    # DuckDB v1.4.2's pg_class is PostgreSQL 9.x compatible, missing newer columns
-                    # We'll provide NULL for any missing columns DBeaver expects
+                    # Use information_schema.tables joined with pg_namespace for proper OIDs
+                    # DuckDB's pg_catalog.pg_class is EMPTY - doesn't contain user tables
+                    # We synthesize pg_class rows from information_schema.tables
+
+                    # Transform WHERE clause column references (handle both prefixed c.col and unprefixed col)
+                    transformed_where = where_clause
+                    # relnamespace -> n.oid (with or without c. prefix)
+                    transformed_where = re.sub(r'\b(c\.)?relnamespace\b', 'n.oid', transformed_where, flags=re.IGNORECASE)
+                    # relkind -> CASE expression (with or without c. prefix)
+                    transformed_where = re.sub(r'\b(c\.)?relkind\b', "(CASE t.table_type WHEN 'BASE TABLE' THEN 'r' WHEN 'VIEW' THEN 'v' ELSE 'r' END)", transformed_where, flags=re.IGNORECASE)
+                    # relname -> t.table_name (with or without c. prefix)
+                    transformed_where = re.sub(r'\b(c\.)?relname\b', 't.table_name', transformed_where, flags=re.IGNORECASE)
+
+                    print(f"[{self.session_id}]      Transformed WHERE: {transformed_where[:200]}")
+
                     safe_query = f"""
                         SELECT
-                            c.oid,
-                            c.relname,
-                            c.relnamespace,
-                            c.relkind,
-                            c.relowner,
-                            COALESCE(c.relhasindex, false) as relhasindex,
+                            ABS(hash(t.table_schema || '.' || t.table_name) % 2147483647)::INTEGER as oid,
+                            t.table_name as relname,
+                            COALESCE(n.oid, 0) as relnamespace,
+                            CASE t.table_type
+                                WHEN 'BASE TABLE' THEN 'r'
+                                WHEN 'VIEW' THEN 'v'
+                                WHEN 'LOCAL TEMPORARY' THEN 'r'
+                                ELSE 'r'
+                            END as relkind,
+                            0 as relowner,
+                            false as relhasindex,
                             NULL::BOOLEAN as relrowsecurity,
                             NULL::BOOLEAN as relforcerowsecurity,
                             NULL::BOOLEAN as relispartition,
                             NULL::VARCHAR as description,
                             NULL::VARCHAR as partition_expr,
                             NULL::VARCHAR as partition_key
-                        FROM pg_catalog.pg_class c
-                        WHERE {where_clause}
-                        ORDER BY c.relname
+                        FROM information_schema.tables t
+                        LEFT JOIN pg_catalog.pg_namespace n ON n.nspname = t.table_schema
+                        WHERE {transformed_where}
+                        ORDER BY t.table_name
                         LIMIT 1000
                     """
                     result_df = self.duckdb_conn.execute(safe_query).fetchdf()
@@ -5629,7 +5690,7 @@ class ClientConnection:
             else:
                 self.sock.sendall(ErrorResponse.encode('ERROR', str(e)))
 
-    def _handle_background_query(self, query: str):
+    def _handle_background_query(self, query: str, extended_query_mode: bool = False, send_row_description: bool = True):
         """
         Execute a query in the background and return job info immediately.
 
@@ -5648,6 +5709,11 @@ class ClientConnection:
             - Wait: SELECT * FROM await_job('job-swift-fox-abc123')
             - List all: SELECT * FROM jobs()
             - Query results: SELECT * FROM _results_YYYYMMDD.job_swift_fox_abc123
+
+        Args:
+            query: The SQL query to execute in background (without BACKGROUND prefix)
+            extended_query_mode: If True, use Extended Query Protocol response format
+            send_row_description: If True (and extended_query_mode), send RowDescription
         """
         import time
         import pandas as pd
@@ -5824,10 +5890,13 @@ class ClientConnection:
             'message_log': f"SELECT * FROM messages('{job_id}')",
         }])
 
-        send_query_results(self.sock, job_df, self.transaction_status)
+        if extended_query_mode:
+            send_execute_results(self.sock, job_df, send_row_description=send_row_description)
+        else:
+            send_query_results(self.sock, job_df, self.transaction_status)
         styled_print(f"[{self.session_id}] {S.RUN} Background job {job_id} submitted → {full_result_table}")
 
-    def _handle_analyze_query(self, query_with_prompt: str):
+    def _handle_analyze_query(self, query_with_prompt: str, extended_query_mode: bool = False, send_row_description: bool = True):
         """
         Execute a query in background, then analyze results with LLM.
 
@@ -5845,6 +5914,11 @@ class ClientConnection:
             - Get analysis: SELECT * FROM analysis('analysis-swift-fox-abc123')
             - Query results: SELECT * FROM _results_YYYYMMDD.analysis_swift_fox_abc123
             - View logs: SELECT * FROM messages('analysis-swift-fox-abc123')
+
+        Args:
+            query_with_prompt: The query with prompt in format "'prompt' SELECT ..."
+            extended_query_mode: If True, use Extended Query Protocol response format
+            send_row_description: If True (and extended_query_mode), send RowDescription
         """
         import time
         import re
@@ -6168,7 +6242,10 @@ class ClientConnection:
             'message_log': f"SELECT * FROM messages('{job_id}')",
         }])
 
-        send_query_results(self.sock, job_df, self.transaction_status)
+        if extended_query_mode:
+            send_execute_results(self.sock, job_df, send_row_description=send_row_description)
+        else:
+            send_query_results(self.sock, job_df, self.transaction_status)
         styled_print(f"[{self.session_id}] {S.SEARCH} Analysis job {job_id} submitted: {prompt[:50]}...")
 
     def _handle_explain_query(self, query: str):
@@ -6935,6 +7012,55 @@ class ClientConnection:
                     styled_print(f"[{self.session_id}]      {S.OK} Portal described (NoData - non-SELECT command)")
                     return
 
+                # BACKGROUND queries - Return job metadata columns
+                # Check original_query since BACKGROUND prefix is stripped during rewriting
+                original_query_for_directive = portal.get('original_query')
+                if original_query_for_directive:
+                    orig_upper = original_query_for_directive.upper().strip()
+                    if orig_upper.startswith('BACKGROUND'):
+                        # Send RowDescription with job metadata columns
+                        columns = [
+                            ('job_id', 'VARCHAR'),
+                            ('status', 'VARCHAR'),
+                            ('result_table', 'VARCHAR'),
+                            ('submitted_at', 'VARCHAR'),
+                            ('query_preview', 'VARCHAR'),
+                            ('check_status', 'VARCHAR'),
+                            ('await_completion', 'VARCHAR'),
+                            ('message_log', 'VARCHAR'),
+                        ]
+                        self.sock.sendall(RowDescription.encode(columns))
+                        portal['row_description_sent'] = True
+                        portal['described_columns'] = len(columns)
+                        styled_print(f"[{self.session_id}]      {S.OK} Portal described (BACKGROUND - {len(columns)} columns)")
+                        return
+
+                # ANALYZE queries - Return analysis job metadata columns
+                # Check original_query since ANALYZE prefix is stripped during rewriting
+                if original_query_for_directive:
+                    orig_upper = original_query_for_directive.upper().strip()
+                    if orig_upper.startswith('ANALYZE'):
+                        from ..sql_tools.sql_directives import parse_sql_directives
+                        directive, _ = parse_sql_directives(original_query_for_directive)
+                        if directive and directive.directive_type == 'ANALYZE':
+                            # Send RowDescription with analysis job metadata columns
+                            columns = [
+                                ('job_id', 'VARCHAR'),
+                                ('status', 'VARCHAR'),
+                                ('prompt', 'VARCHAR'),
+                                ('result_table', 'VARCHAR'),
+                                ('submitted_at', 'VARCHAR'),
+                                ('query_preview', 'VARCHAR'),
+                                ('check_status', 'VARCHAR'),
+                                ('get_analysis', 'VARCHAR'),
+                                ('message_log', 'VARCHAR'),
+                            ]
+                            self.sock.sendall(RowDescription.encode(columns))
+                            portal['row_description_sent'] = True
+                            portal['described_columns'] = len(columns)
+                            styled_print(f"[{self.session_id}]      {S.OK} Portal described (ANALYZE - {len(columns)} columns)")
+                            return
+
                 # WATCH commands - Handle reactive SQL subscriptions
                 # Send appropriate RowDescription based on command type
                 from ..sql_tools.sql_directives import is_watch_command, parse_watch_command
@@ -7208,6 +7334,22 @@ class ClientConnection:
                         is_pg_namespace_main = ('FROM PG_CATALOG.PG_NAMESPACE' in query_upper or 'FROM PG_NAMESPACE' in query_upper)
                         if is_pg_namespace_main and not is_pg_class_main:
                             cols = self._expected_result_columns(query) or ['id', 'state_number', 'name', 'description', 'owner']
+                            # Expand '*' or 'n.*' to actual pg_namespace columns
+                            pg_namespace_cols = ['oid', 'nspname', 'nspowner', 'nspacl']
+                            expanded_cols = []
+                            for c in cols:
+                                if c == '*' or c.endswith('.*'):
+                                    expanded_cols.extend(pg_namespace_cols)
+                                else:
+                                    expanded_cols.append(c)
+                            # Deduplicate while preserving order (e.g., 'oid' appears in both SELECT n.oid and n.*)
+                            seen = set()
+                            unique_cols = []
+                            for c in expanded_cols:
+                                if c not in seen:
+                                    seen.add(c)
+                                    unique_cols.append(c)
+                            cols = unique_cols
                             columns = [(c, 'VARCHAR') for c in cols]
                             self.sock.sendall(RowDescription.encode(columns))
                             portal['row_description_sent'] = True
@@ -7224,7 +7366,23 @@ class ClientConnection:
                                 'relhasindex', 'relrowsecurity', 'relforcerowsecurity',
                                 'relispartition', 'description', 'partition_expr', 'partition_key'
                             ]
-                            columns = [(c, 'VARCHAR') for c in cols]
+                            # Expand * or c.* to actual pg_class columns (must match Execute phase)
+                            pg_class_star_cols = [
+                                'relname', 'relnamespace', 'reltype', 'reloftype', 'relowner',
+                                'relam', 'relfilenode', 'reltablespace', 'relpages', 'reltuples',
+                                'relallvisible', 'reltoastrelid', 'relhasindex', 'relisshared',
+                                'relpersistence', 'relkind', 'relnatts', 'relchecks', 'relhasrules',
+                                'relhastriggers', 'relhassubclass', 'relrowsecurity', 'relforcerowsecurity',
+                                'relispopulated', 'relreplident', 'relispartition', 'relrewrite',
+                                'relfrozenxid', 'relminmxid', 'relacl', 'reloptions', 'relpartbound'
+                            ]
+                            expanded_cols = []
+                            for c in cols:
+                                if c == '*' or c.lower().endswith('.*'):
+                                    expanded_cols.extend(pg_class_star_cols)
+                                else:
+                                    expanded_cols.append(c)
+                            columns = [(c, 'VARCHAR') for c in expanded_cols]
                             self.sock.sendall(RowDescription.encode(columns))
                             portal['row_description_sent'] = True
                             portal['described_columns'] = len(columns)
@@ -7371,6 +7529,34 @@ class ClientConnection:
                             styled_print(f"[{self.session_id}]      {S.OK} Portal described (pg_constraint complex - {len(columns)} columns)")
                             return
 
+                        # pg_attribute queries - expand a.* to actual columns
+                        if 'PG_ATTRIBUTE' in query_upper and 'FROM' in query_upper:
+                            cols = self._expected_result_columns(query) or [
+                                'relname', 'attname', 'attnum', 'atttypid', 'attnotnull',
+                                'attlen', 'attrelid', 'def_value', 'description', 'objid'
+                            ]
+                            # Expand * or a.* to actual pg_attribute columns
+                            pg_attribute_star_cols = [
+                                'attrelid', 'attname', 'atttypid', 'attstattarget', 'attlen',
+                                'attnum', 'attndims', 'attcacheoff', 'atttypmod', 'attbyval',
+                                'attstorage', 'attalign', 'attnotnull', 'atthasdef', 'atthasmissing',
+                                'attidentity', 'attgenerated', 'attisdropped', 'attislocal',
+                                'attinhcount', 'attcollation', 'attacl', 'attoptions', 'attfdwoptions',
+                                'attmissingval'
+                            ]
+                            expanded_cols = []
+                            for c in cols:
+                                if c == '*' or c.lower().endswith('.*'):
+                                    expanded_cols.extend(pg_attribute_star_cols)
+                                else:
+                                    expanded_cols.append(c)
+                            columns = [(c, 'VARCHAR') for c in expanded_cols]
+                            self.sock.sendall(RowDescription.encode(columns))
+                            portal['row_description_sent'] = True
+                            portal['described_columns'] = len(columns)
+                            styled_print(f"[{self.session_id}]      {S.OK} Portal described (pg_attribute - {len(columns)} columns)")
+                            return
+
                         # pg_depend queries with regclass casts - return empty result
                         if 'PG_DEPEND' in query_upper and ('REGCLASS' in query_upper or 'REFOBJID' in query_upper):
                             cols = self._expected_result_columns(query) or ['dependent_id', 'owner_id', 'refobjsubid']
@@ -7403,6 +7589,49 @@ class ClientConnection:
                             portal['missing_table_result'] = missing_result  # Cache for Execute
                             styled_print(f"[{self.session_id}]      {S.OK} Portal described (missing pg_catalog table - {len(columns)} columns)")
                             return
+
+                        # Skill/UDF calls in FROM clause - don't execute during Describe
+                        # LIMIT 0 doesn't prevent UDFs from being evaluated, causing double execution
+                        # Instead, execute the query ONCE during Describe and cache for Execute
+                        # Check both original syntax (skill::) and rewritten form (read_json_auto(skill())
+                        desc_query_lower = desc_query.lower()
+                        has_skill_call = (
+                            'skill(' in desc_query_lower or
+                            'skill::' in desc_query_lower or
+                            'read_json_auto(skill' in desc_query_lower
+                        )
+                        if has_skill_call:
+                            # Execute the skill query once and cache the result for Execute phase
+                            try:
+                                import pandas as pd
+                                result = self.duckdb_conn.execute(desc_query, params)
+                                columns_info = result.description or []
+                                rows = result.fetchall()
+                                col_names = [c[0] for c in columns_info]
+                                result_df = pd.DataFrame(rows, columns=col_names) if col_names else pd.DataFrame()
+
+                                # Cache result for Execute
+                                portal['skill_result'] = result_df
+
+                                # Build and send RowDescription
+                                columns = []
+                                for col_info in columns_info:
+                                    col_name = col_info[0]
+                                    col_type = str(col_info[1]) if col_info[1] else 'VARCHAR'
+                                    columns.append((col_name, col_type))
+
+                                if columns:
+                                    self.sock.sendall(RowDescription.encode(columns))
+                                    portal['row_description_sent'] = True
+                                    portal['described_columns'] = len(columns)
+                                    styled_print(f"[{self.session_id}]      {S.OK} Portal described (skill call - {len(columns)} columns, result cached)")
+                                else:
+                                    self.sock.sendall(NoData.encode())
+                                    portal['row_description_sent'] = False
+                                return
+                            except Exception as skill_err:
+                                styled_print(f"[{self.session_id}]      {S.WARN}  Skill describe failed: {skill_err}")
+                                # Fall through to normal describe logic
 
                         # Wrap query to get schema without returning data
                         # Use a subquery to handle complex queries
@@ -7468,7 +7697,7 @@ class ClientConnection:
                 known_missing = {
                     'pg_trigger', 'pg_rewrite', 'pg_policy', 'pg_policies', 'pg_rules',
                     'pg_operator', 'pg_opclass', 'pg_opfamily', 'pg_aggregate',
-                    'pg_cast', 'pg_collation', 'pg_conversion', 'pg_enum', 'pg_range',
+                    'pg_cast', 'pg_collation', 'pg_conversion', 'pg_range',  # pg_enum removed - DuckDB has it
                     'pg_extension', 'pg_language', 'pg_foreign_data_wrapper',
                     'pg_foreign_server', 'pg_foreign_table', 'pg_event_trigger',
                     'pg_publication', 'pg_subscription', 'pg_replication_slots',
@@ -7533,6 +7762,14 @@ class ClientConnection:
                 styled_print(f"[{self.session_id}]      {S.OK} Missing pg_catalog table - returning cached empty result")
                 return
 
+            # Check if Describe cached a skill result (to avoid double execution)
+            if 'skill_result' in portal:
+                result_df = portal['skill_result']
+                # Describe already sent RowDescription, so don't send again
+                send_execute_results(self.sock, result_df, send_row_description=False)
+                styled_print(f"[{self.session_id}]      {S.OK} Skill call - returning cached result ({len(result_df)} rows)")
+                return
+
             # Check for special PostgreSQL functions and commands
             query_upper = query.upper().strip()
 
@@ -7548,6 +7785,36 @@ class ClientConnection:
                 # Handle SHOW and send results - skip RowDescription if Describe already sent it
                 self._execute_show_and_send_extended(query, send_row_description=send_row_desc)
                 return
+
+            # BACKGROUND queries - Handle async execution via Extended Query
+            # Check original_query since BACKGROUND prefix is stripped during rewriting
+            if original_query:
+                original_upper = original_query.upper().strip()
+                if original_upper.startswith('BACKGROUND'):
+                    from ..sql_tools.sql_directives import parse_sql_directives
+                    directive, inner_sql = parse_sql_directives(original_query)
+                    if directive and directive.directive_type == 'BACKGROUND':
+                        styled_print(f"[{self.session_id}]      Detected BACKGROUND query via Extended Query")
+                        # Describe Portal already sent RowDescription with job metadata columns,
+                        # so Execute only sends DataRows (no RowDescription)
+                        self._handle_background_query(inner_sql, extended_query_mode=True, send_row_description=False)
+                        return
+
+            # ANALYZE queries - Handle async execution + LLM analysis via Extended Query
+            # Check original_query since ANALYZE prefix is stripped during rewriting
+            if original_query:
+                original_upper = original_query.upper().strip()
+                if original_upper.startswith('ANALYZE'):
+                    from ..sql_tools.sql_directives import parse_sql_directives
+                    directive, inner_sql = parse_sql_directives(original_query)
+                    if directive and directive.directive_type == 'ANALYZE':
+                        styled_print(f"[{self.session_id}]      Detected ANALYZE query via Extended Query")
+                        # Reconstruct format expected by _handle_analyze_query
+                        reconstructed = f"'{directive.prompt}' {inner_sql}"
+                        # Describe Portal already sent RowDescription with job metadata columns,
+                        # so Execute only sends DataRows (no RowDescription)
+                        self._handle_analyze_query(reconstructed, extended_query_mode=True, send_row_description=False)
+                        return
 
             # WATCH commands - Handle reactive SQL subscriptions via Extended Query
             from ..sql_tools.sql_directives import is_watch_command
@@ -7634,6 +7901,25 @@ class ClientConnection:
                 try:
                     # Get the columns that Describe promised (or use defaults)
                     expected_cols = self._expected_result_columns(query) or ['id', 'state_number', 'name', 'description', 'owner']
+
+                    # Expand '*' or 'n.*' to actual pg_namespace columns
+                    # DuckDB's pg_namespace has: oid, nspname, nspowner, nspacl
+                    pg_namespace_cols = ['oid', 'nspname', 'nspowner', 'nspacl']
+                    expanded_cols = []
+                    for col in expected_cols:
+                        if col == '*' or col.endswith('.*'):
+                            expanded_cols.extend(pg_namespace_cols)
+                        else:
+                            expanded_cols.append(col)
+                    # Deduplicate while preserving order (pandas can't handle duplicate column names)
+                    seen = set()
+                    unique_cols = []
+                    for col in expanded_cols:
+                        if col not in seen:
+                            seen.add(col)
+                            unique_cols.append(col)
+                    expected_cols = unique_cols
+
                     print(f"[{self.session_id}]      Expected columns: {expected_cols}")
 
                     # Get schema data from DuckDB's pg_catalog
@@ -7657,7 +7943,9 @@ class ClientConnection:
                             elif col_lower == 'description':
                                 row_dict[col] = None
                             elif col_lower in ('owner', 'nspowner'):
-                                row_dict[col] = self.user_name
+                                row_dict[col] = int(row['nspowner']) if 'nspowner' in row else self.user_name
+                            elif col_lower == 'nspacl':
+                                row_dict[col] = None  # ACL not supported
                             else:
                                 row_dict[col] = None
                         result_data.append(row_dict)
@@ -7688,6 +7976,8 @@ class ClientConnection:
                                     new_row[col] = desc
                                 elif col_lower in ('owner', 'nspowner'):
                                     new_row[col] = self.user_name
+                                elif col_lower == 'nspacl':
+                                    new_row[col] = None  # ACL not supported
                                 else:
                                     new_row[col] = None
                             result_df = pd.concat([result_df, pd.DataFrame([new_row])], ignore_index=True)
@@ -7715,6 +8005,7 @@ class ClientConnection:
                 except Exception as e:
                     styled_print(f"[{self.session_id}]      {S.WARN}  Could not handle pg_namespace: {e}")
                     # Don't fall through - return empty result with expected columns to prevent mismatch
+                    import pandas as pd
                     expected_cols = self._expected_result_columns(query) or ['id', 'state_number', 'name', 'description', 'owner']
                     result_df = pd.DataFrame(columns=expected_cols)
                     send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
@@ -7746,51 +8037,122 @@ class ClientConnection:
 
                     print(f"[{self.session_id}]         WHERE: {where_clause[:100]}")
 
-                    # Use safe column subset (avoids regclass and missing functions)
+                    # Use information_schema.tables joined with pg_namespace for proper OIDs
+                    # DuckDB's pg_catalog.pg_class is EMPTY - doesn't contain user tables
+                    # We synthesize pg_class rows from information_schema.tables
+
+                    # Transform WHERE clause column references (handle both prefixed c.col and unprefixed col)
+                    transformed_where = where_clause
+                    # relnamespace -> n.oid (with or without c. prefix)
+                    transformed_where = re.sub(r'\b(c\.)?relnamespace\b', 'n.oid', transformed_where, flags=re.IGNORECASE)
+                    # relkind -> CASE expression (with or without c. prefix)
+                    transformed_where = re.sub(r'\b(c\.)?relkind\b', "(CASE t.table_type WHEN 'BASE TABLE' THEN 'r' WHEN 'VIEW' THEN 'v' ELSE 'r' END)", transformed_where, flags=re.IGNORECASE)
+                    # relname -> t.table_name (with or without c. prefix)
+                    transformed_where = re.sub(r'\b(c\.)?relname\b', 't.table_name', transformed_where, flags=re.IGNORECASE)
+
+                    print(f"[{self.session_id}]         Transformed WHERE: {transformed_where[:100]}")
+
                     safe_query = f"""
                         SELECT
-                            c.oid,
-                            c.relname,
-                            c.relnamespace,
-                            c.relkind,
-                            c.relowner,
-                            COALESCE(c.relhasindex, false) as relhasindex,
-                            NULL::BOOLEAN as relrowsecurity,
-                            NULL::BOOLEAN as relforcerowsecurity,
-                            NULL::BOOLEAN as relispartition,
-                            NULL::VARCHAR as description,
-                            NULL::VARCHAR as partition_expr,
-                            NULL::VARCHAR as partition_key
-                        FROM pg_catalog.pg_class c
-                        WHERE {where_clause}
+                            ABS(hash(t.table_schema || '.' || t.table_name) % 2147483647)::INTEGER as oid,
+                            t.table_name as relname,
+                            COALESCE(n.oid, 0)::INTEGER as relnamespace,
+                            CASE t.table_type
+                                WHEN 'BASE TABLE' THEN 'r'
+                                WHEN 'VIEW' THEN 'v'
+                                WHEN 'LOCAL TEMPORARY' THEN 'r'
+                                ELSE 'r'
+                            END as relkind,
+                            0::INTEGER as relowner,
+                            false as relhasindex,
+                            false as relrowsecurity,
+                            false as relforcerowsecurity,
+                            false as relispartition,
+                            ''::VARCHAR as description,
+                            ''::VARCHAR as partition_expr,
+                            ''::VARCHAR as partition_key
+                        FROM information_schema.tables t
+                        LEFT JOIN pg_catalog.pg_namespace n ON n.nspname = t.table_schema
+                        WHERE {transformed_where}
                         LIMIT 1000
                     """
                     result_df = self.duckdb_conn.execute(safe_query, params).fetchdf()
-                    # Validate column count
-                    actual_send_row_desc = send_row_desc
-                    if not send_row_desc and portal_name in self.portals:
+
+                    # Get expected columns from the original query and project result to match
+                    expected_cols = self._expected_result_columns(query)
+                    if expected_cols and portal_name in self.portals:
                         described_col_count = self.portals[portal_name].get('described_columns')
-                        if described_col_count is not None and described_col_count != len(result_df.columns):
-                            styled_print(f"[{self.session_id}]      {S.WARN}  pg_class bypass column mismatch: described {described_col_count}, returning {len(result_df.columns)}")
-                            actual_send_row_desc = True
-                    send_execute_results(self.sock, result_df, send_row_description=actual_send_row_desc)
+                        if described_col_count and described_col_count != len(result_df.columns):
+                            # Need to project our result to match expected columns
+                            # Map pg_class column names to our synthetic columns
+                            import pandas as pd
+
+                            # pg_class columns that c.* expands to (in PostgreSQL order)
+                            pg_class_star_cols = [
+                                'relname', 'relnamespace', 'reltype', 'reloftype', 'relowner',
+                                'relam', 'relfilenode', 'reltablespace', 'relpages', 'reltuples',
+                                'relallvisible', 'reltoastrelid', 'relhasindex', 'relisshared',
+                                'relpersistence', 'relkind', 'relnatts', 'relchecks', 'relhasrules',
+                                'relhastriggers', 'relhassubclass', 'relrowsecurity', 'relforcerowsecurity',
+                                'relispopulated', 'relreplident', 'relispartition', 'relrewrite',
+                                'relfrozenxid', 'relminmxid', 'relacl', 'reloptions', 'relpartbound'
+                            ]
+
+                            col_map = {
+                                'oid': 'oid',
+                                'relname': 'relname',
+                                'relnamespace': 'relnamespace',
+                                'relkind': 'relkind',
+                                'relowner': 'relowner',
+                                'relhasindex': 'relhasindex',
+                                'relrowsecurity': 'relrowsecurity',
+                                'relforcerowsecurity': 'relforcerowsecurity',
+                                'relispartition': 'relispartition',
+                                'description': 'description',
+                                'partition_expr': 'partition_expr',
+                                'partition_key': 'partition_key',
+                            }
+
+                            # Expand * or c.* to actual pg_class columns
+                            expanded_cols = []
+                            for col in expected_cols:
+                                if col == '*' or col.lower().endswith('.*'):
+                                    expanded_cols.extend(pg_class_star_cols)
+                                else:
+                                    expanded_cols.append(col)
+
+                            projected_data = {}
+                            for col in expanded_cols:
+                                # Strip alias prefix (c., n., etc.)
+                                clean_col = re.sub(r'^[a-z]+\.', '', col.lower())
+                                if clean_col in col_map and col_map[clean_col] in result_df.columns:
+                                    projected_data[col] = result_df[col_map[clean_col]].tolist()
+                                else:
+                                    # Column not in our synthetic data - fill with NULL/default
+                                    projected_data[col] = [None] * len(result_df)
+                            result_df = pd.DataFrame(projected_data)
+                            print(f"[{self.session_id}]         Projected to {len(expanded_cols)} columns (from {len(expected_cols)} with * expansion)")
+
+                    send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
                     styled_print(f"[{self.session_id}]      {S.OK} pg_class bypass executed ({len(result_df)} rows × {len(result_df.columns)} cols)")
                     return
                 except Exception as e:
                     print(f"[{self.session_id}]      ✗ Bypass failed: {str(e)[:200]}")
                     # Don't fall through - return empty result with expected columns
+                    import pandas as pd
                     expected_cols = self._expected_result_columns(query) or ['relkind', 'relname', 'oid']
                     result_df = pd.DataFrame(columns=expected_cols)
                     send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
                     styled_print(f"[{self.session_id}]      {S.OK} pg_class bypass fallback (empty with {len(expected_cols)} cols)")
                     return
 
-            # pg_attribute queries with a.* - Use safe column subset
+            # pg_attribute queries with a.* - Use information_schema.columns
             if 'FROM PG_CATALOG.PG_ATTRIBUTE' in query_upper and 'A.*' in query_upper:
                 print(f"[{self.session_id}]      Detected pg_attribute a.* query - using safe column bypass")
                 try:
                     # Extract WHERE clause
                     import re
+                    import pandas as pd
                     where_match = re.search(r'\bWHERE\b(.+?)(?:ORDER BY|LIMIT|$)', query, re.IGNORECASE | re.DOTALL)
                     if where_match:
                         where_clause = where_match.group(1).strip()
@@ -7798,43 +8160,137 @@ class ClientConnection:
                         for i in range(len(params), 0, -1):
                             where_clause = where_clause.replace(f'${i}', '?')
                     else:
-                        where_clause = "a.attnum > 0 AND NOT a.attisdropped"
+                        where_clause = "1=1"
 
                     print(f"[{self.session_id}]         WHERE: {where_clause[:100]}")
 
-                    # Use safe column subset
+                    # Transform WHERE clause: a.attrelid -> table OID, a.attnum -> ordinal_position
+                    # Also handle c.oid and c.relkind from pg_class join
+                    transformed_where = where_clause
+                    # pg_attribute columns
+                    transformed_where = re.sub(r'\b(a\.)?attrelid\b', 'ABS(hash(c.table_schema || \'.\' || c.table_name) % 2147483647)', transformed_where, flags=re.IGNORECASE)
+                    transformed_where = re.sub(r'\b(a\.)?attnum\b', 'c.ordinal_position', transformed_where, flags=re.IGNORECASE)
+                    transformed_where = re.sub(r'\b(a\.)?attisdropped\b', 'false', transformed_where, flags=re.IGNORECASE)
+                    # pg_class columns (from JOIN)
+                    transformed_where = re.sub(r'\bc\.oid\b', 'ABS(hash(c.table_schema || \'.\' || c.table_name) % 2147483647)', transformed_where, flags=re.IGNORECASE)
+                    transformed_where = re.sub(r'\bc\.relkind\b', "'r'", transformed_where, flags=re.IGNORECASE)  # Treat all as regular tables
+                    # Remove relkind NOT IN filters since we don't have that info
+                    transformed_where = re.sub(r"\s+AND\s+'r'\s+not\s+in\s+\([^)]+\)", '', transformed_where, flags=re.IGNORECASE)
+
+                    print(f"[{self.session_id}]         Transformed WHERE: {transformed_where[:150]}")
+
+                    # Synthesize pg_attribute data from information_schema.columns
+                    # Map DuckDB types to PostgreSQL type OIDs
                     safe_query = f"""
                         SELECT
-                            c.relname,
-                            a.attname,
-                            a.attnum,
-                            a.atttypid,
-                            a.attnotnull,
-                            a.attlen,
-                            a.attrelid,
-                            NULL::VARCHAR as def_value,
-                            NULL::VARCHAR as description,
-                            NULL::INTEGER as objid
-                        FROM pg_catalog.pg_attribute a
-                        INNER JOIN pg_catalog.pg_class c ON (a.attrelid = c.oid)
-                        WHERE {where_clause}
-                        ORDER BY a.attnum
+                            c.table_name as relname,
+                            c.column_name as attname,
+                            c.ordinal_position::INTEGER as attnum,
+                            CASE UPPER(c.data_type)
+                                WHEN 'INTEGER' THEN 23
+                                WHEN 'INT' THEN 23
+                                WHEN 'INT4' THEN 23
+                                WHEN 'BIGINT' THEN 20
+                                WHEN 'INT8' THEN 20
+                                WHEN 'SMALLINT' THEN 21
+                                WHEN 'INT2' THEN 21
+                                WHEN 'TINYINT' THEN 21
+                                WHEN 'BOOLEAN' THEN 16
+                                WHEN 'BOOL' THEN 16
+                                WHEN 'DOUBLE' THEN 701
+                                WHEN 'DOUBLE PRECISION' THEN 701
+                                WHEN 'FLOAT8' THEN 701
+                                WHEN 'REAL' THEN 700
+                                WHEN 'FLOAT4' THEN 700
+                                WHEN 'FLOAT' THEN 701
+                                WHEN 'VARCHAR' THEN 1043
+                                WHEN 'CHARACTER VARYING' THEN 1043
+                                WHEN 'TEXT' THEN 25
+                                WHEN 'DATE' THEN 1082
+                                WHEN 'TIMESTAMP' THEN 1114
+                                WHEN 'TIMESTAMP WITHOUT TIME ZONE' THEN 1114
+                                WHEN 'TIMESTAMP WITH TIME ZONE' THEN 1184
+                                WHEN 'TIMESTAMPTZ' THEN 1184
+                                WHEN 'TIME' THEN 1083
+                                WHEN 'TIME WITHOUT TIME ZONE' THEN 1083
+                                WHEN 'INTERVAL' THEN 1186
+                                WHEN 'NUMERIC' THEN 1700
+                                WHEN 'DECIMAL' THEN 1700
+                                WHEN 'UUID' THEN 2950
+                                WHEN 'JSON' THEN 114
+                                WHEN 'JSONB' THEN 3802
+                                WHEN 'BYTEA' THEN 17
+                                WHEN 'BLOB' THEN 17
+                                ELSE 25  -- Default to TEXT
+                            END::INTEGER as atttypid,
+                            CASE WHEN c.is_nullable = 'NO' THEN true ELSE false END as attnotnull,
+                            CASE UPPER(c.data_type)
+                                WHEN 'INTEGER' THEN 4
+                                WHEN 'BIGINT' THEN 8
+                                WHEN 'SMALLINT' THEN 2
+                                WHEN 'BOOLEAN' THEN 1
+                                WHEN 'DOUBLE' THEN 8
+                                WHEN 'REAL' THEN 4
+                                ELSE -1
+                            END::INTEGER as attlen,
+                            ABS(hash(c.table_schema || '.' || c.table_name) % 2147483647)::INTEGER as attrelid,
+                            c.column_default as def_value,
+                            ''::VARCHAR as description,
+                            0::INTEGER as objid,
+                            c.data_type as data_type
+                        FROM information_schema.columns c
+                        WHERE {transformed_where}
+                        ORDER BY c.ordinal_position
                         LIMIT 1000
                     """
                     result_df = self.duckdb_conn.execute(safe_query, params).fetchdf()
-                    # Validate column count
-                    actual_send_row_desc = send_row_desc
-                    if not send_row_desc and portal_name in self.portals:
+
+                    # Get expected columns and project result to match
+                    expected_cols = self._expected_result_columns(query)
+                    if expected_cols and portal_name in self.portals:
                         described_col_count = self.portals[portal_name].get('described_columns')
-                        if described_col_count is not None and described_col_count != len(result_df.columns):
-                            styled_print(f"[{self.session_id}]      {S.WARN}  pg_attribute bypass column mismatch: described {described_col_count}, returning {len(result_df.columns)}")
-                            actual_send_row_desc = True
-                    send_execute_results(self.sock, result_df, send_row_description=actual_send_row_desc)
+                        if described_col_count and described_col_count != len(result_df.columns):
+                            # pg_attribute columns that a.* expands to
+                            pg_attribute_star_cols = [
+                                'attrelid', 'attname', 'atttypid', 'attstattarget', 'attlen',
+                                'attnum', 'attndims', 'attcacheoff', 'atttypmod', 'attbyval',
+                                'attstorage', 'attalign', 'attnotnull', 'atthasdef', 'atthasmissing',
+                                'attidentity', 'attgenerated', 'attisdropped', 'attislocal',
+                                'attinhcount', 'attcollation', 'attacl', 'attoptions', 'attfdwoptions',
+                                'attmissingval'
+                            ]
+                            col_map = {
+                                'relname': 'relname', 'attname': 'attname', 'attnum': 'attnum',
+                                'atttypid': 'atttypid', 'attnotnull': 'attnotnull', 'attlen': 'attlen',
+                                'attrelid': 'attrelid', 'def_value': 'def_value', 'description': 'description',
+                                'objid': 'objid', 'data_type': 'data_type',
+                            }
+                            # Expand * or a.*
+                            expanded_cols = []
+                            for col in expected_cols:
+                                if col == '*' or col.lower().endswith('.*'):
+                                    expanded_cols.extend(pg_attribute_star_cols)
+                                else:
+                                    expanded_cols.append(col)
+                            projected_data = {}
+                            for col in expanded_cols:
+                                clean_col = re.sub(r'^[a-z]+\.', '', col.lower())
+                                if clean_col in col_map and col_map[clean_col] in result_df.columns:
+                                    projected_data[col] = result_df[col_map[clean_col]].tolist()
+                                else:
+                                    projected_data[col] = [None] * len(result_df)
+                            result_df = pd.DataFrame(projected_data)
+                            print(f"[{self.session_id}]         Projected to {len(expanded_cols)} columns")
+
+                    send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
                     styled_print(f"[{self.session_id}]      {S.OK} pg_attribute bypass executed ({len(result_df)} rows × {len(result_df.columns)} cols)")
                     return
                 except Exception as e:
                     print(f"[{self.session_id}]      ✗ pg_attribute bypass failed: {str(e)[:200]}")
+                    import traceback
+                    traceback.print_exc()
                     # Don't fall through - return empty result with expected columns
+                    import pandas as pd
                     expected_cols = self._expected_result_columns(query) or ['relname', 'attname', 'attnum']
                     result_df = pd.DataFrame(columns=expected_cols)
                     send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
@@ -8218,6 +8674,46 @@ class ClientConnection:
                 styled_print(f"[{self.session_id}]      {S.OK} regclass query handled (empty)")
                 return
 
+            # pg_settings - augment DuckDB's pg_settings with PostgreSQL-specific settings
+            # DBeaver and other clients expect settings like 'standard_conforming_strings'
+            if 'PG_SETTINGS' in query_upper and 'FROM' in query_upper:
+                try:
+                    # Execute the query against DuckDB first
+                    result_df = self.duckdb_conn.execute(duckdb_query, params).fetchdf()
+
+                    # PostgreSQL settings that DuckDB doesn't have but clients need
+                    pg_specific_settings = {
+                        'standard_conforming_strings': ('on', 'Standard-conforming string literals', 'bool'),
+                        'backslash_quote': ('safe_encoding', 'Backslash handling in string literals', 'enum'),
+                        'bytea_output': ('hex', 'Output format for bytea', 'enum'),
+                        'client_min_messages': ('notice', 'Minimum message level for client', 'enum'),
+                        'default_transaction_isolation': ('read committed', 'Default isolation level', 'enum'),
+                        'default_transaction_read_only': ('off', 'Default read-only status', 'bool'),
+                        'session_replication_role': ('origin', 'Replication role', 'enum'),
+                        'synchronous_commit': ('on', 'Synchronous commit mode', 'enum'),
+                        'transaction_isolation': ('read committed', 'Current isolation level', 'enum'),
+                        'transaction_read_only': ('off', 'Current read-only status', 'bool'),
+                    }
+
+                    # If query is filtering by name and result is empty, check if it's asking for a PG setting
+                    if len(result_df) == 0 and params:
+                        setting_name = params[0] if params else None
+                        if setting_name and setting_name in pg_specific_settings:
+                            val, desc, vtype = pg_specific_settings[setting_name]
+                            result_df = pd.DataFrame([{
+                                'name': setting_name,
+                                'setting': val,
+                                'short_desc': desc,
+                                'vartype': vtype
+                            }])
+
+                    send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
+                    styled_print(f"[{self.session_id}]      {S.OK} pg_settings handled ({len(result_df)} rows)")
+                    return
+                except Exception as e:
+                    print(f"[{self.session_id}]      pg_settings handler failed: {e}")
+                    # Fall through to normal execution
+
             # Handle queries with missing pg_catalog tables (DataGrip introspection)
             missing_table_result = self._handle_missing_pg_catalog_tables(query_upper, duckdb_query)
             if missing_table_result is not None:
@@ -8300,7 +8796,7 @@ class ClientConnection:
                 known_missing = {
                     'pg_trigger', 'pg_rewrite', 'pg_policy', 'pg_policies', 'pg_rules',
                     'pg_operator', 'pg_opclass', 'pg_opfamily', 'pg_aggregate',
-                    'pg_cast', 'pg_collation', 'pg_conversion', 'pg_enum', 'pg_range',
+                    'pg_cast', 'pg_collation', 'pg_conversion', 'pg_range',  # pg_enum removed - DuckDB has it
                     'pg_extension', 'pg_language', 'pg_foreign_data_wrapper',
                     'pg_foreign_server', 'pg_foreign_table', 'pg_event_trigger',
                     'pg_publication', 'pg_subscription', 'pg_replication_slots',

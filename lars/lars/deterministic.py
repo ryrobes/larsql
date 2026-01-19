@@ -113,6 +113,10 @@ def resolve_tool_function(tool_spec: str, config_path: str | None = None) -> Cal
     tool_type, target, func_name = parse_tool_target(tool_spec)
 
     if tool_type == "registered":
+        # Ensure skills are registered before lookup
+        from . import _register_all_skills
+        _register_all_skills()
+
         # Look up in skills registry
         func = get_skill(target)
         if func is None:
@@ -456,14 +460,17 @@ def execute_deterministic_cell(
             original_error=e
         )
 
-    # Build render context
-    # Filter lineage to only include actual tool outputs (not routing messages)
-    # Routing messages are strings like "Dynamically routed to: cell_name"
+    # Build render context from lineage outputs
     outputs = {}
     for item in echo.lineage:
         output = item.get("output")
-        # Only include dict outputs (actual tool results), not string routing messages
-        if isinstance(output, dict):
+        if output is None:
+            continue
+        # Unwrap tool response wrapper if present (e.g., {"result": {...}, "_route": "success"})
+        if isinstance(output, dict) and "result" in output and "_route" in output:
+            outputs[item["cell"]] = output["result"]
+        else:
+            # Keep all other outputs as-is (arrays from aggregate mode, dicts, strings)
             outputs[item["cell"]] = output
     render_context = {
         "input": input_data,
@@ -583,11 +590,17 @@ def execute_hitl_cell(
 
     console.print(f"\n{indent}[bold magenta]📺 HITL Screen: {cell.name}[/bold magenta]")
 
-    # Build render context
+    # Build render context from lineage outputs
     outputs = {}
     for item in echo.lineage:
         output = item.get("output")
-        if isinstance(output, dict):
+        if output is None:
+            continue
+        # Unwrap tool response wrapper if present (e.g., {"result": {...}, "_route": "success"})
+        if isinstance(output, dict) and "result" in output and "_route" in output:
+            outputs[item["cell"]] = output["result"]
+        else:
+            # Keep all other outputs as-is (arrays from aggregate mode, dicts, strings)
             outputs[item["cell"]] = output
 
     # Define HITL helper functions for templates

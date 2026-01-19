@@ -519,6 +519,10 @@ def execute_cascade_udf(
     from ..sql_trail import register_cascade_execution, increment_cache_hit, increment_cache_miss
     from ..sql_tools.cache_adapter import get_cache
 
+    # Ensure skills are registered before cascade execution
+    from .. import _register_all_skills
+    _register_all_skills()
+
     # Use override if provided (for parallel execution), otherwise get from context
     caller_id = caller_id_override if caller_id_override else get_caller_id()
 

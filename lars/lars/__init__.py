@@ -88,6 +88,7 @@ def _register_all_skills():
     from .skills.rlm_tools import rlm_exec, llm_analyze, llm_batch_analyze, chunk_text
     from .skills.skill_executor import skill_executor, list_available_skills
     from .skills.cascade_validator import validate_cascade_overrides
+    from .skills.bi_tools import find_understanding, save_understanding
 
     # Core tools
     register_skill("smart_sql_run", run_sql)
@@ -150,6 +151,10 @@ def _register_all_skills():
     register_skill("sql_query", sql_run_sql)
     register_skill("list_sql_connections", list_sql_connections)
     register_skill("validate_sql", validate_sql)
+
+    # BI tools (understanding management)
+    register_skill("find_understanding", find_understanding)
+    register_skill("save_understanding", save_understanding)
 
     # Data Cascade tools
     register_skill("sql_data", sql_data)

@@ -238,6 +238,61 @@ class ExplainResult:
     # Analysis metadata
     analysis_duration_ms: float = 0.0
 
+    # Native DuckDB EXPLAIN output for the rewritten query
+    native_plan: Optional[str] = None
+
+
+# ============================================================================
+# Native DuckDB EXPLAIN Helper
+# ============================================================================
+
+def _get_native_duckdb_plan(sql: str, duckdb_conn) -> Optional[str]:
+    """
+    Get the native DuckDB EXPLAIN output for a SQL query.
+
+    Rewrites the query to replace semantic operators with UDF calls,
+    then runs DuckDB's native EXPLAIN to show the execution plan.
+
+    Args:
+        sql: SQL query (may contain semantic operators)
+        duckdb_conn: DuckDB connection
+
+    Returns:
+        Formatted EXPLAIN output string, or None if EXPLAIN fails
+    """
+    if not duckdb_conn:
+        return None
+
+    try:
+        # Rewrite the query to replace semantic operators with UDF calls
+        from lars.sql_rewriter import rewrite_lars_syntax
+
+        rewritten_sql = rewrite_lars_syntax(sql, duckdb_conn=duckdb_conn)
+
+        # Run native EXPLAIN on the rewritten query
+        explain_query = f"EXPLAIN {rewritten_sql}"
+        result = duckdb_conn.execute(explain_query)
+        rows = result.fetchall()
+
+        # DuckDB EXPLAIN returns rows with (plan_type, plan_text)
+        # e.g., ('physical_plan', '┌───────────...┘')
+        if rows:
+            plan_parts = []
+            for row in rows:
+                if len(row) >= 2:
+                    # Format: "plan_type:\n plan_text"
+                    plan_type = str(row[0])
+                    plan_text = str(row[1])
+                    plan_parts.append(f"{plan_type}:\n{plan_text}")
+                else:
+                    plan_parts.append(str(row[0]))
+            return '\n'.join(plan_parts)
+
+    except Exception as e:
+        log.debug(f"[explain] Failed to get native DuckDB plan: {e}")
+
+    return None
+
 
 # ============================================================================
 # Main Entry Points
@@ -328,6 +383,9 @@ def explain_semantic_query(
 
     # Generate optimization hints
     result.optimization_hints = _generate_optimization_hints(result)
+
+    # Get native DuckDB execution plan for the rewritten query
+    result.native_plan = _get_native_duckdb_plan(query, duckdb_conn)
 
     result.analysis_duration_ms = (time.time() - start_time) * 1000
 
@@ -537,6 +595,10 @@ def explain_pipeline_query(
         if stage.output_mode == 'table_sql_execute' and stage.cache_enabled:
             result.optimization_hints.append(
                 f"[CACHE] {stage.stage_name}: Uses structural caching (schema fingerprint + prompt)")
+
+    # Get native DuckDB execution plan for the base query
+    # (Pipeline stages are post-processing and not part of DuckDB execution)
+    result.native_plan = _get_native_duckdb_plan(pipeline.base_sql, duckdb_conn)
 
     result.analysis_duration_ms = (time.time() - start_time) * 1000
 
@@ -1655,15 +1717,25 @@ def format_explain_result(result: ExplainResult) -> str:
     # Rewritten SQL (for MAP)
     if result.rewritten_sql:
         lines.append(f"  │")
-        lines.append(f"  └─ Rewritten SQL:")
+        lines.append(f"  ├─ Rewritten SQL:")
         sql_lines = result.rewritten_sql.split('\n')[:10]
         for sql_line in sql_lines:
-            lines.append(f"      {sql_line}")
+            lines.append(f"  │    {sql_line}")
         if len(result.rewritten_sql.split('\n')) > 10:
+            lines.append("  │    ... (truncated)")
+
+    # Native DuckDB execution plan
+    if result.native_plan:
+        lines.append(f"  │")
+        lines.append(f"  └─ DuckDB Execution Plan:")
+        plan_lines = result.native_plan.split('\n')
+        for plan_line in plan_lines[:20]:  # Limit to 20 lines
+            lines.append(f"      {plan_line}")
+        if len(plan_lines) > 20:
             lines.append("      ... (truncated)")
     else:
-        # Close the tree
-        if lines[-1].startswith("  │"):
+        # Close the tree if no native plan
+        if lines and lines[-1].startswith("  │"):
             lines[-1] = lines[-1].replace("├─", "└─")
 
     # Analysis metadata
@@ -1752,4 +1824,5 @@ def format_explain_json(result: ExplainResult) -> Dict[str, Any]:
         } if result.historical else None,
         'optimization_hints': result.optimization_hints,
         'analysis_duration_ms': result.analysis_duration_ms,
+        'native_plan': result.native_plan,
     }

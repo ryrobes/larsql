@@ -58,6 +58,20 @@
             { "anchor": "model-selection", "title": "Model Selection" },
             { "anchor": "cli", "title": "CLI Commands" }
           ]
+        },
+        {
+          "id": "thinking-mode",
+          "title": "Thinking Mode",
+          "sections": [
+            { "anchor": "overview", "title": "Overview" },
+            { "anchor": "syntax", "title": "Syntax Reference" },
+            { "anchor": "effort-levels", "title": "Effort Levels" },
+            { "anchor": "token-budgets", "title": "Token Budgets" },
+            { "anchor": "flags", "title": "Flags" },
+            { "anchor": "supported-models", "title": "Supported Models" },
+            { "anchor": "examples", "title": "Usage Examples" },
+            { "anchor": "token-tracking", "title": "Token Tracking" }
+          ]
         }
       ]
     },

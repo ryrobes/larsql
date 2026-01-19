@@ -1315,6 +1315,11 @@ class CellConfig(BaseModel):
     timeout: Optional[str] = None
 
     # ===== Common Fields (both cell types) =====
+    # Condition for conditional execution - Jinja2 template that evaluates to truthy/falsy
+    # Cell is skipped if condition evaluates to false
+    # Example: condition: "{{ outputs.match_understanding.mode == 'investigate' }}"
+    condition: Optional[str] = None
+
     handoffs: List[Union[str, HandoffConfig]] = Field(default_factory=list)
     sub_cascades: List[SubCascadeRef] = Field(default_factory=list)
     async_cascades: List[AsyncCascadeRef] = Field(default_factory=list)

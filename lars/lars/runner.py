@@ -17,6 +17,106 @@ from rich.spinner import Spinner
 import threading
 
 
+class _OutputWrapper:
+    """
+    Wrapper for cell outputs that provides backwards-compatible .result access.
+
+    After unwrapping, outputs no longer have a 'result' key, but templates
+    may still reference .result for backwards compatibility. This wrapper
+    makes .result return the value itself when accessed on non-dict values.
+
+    Example:
+        outputs.generate_items.result  # Works whether wrapped or unwrapped
+        outputs.generate_items | length  # Works directly on the value
+    """
+    __slots__ = ('_value',)
+
+    def __init__(self, value: Any):
+        object.__setattr__(self, '_value', value)
+
+    @property
+    def result(self) -> Any:
+        """Return the value itself - provides backwards compat for .result access."""
+        return self._value
+
+    def __getattr__(self, name: str) -> Any:
+        """Forward attribute access to the wrapped value."""
+        return getattr(self._value, name)
+
+    def __iter__(self):
+        """Forward iteration to the wrapped value."""
+        return iter(self._value)
+
+    def __len__(self) -> int:
+        """Forward len() to the wrapped value."""
+        return len(self._value)
+
+    def __getitem__(self, key):
+        """Forward indexing to the wrapped value."""
+        return self._value[key]
+
+    def __contains__(self, item) -> bool:
+        """Forward 'in' operator to the wrapped value."""
+        return item in self._value
+
+    def __repr__(self) -> str:
+        return f"_OutputWrapper({self._value!r})"
+
+    def __str__(self) -> str:
+        return str(self._value)
+
+    def __bool__(self) -> bool:
+        return bool(self._value)
+
+
+def _unwrap_cell_output(output: Any) -> Any:
+    """
+    Unwrap tool response wrapper if present.
+
+    Tool responses like python_data return {"result": {...}, "type": "dict", "_route": "success"}.
+    This function extracts the inner "result" for use in conditions and templates.
+
+    Args:
+        output: Raw cell output (may be wrapped or not)
+
+    Returns:
+        The unwrapped result value, or the original output if not wrapped
+    """
+    if isinstance(output, dict) and "result" in output and "_route" in output:
+        return output["result"]
+    return output
+
+
+def _build_outputs_dict(lineage: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Build outputs dict from lineage with unwrapped results.
+
+    This ensures that outputs.cell_name returns the actual result,
+    not the tool response wrapper. Results are wrapped in _OutputWrapper
+    to provide backwards-compatible .result access.
+
+    Args:
+        lineage: Echo lineage list
+
+    Returns:
+        Dict mapping cell_name -> wrapped unwrapped output
+    """
+    outputs = {}
+    for item in lineage:
+        if "cell" not in item or "output" not in item:
+            continue
+        output = item["output"]
+        # Unwrap tool response wrappers for dict outputs, keep all other types as-is
+        if isinstance(output, dict):
+            unwrapped = _unwrap_cell_output(output)
+        else:
+            # Keep non-dict outputs (arrays from aggregate mode, strings, etc.)
+            unwrapped = output
+        # Wrap in _OutputWrapper for backwards-compatible .result access
+        outputs[item["cell"]] = _OutputWrapper(unwrapped)
+    return outputs
+
+
 def _extract_toon_telemetry(response_dict: Dict[str, Any]) -> Dict[str, Any]:
     """
     Extract TOON telemetry from agent response dict.
@@ -443,9 +543,10 @@ class LARSRunner:
         cell_names = {p.name for p in self.config.cells}
 
         # Pattern to match template variables referencing outputs
-        # Matches: {{ outputs.cell_name }} or {{ state.output_cell_name }}
-        outputs_pattern = re.compile(r'\{\{\s*outputs\.(\w+)\s*\}\}')
-        state_output_pattern = re.compile(r'\{\{\s*state\.output_(\w+)\s*\}\}')
+        # Matches: outputs.cell_name anywhere in Jinja2 expressions
+        # e.g., {{ outputs.foo }}, {{ outputs.foo.bar }}, {{ outputs.foo == 'x' }}
+        outputs_pattern = re.compile(r'outputs\.(\w+)')
+        state_output_pattern = re.compile(r'state\.output_(\w+)')
 
         for cell in self.config.cells:
             deps = set()
@@ -492,6 +593,29 @@ class LARSRunner:
                     if ref_cell in cell_names and ref_cell != cell.name:
                         deps.add(ref_cell)
 
+            # 2b. Check condition for template variable references
+            if cell.condition:
+                for match in outputs_pattern.finditer(cell.condition):
+                    ref_cell = match.group(1)
+                    if ref_cell in cell_names and ref_cell != cell.name:
+                        deps.add(ref_cell)
+
+            # 2c. Check tool_inputs for template variable references (deterministic cells)
+            if cell.tool_inputs:
+                # Convert inputs dict to string for pattern matching
+                inputs_str = str(cell.tool_inputs)
+                # Check Jinja2 patterns
+                for match in outputs_pattern.finditer(inputs_str):
+                    ref_cell = match.group(1)
+                    if ref_cell in cell_names and ref_cell != cell.name:
+                        deps.add(ref_cell)
+                # Also check Python code patterns like outputs.get("cell_name") or outputs["cell_name"]
+                python_outputs_pattern = re.compile(r'outputs\.get\(["\'](\w+)["\']|outputs\[["\'](\w+)["\']\]')
+                for match in python_outputs_pattern.finditer(inputs_str):
+                    ref_cell = match.group(1) or match.group(2)
+                    if ref_cell in cell_names and ref_cell != cell.name:
+                        deps.add(ref_cell)
+
             # 3. Check takes.factor for template variable references (for dynamic factors)
             if cell.takes and isinstance(cell.takes.factor, str):
                 # Find {{ outputs.X }} references in takes.factor
@@ -523,9 +647,14 @@ class LARSRunner:
 
         Returns False if:
         - Single cell cascade
+        - max_parallel is explicitly set to 1 (forces sequential execution)
         - Any cell has handoffs (explicit routing)
         - All cells form a strict linear chain (each depends on previous)
         """
+        # If max_parallel is explicitly set to 1, force sequential execution
+        if self.config.max_parallel == 1:
+            return False
+
         cells = self.config.cells
         if len(cells) <= 1:
             return False
@@ -659,6 +788,45 @@ class LARSRunner:
                 set_current_cell_name(None)
                 set_current_cascade_id(None)
 
+        def evaluate_condition(cell: CellConfig) -> bool:
+            """Evaluate a cell's condition using current outputs. Returns True if cell should run."""
+            if not cell.condition:
+                return True  # No condition means always run
+
+            from .prompts import render_instruction
+
+            # Build context with outputs from completed cells
+            outputs_dict = {}
+            for name, res in results.items():
+                if res.get("success") and "result" in res:
+                    cell_result = res["result"]
+                    # Unwrap tool response wrapper if present (e.g., {"result": {...}, "type": "dict", "_route": "success"})
+                    if isinstance(cell_result, dict) and "result" in cell_result and "_route" in cell_result:
+                        outputs_dict[name] = cell_result["result"]
+                    else:
+                        outputs_dict[name] = cell_result
+
+            render_context = {
+                "input": input_data,
+                "state": self.echo.state,
+                "outputs": outputs_dict,
+            }
+
+            try:
+                rendered = render_instruction(cell.condition, render_context)
+                # Evaluate the condition - check for common true/false patterns
+                rendered_lower = rendered.strip().lower()
+                if rendered_lower in ("true", "yes", "1"):
+                    return True
+                elif rendered_lower in ("false", "no", "0", "none", ""):
+                    return False
+                else:
+                    # Try to evaluate as Python boolean
+                    return bool(rendered_lower)
+            except Exception as e:
+                console.print(f"{indent}  [yellow][WARN] Condition evaluation failed for {cell.name}: {e}[/yellow]")
+                return False  # Skip cell if condition can't be evaluated
+
         def get_runnable_cells() -> List[str]:
             """Find cells that can run (dependencies satisfied, not running/completed)."""
             runnable = []
@@ -668,7 +836,23 @@ class LARSRunner:
                 if cell_name in running:
                     continue
                 if deps.issubset(completed):
-                    runnable.append(cell_name)
+                    cell = cell_map[cell_name]
+                    # Check condition before adding to runnable
+                    if cell.condition:
+                        if evaluate_condition(cell):
+                            runnable.append(cell_name)
+                        else:
+                            # Condition is false - mark as completed with skip
+                            console.print(f"{indent}  [dim]⊘ Skipped (condition false): {cell_name}[/dim]")
+                            completed.add(cell_name)
+                            results[cell_name] = {
+                                "cell_name": cell_name,
+                                "result": None,
+                                "success": True,
+                                "skipped": True,
+                            }
+                    else:
+                        runnable.append(cell_name)
             return runnable
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -4029,6 +4213,11 @@ To call this tool, output a JSON code block:
         max_parallel = self.config.takes.max_parallel or 3
         max_workers = min(factor, max_parallel)
 
+        # Guard against factor=0 (shouldn't happen with cascade takes, but be safe)
+        if factor <= 0:
+            console.print(f"{indent}[yellow]{S.FAST} No cascade takes to execute (factor=0), running cascade directly[/yellow]")
+            return self._run_cascade_internal(input_data)
+
         console.print(f"{indent}[bold blue]{S.TAKE} Taking {factor} CASCADE Takes (Parallel: {max_workers} workers)...[/bold blue]")
 
         # Create takes trace node
@@ -4826,6 +5015,11 @@ Refinement directive: {reforge_config.honing_prompt}
         - Heartbeat thread for zombie detection
         - Status updates on completion/error
         """
+        # Ensure skills are registered before executing any cells
+        # This is idempotent - safe to call multiple times
+        from . import _register_all_skills
+        _register_all_skills()
+
         # Create session state in ClickHouse for durable tracking
         try:
             # Determine execution source
@@ -5548,7 +5742,7 @@ If no tools are needed, return an empty array: []
         rewrite_trace = parent_trace.create_child("prompt_rewrite", "llm_rewrite")
 
         # Render the original instructions first
-        outputs = {item['cell']: item['output'] for item in self.echo.lineage}
+        outputs = _build_outputs_dict(self.echo.lineage)
         outputs = enrich_outputs_with_artifacts(outputs, self.config.cells, self.session_id)
         render_context = {
             "input": input_data,
@@ -6582,7 +6776,7 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
 
         # Build render context for system prompt
         # outputs is built dynamically from lineage (not an Echo attribute)
-        outputs = {item['cell']: item['output'] for item in self.echo.lineage}
+        outputs = _build_outputs_dict(self.echo.lineage)
         outputs = enrich_outputs_with_artifacts(outputs, self.config.cells, self.session_id)
         render_context = {
             "input": input_data or {},
@@ -7207,7 +7401,7 @@ Use only numbers 0-100 for scores."""
 
         # Resolve takes factor FIRST (may be Jinja2 template string)
         # Build context for rendering
-        outputs = {item['cell']: item['output'] for item in self.echo.lineage}
+        outputs = _build_outputs_dict(self.echo.lineage)
         render_context = {
             "input": input_data,
             "state": self.echo.state,
@@ -7309,6 +7503,12 @@ Use only numbers 0-100 for scores."""
                 console.print(f"{indent}[yellow]Note: Using {factor} takes from per-model factors (top-level factor: {resolved_factor} ignored)[/yellow]")
         else:
             factor = resolved_factor
+
+        # Guard against factor=0 (e.g., all models filtered out, no viable models)
+        # Fall back to executing cell without takes parallelism
+        if factor <= 0:
+            console.print(f"{indent}[yellow]{S.FAST} No takes to execute (factor=0), running cell directly[/yellow]")
+            return self._execute_cell_internal(cell, input_data, trace, initial_injection)
 
         console.print(f"{indent}[bold blue]{S.TAKE} Taking {factor} Takes (Parallel Attempts)...[/bold blue]")
 
@@ -9240,7 +9440,7 @@ Refinement directive: {reforge_config.honing_prompt}
                 )
 
                 # Render URL template (supports {{ input.url }} etc.)
-                outputs = {entry["cell"]: entry["output"] for entry in self.echo.lineage if "cell" in entry and "output" in entry}
+                outputs = _build_outputs_dict(self.echo.lineage)
                 outputs = enrich_outputs_with_artifacts(outputs, self.config.cells, self.session_id)
                 render_context = {
                     "input": input_data,
@@ -9354,7 +9554,7 @@ Refinement directive: {reforge_config.honing_prompt}
         )
 
         # Build outputs dict from lineage (same pattern as other cell methods)
-        outputs = {item['cell']: item['output'] for item in self.echo.lineage}
+        outputs = _build_outputs_dict(self.echo.lineage)
         outputs = enrich_outputs_with_artifacts(outputs, self.config.cells, self.session_id)
 
         # Render the prompt from instructions using Jinja2
@@ -9771,13 +9971,8 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                     fixed_inputs["_session_id"] = self.echo.session_id
 
                     if cell.tool == "python_data":
-                        # Build outputs dict
-                        outputs = {}
-                        for item in self.echo.lineage:
-                            output = item.get("output")
-                            if isinstance(output, dict):
-                                outputs[item["cell"]] = output
-                        fixed_inputs["_outputs"] = outputs
+                        # Build outputs dict with unwrapped results
+                        fixed_inputs["_outputs"] = _build_outputs_dict(self.echo.lineage)
                         fixed_inputs["_state"] = self.echo.state
                         fixed_inputs["_input"] = input_data
 
@@ -9897,7 +10092,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                 "total": total_rows,
                 "input": input_data,
                 "state": self.echo.state,
-                "outputs": {item['cell']: item['output'] for item in self.echo.lineage}
+                "outputs": _build_outputs_dict(self.echo.lineage)
             }
 
             try:
@@ -10260,13 +10455,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
         logger.debug(f"{indent}Emitting progress display for {cell.name}")
 
         # Build render context (same as HITL cell)
-        outputs = {}
-        for item in self.echo.lineage:
-            output = item.get("output")
-            if isinstance(output, dict):
-                outputs[item["cell"]] = output
-            else:
-                outputs[item["cell"]] = output
+        outputs = _build_outputs_dict(self.echo.lineage)
 
         render_context = {
             "input": input_data,
@@ -10507,7 +10696,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                     self._ephemeral_rag_manager = None
 
         # Prepare outputs dict for easier templating
-        outputs = {item['cell']: item['output'] for item in self.echo.lineage}
+        outputs = _build_outputs_dict(self.echo.lineage)
         outputs = enrich_outputs_with_artifacts(outputs, self.config.cells, self.session_id)
 
         # Render Instructions (Jinja2)

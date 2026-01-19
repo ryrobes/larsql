@@ -435,6 +435,8 @@ def python_data(
     The code environment includes:
         - data.<cell_name>: DataFrame from prior sql_data/python_data cells
         - data['cell_name']: Alternative dict-style access
+        - outputs: Raw dict of all prior cell outputs (for non-DataFrame access)
+        - context: Cascade execution context (session_id, caller_id, cascade_id, cell_name)
         - state: Current cascade state dict (read-only recommended)
         - input: Original cascade input dict (includes _session_id, _caller_id, _cascade_id, _cell_name)
         - pd: pandas module
@@ -490,9 +492,19 @@ def python_data(
         input_with_context['_cascade_id'] = _cascade_id
         input_with_context['_cell_name'] = _cell_name
 
+        # Build context dict for cascade metadata access
+        context = {
+            'session_id': _session_id or '',
+            'caller_id': _caller_id or '',
+            'cascade_id': _cascade_id or '',
+            'cell_name': _cell_name or '',
+        }
+
         # Build execution environment with common libraries
         exec_globals = {
             'data': data,
+            'outputs': _outputs or {},  # Raw outputs from prior cells
+            'context': context,  # Cascade execution context
             'state': _state or {},
             'input': input_with_context,
             'pd': pd,

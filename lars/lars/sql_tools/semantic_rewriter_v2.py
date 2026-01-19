@@ -554,6 +554,29 @@ def _find_order_by_relevance_match(
     return (i, end, rewritten, tag, consumed_prefix)
 
 
+def _is_in_where_context(tokens: List[_Token], pos: int) -> bool:
+    """
+    Check if the given position is in a WHERE clause context.
+
+    Looks backward through tokens to find the most recent clause keyword.
+    Returns True if we're after WHERE and before any clause-ending keyword.
+    """
+    # Look backward for the most recent clause keyword
+    for k in range(pos - 1, -1, -1):
+        t = tokens[k]
+        if t.typ == "ident":
+            upper = t.text.upper()
+            # Found WHERE - we're in a WHERE clause
+            if upper == "WHERE":
+                return True
+            # Found a keyword that indicates we're NOT in a WHERE clause
+            # (we're in SELECT, FROM, GROUP BY, ORDER BY, etc.)
+            if upper in ("SELECT", "FROM", "GROUP", "ORDER", "LIMIT", "HAVING",
+                         "UNION", "INTERSECT", "EXCEPT", "JOIN", "ON", "SET"):
+                return False
+    return False
+
+
 def _find_about_match(
     tokens: List[_Token],
     start: int,
@@ -565,9 +588,10 @@ def _find_about_match(
       <lhs> ABOUT <string> [<cmp> <number>]
       <lhs> NOT ABOUT <string> [<cmp> <number>]
 
-    Defaults:
-      ABOUT -> > 0.5
-      NOT ABOUT -> <= 0.5
+    Context-aware defaults:
+      - In SELECT clause (no comparator): returns raw score (0.0-1.0)
+      - In WHERE clause (no comparator): ABOUT -> > 0.5, NOT ABOUT -> <= 0.5
+      - With explicit comparator: uses that comparator in any context
     """
     i = start
     while i < len(tokens) and tokens[i].typ == "ws":
@@ -652,10 +676,20 @@ def _find_about_match(
         rewritten = f"{score_expr} {cmp_text} {threshold_text}"
         consumed_threshold = False
     else:
-        # Default comparator
-        default_threshold = threshold_override if threshold_override is not None else 0.5
-        rewritten = f"{score_expr} {'<=' if not_present else '>'} {default_threshold}"
-        consumed_threshold = threshold_override is not None
+        # No explicit comparator - check context to decide behavior
+        # In SELECT clause: return raw score (useful for "col ABOUT 'x' as score")
+        # In WHERE clause: add default comparison for filtering
+        in_where = _is_in_where_context(tokens, lhs_start)
+
+        if in_where or not_present:
+            # WHERE clause or NOT ABOUT: add default comparison
+            default_threshold = threshold_override if threshold_override is not None else 0.5
+            rewritten = f"{score_expr} {'<=' if not_present else '>'} {default_threshold}"
+            consumed_threshold = threshold_override is not None
+        else:
+            # SELECT/ORDER BY clause without NOT: return raw score
+            rewritten = score_expr
+            consumed_threshold = False
 
     tag = "infix:NOT ABOUT->semantic_score" if not_present else "infix:ABOUT->semantic_score"
     return (lhs_start, end, rewritten, tag, consumed_prefix, consumed_threshold)
@@ -940,6 +974,43 @@ def _rewrite_function_calls_with_source_context(sql: str) -> Tuple[str, bool, Li
     applied: List[str] = []
     changed = False
 
+    def _is_in_where_clause(token_idx: int) -> bool:
+        """
+        Check if the current position is inside a WHERE clause.
+        WHERE clauses don't allow window functions like ROW_NUMBER().
+        Returns True if we're after WHERE and before GROUP BY/ORDER BY/LIMIT/HAVING/UNION/etc.
+        """
+        # Look backward for WHERE keyword
+        found_where = False
+        for k in range(token_idx - 1, -1, -1):
+            t = tokens[k]
+            if t.typ == "ident":
+                upper = t.text.upper()
+                # Found WHERE - we might be in a WHERE clause
+                if upper == "WHERE":
+                    found_where = True
+                    break
+                # Found a clause that would end a potential WHERE clause
+                if upper in ("SELECT", "FROM", "GROUP", "ORDER", "LIMIT", "HAVING", "UNION", "INTERSECT", "EXCEPT", "JOIN", "ON"):
+                    break
+
+        if not found_where:
+            return False
+
+        # Look forward from WHERE to see if we're still in the WHERE clause
+        # (not yet reached GROUP BY/ORDER BY/LIMIT/etc.)
+        for k in range(token_idx + 1, len(tokens)):
+            t = tokens[k]
+            if t.typ == "ident":
+                upper = t.text.upper()
+                # These keywords end the WHERE clause
+                if upper in ("GROUP", "ORDER", "LIMIT", "HAVING", "UNION", "INTERSECT", "EXCEPT"):
+                    # We're before the ending keyword, still in WHERE
+                    return True
+
+        # Reached end of query - still in WHERE clause
+        return True
+
     i = 0
     while i < len(tokens):
         tok = tokens[i]
@@ -987,11 +1058,22 @@ def _rewrite_function_calls_with_source_context(sql: str) -> Tuple[str, bool, Li
                         # Use alias if found, otherwise fall back to function name
                         target_column = output_alias if output_alias else fn_name
 
-                        # Build source context with dynamic row index injection
-                        # Uses SQL string concatenation to embed ROW_NUMBER() at runtime
-                        # Result: '__LARS_SOURCE:{"column":"fear","row":' || CAST(ROW_NUMBER() - 1 AS VARCHAR) || '}__ criterion'
-                        # Note: ROW_NUMBER() is 1-based, subtract 1 for 0-based index
-                        row_expr = "CAST((ROW_NUMBER() OVER () - 1) AS VARCHAR)"
+                        # Check if we're in a WHERE clause - skip ROW_NUMBER injection
+                        # WHERE clauses don't allow window functions
+                        in_where = _is_in_where_clause(i)
+
+                        if in_where:
+                            # Simple source context without row tracking (WHERE-safe)
+                            source_prefix = f'__LARS_SOURCE:{{"column": "{target_column}"}}__'
+                            row_expr = None
+                        else:
+                            # Build source context with dynamic row index injection
+                            # Uses SQL string concatenation to embed ROW_NUMBER() at runtime
+                            # Result: '__LARS_SOURCE:{"column":"fear","row":' || CAST(ROW_NUMBER() - 1 AS VARCHAR) || '}__ criterion'
+                            # Note: ROW_NUMBER() is 1-based, subtract 1 for 0-based index
+                            row_expr = "CAST((ROW_NUMBER() OVER () - 1) AS VARCHAR)"
+                            source_prefix = None
+
                         source_json_start = f'{{"column": "{target_column}", "row": '
                         source_json_end = "}"
 
@@ -1004,35 +1086,48 @@ def _rewrite_function_calls_with_source_context(sql: str) -> Tuple[str, bool, Li
                             # Check if this is a string literal
                             if (arg_stripped.startswith("'") and arg_stripped.endswith("'")) or \
                                (arg_stripped.startswith('"') and arg_stripped.endswith('"')):
-                                # Inject source context with dynamic row number
-                                # Build: '__LARS_SOURCE:{"column":"x","row":' || ROW_NUMBER() || '}__ ' || 'original'
                                 quote = arg_stripped[0]
                                 inner = arg_stripped[1:-1]
-                                # Escape the inner content for SQL concatenation
-                                if quote == "'":
-                                    inner_escaped = inner.replace("'", "''")
-                                else:
-                                    inner_escaped = inner.replace('"', '""')
 
-                                # Build SQL expression with concatenation
-                                new_arg = (
-                                    f"'__LARS_SOURCE:{source_json_start}' || {row_expr} || '{source_json_end}__ {inner_escaped}'"
-                                )
+                                if in_where:
+                                    # WHERE clause: simple prefix injection (no window function)
+                                    if quote == "'":
+                                        inner_escaped = inner.replace("'", "''")
+                                    else:
+                                        inner_escaped = inner.replace('"', '""')
+                                    new_arg = f"{quote}{source_prefix}{inner_escaped}{quote}"
+                                    _log.debug(f"[semantic_rewriter_v2] Injected WHERE-safe source into {fn_name} arg {idx}: {target_column}")
+                                else:
+                                    # Non-WHERE: inject with dynamic row number
+                                    # Build: '__LARS_SOURCE:{"column":"x","row":' || ROW_NUMBER() || '}__ ' || 'original'
+                                    if quote == "'":
+                                        inner_escaped = inner.replace("'", "''")
+                                    else:
+                                        inner_escaped = inner.replace('"', '""')
+                                    new_arg = (
+                                        f"'__LARS_SOURCE:{source_json_start}' || {row_expr} || '{source_json_end}__ {inner_escaped}'"
+                                    )
+                                    _log.debug(f"[semantic_rewriter_v2] Injected source with row into {fn_name} arg {idx}: {target_column}")
+
                                 new_args.append(new_arg)
                                 injected = True
-                                _log.debug(f"[semantic_rewriter_v2] Injected source with row into {fn_name} arg {idx}: {target_column}")
                             else:
                                 new_args.append(arg_stripped)
 
                         # For single-arg functions (no string arg), add synthetic source arg
                         if not injected and len(args) == 1:
-                            # Add source context as second argument with dynamic row
-                            new_arg = (
-                                f"'__LARS_SOURCE:{source_json_start}' || {row_expr} || '{source_json_end}__'"
-                            )
+                            if in_where:
+                                # WHERE clause: simple source arg
+                                new_arg = f"'{source_prefix}'"
+                                _log.debug(f"[semantic_rewriter_v2] Injected WHERE-safe synthetic source arg for {fn_name}: {target_column}")
+                            else:
+                                # Non-WHERE: add source context with dynamic row
+                                new_arg = (
+                                    f"'__LARS_SOURCE:{source_json_start}' || {row_expr} || '{source_json_end}__'"
+                                )
+                                _log.debug(f"[semantic_rewriter_v2] Injected synthetic source arg with row for {fn_name}: {target_column}")
                             new_args.append(new_arg)
                             injected = True
-                            _log.debug(f"[semantic_rewriter_v2] Injected synthetic source arg with row for {fn_name}: {target_column}")
 
                         if injected:
                             # Reconstruct the function call

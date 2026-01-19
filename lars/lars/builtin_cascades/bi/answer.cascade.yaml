@@ -1,0 +1,82 @@
+cascade_id: bi_answer
+internal: true
+description: |
+  BI of Intent - Answer questions by understanding meaning, not just executing SQL.
+
+  This cascade gives an LLM agent tools to:
+  1. Search for existing understanding of similar questions
+  2. If found, reuse that understanding
+  3. If not, investigate using SQL search and queries
+  4. Save the understanding for future reuse
+
+memory: bi_answers
+
+inputs_schema:
+  question: The natural language question to answer
+  tables: (Optional) Specific tables to use
+  context: (Optional) Additional context about what user is trying to do
+
+sql_function:
+  name: ANSWER
+  description: Answer a business question using BI of Intent
+  args:
+    - name: question
+      type: VARCHAR
+      description: Natural language question (e.g., 'What is our revenue?')
+    - name: tables
+      type: VARCHAR
+      optional: true
+      description: Optional comma-separated table hints
+  returns: JSON
+  shape: SCALAR
+  operators:
+    - "ANSWER '{{ question }}'"
+    - "ANSWER '{{ question }}' USING {{ tables }}"
+  cache: true
+
+cells:
+  - name: investigate
+    model: anthropic/claude-sonnet-4
+    skills:
+      - find_understanding
+      - smart_sql_search
+      - smart_sql_run
+      - save_understanding
+      - bi_answers
+    instructions: |
+      Answer this business question: {{ input.question }}
+
+      {% if input.tables %}
+      HINT: Focus on these tables: {{ input.tables }}
+      {% endif %}
+
+      {% if input.context %}
+      CONTEXT: {{ input.context }}
+      {% endif %}
+
+      WORKFLOW:
+
+      1. FIRST, call find_understanding to check if we've answered similar questions before.
+         - If found with high similarity, use that understanding to guide your query
+         - The understanding_doc explains what the question means and how to compute it
+
+      2. If NO understanding found (or you need to verify/update it):
+         - Use smart_sql_search to find relevant tables and columns
+         - Use smart_sql_run to execute queries and get the answer
+
+      3. AFTER successfully answering:
+         - Call save_understanding with a detailed understanding document
+         - The document should explain:
+           * What this question means semantically
+           * Which tables and columns to use
+           * The query pattern
+           * Any assumptions or caveats
+
+      After completing all tool calls, output ONLY the final JSON result with no other text:
+      {"answer": "<direct answer>", "confidence": "high|medium|low", "answer_type": "scalar|breakdown|timeseries|comparison", "supporting_data": "<key data points>", "query_executed": "<SQL that was run>"}
+
+      Keep the answer CONCISE - if it's a number, just give the number.
+      Do NOT wrap the JSON in markdown code blocks. Output raw JSON only as your final response.
+
+    # rules:
+    #   max_turns: 8
