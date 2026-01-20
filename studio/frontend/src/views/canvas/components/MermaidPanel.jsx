@@ -42,6 +42,7 @@ const getMermaid = async () => {
  * Accepts content in two formats:
  * - Object with 'mermaid' key: { mermaid: "graph LR...", format: "..." }
  * - Raw mermaid string: "graph LR..."
+ * - Array with single object: [{ mermaid: "...", format: "..." }]
  */
 const MermaidPanel = ({ content }) => {
   const containerRef = useRef(null);
@@ -49,20 +50,29 @@ const MermaidPanel = ({ content }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Extract mermaid code from various formats
+    let mermaidCode = null;
+
+    if (typeof content === 'string') {
+      mermaidCode = content;
+    } else if (Array.isArray(content) && content.length === 1 && content[0]?.mermaid) {
+      // Single-row array from pipeline (e.g., THEN MERMAID_TRIPLES)
+      mermaidCode = content[0].mermaid;
+    } else if (content && typeof content === 'object' && content.mermaid) {
+      mermaidCode = content.mermaid;
+    }
+
+    if (!mermaidCode) {
+      setError('No mermaid content provided');
+      setLoading(false);
+      return;
+    }
+
     const renderMermaid = async () => {
-      if (!containerRef.current) return;
-
-      // Extract mermaid code
-      let mermaidCode = null;
-      if (typeof content === 'string') {
-        mermaidCode = content;
-      } else if (content && typeof content === 'object' && content.mermaid) {
-        mermaidCode = content.mermaid;
-      }
-
-      if (!mermaidCode) {
-        setError('No mermaid content provided');
-        setLoading(false);
+      // Wait for ref to be attached
+      if (!containerRef.current) {
+        // Retry on next tick - ref should be attached after render
+        setTimeout(renderMermaid, 10);
         return;
       }
 
@@ -92,29 +102,30 @@ const MermaidPanel = ({ content }) => {
     renderMermaid();
   }, [content]);
 
-  if (loading) {
-    return (
-      <div className="mermaid-panel-loading">
-        <Icon icon="mdi:loading" width="24" className="spinning" />
-        <span>Rendering diagram...</span>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="mermaid-panel-error">
-        <Icon icon="mdi:alert-circle" width="20" />
-        <span>{error}</span>
-      </div>
-    );
-  }
-
+  // Always render the container so the ref is attached
+  // Show loading/error as overlays
   return (
-    <div
-      ref={containerRef}
-      className="mermaid-panel-container"
-    />
+    <div className="mermaid-panel-wrapper">
+      {loading && (
+        <div className="mermaid-panel-loading">
+          <Icon icon="mdi:loading" width="24" className="spinning" />
+          <span>Rendering diagram...</span>
+        </div>
+      )}
+
+      {error && (
+        <div className="mermaid-panel-error">
+          <Icon icon="mdi:alert-circle" width="20" />
+          <span>{error}</span>
+        </div>
+      )}
+
+      <div
+        ref={containerRef}
+        className="mermaid-panel-container"
+        style={{ display: loading || error ? 'none' : 'block' }}
+      />
+    </div>
   );
 };
 

@@ -2,6 +2,12 @@
    MERMAID PANEL
    ============================================ */
 
+.mermaid-panel-wrapper {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
 .mermaid-panel-container {
   width: 100%;
   height: 100%;

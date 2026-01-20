@@ -6534,6 +6534,16 @@ class ClientConnection:
             from ..sql_rewriter import rewrite_lars_syntax
             base_sql = rewrite_lars_syntax(base_sql, duckdb_conn=self.duckdb_conn)
 
+            # Preprocess CTEs with THEN pipeline syntax
+            # This executes pipelines inside CTEs and replaces them with materialized results
+            from ..sql_tools.pipeline_parser import preprocess_cte_pipelines
+            base_sql = preprocess_cte_pipelines(
+                base_sql,
+                duckdb_conn=self.duckdb_conn,
+                session_id=self.session_id,
+                caller_id=getattr(self, '_current_caller_id', None),
+            )
+
             styled_print(f"[{self.session_id}]   {S.QUERY} Executing base: {base_sql[:80]}...")
 
             # Execute base query
@@ -7292,6 +7302,15 @@ class ClientConnection:
                             # Execute base SQL with unified rewriting (handles dimension functions, semantic operators, etc.)
                             base_sql = pipeline.base_sql
                             base_sql = rewrite_lars_syntax(base_sql, duckdb_conn=self.duckdb_conn)
+
+                            # Preprocess CTEs with THEN pipeline syntax
+                            from ..sql_tools.pipeline_parser import preprocess_cte_pipelines
+                            base_sql = preprocess_cte_pipelines(
+                                base_sql,
+                                duckdb_conn=self.duckdb_conn,
+                                session_id=self.session_id,
+                                caller_id=getattr(self, '_current_caller_id', None),
+                            )
 
                             # Execute base query
                             result = self.duckdb_conn.execute(base_sql)

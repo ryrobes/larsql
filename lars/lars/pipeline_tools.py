@@ -716,6 +716,13 @@ def _detect_panel_type(content: Any) -> str:
     # Check for data grid (list of dicts)
     if isinstance(content, list):
         if len(content) > 0 and isinstance(content[0], dict):
+            first = content[0]
+            # Check if this is a single-row mermaid result from a pipeline
+            if len(content) == 1 and "mermaid" in first:
+                fmt = first.get("format", "")
+                if "timeline" in fmt:
+                    return "mermaid-timeline"
+                return "mermaid-graph"
             return "data-grid"
         return "text"
 
