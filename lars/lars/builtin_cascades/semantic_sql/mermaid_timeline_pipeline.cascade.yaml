@@ -1,0 +1,51 @@
+cascade_id: pipeline_mermaid_timeline
+internal: true
+description: |
+  PIPELINE cascade for converting timeline data to Mermaid timeline visualization.
+
+  Uses pure Python - no LLM calls.
+
+  Usage:
+      SELECT * FROM docs, LATERAL timeline_rows(content) t
+      THEN MERMAID_TIMELINE
+
+      SELECT date AS timestamp, description AS event FROM events
+      THEN MERMAID_TIMELINE('date', 'description')
+
+inputs_schema:
+  timestamp_col: "Column name for timestamp (default: timestamp)"
+  event_col: "Column name for event description (default: event)"
+  _table: "Query results as JSON records"
+  _table_columns: "List of column names"
+
+sql_function:
+  name: MERMAID_TIMELINE
+  description: Convert timeline data to Mermaid timeline visualization
+  args:
+    - name: timestamp_col
+      type: VARCHAR
+      optional: true
+      default: "timestamp"
+    - name: event_col
+      type: VARCHAR
+      optional: true
+      default: "event"
+    - name: _table
+      type: TABLE
+  returns: TABLE
+  shape: PIPELINE
+  operators:
+    - 'THEN MERMAID_TIMELINE'
+    - 'THEN MERMAID_TIMELINE({{ timestamp_col }})'
+    - 'THEN MERMAID_TIMELINE({{ timestamp_col }}, {{ event_col }})'
+  cache: false
+
+cells:
+  - name: generate_mermaid
+    deterministic: true
+    tool: python:lars.pipeline_tools.mermaid_timeline
+    inputs:
+      _table: "{{ input._table }}"
+      timestamp_col: "{{ input.timestamp_col | default('timestamp') }}"
+      event_col: "{{ input.event_col | default('event') }}"
+      _table_columns: "{{ input._table_columns }}"

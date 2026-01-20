@@ -1,0 +1,64 @@
+cascade_id: pipeline_mermaid_triples
+internal: true
+description: |
+  PIPELINE cascade for converting triples data to Mermaid graph visualization.
+
+  Uses pure Python - no LLM calls.
+
+  Usage:
+      SELECT * FROM docs, LATERAL triples_rows(content) t
+      THEN MERMAID_TRIPLES
+
+      SELECT src AS subject, rel AS predicate, dst AS object FROM edges
+      THEN MERMAID_TRIPLES('src', 'rel', 'dst')
+
+inputs_schema:
+  subject_col: "Column name for subject (default: subject)"
+  predicate_col: "Column name for predicate (default: predicate)"
+  object_col: "Column name for object (default: object)"
+  direction: "Graph direction LR/RL/TB/BT (default: LR)"
+  _table: "Query results as JSON records"
+  _table_columns: "List of column names"
+
+sql_function:
+  name: MERMAID_TRIPLES
+  description: Convert triples to Mermaid graph visualization
+  args:
+    - name: subject_col
+      type: VARCHAR
+      optional: true
+      default: "subject"
+    - name: predicate_col
+      type: VARCHAR
+      optional: true
+      default: "predicate"
+    - name: object_col
+      type: VARCHAR
+      optional: true
+      default: "object"
+    - name: direction
+      type: VARCHAR
+      optional: true
+      default: "LR"
+    - name: _table
+      type: TABLE
+  returns: TABLE
+  shape: PIPELINE
+  operators:
+    - 'THEN MERMAID_TRIPLES'
+    - 'THEN MERMAID_TRIPLES({{ subject_col }})'
+    - 'THEN MERMAID_TRIPLES({{ subject_col }}, {{ predicate_col }}, {{ object_col }})'
+    - 'THEN MERMAID_TRIPLES({{ subject_col }}, {{ predicate_col }}, {{ object_col }}, {{ direction }})'
+  cache: false
+
+cells:
+  - name: generate_mermaid
+    deterministic: true
+    tool: python:lars.pipeline_tools.mermaid_triples
+    inputs:
+      _table: "{{ input._table }}"
+      subject_col: "{{ input.subject_col | default('subject') }}"
+      predicate_col: "{{ input.predicate_col | default('predicate') }}"
+      object_col: "{{ input.object_col | default('object') }}"
+      direction: "{{ input.direction | default('LR') }}"
+      _table_columns: "{{ input._table_columns }}"

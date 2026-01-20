@@ -398,3 +398,140 @@ def passthrough(
         return {"data": []}
 
     return {"data": _table}
+
+
+# =============================================================================
+# Mermaid Visualization Functions
+# =============================================================================
+
+import re
+
+
+def _sanitize_mermaid_node_id(text: str) -> str:
+    """
+    Sanitize text for use as a Mermaid node ID.
+
+    - Replace spaces and special chars with underscores
+    - Ensure it starts with a letter
+    - Keep it reasonably short
+    """
+    if not text:
+        return "empty"
+
+    # Replace problematic characters
+    sanitized = re.sub(r'[^a-zA-Z0-9_]', '_', str(text))
+
+    # Ensure starts with letter
+    if sanitized and not sanitized[0].isalpha():
+        sanitized = 'n_' + sanitized
+
+    # Truncate if too long
+    if len(sanitized) > 40:
+        sanitized = sanitized[:40]
+
+    return sanitized or "node"
+
+
+def _escape_mermaid_label(text: str) -> str:
+    """Escape text for use in Mermaid labels."""
+    if not text:
+        return ""
+    # Escape quotes and pipes which have special meaning
+    return str(text).replace('"', "'").replace('|', '/').replace('\n', ' ')
+
+
+def mermaid_triples(
+    _table: List[Dict[str, Any]],
+    subject_col: str = "subject",
+    predicate_col: str = "predicate",
+    object_col: str = "object",
+    direction: str = "LR",
+    _table_columns: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """
+    Convert triples data to Mermaid graph syntax.
+
+    Args:
+        _table: List of records containing subject/predicate/object triples
+        subject_col: Column name for subject (default: "subject")
+        predicate_col: Column name for predicate (default: "predicate")
+        object_col: Column name for object (default: "object")
+        direction: Graph direction - LR, RL, TB, BT (default: "LR")
+        _table_columns: Available column names
+
+    Returns:
+        Dict with 'data' key containing single row with mermaid output
+    """
+    if not _table:
+        mermaid = f"graph {direction}\n    empty[No data]"
+        return {"data": [{"mermaid": mermaid, "format": "mermaid-graph"}]}
+
+    lines = [f"graph {direction}"]
+
+    # Track unique nodes for labeling
+    nodes_seen = set()
+    edges = []
+
+    for row in _table:
+        subj = row.get(subject_col, "")
+        pred = row.get(predicate_col, "")
+        obj = row.get(object_col, "")
+
+        if not subj or not obj:
+            continue
+
+        subj_id = _sanitize_mermaid_node_id(subj)
+        obj_id = _sanitize_mermaid_node_id(obj)
+        pred_label = _escape_mermaid_label(pred)
+
+        # Add node definitions if first time seeing them
+        if subj_id not in nodes_seen:
+            nodes_seen.add(subj_id)
+            lines.append(f'    {subj_id}["{_escape_mermaid_label(subj)}"]')
+
+        if obj_id not in nodes_seen:
+            nodes_seen.add(obj_id)
+            lines.append(f'    {obj_id}["{_escape_mermaid_label(obj)}"]')
+
+        # Add edge
+        edges.append(f"    {subj_id} -->|{pred_label}| {obj_id}")
+
+    lines.extend(edges)
+
+    mermaid = "\n".join(lines)
+    return {"data": [{"mermaid": mermaid, "format": "mermaid-graph"}]}
+
+
+def mermaid_timeline(
+    _table: List[Dict[str, Any]],
+    timestamp_col: str = "timestamp",
+    event_col: str = "event",
+    _table_columns: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """
+    Convert timeline data to Mermaid timeline syntax.
+
+    Args:
+        _table: List of records containing timestamp/event data
+        timestamp_col: Column name for timestamp (default: "timestamp")
+        event_col: Column name for event description (default: "event")
+        _table_columns: Available column names
+
+    Returns:
+        Dict with 'data' key containing single row with mermaid output
+    """
+    if not _table:
+        mermaid = "timeline\n    title Empty\n    No events"
+        return {"data": [{"mermaid": mermaid, "format": "mermaid-timeline"}]}
+
+    lines = ["timeline"]
+
+    for row in _table:
+        ts = row.get(timestamp_col, "")
+        event = row.get(event_col, "")
+
+        if ts and event:
+            lines.append(f"    {_escape_mermaid_label(ts)} : {_escape_mermaid_label(event)}")
+
+    mermaid = "\n".join(lines)
+    return {"data": [{"mermaid": mermaid, "format": "mermaid-timeline"}]}
