@@ -146,6 +146,14 @@ export const views = {
     enabled: process.env.NODE_ENV === 'development',
   },
 
+  canvas: {
+    component: lazy(() => import('./canvas/CanvasView')),
+    icon: 'mdi:view-dashboard-variant',
+    label: 'Canvas',
+    position: 'top',
+    enabled: true,
+  },
+
   interrupts: {
     component: lazy(() => import('./interrupts/InterruptsView')),
     icon: 'mdi:hand-back-right',

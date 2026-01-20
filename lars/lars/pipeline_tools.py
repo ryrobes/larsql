@@ -535,3 +535,158 @@ def mermaid_timeline(
 
     mermaid = "\n".join(lines)
     return {"data": [{"mermaid": mermaid, "format": "mermaid-timeline"}]}
+
+
+def render_canvas(
+    _table: List[Dict[str, Any]],
+    cols: int = 2,
+    rows: int = 2,
+    _table_columns: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """
+    Compose multiple panels into a canvas layout for visualization.
+
+    This is the composition operator for LARS visual outputs. It takes
+    a table of panels (each with content and grid position) and produces
+    a single canvas JSON structure that frontends can render.
+
+    Args:
+        _table: List of panel records with columns:
+            - name: Panel identifier/title (required)
+            - content: Panel content - mermaid dict, data array, or scalar (required)
+            - col: Grid column position, 1-based (required)
+            - row: Grid row position, 1-based (required)
+            - colspan: Column span (optional, default 1)
+            - rowspan: Row span (optional, default 1)
+        cols: Number of grid columns (default: 2)
+        rows: Number of grid rows (default: 2)
+        _table_columns: Available column names
+
+    Returns:
+        Dict with 'data' key containing single row with canvas JSON:
+        {
+            "data": [{
+                "canvas": {
+                    "layout": {"type": "grid", "cols": 2, "rows": 2},
+                    "panels": [...]
+                },
+                "format": "canvas"
+            }]
+        }
+
+    Example SQL usage:
+        WITH panels(name, content, col, row) AS (
+            SELECT 'Graph', (SELECT ... THEN MERMAID_TRIPLES), 1, 1
+            UNION ALL
+            SELECT 'Timeline', (SELECT ... THEN MERMAID_TIMELINE), 2, 1
+        )
+        SELECT * FROM panels THEN RENDER_CANVAS
+    """
+    if not _table:
+        return {
+            "data": [{
+                "canvas": {
+                    "layout": {"type": "grid", "cols": int(cols), "rows": int(rows)},
+                    "panels": []
+                },
+                "format": "canvas"
+            }]
+        }
+
+    # Validate: check for duplicate panel names
+    panel_names = [row.get("name", f"Panel_{i}") for i, row in enumerate(_table)]
+    duplicates = [name for name in set(panel_names) if panel_names.count(name) > 1]
+    if duplicates:
+        return {
+            "data": [{
+                "error": f"Duplicate panel names: {', '.join(duplicates)}. Each panel must have a unique name.",
+                "format": "error"
+            }]
+        }
+
+    panels = []
+
+    for row_data in _table:
+        name = row_data.get("name", "Untitled")
+        content = row_data.get("content")
+        col_pos = row_data.get("col", 1)
+        row_pos = row_data.get("row", 1)
+        colspan = row_data.get("colspan", 1)
+        rowspan = row_data.get("rowspan", 1)
+
+        # Detect panel type from content
+        panel_type = _detect_panel_type(content)
+
+        # Parse content if it's a JSON string
+        if isinstance(content, str):
+            try:
+                content = json.loads(content)
+                # Re-detect type after parsing
+                panel_type = _detect_panel_type(content)
+            except (json.JSONDecodeError, TypeError):
+                # Keep as string, treat as text
+                pass
+
+        panels.append({
+            "name": str(name),
+            "content": content,
+            "type": panel_type,
+            "cell": [int(col_pos), int(row_pos), int(colspan), int(rowspan)]
+        })
+
+    canvas = {
+        "layout": {
+            "type": "grid",
+            "cols": int(cols),
+            "rows": int(rows)
+        },
+        "panels": panels
+    }
+
+    return {
+        "data": [{
+            "canvas": canvas,
+            "format": "canvas"
+        }]
+    }
+
+
+def _detect_panel_type(content: Any) -> str:
+    """
+    Detect the panel type from content structure.
+
+    Returns one of:
+    - 'mermaid-graph': Mermaid graph diagram
+    - 'mermaid-timeline': Mermaid timeline
+    - 'data-grid': Array of records (table data)
+    - 'text': Plain text or unknown format
+    """
+    if content is None:
+        return "text"
+
+    # Check for mermaid format (dict with 'mermaid' and 'format' keys)
+    if isinstance(content, dict):
+        if "mermaid" in content:
+            fmt = content.get("format", "")
+            if "timeline" in fmt:
+                return "mermaid-timeline"
+            return "mermaid-graph"
+        # Single record - could be scalar result
+        return "text"
+
+    # Check for data grid (list of dicts)
+    if isinstance(content, list):
+        if len(content) > 0 and isinstance(content[0], dict):
+            return "data-grid"
+        return "text"
+
+    # String content
+    if isinstance(content, str):
+        # Check if it looks like mermaid syntax
+        if content.strip().startswith(("graph ", "flowchart ", "timeline")):
+            if content.strip().startswith("timeline"):
+                return "mermaid-timeline"
+            return "mermaid-graph"
+        return "text"
+
+    return "text"

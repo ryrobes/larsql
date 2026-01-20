@@ -1,0 +1,55 @@
+cascade_id: pipeline_render_canvas
+internal: true
+description: |
+  PIPELINE cascade for composing multiple visualization panels into a canvas layout.
+
+  Uses pure Python - no LLM calls.
+
+  Usage:
+      WITH panels(name, content, col, row) AS (
+        SELECT 'Graph', (SELECT ... THEN MERMAID_TRIPLES), 1, 1
+        UNION ALL
+        SELECT 'Timeline', (SELECT ... THEN MERMAID_TIMELINE), 2, 1
+      )
+      SELECT * FROM panels THEN RENDER_CANVAS
+
+      -- With explicit grid size:
+      SELECT * FROM panels THEN RENDER_CANVAS(3, 2)
+
+inputs_schema:
+  cols: "Number of grid columns (default: 2)"
+  rows: "Number of grid rows (default: 2)"
+  _table: "Query results as JSON records"
+  _table_columns: "List of column names"
+
+sql_function:
+  name: RENDER_CANVAS
+  description: Compose multiple panels into a canvas layout for visualization
+  args:
+    - name: cols
+      type: INTEGER
+      optional: true
+      default: 2
+    - name: rows
+      type: INTEGER
+      optional: true
+      default: 2
+    - name: _table
+      type: TABLE
+  returns: TABLE
+  shape: PIPELINE
+  operators:
+    - 'THEN RENDER_CANVAS'
+    - 'THEN RENDER_CANVAS({{ cols }})'
+    - 'THEN RENDER_CANVAS({{ cols }}, {{ rows }})'
+  cache: false
+
+cells:
+  - name: render
+    deterministic: true
+    tool: python:lars.pipeline_tools.render_canvas
+    inputs:
+      _table: "{{ input._table }}"
+      cols: "{{ input.cols | default(2) }}"
+      rows: "{{ input.rows | default(2) }}"
+      _table_columns: "{{ input._table_columns }}"

@@ -99,6 +99,41 @@ def _extract_arrow_alias(query: str) -> Tuple[str, Optional[str]]:
 
 
 # ============================================================================
+# Canvas Syntax Rewriter
+# ============================================================================
+
+def _rewrite_canvas_syntax(query: str) -> str:
+    """
+    Rewrite CANVAS/PANEL/GRID syntax to standard SQL with RENDER_CANVAS pipeline.
+
+    Transforms:
+        WITH team1 AS (...), metrics1 AS (...)
+        SELECT * FROM CANVAS(
+          PANEL('Team', 1, 1, team1),
+          PANEL('Metrics', 2, 1, metrics1)
+        ) WITH GRID(2, 1)
+
+    Into:
+        WITH team1 AS (...), metrics1 AS (...),
+          _canvas_panel_0 AS (...),
+          _canvas_panel_1 AS (...),
+          _canvas_panels AS (...)
+        SELECT * FROM _canvas_panels THEN RENDER_CANVAS(2, 1)
+    """
+    try:
+        from .sql_tools.canvas_rewriter import has_canvas_syntax, rewrite_canvas_syntax
+        if not has_canvas_syntax(query):
+            return query
+        return rewrite_canvas_syntax(query)
+    except ImportError:
+        return query
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Canvas syntax rewrite failed: {e}")
+        return query
+
+
+# ============================================================================
 # Main Entry Point
 # ============================================================================
 
@@ -180,6 +215,10 @@ def rewrite_lars_syntax(query: str, duckdb_conn=None) -> str:
             return f"SELECT '{plan_text_escaped}' AS query_plan"
 
     result = query
+
+    # Process CANVAS/PANEL/GRID syntax (dashboard composition)
+    # This must run early to transform CANVAS() into valid SQL with RENDER_CANVAS pipeline
+    result = _rewrite_canvas_syntax(result)
 
     # Process LARS MAP/RUN statements (only for actual MAP/RUN syntax)
     if _is_map_run_statement(normalized):

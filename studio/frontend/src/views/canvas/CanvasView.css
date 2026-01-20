@@ -1,0 +1,250 @@
+/* ============================================
+   CANVAS VIEW - Hypermedia SQL Client
+   ============================================ */
+
+.canvas-view {
+  width: 100%;
+  height: 100vh;
+  background: var(--color-bg-primary);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ============================================
+   HEADER
+   ============================================ */
+
+.canvas-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--color-border-dim);
+  background: var(--color-bg-primary);
+  flex-shrink: 0;
+}
+
+.canvas-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--color-accent-cyan);
+}
+
+.canvas-header h1 {
+  margin: 0;
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.canvas-subtitle {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-dim);
+  padding: 2px 8px;
+  background: rgba(0, 229, 255, 0.1);
+  border-radius: var(--radius-sm);
+}
+
+.canvas-header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.canvas-execution-time {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-dim);
+  font-family: var(--font-mono);
+}
+
+.canvas-run-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: var(--color-accent-cyan);
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--color-bg-primary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.canvas-run-btn:hover:not(:disabled) {
+  background: var(--color-accent-cyan-bright, #33eeff);
+}
+
+.canvas-run-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ============================================
+   LAYOUT
+   ============================================ */
+
+.canvas-layout {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ============================================
+   EDITOR PANE
+   ============================================ */
+
+.canvas-editor-pane {
+  width: 40%;
+  min-width: 300px;
+  max-width: 600px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--color-border-dim);
+  background: var(--color-bg-secondary);
+}
+
+.canvas-editor-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--color-border-dim);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  background: var(--color-bg-tertiary);
+}
+
+.canvas-hint {
+  margin-left: auto;
+  font-size: var(--font-size-xxs);
+  color: var(--color-text-dim);
+  padding: 2px 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-xs);
+}
+
+.canvas-editor-wrapper {
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ============================================
+   RESULT PANE
+   ============================================ */
+
+.canvas-result-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg-primary);
+  overflow: hidden;
+}
+
+.canvas-result-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--color-border-dim);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  background: var(--color-bg-tertiary);
+}
+
+.canvas-result-info {
+  margin-left: auto;
+  font-size: var(--font-size-xxs);
+  color: var(--color-accent-cyan);
+  padding: 2px 6px;
+  background: rgba(0, 229, 255, 0.1);
+  border-radius: var(--radius-xs);
+}
+
+.canvas-result-wrapper {
+  flex: 1;
+  overflow: auto;
+  padding: 16px;
+}
+
+/* ============================================
+   STATES
+   ============================================ */
+
+.canvas-loading,
+.canvas-empty,
+.canvas-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 12px;
+  color: var(--color-text-dim);
+}
+
+.canvas-loading .spinning {
+  color: var(--color-accent-cyan);
+}
+
+.canvas-empty h3,
+.canvas-error h3 {
+  margin: 0;
+  font-size: var(--font-size-md);
+  color: var(--color-text-muted);
+}
+
+.canvas-empty p {
+  margin: 0;
+  font-size: var(--font-size-sm);
+}
+
+.canvas-error {
+  color: var(--color-accent-red);
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: flex-start;
+  padding: 16px;
+  gap: 16px;
+}
+
+.canvas-error-content {
+  flex: 1;
+}
+
+.canvas-error-content h3 {
+  color: var(--color-accent-red);
+  margin-bottom: 8px;
+}
+
+.canvas-error-content pre {
+  margin: 0;
+  padding: 12px;
+  background: rgba(255, 82, 82, 0.1);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  font-family: var(--font-mono);
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--color-text-secondary);
+  max-height: 300px;
+  overflow: auto;
+}
+
+/* ============================================
+   SPINNING ANIMATION
+   ============================================ */
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.spinning {
+  animation: spin 1s linear infinite;
+}

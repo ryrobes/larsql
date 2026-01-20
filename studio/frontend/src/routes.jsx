@@ -35,6 +35,7 @@ const AppsView = lazy(() => import('./views/apps/AppsView'));
 const CatalogView = lazy(() => import('./views/catalog/CatalogView'));
 const WatchersView = lazy(() => import('./views/watchers/WatchersView'));
 const TestsView = lazy(() => import('./views/tests/TestsView'));
+const CanvasView = lazy(() => import('./views/canvas/CanvasView'));
 
 // Wrapper to add Suspense to lazy components
 const withSuspense = (Component) => (
@@ -180,6 +181,12 @@ export const router = createBrowserRouter([
       {
         path: 'tests',
         element: withSuspense(TestsView),
+      },
+
+      // Canvas - Hypermedia SQL Client
+      {
+        path: 'canvas',
+        element: withSuspense(CanvasView),
       },
 
       // Catch-all - redirect to home
