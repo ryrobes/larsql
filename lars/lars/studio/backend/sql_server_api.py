@@ -19,6 +19,38 @@ import traceback
 sql_server_api = Blueprint('sql_server_api', __name__)
 
 
+@sql_server_api.route('/api/sql/databases', methods=['GET'])
+def list_databases():
+    """
+    List all available databases.
+
+    GET /api/sql/databases
+
+    Returns:
+    {
+      "databases": [
+        {"name": "memory", "type": "memory", "path": null, "size_mb": null},
+        {"name": "analytics", "type": "persistent", "path": "...", "size_mb": 12.5}
+      ]
+    }
+    """
+    try:
+        import sys
+        import os
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
+
+        from lars.sql_tools.database_manager import list_databases as get_db_list
+
+        databases = get_db_list()
+        return jsonify({
+            "databases": databases,
+            "count": len(databases)
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @sql_server_api.route('/api/sql/execute', methods=['POST'])
 def execute_sql():
     """
@@ -27,7 +59,7 @@ def execute_sql():
     POST /api/sql/execute
     {
       "query": "SELECT lars_udf('Extract brand', product_name) FROM products LIMIT 10",
-      "session_id": "optional_session_id",
+      "database": "memory",
       "format": "json|csv|records"
     }
 
@@ -37,15 +69,20 @@ def execute_sql():
       "columns": ["product_name", "brand"],
       "data": [{"product_name": "Apple iPhone", "brand": "Apple"}, ...],
       "row_count": 10,
-      "session_id": "session_abc123",
+      "database": "memory",
       "execution_time_ms": 1234.5
     }
+
+    Database options:
+    - "memory" (default): Ephemeral in-memory database
+    - Any other name: Persistent database at session_dbs/{name}.duckdb
 
     Example from Python:
         import requests
 
         response = requests.post('http://localhost:5050/api/sql/execute', json={
-            "query": "SELECT lars_udf('Extract brand', 'Apple iPhone 15') as brand"
+            "query": "SELECT lars_udf('Extract brand', 'Apple iPhone 15') as brand",
+            "database": "analytics"
         })
 
         print(response.json()['data'])
@@ -54,13 +91,13 @@ def execute_sql():
     Example from curl:
         curl -X POST http://localhost:5050/api/sql/execute \\
           -H 'Content-Type: application/json' \\
-          -d '{"query": "SELECT 1 as test"}'
+          -d '{"query": "SELECT 1 as test", "database": "memory"}'
     """
     start_time = time.time()
 
     # Parse request
     query = request.json.get('query')
-    session_id = request.json.get('session_id', f"http_api_{uuid.uuid4().hex[:8]}")
+    database = request.json.get('database', 'memory')
     output_format = request.json.get('format', 'records')
 
     if not query:
@@ -77,16 +114,17 @@ def execute_sql():
         import pandas as pd
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
-        from lars.sql_tools.session_db import get_session_db
-        from lars.sql_tools.udf import register_lars_udf
+        from lars.sql_tools.database_manager import (
+            get_database_connection,
+            get_database_lock,
+            ensure_lazy_attach
+        )
         from lars.sql_rewriter import rewrite_lars_syntax, _is_lars_statement
         from lars.sql_tools.pipeline_parser import has_pipeline_syntax, parse_pipeline_syntax
 
-        # Get or create session DuckDB
-        conn = get_session_db(session_id)
-
-        # Register LARS UDFs (idempotent - won't re-register)
-        register_lars_udf(conn)
+        # Get fully initialized database connection (UDFs, auto-attach, etc.)
+        conn = get_database_connection(database)
+        lock = get_database_lock(database)
 
         # Set caller context for LARS queries (enables cost tracking and debugging)
         caller_id = None
@@ -102,6 +140,9 @@ def execute_sql():
             )
             set_caller_context(caller_id, metadata)
 
+        # Ensure external databases referenced in query are attached
+        ensure_lazy_attach(conn, query)
+
         # First, apply LARS syntax rewriting (CANVAS, semantic operators, etc.)
         # This may produce THEN pipeline syntax (e.g., CANVAS -> ... THEN RENDER_CANVAS)
         rewritten_query = rewrite_lars_syntax(query, duckdb_conn=conn)
@@ -116,10 +157,11 @@ def execute_sql():
                 # Execute base SQL (already rewritten above, but base_sql needs extraction)
                 base_sql = pipeline.base_sql
 
-                # Execute base query
-                result = conn.execute(base_sql)
-                columns = [desc[0] for desc in result.description]
-                rows = result.fetchall()
+                # Execute base query (use lock for thread safety)
+                with lock:
+                    result = conn.execute(base_sql)
+                    columns = [desc[0] for desc in result.description]
+                    rows = result.fetchall()
                 initial_df = pd.DataFrame(rows, columns=columns)
 
                 # Execute pipeline stages
@@ -128,17 +170,19 @@ def execute_sql():
                     initial_df=initial_df,
                     into_table=pipeline.into_table,
                     duckdb_conn=conn,
-                    session_id=session_id,
+                    session_id=database,
                     caller_id=caller_id,
                     original_query=query,
                     base_into_table=pipeline.base_into_table,
                 )
             else:
                 # Fallback if parsing fails
-                result_df = conn.execute(rewritten_query).fetchdf()
+                with lock:
+                    result_df = conn.execute(rewritten_query).fetchdf()
         else:
-            # Regular query - already rewritten, just execute
-            result_df = conn.execute(rewritten_query).fetchdf()
+            # Regular query - already rewritten, just execute (use lock for thread safety)
+            with lock:
+                result_df = conn.execute(rewritten_query).fetchdf()
 
         execution_time_ms = (time.time() - start_time) * 1000
 
@@ -157,7 +201,7 @@ def execute_sql():
                 "columns": list(result_df.columns),
                 "data": result_df.values.tolist(),
                 "row_count": len(result_df),
-                "session_id": session_id,
+                "database": database,
                 "execution_time_ms": execution_time_ms
             })
 
@@ -168,7 +212,7 @@ def execute_sql():
                 "columns": list(result_df.columns),
                 "data": result_df.to_dict('records'),
                 "row_count": len(result_df),
-                "session_id": session_id,
+                "database": database,
                 "execution_time_ms": execution_time_ms
             })
 
@@ -180,7 +224,7 @@ def execute_sql():
             "error": str(e),
             "error_type": type(e).__name__,
             "traceback": traceback.format_exc(),
-            "session_id": session_id,
+            "database": database,
             "execution_time_ms": execution_time_ms
         }), 500
 

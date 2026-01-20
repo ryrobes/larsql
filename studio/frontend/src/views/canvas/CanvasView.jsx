@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Icon } from '@iconify/react';
 import Editor from '@monaco-editor/react';
 import CanvasRenderer from './components/CanvasRenderer';
@@ -47,9 +47,27 @@ const CanvasView = () => {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [executionTime, setExecutionTime] = useState(null);
+  const [databases, setDatabases] = useState([{ name: 'memory', type: 'memory' }]);
+  const [selectedDatabase, setSelectedDatabase] = useState('memory');
 
   const editorRef = useRef(null);
   const monacoRef = useRef(null);
+
+  // Fetch available databases on mount
+  useEffect(() => {
+    const fetchDatabases = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/sql/databases`);
+        const data = await response.json();
+        if (data.databases && data.databases.length > 0) {
+          setDatabases(data.databases);
+        }
+      } catch (err) {
+        console.error('Failed to fetch databases:', err);
+      }
+    };
+    fetchDatabases();
+  }, []);
 
   // Execute query
   const executeQuery = useCallback(async () => {
@@ -65,7 +83,7 @@ const CanvasView = () => {
       const response = await fetch(`${API_BASE_URL}/api/sql/execute`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: sql })
+        body: JSON.stringify({ query: sql, database: selectedDatabase })
       });
 
       const data = await response.json();
@@ -84,7 +102,7 @@ const CanvasView = () => {
     } finally {
       setLoading(false);
     }
-  }, [sql]);
+  }, [sql, selectedDatabase]);
 
   // Handle editor mount
   const handleEditorDidMount = useCallback((editor, monaco) => {
@@ -141,6 +159,23 @@ const CanvasView = () => {
           <span className="canvas-subtitle">Hypermedia SQL Client</span>
         </div>
         <div className="canvas-header-right">
+          {/* Database selector */}
+          <div className="canvas-db-selector">
+            <Icon icon="mdi:database" width="14" />
+            <select
+              value={selectedDatabase}
+              onChange={(e) => setSelectedDatabase(e.target.value)}
+              className="canvas-db-select"
+            >
+              {databases.map((db) => (
+                <option key={db.name} value={db.name}>
+                  {db.name}
+                  {db.type === 'persistent' && db.size_mb !== null ? ` (${db.size_mb}MB)` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
           {executionTime !== null && (
             <span className="canvas-execution-time">
               {executionTime}ms
