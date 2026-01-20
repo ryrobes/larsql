@@ -2,9 +2,22 @@
    CANVAS RENDERER
    ============================================ */
 
+/* GRID Layout - CSS Grid cell-based positioning */
 .canvas-grid {
   width: 100%;
   height: 100%;
+}
+
+/* FLOATING Layout - Absolute positioned panels */
+.canvas-floating {
+  background: var(--color-bg-secondary);
+  border: 1px dashed var(--color-border-dim);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.canvas-floating .panel-container {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 .canvas-data-wrapper {

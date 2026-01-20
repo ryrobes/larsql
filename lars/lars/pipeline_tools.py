@@ -539,35 +539,40 @@ def mermaid_timeline(
 
 def render_canvas(
     _table: List[Dict[str, Any]],
-    cols: int = 2,
-    rows: int = 2,
+    layout_type: str = "grid",
+    dim1: int = 2,
+    dim2: int = 2,
     _table_columns: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """
     Compose multiple panels into a canvas layout for visualization.
 
     This is the composition operator for LARS visual outputs. It takes
-    a table of panels (each with content and grid position) and produces
+    a table of panels (each with content and position) and produces
     a single canvas JSON structure that frontends can render.
 
-    Args:
-        _table: List of panel records with columns:
-            - name: Panel identifier/title (required)
-            - content: Panel content - mermaid dict, data array, or scalar (required)
-            - col: Grid column position, 1-based (required)
-            - row: Grid row position, 1-based (required)
-            - colspan: Column span (optional, default 1)
-            - rowspan: Row span (optional, default 1)
-        cols: Number of grid columns (default: 2)
-        rows: Number of grid rows (default: 2)
-        _table_columns: Available column names
+    Supports two layout modes:
+
+    GRID Layout (cell-based):
+        Args:
+            layout_type: "grid"
+            dim1: Number of grid columns
+            dim2: Number of grid rows
+            _table columns: name, content, col, row, colspan, rowspan
+
+    FLOATING Layout (pixel-based):
+        Args:
+            layout_type: "floating"
+            dim1: Canvas width in pixels
+            dim2: Canvas height in pixels
+            _table columns: name, content, x, y, width, height
 
     Returns:
         Dict with 'data' key containing single row with canvas JSON:
         {
             "data": [{
                 "canvas": {
-                    "layout": {"type": "grid", "cols": 2, "rows": 2},
+                    "layout": {"type": "grid"|"floating", ...},
                     "panels": [...]
                 },
                 "format": "canvas"
@@ -575,20 +580,30 @@ def render_canvas(
         }
 
     Example SQL usage:
-        WITH panels(name, content, col, row) AS (
-            SELECT 'Graph', (SELECT ... THEN MERMAID_TRIPLES), 1, 1
-            UNION ALL
-            SELECT 'Timeline', (SELECT ... THEN MERMAID_TIMELINE), 2, 1
-        )
-        SELECT * FROM panels THEN RENDER_CANVAS
+        -- GRID layout
+        SELECT * FROM CANVAS(
+            PANEL('Graph', 1, 1, graph_data),
+            PANEL('Table', 2, 1, table_data)
+        ) WITH GRID(2, 1)
+
+        -- FLOATING layout
+        SELECT * FROM CANVAS(
+            PANEL('Chart', 50, 50, chart_data, width := 400, height := 300),
+            PANEL('Info', 500, 50, info_data, width := 200, height := 150)
+        ) WITH FLOATING(800, 600)
     """
+    # Normalize layout_type (may come quoted from SQL)
+    layout_type = str(layout_type).strip("'\"").lower()
+    is_floating = layout_type == "floating"
+
     if not _table:
+        if is_floating:
+            layout = {"type": "floating", "width": int(dim1), "height": int(dim2)}
+        else:
+            layout = {"type": "grid", "cols": int(dim1), "rows": int(dim2)}
         return {
             "data": [{
-                "canvas": {
-                    "layout": {"type": "grid", "cols": int(cols), "rows": int(rows)},
-                    "panels": []
-                },
+                "canvas": {"layout": layout, "panels": []},
                 "format": "canvas"
             }]
         }
@@ -609,10 +624,6 @@ def render_canvas(
     for row_data in _table:
         name = row_data.get("name", "Untitled")
         content = row_data.get("content")
-        col_pos = row_data.get("col", 1)
-        row_pos = row_data.get("row", 1)
-        colspan = row_data.get("colspan", 1)
-        rowspan = row_data.get("rowspan", 1)
 
         # Detect panel type from content
         panel_type = _detect_panel_type(content)
@@ -627,19 +638,47 @@ def render_canvas(
                 # Keep as string, treat as text
                 pass
 
-        panels.append({
+        panel = {
             "name": str(name),
             "content": content,
             "type": panel_type,
-            "cell": [int(col_pos), int(row_pos), int(colspan), int(rowspan)]
-        })
+        }
+
+        if is_floating:
+            # FLOATING: x, y, width, height
+            panel["position"] = {
+                "x": int(row_data.get("x", 0)),
+                "y": int(row_data.get("y", 0)),
+                "width": int(row_data.get("width", 200)),
+                "height": int(row_data.get("height", 150))
+            }
+        else:
+            # GRID: col, row, colspan, rowspan
+            panel["cell"] = [
+                int(row_data.get("col", 1)),
+                int(row_data.get("row", 1)),
+                int(row_data.get("colspan", 1)),
+                int(row_data.get("rowspan", 1))
+            ]
+
+        panels.append(panel)
+
+    # Build layout metadata
+    if is_floating:
+        layout = {
+            "type": "floating",
+            "width": int(dim1),
+            "height": int(dim2)
+        }
+    else:
+        layout = {
+            "type": "grid",
+            "cols": int(dim1),
+            "rows": int(dim2)
+        }
 
     canvas = {
-        "layout": {
-            "type": "grid",
-            "cols": int(cols),
-            "rows": int(rows)
-        },
+        "layout": layout,
         "panels": panels
     }
 

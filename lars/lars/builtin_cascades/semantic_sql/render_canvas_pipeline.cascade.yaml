@@ -5,20 +5,28 @@ description: |
 
   Uses pure Python - no LLM calls.
 
-  Usage:
-      WITH panels(name, content, col, row) AS (
-        SELECT 'Graph', (SELECT ... THEN MERMAID_TRIPLES), 1, 1
-        UNION ALL
-        SELECT 'Timeline', (SELECT ... THEN MERMAID_TIMELINE), 2, 1
-      )
-      SELECT * FROM panels THEN RENDER_CANVAS
+  Supports two layout modes:
 
-      -- With explicit grid size:
-      SELECT * FROM panels THEN RENDER_CANVAS(3, 2)
+  GRID Layout (cell-based positioning):
+      SELECT * FROM CANVAS(
+        PANEL('Team', 1, 1, employees),
+        PANEL('Metrics', 2, 1, metrics)
+      ) WITH GRID(2, 1)
+
+  FLOATING Layout (pixel-based positioning):
+      SELECT * FROM CANVAS(
+        PANEL('Chart', 50, 50, chart_data, width := 400, height := 300),
+        PANEL('Info', 500, 50, info_data, width := 200, height := 150)
+      ) WITH FLOATING(800, 600)
+
+  The CANVAS rewriter transforms these to:
+      SELECT * FROM _canvas_panels THEN RENDER_CANVAS('grid', cols, rows)
+      SELECT * FROM _canvas_panels THEN RENDER_CANVAS('floating', width, height)
 
 inputs_schema:
-  cols: "Number of grid columns (default: 2)"
-  rows: "Number of grid rows (default: 2)"
+  layout_type: "Layout type: 'grid' or 'floating'"
+  dim1: "Grid columns (GRID) or canvas width (FLOATING)"
+  dim2: "Grid rows (GRID) or canvas height (FLOATING)"
   _table: "Query results as JSON records"
   _table_columns: "List of column names"
 
@@ -26,11 +34,15 @@ sql_function:
   name: RENDER_CANVAS
   description: Compose multiple panels into a canvas layout for visualization
   args:
-    - name: cols
+    - name: layout_type
+      type: VARCHAR
+      optional: true
+      default: "'grid'"
+    - name: dim1
       type: INTEGER
       optional: true
       default: 2
-    - name: rows
+    - name: dim2
       type: INTEGER
       optional: true
       default: 2
@@ -40,8 +52,9 @@ sql_function:
   shape: PIPELINE
   operators:
     - 'THEN RENDER_CANVAS'
-    - 'THEN RENDER_CANVAS({{ cols }})'
-    - 'THEN RENDER_CANVAS({{ cols }}, {{ rows }})'
+    - "THEN RENDER_CANVAS('{{ layout_type }}')"
+    - "THEN RENDER_CANVAS('{{ layout_type }}', {{ dim1 }})"
+    - "THEN RENDER_CANVAS('{{ layout_type }}', {{ dim1 }}, {{ dim2 }})"
   cache: false
 
 cells:
@@ -50,6 +63,7 @@ cells:
     tool: python:lars.pipeline_tools.render_canvas
     inputs:
       _table: "{{ input._table }}"
-      cols: "{{ input.cols | default(2) }}"
-      rows: "{{ input.rows | default(2) }}"
+      layout_type: "{{ input.layout_type | default('grid') }}"
+      dim1: "{{ input.dim1 | default(2) }}"
+      dim2: "{{ input.dim2 | default(2) }}"
       _table_columns: "{{ input._table_columns }}"

@@ -7,13 +7,15 @@ import './CanvasRenderer.css';
  * CanvasRenderer - Renders either a canvas layout or a plain data grid
  *
  * Detects the format of the result and renders accordingly:
- * - Canvas format: Grid layout with multiple panels
+ * - Canvas format (GRID): CSS Grid layout with cell-based positioning
+ * - Canvas format (FLOATING): Absolute positioned panels with pixel coordinates
  * - Plain data: Simple data grid table
  */
 const CanvasRenderer = ({ data, columns, isCanvas, canvasData }) => {
-  // Canvas format: render grid layout with panels
+  // Canvas format: render layout with panels
   if (isCanvas && canvasData) {
     const { layout, panels } = canvasData;
+    const isFloating = layout?.type === 'floating';
 
     if (!panels || panels.length === 0) {
       return (
@@ -35,6 +37,37 @@ const CanvasRenderer = ({ data, columns, isCanvas, canvasData }) => {
       );
     }
 
+    // FLOATING layout: absolute positioning
+    if (isFloating) {
+      return (
+        <div
+          className="canvas-floating"
+          style={{
+            position: 'relative',
+            width: layout?.width || 800,
+            height: layout?.height || 600,
+            minHeight: '400px',
+            margin: '0 auto'
+          }}
+        >
+          {panels.map((panel, index) => (
+            <PanelRenderer
+              key={`${panel.name}_${index}`}
+              panel={panel}
+              style={{
+                position: 'absolute',
+                left: panel.position?.x || 0,
+                top: panel.position?.y || 0,
+                width: panel.position?.width || 200,
+                height: panel.position?.height || 150
+              }}
+            />
+          ))}
+        </div>
+      );
+    }
+
+    // GRID layout: CSS Grid with cell positioning
     return (
       <div
         className="canvas-grid"
@@ -52,8 +85,8 @@ const CanvasRenderer = ({ data, columns, isCanvas, canvasData }) => {
             key={`${panel.name}_${index}`}
             panel={panel}
             style={{
-              gridColumn: `${panel.cell[0]} / span ${panel.cell[2] || 1}`,
-              gridRow: `${panel.cell[1]} / span ${panel.cell[3] || 1}`
+              gridColumn: `${panel.cell?.[0] || 1} / span ${panel.cell?.[2] || 1}`,
+              gridRow: `${panel.cell?.[1] || 1} / span ${panel.cell?.[3] || 1}`
             }}
           />
         ))}
