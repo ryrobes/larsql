@@ -35,7 +35,7 @@ Production Ready
 
 Deep Dive
 
-[50+ Operators](#operators)
+[100+ Operators](#operators)
           [Surface or Deep](#depth)
           [Cost Tracking](#observability)
           [The Magic Trick](#cascade-reveal)
@@ -1133,7 +1133,7 @@ name SOUNDS_LIKE 'Smith'
 
 Drop a YAML cascade. Get a new SQL operator. Your team extends the language.
 
-## 50+ AI operators. Still just SQL.
+## 100+ AI operators. Still just SQL.
 
 
 Semantic filtering. Logic checking. Text aggregation. Data quality scoring.
@@ -1774,7 +1774,7 @@ Parallel Execution
 >                   **Zero error handling** — failures become noise to filter
 > LLMs fail randomly. **Plan for it.**
 > 
-## 50+ semantic operators
+## 100+ semantic operators
 
 
 > Filter, classify, summarize, extract, dedupe — all in pure SQL

@@ -212,7 +212,7 @@ Query rewriting, caching, and all the semantic operators
 #### [Built-in Operators](#operators)
 
 
-50+ operators for filtering, logic, aggregation, and more
+100+ operators for filtering, logic, aggregation, and more
 
 #### [SQL Connections](#sql-connections)
 

@@ -182,6 +182,8 @@
           "sections": [
             { "anchor": "semantic-filtering", "title": "Semantic Filtering" },
             { "anchor": "logic-operators", "title": "Logic Operators" },
+            { "anchor": "argumentation-functions", "title": "Argumentation Functions" },
+            { "anchor": "knowledge-extraction", "title": "Knowledge Extraction" },
             { "anchor": "text-transformation", "title": "Text Transformation" },
             { "anchor": "aggregation", "title": "Aggregation" },
             { "anchor": "dimension-functions", "title": "Dimension Functions" },

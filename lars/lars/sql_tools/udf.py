@@ -21,6 +21,7 @@ The UDF:
 
 import hashlib
 import json
+import os
 from typing import Optional, Dict, Any, Tuple
 import duckdb
 
@@ -39,6 +40,13 @@ _CACHE_TYPE_AGGREGATE = "_aggregate_"
 # These are populated alongside SemanticCache writes
 _udf_cache: Dict[str, Tuple[str, float, Optional[float]]] = {}
 _cascade_udf_cache: Dict[str, Tuple[str, float, Optional[float]]] = {}
+
+# UDF Timeout Configuration (configurable via environment variables)
+# LARS_UDF_BATCH_TIMEOUT: Total timeout for a batch of parallel LLM calls (default: 600s = 10 min)
+# LARS_UDF_RESULT_TIMEOUT: Timeout for retrieving individual future results (default: 300s = 5 min)
+# Increase these for slower models (e.g., large Ollama models, some cloud endpoints)
+UDF_BATCH_TIMEOUT = float(os.environ.get("LARS_UDF_BATCH_TIMEOUT", "600"))
+UDF_RESULT_TIMEOUT = float(os.environ.get("LARS_UDF_RESULT_TIMEOUT", "300"))
 
 
 # =============================================================================
@@ -2381,7 +2389,7 @@ def make_vectorized_wrapper(
 
                     # Collect completed results
                     completed = []
-                    for future in as_completed(pending_futures, timeout=300):
+                    for future in as_completed(pending_futures, timeout=UDF_BATCH_TIMEOUT):
                         if is_shutdown_requested():
                             log.info(f"[VectorizedUDF] Shutdown requested, cancelling remaining")
                             for f in pending_futures:
@@ -2402,7 +2410,7 @@ def make_vectorized_wrapper(
                         completed.append(future)
                         i, args, cache_key = pending_futures[future]
                         try:
-                            result = future.result(timeout=60)
+                            result = future.result(timeout=UDF_RESULT_TIMEOUT)
                             coerced = coerce_result(result, return_type)
                             results[i] = coerced
 

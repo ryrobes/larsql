@@ -86,7 +86,7 @@ FROM products
 -- plus lots more...
 ```
 
-**50+ built-in operators** for filtering, logic, transformation, aggregation, data quality, parsing, and more.
+**100+ built-in operators** for filtering, logic, transformation, aggregation, data quality, parsing, and more.
 
 ## Quick Start
 
@@ -307,7 +307,7 @@ lars serve studio
 - [Quickstart Guide](https://larsql.com/docs.html#quickstart) - Get running in 10 minutes
 - [Studio Web UI](https://larsql.com/docs.html#quickstart#studio) - Optional UI for debugging cost/context/takes
 - [Semantic SQL](https://larsql.com/docs.html#semantic-sql) - Query rewriting, caching, annotations, observability
-- [Built-in Operators](https://larsql.com/docs.html#operators) - All 50+ operators
+- [Built-in Operators](https://larsql.com/docs.html#operators) - All 100+ operators
 - [Vector Search & Embedding](https://larsql.com/docs.html#embedding) - SIMILAR_TO, LARS EMBED, hybrid search
 - [Cascade DSL](https://larsql.com/docs.html#cascade-dsl) - Workflow configuration
 - [Takes & Evaluation](https://larsql.com/docs.html#candidates) - Parallel execution patterns

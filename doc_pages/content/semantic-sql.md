@@ -219,7 +219,7 @@ SELECT * FROM docs WHERE title MEANS 'report';
 ## Semantic Operators
 
 
-LARS ships with 50+ built-in operators organized into categories. Each is backed by a cascade
+LARS ships with 100+ built-in operators organized into categories. Each is backed by a cascade
   in `cascades/semantic_sql/`.
 
 ### Operator Categories
@@ -750,7 +750,7 @@ GROUP BY udf_type;
 ```
 
 ## Next Steps
-- [Built-in Operators](#operators) - Complete reference for all 50+ operators
+- [Built-in Operators](#operators) - Complete reference for all 100+ operators
 - [Vector Search & Embedding](#embedding) - Embedding details and SIMILAR_TO usage
 - [Cell Types](#cell-types) - Using SQL cells in cascades
 - [Tools Reference](#tools) - `sql_data` and related tools

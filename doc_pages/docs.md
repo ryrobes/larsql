@@ -21,7 +21,7 @@ LARS (Language-Augmented Relational SQL) adds AI operators to SQL. Use semantic 
 
 - [SQL Connections](content/sql-connections.md) - PostgreSQL, MySQL, BigQuery, Snowflake, S3, and more
 - [Semantic SQL](content/semantic-sql.md) - Query rewriting, UDF system, annotations, caching
-- [Built-in Operators](content/operators.md) - 50+ operators for filtering, logic, aggregation, and more
+- [Built-in Operators](content/operators.md) - 100+ operators for filtering, logic, aggregation, and more
 - [Pipeline Cascades](content/pipelines.md) - Chained transformations with CHOOSE routing
 - [Vector Search & Embedding](content/embedding.md) - Create embeddings, vector search, hybrid search
 - [TOON Format](content/toon-format.md) - Structured output format for LLM responses

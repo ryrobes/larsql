@@ -1,7 +1,7 @@
 <h1>Built-in Operators</h1>
 <p class="lead">
-  LARS ships with 50+ semantic SQL operators out of the box. From semantic filtering
-  to logic checking, text aggregation to data quality scoring - all callable as SQL functions.
+  LARS ships with 100+ semantic SQL operators out of the box. From semantic filtering
+  to argumentation analysis, knowledge graph extraction to data quality scoring - all callable as SQL functions.
 </p>
 
 <div class="toc">
@@ -9,6 +9,8 @@
   <ul>
     <li><a href="#semantic-filtering">Semantic Filtering</a></li>
     <li><a href="#logic-operators">Logic Operators</a></li>
+    <li><a href="#argumentation-functions">Argumentation Functions</a></li>
+    <li><a href="#knowledge-extraction">Knowledge Extraction</a></li>
     <li><a href="#text-transformation">Text Transformation</a></li>
     <li><a href="#aggregation">Aggregation Functions</a></li>
     <li><a href="#dimension-functions">Dimension Functions</a></li>
@@ -200,6 +202,410 @@
 <span class="kw">FROM</span> press_releases;</pre>
   </div>
 </div>
+
+<!-- ==================== ARGUMENTATION FUNCTIONS ==================== -->
+<h2 id="argumentation-functions">Argumentation Functions</h2>
+<p>
+  Analyze, strengthen, attack, and evaluate arguments. These operators turn text analysis
+  into rigorous critical thinking - perfect for debate prep, due diligence, and red-teaming.
+</p>
+
+<h3>ASSUMES</h3>
+<p>
+  Extract implicit assumptions from an argument. Surfaces the unstated premises that must be
+  true for an argument to hold. Intellectual X-ray vision.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">ASSUMES Examples</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- What does this argument assume?</span>
+<span class="kw">SELECT</span> <span class="fn">ASSUMES</span>(proposal, <span class="str">'economic'</span>) <span class="kw">AS</span> economic_assumptions
+<span class="kw">FROM</span> policy_papers;
+
+<span class="cmt">-- Postfix syntax</span>
+<span class="kw">SELECT</span> pitch_text <span class="fn">ASSUMES</span> <span class="kw">AS</span> hidden_assumptions
+<span class="kw">FROM</span> startup_pitches;</pre>
+  </div>
+</div>
+
+<table>
+  <thead>
+    <tr><th>Property</th><th>Value</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Shape</td><td>SCALAR</td></tr>
+    <tr><td>Returns</td><td>JSON (array of assumption strings)</td></tr>
+    <tr><td>Args</td><td><code>(argument VARCHAR, focus VARCHAR = NULL)</code></td></tr>
+  </tbody>
+</table>
+<p><em>Focus areas: <code>economic</code>, <code>technical</code>, <code>ethical</code>, <code>causal</code>, <code>political</code></em></p>
+
+<h3>WEAKNESSES</h3>
+<p>
+  Identify logical weaknesses, gaps, and vulnerabilities. Returns structured analysis with
+  severity ratings (minor, moderate, major).
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">WEAKNESSES Examples</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Find argument weaknesses</span>
+<span class="kw">SELECT</span> <span class="fn">WEAKNESSES</span>(argument) <span class="kw">AS</span> flaws
+<span class="kw">FROM</span> debate_points;
+
+<span class="cmt">-- Filter by severity</span>
+<span class="kw">SELECT</span> <span class="fn">WEAKNESSES</span>(analysis, <span class="str">'major'</span>) <span class="kw">AS</span> critical_flaws
+<span class="kw">FROM</span> investment_memos;</pre>
+  </div>
+</div>
+
+<table>
+  <thead>
+    <tr><th>Property</th><th>Value</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Shape</td><td>SCALAR</td></tr>
+    <tr><td>Returns</td><td>JSON (array: type, description, severity, quote)</td></tr>
+    <tr><td>Args</td><td><code>(argument VARCHAR, severity VARCHAR = 'all')</code></td></tr>
+  </tbody>
+</table>
+<p><em>Severity levels: <code>minor</code>, <code>moderate</code>, <code>major</code>, <code>all</code></em></p>
+
+<h3>STEELMAN</h3>
+<p>
+  Construct the strongest possible version of an argument. The opposite of a strawman -
+  engage with positions at their best, not their worst.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">STEELMAN Examples</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Get the strongest version</span>
+<span class="kw">SELECT</span> <span class="fn">STEELMAN</span>(opposing_view) <span class="kw">AS</span> best_case
+<span class="kw">FROM</span> debate_topics;
+
+<span class="cmt">-- With context</span>
+<span class="kw">SELECT</span> <span class="fn">STEELMAN</span>(criticism, <span class="str">'academic research'</span>) <span class="kw">AS</span> strongest_form
+<span class="kw">FROM</span> peer_reviews;</pre>
+  </div>
+</div>
+
+<table>
+  <thead>
+    <tr><th>Property</th><th>Value</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Shape</td><td>SCALAR</td></tr>
+    <tr><td>Returns</td><td>VARCHAR (the strengthened argument)</td></tr>
+    <tr><td>Args</td><td><code>(argument VARCHAR, context VARCHAR = NULL)</code></td></tr>
+  </tbody>
+</table>
+
+<h3>COUNTERARGUMENT / REBUT</h3>
+<p>
+  Generate the strongest counterargument to a position. Thoughtful disagreement that would
+  give a proponent of the original position serious pause.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">COUNTERARGUMENT Examples</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Generate counterargument</span>
+<span class="kw">SELECT</span> <span class="fn">COUNTERARGUMENT</span>(claim) <span class="kw">AS</span> rebuttal
+<span class="kw">FROM</span> position_papers;
+
+<span class="cmt">-- With style</span>
+<span class="kw">SELECT</span> <span class="fn">REBUT</span>(thesis, <span class="str">'empirical'</span>) <span class="kw">AS</span> data_driven_counter
+<span class="kw">FROM</span> research_claims;</pre>
+  </div>
+</div>
+
+<table>
+  <thead>
+    <tr><th>Property</th><th>Value</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Shape</td><td>SCALAR</td></tr>
+    <tr><td>Returns</td><td>VARCHAR (the counterargument)</td></tr>
+    <tr><td>Args</td><td><code>(argument VARCHAR, style VARCHAR = NULL)</code></td></tr>
+  </tbody>
+</table>
+<p><em>Styles: <code>academic</code>, <code>practical</code>, <code>philosophical</code>, <code>empirical</code></em></p>
+
+<h3>SUPPORTS</h3>
+<p>
+  Score how strongly evidence supports a claim (0.0 - 1.0). Unlike IMPLIES (binary logical
+  entailment), SUPPORTS measures evidential strength.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">SUPPORTS Examples</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Score evidential support</span>
+<span class="kw">SELECT</span>
+  claim,
+  <span class="fn">SUPPORTS</span>(evidence_text, claim) <span class="kw">AS</span> support_score
+<span class="kw">FROM</span> fact_checks
+<span class="kw">WHERE</span> support_score < <span class="num">0.3</span>;  <span class="cmt">-- Poorly supported claims</span>
+
+<span class="cmt">-- Find best supporting evidence</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> sources
+<span class="kw">ORDER BY</span> <span class="fn">SUPPORTS</span>(content, <span class="str">'The treatment is effective'</span>) <span class="kw">DESC</span>
+<span class="kw">LIMIT</span> <span class="num">5</span>;</pre>
+  </div>
+</div>
+
+<table>
+  <thead>
+    <tr><th>Property</th><th>Value</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Shape</td><td>SCALAR</td></tr>
+    <tr><td>Returns</td><td>DOUBLE (0.0 - 1.0)</td></tr>
+    <tr><td>Args</td><td><code>(evidence VARCHAR, claim VARCHAR)</code></td></tr>
+  </tbody>
+</table>
+
+<h3>FALLACY / FALLACIES</h3>
+<p>
+  Detect named logical fallacies in an argument. Returns structured analysis identifying
+  specific fallacies like ad hominem, straw man, false dichotomy, etc.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">FALLACY Examples</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Detect fallacies</span>
+<span class="kw">SELECT</span> <span class="fn">FALLACY</span>(argument) <span class="kw">AS</span> detected_fallacies
+<span class="kw">FROM</span> social_media_posts;
+
+<span class="cmt">-- Filter to posts with fallacies</span>
+<span class="kw">SELECT</span> *
+<span class="kw">FROM</span> debate_transcripts
+<span class="kw">WHERE</span> json_array_length(<span class="fn">FALLACY</span>(statement)) > <span class="num">0</span>;</pre>
+  </div>
+</div>
+
+<table>
+  <thead>
+    <tr><th>Property</th><th>Value</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Shape</td><td>SCALAR</td></tr>
+    <tr><td>Returns</td><td>JSON (array: fallacy, explanation, quote, severity)</td></tr>
+    <tr><td>Args</td><td><code>(argument VARCHAR)</code></td></tr>
+  </tbody>
+</table>
+
+<h3>EVIDENCE_TYPE</h3>
+<p>
+  Classify evidence type and assess strength. Identifies what KIND of evidence is presented
+  (anecdotal, statistical, RCT, etc.) and assigns a tier (1-6).
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">EVIDENCE_TYPE Examples</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Classify evidence</span>
+<span class="kw">SELECT</span>
+  claim,
+  <span class="fn">EVIDENCE_TYPE</span>(supporting_text) -&gt;&gt; <span class="str">'primary_type'</span> <span class="kw">AS</span> evidence_kind,
+  <span class="fn">EVIDENCE_TYPE</span>(supporting_text) -&gt;&gt; <span class="str">'tier'</span> <span class="kw">AS</span> strength_tier
+<span class="kw">FROM</span> research_claims;
+
+<span class="cmt">-- Find weak evidence</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> citations
+<span class="kw">WHERE</span> (<span class="fn">EVIDENCE_TYPE</span>(quote) -&gt;&gt; <span class="str">'tier'</span>)::<span class="kw">INT</span> > <span class="num">4</span>;  <span class="cmt">-- Tier 5-6 = weak</span></pre>
+  </div>
+</div>
+
+<table>
+  <thead>
+    <tr><th>Property</th><th>Value</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Shape</td><td>SCALAR</td></tr>
+    <tr><td>Returns</td><td>JSON (primary_type, tier, strength, description, limitations)</td></tr>
+    <tr><td>Args</td><td><code>(text VARCHAR, claim VARCHAR = NULL)</code></td></tr>
+  </tbody>
+</table>
+
+<div class="info-box">
+  <div class="info-box-title">Evidence Tiers</div>
+  <ol>
+    <li><strong>Tier 1:</strong> Meta-analysis, RCT, systematic review</li>
+    <li><strong>Tier 2:</strong> Experimental, longitudinal, large observational</li>
+    <li><strong>Tier 3:</strong> Peer-reviewed, expert consensus, statistical</li>
+    <li><strong>Tier 4:</strong> Expert opinion, case study, survey</li>
+    <li><strong>Tier 5:</strong> Anecdotal, testimonial, common sense</li>
+    <li><strong>Tier 6:</strong> Speculation, assertion, rhetorical</li>
+  </ol>
+</div>
+
+<!-- ==================== KNOWLEDGE EXTRACTION ==================== -->
+<h2 id="knowledge-extraction">Knowledge Extraction</h2>
+<p>
+  Extract structured knowledge from unstructured text. These operators turn narratives, emails,
+  and documents into queryable facts and timelines.
+</p>
+
+<h3>TRIPLES</h3>
+<p>
+  Extract knowledge graph triples (subject, predicate, object) from text. Turns unstructured
+  text into structured facts that can be queried, joined, and aggregated.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">TRIPLES Examples</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Extract relationships</span>
+<span class="kw">SELECT</span> <span class="fn">TRIPLES</span>(email_body) <span class="kw">AS</span> facts
+<span class="kw">FROM</span> emails;
+
+<span class="cmt">-- With focus</span>
+<span class="kw">SELECT</span> <span class="fn">TRIPLES</span>(article, <span class="str">'organizations'</span>) <span class="kw">AS</span> org_relationships
+<span class="kw">FROM</span> news_articles;</pre>
+  </div>
+</div>
+
+<table>
+  <thead>
+    <tr><th>Property</th><th>Value</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Shape</td><td>SCALAR</td></tr>
+    <tr><td>Returns</td><td>JSON (array: subject, predicate, object)</td></tr>
+    <tr><td>Args</td><td><code>(text VARCHAR, focus VARCHAR = NULL)</code></td></tr>
+  </tbody>
+</table>
+<p><em>Focus areas: <code>people</code>, <code>organizations</code>, <code>decisions</code>, <code>events</code>, <code>all</code></em></p>
+
+<h3>triples_rows (TABLE macro)</h3>
+<p>
+  Unnest triples into rows for SQL-native querying. Much cleaner than manual JSON extraction.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">triples_rows Examples</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Expand triples into rows</span>
+<span class="kw">SELECT</span> file, t.*
+<span class="kw">FROM</span> emails, <span class="kw">LATERAL</span> <span class="fn">triples_rows</span>(message) t;
+
+<span class="cmt">-- Query specific relationships</span>
+<span class="kw">SELECT</span> subject, object
+<span class="kw">FROM</span> documents, <span class="kw">LATERAL</span> <span class="fn">triples_rows</span>(content) t
+<span class="kw">WHERE</span> predicate = <span class="str">'works_at'</span>;
+
+<span class="cmt">-- Build knowledge graph with aggregation</span>
+<span class="kw">SELECT</span> subject, predicate, object, <span class="kw">COUNT</span>(*) <span class="kw">AS</span> mentions
+<span class="kw">FROM</span> corpus, <span class="kw">LATERAL</span> <span class="fn">triples_rows</span>(text) t
+<span class="kw">GROUP BY</span> <span class="num">1</span>, <span class="num">2</span>, <span class="num">3</span>
+<span class="kw">ORDER BY</span> mentions <span class="kw">DESC</span>;</pre>
+  </div>
+</div>
+
+<table>
+  <thead>
+    <tr><th>Property</th><th>Value</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Shape</td><td>TABLE (macro)</td></tr>
+    <tr><td>Returns</td><td>Rows: subject, predicate, object</td></tr>
+    <tr><td>Args</td><td><code>(text VARCHAR)</code></td></tr>
+  </tbody>
+</table>
+
+<h3>TIMELINE</h3>
+<p>
+  Extract chronologically ordered events from text. Turns narratives into structured
+  timelines with timestamps, actors, and event types.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">TIMELINE Examples</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Extract event timeline</span>
+<span class="kw">SELECT</span> <span class="fn">TIMELINE</span>(incident_report) <span class="kw">AS</span> events
+<span class="kw">FROM</span> incident_logs;
+
+<span class="cmt">-- With reference date for relative times</span>
+<span class="kw">SELECT</span> <span class="fn">TIMELINE</span>(email_body, <span class="str">'2024-01-15'</span>) <span class="kw">AS</span> events
+<span class="kw">FROM</span> emails;</pre>
+  </div>
+</div>
+
+<table>
+  <thead>
+    <tr><th>Property</th><th>Value</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Shape</td><td>SCALAR</td></tr>
+    <tr><td>Returns</td><td>JSON (array: timestamp, event, actors, type, sequence)</td></tr>
+    <tr><td>Args</td><td><code>(text VARCHAR, reference_date VARCHAR = NULL)</code></td></tr>
+  </tbody>
+</table>
+<p><em>Event types: <code>communication</code>, <code>decision</code>, <code>action</code>, <code>milestone</code>, <code>incident</code>, <code>change</code>, <code>plan</code></em></p>
+
+<h3>timeline_rows (TABLE macro)</h3>
+<p>
+  Unnest timeline events into rows for SQL-native querying.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">timeline_rows Examples</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Expand timeline into rows</span>
+<span class="kw">SELECT</span> doc_id, t.*
+<span class="kw">FROM</span> incident_reports, <span class="kw">LATERAL</span> <span class="fn">timeline_rows</span>(report_text) t
+<span class="kw">ORDER BY</span> sequence;
+
+<span class="cmt">-- Filter by event type</span>
+<span class="kw">SELECT</span> timestamp, event, actors
+<span class="kw">FROM</span> emails, <span class="kw">LATERAL</span> <span class="fn">timeline_rows</span>(body, <span class="str">'2024-01-15'</span>) t
+<span class="kw">WHERE</span> type = <span class="str">'decision'</span>;
+
+<span class="cmt">-- Find all milestones across documents</span>
+<span class="kw">SELECT</span> doc_id, timestamp, event
+<span class="kw">FROM</span> project_docs, <span class="kw">LATERAL</span> <span class="fn">timeline_rows</span>(content) t
+<span class="kw">WHERE</span> type = <span class="str">'milestone'</span>
+<span class="kw">ORDER BY</span> timestamp;</pre>
+  </div>
+</div>
+
+<table>
+  <thead>
+    <tr><th>Property</th><th>Value</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Shape</td><td>TABLE (macro)</td></tr>
+    <tr><td>Returns</td><td>Rows: timestamp, event, actors, type, sequence</td></tr>
+    <tr><td>Args</td><td><code>(text VARCHAR, reference_date VARCHAR = NULL)</code></td></tr>
+  </tbody>
+</table>
 
 <!-- ==================== TEXT TRANSFORMATION ==================== -->
 <h2 id="text-transformation">Text Transformation</h2>

@@ -1,11 +1,13 @@
 # Built-in Operators
 
 
-LARS ships with 50+ semantic SQL operators out of the box. From semantic filtering
-  to logic checking, text aggregation to data quality scoring - all callable as SQL functions.
+LARS ships with 100+ semantic SQL operators out of the box. From semantic filtering
+  to argumentation analysis, knowledge graph extraction to data quality scoring - all callable as SQL functions.
 On This Page
 - [Semantic Filtering](#semantic-filtering)
 - [Logic Operators](#logic-operators)
+- [Argumentation Functions](#argumentation-functions)
+- [Knowledge Extraction](#knowledge-extraction)
 - [Text Transformation](#text-transformation)
 - [Aggregation Functions](#aggregation)
 - [Dimension Functions](#dimension-functions)
@@ -148,6 +150,308 @@ WHERE message ALIGNS 'innovation and customer focus';
 SELECT headline, ALIGNS(body, 'sustainability commitment') AS alignment
 FROM press_releases;
 ```
+
+## Argumentation Functions
+
+
+Analyze, strengthen, attack, and evaluate arguments. These operators turn text analysis
+  into rigorous critical thinking - perfect for debate prep, due diligence, and red-teaming.
+
+### ASSUMES
+
+
+Extract implicit assumptions from an argument. Surfaces the unstated premises that must be
+  true for an argument to hold. Intellectual X-ray vision.
+
+```assumes examples
+-- What does this argument assume?
+SELECT ASSUMES(proposal, 'economic') AS economic_assumptions
+FROM policy_papers;
+-- Postfix syntax
+SELECT pitch_text ASSUMES AS hidden_assumptions
+FROM startup_pitches;
+```
+
+
+| Property | Value                                         |
+|----------|-----------------------------------------------|
+| Shape    | SCALAR                                        |
+| Returns  | JSON (array of assumption strings)            |
+| Args     | `(argument VARCHAR, focus VARCHAR = NULL)`    |
+
+Focus areas: `economic`, `technical`, `ethical`, `causal`, `political`
+
+
+### WEAKNESSES
+
+
+Identify logical weaknesses, gaps, and vulnerabilities. Returns structured analysis with
+  severity ratings (minor, moderate, major).
+
+```weaknesses examples
+-- Find argument weaknesses
+SELECT WEAKNESSES(argument) AS flaws
+FROM debate_points;
+-- Filter by severity
+SELECT WEAKNESSES(analysis, 'major') AS critical_flaws
+FROM investment_memos;
+```
+
+
+| Property | Value                                         |
+|----------|-----------------------------------------------|
+| Shape    | SCALAR                                        |
+| Returns  | JSON (array: type, description, severity, quote) |
+| Args     | `(argument VARCHAR, severity VARCHAR = 'all')` |
+
+Severity levels: `minor`, `moderate`, `major`, `all`
+
+
+### STEELMAN
+
+
+Construct the strongest possible version of an argument. The opposite of a strawman -
+  engage with positions at their best, not their worst.
+
+```steelman examples
+-- Get the strongest version
+SELECT STEELMAN(opposing_view) AS best_case
+FROM debate_topics;
+-- With context
+SELECT STEELMAN(criticism, 'academic research') AS strongest_form
+FROM peer_reviews;
+```
+
+
+| Property | Value                                         |
+|----------|-----------------------------------------------|
+| Shape    | SCALAR                                        |
+| Returns  | VARCHAR (the strengthened argument)           |
+| Args     | `(argument VARCHAR, context VARCHAR = NULL)`  |
+
+
+### COUNTERARGUMENT / REBUT
+
+
+Generate the strongest counterargument to a position. Thoughtful disagreement that would
+  give a proponent of the original position serious pause.
+
+```counterargument examples
+-- Generate counterargument
+SELECT COUNTERARGUMENT(claim) AS rebuttal
+FROM position_papers;
+-- With style
+SELECT REBUT(thesis, 'empirical') AS data_driven_counter
+FROM research_claims;
+```
+
+
+| Property | Value                                            |
+|----------|--------------------------------------------------|
+| Shape    | SCALAR                                           |
+| Returns  | VARCHAR (the counterargument)                    |
+| Args     | `(argument VARCHAR, style VARCHAR = NULL)`       |
+
+Styles: `academic`, `practical`, `philosophical`, `empirical`
+
+
+### SUPPORTS
+
+
+Score how strongly evidence supports a claim (0.0 - 1.0). Unlike IMPLIES (binary logical
+  entailment), SUPPORTS measures evidential strength.
+
+```supports examples
+-- Score evidential support
+SELECT
+  claim,
+  SUPPORTS(evidence_text, claim) AS support_score
+FROM fact_checks
+WHERE support_score < 0.3;  -- Poorly supported claims
+-- Find best supporting evidence
+SELECT * FROM sources
+ORDER BY SUPPORTS(content, 'The treatment is effective') DESC
+LIMIT 5;
+```
+
+
+| Property | Value                                  |
+|----------|----------------------------------------|
+| Shape    | SCALAR                                 |
+| Returns  | DOUBLE (0.0 - 1.0)                     |
+| Args     | `(evidence VARCHAR, claim VARCHAR)`    |
+
+
+### FALLACY / FALLACIES
+
+
+Detect named logical fallacies in an argument. Returns structured analysis identifying
+  specific fallacies like ad hominem, straw man, false dichotomy, etc.
+
+```fallacy examples
+-- Detect fallacies
+SELECT FALLACY(argument) AS detected_fallacies
+FROM social_media_posts;
+-- Filter to major fallacies
+SELECT *
+FROM debate_transcripts
+WHERE json_array_length(FALLACY(statement)) > 0;
+```
+
+
+| Property | Value                                            |
+|----------|--------------------------------------------------|
+| Shape    | SCALAR                                           |
+| Returns  | JSON (array: fallacy, explanation, quote, severity) |
+| Args     | `(argument VARCHAR)`                             |
+
+
+### EVIDENCE_TYPE
+
+
+Classify evidence type and assess strength. Identifies what KIND of evidence is presented
+  (anecdotal, statistical, RCT, etc.) and assigns a tier (1-6).
+
+```evidence_type examples
+-- Classify evidence
+SELECT
+  claim,
+  EVIDENCE_TYPE(supporting_text) ->> 'primary_type' AS evidence_kind,
+  EVIDENCE_TYPE(supporting_text) ->> 'tier' AS strength_tier
+FROM research_claims;
+-- Find weak evidence
+SELECT * FROM citations
+WHERE (EVIDENCE_TYPE(quote) ->> 'tier')::INT > 4;  -- Tier 5-6 = weak
+```
+
+
+| Property | Value                                                        |
+|----------|--------------------------------------------------------------|
+| Shape    | SCALAR                                                       |
+| Returns  | JSON (primary_type, tier, strength, description, limitations) |
+| Args     | `(text VARCHAR, claim VARCHAR = NULL)`                       |
+
+Evidence Tiers:
+1. Meta-analysis, RCT, systematic review
+2. Experimental, longitudinal, large observational
+3. Peer-reviewed, expert consensus, statistical
+4. Expert opinion, case study, survey
+5. Anecdotal, testimonial, common sense
+6. Speculation, assertion, rhetorical
+
+
+## Knowledge Extraction
+
+
+Extract structured knowledge from unstructured text. These operators turn narratives, emails,
+  and documents into queryable facts and timelines.
+
+### TRIPLES
+
+
+Extract knowledge graph triples (subject, predicate, object) from text. Turns unstructured
+  text into structured facts that can be queried, joined, and aggregated.
+
+```triples examples
+-- Extract relationships
+SELECT TRIPLES(email_body) AS facts
+FROM emails;
+-- With focus
+SELECT TRIPLES(article, 'organizations') AS org_relationships
+FROM news_articles;
+```
+
+
+| Property | Value                                         |
+|----------|-----------------------------------------------|
+| Shape    | SCALAR                                        |
+| Returns  | JSON (array: subject, predicate, object)      |
+| Args     | `(text VARCHAR, focus VARCHAR = NULL)`        |
+
+Focus areas: `people`, `organizations`, `decisions`, `events`, `all`
+
+
+### triples_rows (TABLE macro)
+
+
+Unnest triples into rows for SQL-native querying. Much cleaner than manual JSON extraction.
+
+```triples_rows examples
+-- Expand triples into rows
+SELECT file, t.*
+FROM emails, LATERAL triples_rows(message) t;
+-- Query specific relationships
+SELECT subject, object
+FROM documents, LATERAL triples_rows(content) t
+WHERE predicate = 'works_at';
+-- Build knowledge graph with aggregation
+SELECT subject, predicate, object, COUNT(*) as mentions
+FROM corpus, LATERAL triples_rows(text) t
+GROUP BY 1, 2, 3
+ORDER BY mentions DESC;
+```
+
+
+| Property | Value                                                     |
+|----------|-----------------------------------------------------------|
+| Shape    | TABLE (macro)                                             |
+| Returns  | Rows with columns: subject, predicate, object             |
+| Args     | `(text VARCHAR)`                                          |
+
+
+### TIMELINE
+
+
+Extract chronologically ordered events from text. Turns narratives into structured
+  timelines with timestamps, actors, and event types.
+
+```timeline examples
+-- Extract event timeline
+SELECT TIMELINE(incident_report) AS events
+FROM incident_logs;
+-- With reference date for relative times
+SELECT TIMELINE(email_body, '2024-01-15') AS events
+FROM emails;
+```
+
+
+| Property | Value                                                     |
+|----------|-----------------------------------------------------------|
+| Shape    | SCALAR                                                    |
+| Returns  | JSON (array: timestamp, event, actors, type, sequence)    |
+| Args     | `(text VARCHAR, reference_date VARCHAR = NULL)`           |
+
+Event types: `communication`, `decision`, `action`, `milestone`, `incident`, `change`, `plan`
+
+
+### timeline_rows (TABLE macro)
+
+
+Unnest timeline events into rows for SQL-native querying.
+
+```timeline_rows examples
+-- Expand timeline into rows
+SELECT doc_id, t.*
+FROM incident_reports, LATERAL timeline_rows(report_text) t
+ORDER BY sequence;
+-- Filter by event type
+SELECT timestamp, event, actors
+FROM emails, LATERAL timeline_rows(body, '2024-01-15') t
+WHERE type = 'decision';
+-- Find all milestones across documents
+SELECT doc_id, timestamp, event
+FROM project_docs, LATERAL timeline_rows(content) t
+WHERE type = 'milestone'
+ORDER BY timestamp;
+```
+
+
+| Property | Value                                                     |
+|----------|-----------------------------------------------------------|
+| Shape    | TABLE (macro)                                             |
+| Returns  | Rows: timestamp, event, actors, type, sequence            |
+| Args     | `(text VARCHAR, reference_date VARCHAR = NULL)`           |
+
 
 ## Text Transformation
 

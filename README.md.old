@@ -70,7 +70,7 @@ SELECT
 FROM products
 ```
 
-**50+ built-in operators** for filtering, logic, transformation, aggregation, data quality, parsing, and more.
+**100+ built-in operators** for filtering, logic, transformation, aggregation, data quality, parsing, and more.
 
 ## Quick Start
 
@@ -242,7 +242,7 @@ lars serve studio
 **Full documentation at [larsql.com](https://larsql.com/)**
 
 - [Quickstart Guide](https://larsql.com/docs#quickstart) - Get running in 10 minutes
-- [Semantic SQL](https://larsql.com/docs#semantic-sql) - All 50+ operators
+- [Semantic SQL](https://larsql.com/docs#semantic-sql) - All 100+ operators
 - [Cascade DSL](https://larsql.com/docs#cascade-dsl) - Workflow configuration
 - [Takes & Evaluation](https://larsql.com/docs#candidates) - Parallel execution patterns
 - [Tools Reference](https://larsql.com/docs#tools) - Available skills
