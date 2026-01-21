@@ -1,0 +1,75 @@
+cascade_id: latest_cell_output
+internal: true
+description: |
+  Retrieves the latest output from a specific cell in a cascade.
+
+  Returns the most recent assistant response content for the given
+  cascade_id and cell_name combination. Useful for referencing
+  previous computation results without re-running cascades.
+
+inputs_schema:
+  cascade_id: The cascade ID to look up (e.g., "semantic_matches")
+  cell_name: The cell name within the cascade (e.g., "evaluate")
+
+sql_function:
+  name: latest
+  description: Returns the latest output from a cascade cell
+  args:
+    - name: cascade_id
+      type: VARCHAR
+    - name: cell_name
+      type: VARCHAR
+  returns: VARCHAR
+  shape: SCALAR
+  cache: false  # Always fetch fresh data
+  test_cases:
+    - sql: "SELECT latest('semantic_matches', 'evaluate') IS NOT NULL as has_result"
+      expect:
+        type: any  # May or may not have results depending on history
+      description: "Function executes without error"
+
+cells:
+  - name: lookup
+    tool: python_data
+    inputs:
+      code: |
+        # Query ClickHouse directly for the latest cell output
+        # This bypasses DuckDB since we're querying the logging database
+
+        from lars.db_adapter import get_db
+
+        cascade_id_arg = input.get('cascade_id', '')
+        cell_name_arg = input.get('cell_name', '')
+
+        if not cascade_id_arg or not cell_name_arg:
+            result = json.dumps({"error": "cascade_id and cell_name are required"})
+        else:
+            try:
+                db = get_db()
+
+                # Escape single quotes to prevent SQL injection
+                safe_cascade_id = cascade_id_arg.replace("'", "''")
+                safe_cell_name = cell_name_arg.replace("'", "''")
+
+                # Query unified_logs for the latest assistant message
+                # for this cascade + cell combination
+                rows = db.query(f"""
+                    SELECT content_json
+                    FROM unified_logs
+                    WHERE
+                        cascade_id = '{safe_cascade_id}'
+                        AND cell_name = '{safe_cell_name}'
+                        AND role = 'assistant'
+                        AND content_json IS NOT NULL
+                        AND content_json != ''
+                    ORDER BY timestamp DESC
+                    LIMIT 1
+                """)
+
+                if rows and len(rows) > 0:
+                    # Return the content directly (it's already JSON string)
+                    result = rows[0].get('content_json', '{}')
+                else:
+                    result = json.dumps({"error": "No output found", "cascade_id": cascade_id_arg, "cell_name": cell_name_arg})
+            except Exception as e:
+                result = json.dumps({"error": str(e)})

@@ -85,6 +85,38 @@
   cursor: not-allowed;
 }
 
+/* Layout Edit Button */
+.canvas-layout-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid var(--color-border-dim);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.canvas-layout-btn:hover {
+  background: rgba(0, 229, 255, 0.1);
+  border-color: var(--color-accent-cyan);
+  color: var(--color-accent-cyan);
+}
+
+.canvas-layout-btn.active {
+  background: var(--color-accent-cyan);
+  border-color: var(--color-accent-cyan);
+  color: var(--color-bg-primary);
+}
+
+.canvas-layout-btn.active:hover {
+  background: #33eeff;
+}
+
 /* Database Selector */
 .canvas-db-selector {
   display: flex;

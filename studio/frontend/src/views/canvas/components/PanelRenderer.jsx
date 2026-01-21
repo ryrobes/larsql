@@ -181,7 +181,7 @@ const PanelRenderer = ({ panel, style, onInteraction }) => {
   ].filter(Boolean).join(' ');
 
   return (
-    <div className={panelClasses} style={style}>
+    <div className={panelClasses} style={style} data-panel-name={name}>
       {!hide_title && (
         <div className="canvas-panel-header">
           <Icon icon={getIcon()} width="14" />

@@ -1,7 +1,9 @@
-import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Icon } from '@iconify/react';
 import Editor from '@monaco-editor/react';
+import html2canvas from 'html2canvas';
 import CanvasRenderer from './components/CanvasRenderer';
+import GridLayoutEditor from './components/GridLayoutEditor';
 import ParamsPanel from './components/ParamsPanel';
 import { configureMonacoTheme, STUDIO_THEME_NAME, handleEditorMount } from '../../studio/utils/monacoTheme';
 import { API_BASE_URL } from '../../config/api';
@@ -109,8 +111,15 @@ const CanvasView = () => {
   // Editor panel visibility
   const [editorHidden, setEditorHidden] = useState(false);
 
+  // Layout edit mode
+  const [layoutEditMode, setLayoutEditMode] = useState(false);
+
+  // Panel thumbnails for edit mode preview
+  const [panelThumbnails, setPanelThumbnails] = useState({});
+
   const editorRef = useRef(null);
   const monacoRef = useRef(null);
+  const resultWrapperRef = useRef(null);
 
   // Track previous panel data for smart re-render diffing
   const prevPanelsRef = useRef({});
@@ -170,6 +179,9 @@ const CanvasView = () => {
 
       // Trigger params panel refresh
       setParamsRefreshTrigger(t => t + 1);
+
+      // Schedule thumbnail capture after charts render
+      setTimeout(() => capturePanelThumbnails(), 500);
     } catch (err) {
       setError(err.message || 'Failed to execute query');
       setExecutionTime(Date.now() - startTime);
@@ -177,6 +189,35 @@ const CanvasView = () => {
       setLoading(false);
     }
   }, [sql, selectedDatabase]);
+
+  // Capture panel thumbnails for edit mode preview
+  const capturePanelThumbnails = useCallback(async () => {
+    if (!resultWrapperRef.current) return;
+
+    const panelElements = resultWrapperRef.current.querySelectorAll('[data-panel-name]');
+    if (panelElements.length === 0) return;
+
+    const thumbnails = {};
+
+    for (const panelEl of panelElements) {
+      const panelName = panelEl.getAttribute('data-panel-name');
+      if (!panelName) continue;
+
+      try {
+        const canvas = await html2canvas(panelEl, {
+          scale: 0.5, // Smaller scale for thumbnails
+          logging: false,
+          useCORS: true,
+          backgroundColor: '#0a0a0f',
+        });
+        thumbnails[panelName] = canvas.toDataURL('image/png');
+      } catch (err) {
+        console.warn(`[Hyper] Failed to capture thumbnail for panel "${panelName}":`, err);
+      }
+    }
+
+    setPanelThumbnails(thumbnails);
+  }, []);
 
   // Handle panel interactions (clicks, etc.)
   // Executes the cascade and re-runs the dashboard
@@ -340,6 +381,14 @@ const CanvasView = () => {
             </span>
           )}
           <button
+            className={`canvas-layout-btn ${layoutEditMode ? 'active' : ''}`}
+            onClick={() => setLayoutEditMode(m => !m)}
+            title={layoutEditMode ? "Exit layout editor" : "Edit layout"}
+          >
+            <Icon icon="mdi:grid" width="16" />
+            {layoutEditMode ? 'Exit Editor' : 'Edit Layout'}
+          </button>
+          <button
             className="canvas-run-btn"
             onClick={executeQuery}
             disabled={loading || !sql.trim()}
@@ -417,7 +466,7 @@ const CanvasView = () => {
               </span>
             )}
           </div>
-          <div className="canvas-result-wrapper">
+          <div className="canvas-result-wrapper" ref={resultWrapperRef}>
             {loading && (
               <div className="canvas-loading">
                 <Icon icon="mdi:loading" width="32" className="spinning" />
@@ -453,7 +502,7 @@ const CanvasView = () => {
               </div>
             )}
 
-            {!loading && !error && result && !isErrorResult && (
+            {!loading && !error && result && !isErrorResult && !layoutEditMode && (
               <CanvasRenderer
                 data={result.data}
                 columns={result.columns}
@@ -462,6 +511,23 @@ const CanvasView = () => {
                 isMultiPanel={isMultiPanelResult}
                 multiPanelData={multiPanelData}
                 onInteraction={handleInteraction}
+              />
+            )}
+
+            {/* Layout Editor Mode */}
+            {layoutEditMode && (
+              <GridLayoutEditor
+                sql={sql}
+                onSqlChange={setSql}
+                multiPanelData={multiPanelData}
+                panelThumbnails={panelThumbnails}
+                onInteraction={handleInteraction}
+                editMode={layoutEditMode}
+                onExitEdit={() => {
+                  setLayoutEditMode(false);
+                  // Re-run query to apply layout changes
+                  executeQuery();
+                }}
               />
             )}
           </div>

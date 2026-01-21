@@ -49,6 +49,11 @@
   background: transparent;
 }
 
+/* When border is hidden but title is shown, remove header's bottom border for seamless look */
+.canvas-panel.canvas-panel-no-border .canvas-panel-header {
+  border-bottom: none;
+}
+
 /* HIDE_TITLE option - adjust content padding */
 .canvas-panel.canvas-panel-no-title .canvas-panel-content {
   padding-top: 0;
