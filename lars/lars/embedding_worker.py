@@ -145,7 +145,8 @@ class EmbeddingWorker:
         # - assistant/user roles (chat messages)
         # - take_attempt node_type (where is_winner is set - critical for analysis!)
         # - evaluator responses
-        # Exclude: embeddings, tool calls, structural/metadata nodes
+        # Exclude: embeddings, tool calls, tool results, structural/metadata nodes
+        # Exclude: assistant messages that invoke tools (low semantic value - just "Let me search...")
         query = f"""
             SELECT
                 message_id,
@@ -164,6 +165,7 @@ class EmbeddingWorker:
                   OR node_type IN ('take_attempt', 'evaluator', 'agent', 'follow_up')
               )
               AND node_type NOT IN ('embedding', 'tool_call', 'tool_result', 'cell', 'cascade', 'system', 'link', 'takes', 'validation', 'validation_start')
+              AND (tool_calls_json IS NULL OR tool_calls_json = '' OR length(tool_calls_json) < 3)
             ORDER BY timestamp DESC
             LIMIT {self.batch_size}
         """

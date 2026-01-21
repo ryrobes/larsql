@@ -3495,6 +3495,7 @@ def cmd_embed_status(args):
                     AND length(content_json) > 10
                     AND (role IN ('assistant', 'user') OR node_type IN ('take_attempt', 'evaluator', 'agent', 'follow_up'))
                     AND node_type NOT IN ('embedding', 'tool_call', 'tool_result', 'cell', 'cascade', 'system', 'link', 'takes', 'validation', 'validation_start')
+                    AND (tool_calls_json IS NULL OR tool_calls_json = '' OR length(tool_calls_json) < 3)
                 ) as unembedded,
                 COUNT(*) as total
             FROM unified_logs
@@ -3578,6 +3579,7 @@ def cmd_embed_run(args):
               OR node_type IN ('take_attempt', 'evaluator', 'agent', 'follow_up')
           )
           AND node_type NOT IN ('embedding', 'tool_call', 'tool_result', 'cell', 'cascade', 'system', 'link', 'takes', 'validation', 'validation_start')
+          AND (tool_calls_json IS NULL OR tool_calls_json = '' OR length(tool_calls_json) < 3)
         ORDER BY timestamp DESC
         LIMIT {batch_size}
     """

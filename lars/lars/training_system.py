@@ -96,6 +96,7 @@ def _get_recent_examples(
           AND confidence >= {min_confidence}
           AND user_input != ''
           AND assistant_output != ''
+          AND node_type != 'embedding'
           {verified_clause}
         ORDER BY timestamp DESC
         LIMIT {limit}
@@ -150,6 +151,7 @@ def _get_high_confidence_examples(
           AND trainable = true
           AND user_input != ''
           AND assistant_output != ''
+          AND node_type != 'embedding'
           {verified_clause}
         ORDER BY confidence DESC, timestamp DESC
         LIMIT {limit}
@@ -203,6 +205,7 @@ def _get_random_examples(
           AND confidence >= {min_confidence}
           AND user_input != ''
           AND assistant_output != ''
+          AND node_type != 'embedding'
         ORDER BY rand()
         LIMIT {limit}
     """

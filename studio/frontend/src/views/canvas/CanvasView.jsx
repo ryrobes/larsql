@@ -1,10 +1,13 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Icon } from '@iconify/react';
 import Editor from '@monaco-editor/react';
+import html2canvas from 'html2canvas';
 import CanvasRenderer from './components/CanvasRenderer';
 import GridLayoutEditor from './components/GridLayoutEditor';
 import ParamsPanel from './components/ParamsPanel';
 import SqlFileModal from './components/SqlFileModal';
+import CaptureOverlay from './components/CaptureOverlay';
+import IntentReviewModal from './components/IntentReviewModal';
 import { configureMonacoTheme, STUDIO_THEME_NAME, handleEditorMount } from '../../studio/utils/monacoTheme';
 import { API_BASE_URL } from '../../config/api';
 import { fillCascadeTemplate } from './utils/cascadeTemplate';
@@ -117,9 +120,30 @@ const CanvasView = () => {
   // SQL Files modal
   const [showFileModal, setShowFileModal] = useState(false);
 
+  // Spacebar capture mode state
+  const [captureMode, setCaptureMode] = useState('idle'); // idle | capturing | processing | reviewing | generating
+  const [overlayUiHidden, setOverlayUiHidden] = useState(false); // Hide overlay UI but keep strokes for clean screenshot
+  const [audioLevel, setAudioLevel] = useState(0);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const [capturedScreenshot, setCapturedScreenshot] = useState(null);
+  const [capturedTranscript, setCapturedTranscript] = useState('');
+  const [capturedStrokes, setCapturedStrokes] = useState([]);
+
   const editorRef = useRef(null);
   const monacoRef = useRef(null);
   const resultWrapperRef = useRef(null);
+  const canvasViewRef = useRef(null);
+  const captureOverlayRef = useRef(null);
+
+  // Audio recording refs
+  const mediaRecorderRef = useRef(null);
+  const audioContextRef = useRef(null);
+  const analyserRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const streamRef = useRef(null);
+  const animationFrameRef = useRef(null);
+  const durationIntervalRef = useRef(null);
+  const spacebarDownRef = useRef(false);
 
   // Track previous panel data for smart re-render diffing
   const prevPanelsRef = useRef({});
@@ -139,6 +163,282 @@ const CanvasView = () => {
     };
     fetchDatabases();
   }, []);
+
+  // Audio level visualization
+  const updateAudioLevel = useCallback(() => {
+    if (analyserRef.current && captureMode === 'capturing') {
+      const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
+      analyserRef.current.getByteFrequencyData(dataArray);
+      const average = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
+      setAudioLevel(Math.min(100, (average / 128) * 100));
+      animationFrameRef.current = requestAnimationFrame(updateAudioLevel);
+    }
+  }, [captureMode]);
+
+  // Start capture mode (spacebar down)
+  const startCapture = useCallback(async () => {
+    if (captureMode !== 'idle') return;
+
+    setCaptureMode('capturing');
+    setAudioLevel(0);
+    setRecordingDuration(0);
+    audioChunksRef.current = [];
+
+    try {
+      // Request microphone access
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          sampleRate: 44100,
+        }
+      });
+      streamRef.current = stream;
+
+      // Audio analysis for visualization
+      audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+      const source = audioContextRef.current.createMediaStreamSource(stream);
+      analyserRef.current = audioContextRef.current.createAnalyser();
+      analyserRef.current.fftSize = 256;
+      source.connect(analyserRef.current);
+
+      // Start level monitoring
+      updateAudioLevel();
+
+      // MediaRecorder setup
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/webm')
+          ? 'audio/webm'
+          : 'audio/mp4';
+
+      const mediaRecorder = new MediaRecorder(stream, { mimeType });
+      mediaRecorderRef.current = mediaRecorder;
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          audioChunksRef.current.push(e.data);
+        }
+      };
+
+      mediaRecorder.start(100);
+
+      // Duration counter
+      durationIntervalRef.current = setInterval(() => {
+        setRecordingDuration(prev => prev + 1);
+      }, 1000);
+
+    } catch (err) {
+      console.error('Failed to start audio capture:', err);
+      // Continue without audio - user can still draw and type
+    }
+  }, [captureMode, updateAudioLevel]);
+
+  // Stop capture mode (spacebar up)
+  const stopCapture = useCallback(async () => {
+    if (captureMode !== 'capturing') return;
+
+    // Stop audio recording
+    if (mediaRecorderRef.current?.state === 'recording') {
+      mediaRecorderRef.current.stop();
+    }
+
+    // Cleanup audio
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+    }
+    if (durationIntervalRef.current) {
+      clearInterval(durationIntervalRef.current);
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close();
+      audioContextRef.current = null;
+    }
+
+    // Get strokes from overlay before it unmounts
+    const strokes = captureOverlayRef.current?.getStrokes() || [];
+
+    // Step 1: Hide overlay UI but keep strokes visible for clean screenshot
+    setOverlayUiHidden(true);
+    setAudioLevel(0);
+
+    // Step 2: Wait for repaint, then take screenshot
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+    // Capture screenshot of the entire view (now clean - no recording bar/border)
+    let screenshotDataUrl = null;
+    try {
+      if (canvasViewRef.current) {
+        const canvas = await html2canvas(canvasViewRef.current, {
+          backgroundColor: '#0a0a0f',
+          scale: 1,
+          logging: false,
+          useCORS: true,
+        });
+        screenshotDataUrl = canvas.toDataURL('image/png');
+      }
+    } catch (err) {
+      console.error('Failed to capture screenshot:', err);
+    }
+
+    // Step 3: Now show processing overlay (screenshot is done)
+    setOverlayUiHidden(false);
+    setCaptureMode('processing');
+
+    // Step 4: Transcribe audio
+    let transcript = '';
+    if (audioChunksRef.current.length > 0) {
+      try {
+        const mimeType = mediaRecorderRef.current?.mimeType || 'audio/webm';
+        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+
+        if (audioBlob.size > 0) {
+          // Convert to base64
+          const reader = new FileReader();
+          const base64Promise = new Promise((resolve, reject) => {
+            reader.onloadend = () => resolve(reader.result.split(',')[1]);
+            reader.onerror = reject;
+          });
+          reader.readAsDataURL(audioBlob);
+          const base64Audio = await base64Promise;
+
+          const format = mimeType.includes('webm') ? 'webm' :
+                         mimeType.includes('mp4') ? 'm4a' : 'webm';
+
+          const response = await fetch(`${API_BASE_URL}/api/voice/transcribe`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              audio_base64: base64Audio,
+              format: format,
+            }),
+          });
+
+          if (response.ok) {
+            const result = await response.json();
+            transcript = result.text || '';
+          }
+        }
+      } catch (err) {
+        console.error('Transcription failed:', err);
+      }
+    }
+
+    // Store captured data and show review modal
+    setCapturedScreenshot(screenshotDataUrl);
+    setCapturedTranscript(transcript);
+    setCapturedStrokes(strokes);
+    setCaptureMode('reviewing');
+
+  }, [captureMode]);
+
+  // Spacebar event handlers
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Only trigger on spacebar, ignore if already down or in input
+      if (e.code !== 'Space') return;
+      if (spacebarDownRef.current) return;
+
+      // Don't trigger if we're in the review modal or generating
+      if (captureMode === 'reviewing' || captureMode === 'generating') return;
+
+      // Don't trigger if focus is in an input, textarea, or contenteditable
+      const activeElement = document.activeElement;
+      const isInput = activeElement?.tagName === 'INPUT' ||
+                      activeElement?.tagName === 'TEXTAREA' ||
+                      activeElement?.contentEditable === 'true';
+
+      // Check if we're in Monaco editor
+      const isMonaco = activeElement?.closest('.monaco-editor');
+
+      // If in Monaco or input, don't capture - let them type space
+      if (isInput || isMonaco) return;
+
+      e.preventDefault();
+      spacebarDownRef.current = true;
+      startCapture();
+    };
+
+    const handleKeyUp = (e) => {
+      if (e.code !== 'Space') return;
+      if (!spacebarDownRef.current) return;
+
+      e.preventDefault();
+      spacebarDownRef.current = false;
+
+      if (captureMode === 'capturing') {
+        stopCapture();
+      }
+    };
+
+    // Handle losing focus while spacebar is held
+    const handleBlur = () => {
+      if (spacebarDownRef.current && captureMode === 'capturing') {
+        spacebarDownRef.current = false;
+        stopCapture();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', handleBlur);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', handleBlur);
+    };
+  }, [captureMode, startCapture, stopCapture]);
+
+  // Handle intent review modal close
+  const handleReviewClose = useCallback(() => {
+    setCaptureMode('idle');
+    setCapturedScreenshot(null);
+    setCapturedTranscript('');
+    setCapturedStrokes([]);
+  }, []);
+
+  // Handle intent review modal submit
+  const handleReviewSubmit = useCallback(async ({ transcript, annotatedScreenshot, strokes, includeData, panelData, currentSql }) => {
+    setCaptureMode('generating');
+
+    try {
+      // Call the dashboard builder cascade
+      const response = await fetch(`${API_BASE_URL}/api/hyper/generate-dashboard`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          request: transcript,
+          current_sql: includeData ? currentSql : sql,
+          annotated_screenshot: annotatedScreenshot,
+          panel_data: includeData ? panelData : null,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success && data.sql) {
+        // Insert the generated SQL into the editor
+        setSql(data.sql);
+        console.log('[Hyper] Dashboard generated, session:', data.session_id);
+      } else {
+        console.error('[Hyper] Generation failed:', data.error);
+        setError(data.error || 'Failed to generate dashboard');
+      }
+    } catch (err) {
+      console.error('[Hyper] API error:', err);
+      setError(err.message || 'Failed to connect to dashboard builder');
+    } finally {
+      setCaptureMode('idle');
+      setCapturedScreenshot(null);
+      setCapturedTranscript('');
+      setCapturedStrokes([]);
+    }
+  }, [sql]);
 
   // Execute query (optionally with provided SQL to avoid state timing issues)
   const executeQuery = useCallback(async (overrideSql) => {
@@ -284,6 +584,10 @@ const CanvasView = () => {
     editorRef.current = editor;
     monacoRef.current = monaco;
 
+    // Expose to window for Playwright automation (verify_hyper tool)
+    window.monacoEditor = editor;
+    window.hyperSqlMonaco = editor;
+
     handleEditorMount(editor, monaco);
 
     // Configure SQL settings
@@ -327,7 +631,39 @@ const CanvasView = () => {
   const errorMessage = isErrorResult ? result.data[0].error : null;
 
   return (
-    <div className="canvas-view">
+    <div className="canvas-view" ref={canvasViewRef}>
+      {/* Spacebar Capture Overlay */}
+      <CaptureOverlay
+        ref={captureOverlayRef}
+        active={captureMode === 'capturing'}
+        hideUi={overlayUiHidden}
+        audioLevel={audioLevel}
+        recordingDuration={recordingDuration}
+      />
+
+      {/* Processing Overlay - shows while transcribing */}
+      {captureMode === 'processing' && (
+        <div className="capture-processing-overlay">
+          <div className="capture-processing-content">
+            <Icon icon="mdi:loading" className="spinning" width="32" />
+            <span>Processing voice...</span>
+          </div>
+        </div>
+      )}
+
+      {/* Intent Review Modal */}
+      <IntentReviewModal
+        isOpen={captureMode === 'reviewing' || captureMode === 'generating'}
+        onClose={handleReviewClose}
+        onSubmit={handleReviewSubmit}
+        screenshotDataUrl={capturedScreenshot}
+        initialTranscript={capturedTranscript}
+        initialStrokes={capturedStrokes}
+        isProcessing={captureMode === 'generating'}
+        panelData={result}
+        currentSql={sql}
+      />
+
       {/* Header */}
       <div className="canvas-header">
         <div className="canvas-header-left">
@@ -358,6 +694,10 @@ const CanvasView = () => {
               {executionTime}ms
             </span>
           )}
+          <div className="canvas-ai-hint" title="Hold spacebar to draw + speak, release to generate">
+            <Icon icon="mdi:gesture-tap-hold" width="14" />
+            <span>SPACE</span>
+          </div>
           <button
             className="canvas-file-btn"
             onClick={() => setShowFileModal(true)}

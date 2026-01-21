@@ -88,6 +88,7 @@ def get_training_examples():
         FROM training_examples_with_annotations
         WHERE {where_sql}
           AND LENGTH(assistant_output) > 0
+          AND node_type != 'embedding'
         ORDER BY timestamp DESC
         LIMIT {limit} OFFSET {offset}
     """
@@ -308,6 +309,7 @@ def run_confidence_assessment():
                 FROM training_examples_with_annotations
                 WHERE {where_sql}
                   AND LENGTH(assistant_output) > 0
+                  AND node_type != 'embedding'
                 ORDER BY timestamp DESC
                 LIMIT {limit} OFFSET {offset}
             """
@@ -372,7 +374,7 @@ def get_filter_options():
         db = get_db()
 
         # Build base WHERE clause for global filters
-        base_where = ["LENGTH(assistant_output) > 0"]
+        base_where = ["LENGTH(assistant_output) > 0", "node_type != 'embedding'"]
         if trainable is not None:
             trainable_val = trainable.lower() == 'true'
             base_where.append(f"trainable = {trainable_val}")
@@ -459,6 +461,7 @@ def get_session_logs():
         FROM training_examples_with_annotations
         WHERE session_id = '{session_id}'
           AND LENGTH(assistant_output) > 0
+          AND node_type != 'embedding'
         ORDER BY timestamp ASC
     """
 

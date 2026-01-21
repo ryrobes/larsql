@@ -30,6 +30,7 @@ function convertPanelForRenderer(apiPanel) {
   const isDateRange = Array.isArray(panelData) && panelData.length === 1 && panelData[0]?.format === 'daterange';
   const isToggle = Array.isArray(panelData) && panelData.length === 1 && panelData[0]?.format === 'toggle';
   const isSparkline = Array.isArray(panelData) && panelData.length > 0 && panelData[0]?.format === 'sparkline';
+  const isMarkdown = Array.isArray(panelData) && panelData.length === 1 && panelData[0]?.format === 'markdown';
 
   // Check for data-driven chart
   const dataDrivenChart = isDataDrivenChart(panelData) ? processDataDrivenChart(panelData) : null;
@@ -56,6 +57,7 @@ function convertPanelForRenderer(apiPanel) {
   else if (isDateRange) panelType = 'daterange';
   else if (isToggle) panelType = 'toggle';
   else if (isSparkline) panelType = 'sparkline';
+  else if (isMarkdown) panelType = 'markdown';
   else if (isAutoMetric) panelType = 'metric';
   else if (dataDrivenChart) {
     panelType = dataDrivenChart.format;

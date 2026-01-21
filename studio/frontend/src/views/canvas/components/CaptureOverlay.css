@@ -1,0 +1,369 @@
+/* ============================================
+   CAPTURE OVERLAY - Spacebar-triggered capture mode
+   ============================================ */
+
+.capture-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 9999;
+  pointer-events: auto;
+}
+
+/* Drawing canvas - transparent, full screen */
+.capture-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+/* Subtle border glow to indicate capture mode */
+.capture-overlay::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  box-shadow: inset 0 0 60px rgba(255, 51, 102, 0.15);
+  border: 2px solid rgba(255, 51, 102, 0.4);
+  animation: capture-border-pulse 2s ease-in-out infinite;
+}
+
+@keyframes capture-border-pulse {
+  0%, 100% {
+    box-shadow: inset 0 0 60px rgba(255, 51, 102, 0.15);
+    border-color: rgba(255, 51, 102, 0.4);
+  }
+  50% {
+    box-shadow: inset 0 0 80px rgba(255, 51, 102, 0.2);
+    border-color: rgba(255, 51, 102, 0.6);
+  }
+}
+
+/* Hide UI mode - keeps canvas with strokes but hides all UI */
+.capture-overlay.hide-ui::before {
+  display: none;
+}
+
+.capture-overlay.hide-ui .capture-indicator,
+.capture-overlay.hide-ui .capture-corner-hint,
+.capture-overlay.hide-ui .capture-palette {
+  display: none;
+}
+
+.capture-overlay.hide-ui .capture-canvas {
+  pointer-events: none;
+}
+
+/* ============================================
+   RECORDING INDICATOR - Bottom center
+   ============================================ */
+
+.capture-indicator {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: none;
+  z-index: 10;
+}
+
+.capture-indicator-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  background: rgba(10, 10, 15, 0.95);
+  border: 1px solid rgba(255, 51, 102, 0.5);
+  border-radius: 100px;
+  backdrop-filter: blur(12px);
+  box-shadow:
+    0 4px 24px rgba(0, 0, 0, 0.5),
+    0 0 40px rgba(255, 51, 102, 0.2);
+}
+
+/* Pulsing record dot */
+.capture-record-dot {
+  width: 10px;
+  height: 10px;
+  background: #ff3366;
+  border-radius: 50%;
+  animation: record-pulse 1s ease-in-out infinite;
+  box-shadow: 0 0 12px rgba(255, 51, 102, 0.8);
+}
+
+@keyframes record-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(0.85);
+  }
+}
+
+/* Microphone with level ring */
+.capture-mic-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+}
+
+.capture-level-ring {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: rgba(255, 51, 102, 0.3);
+  transition: transform 0.1s ease-out, opacity 0.1s ease-out;
+}
+
+.capture-mic-icon {
+  position: relative;
+  font-size: 20px;
+  color: #ff3366;
+  z-index: 1;
+}
+
+/* Duration display */
+.capture-duration {
+  font-family: var(--font-mono, 'SF Mono', monospace);
+  font-size: 14px;
+  font-weight: 600;
+  color: #ffffff;
+  min-width: 40px;
+}
+
+/* Waveform visualization */
+.capture-waveform {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 24px;
+}
+
+.capture-waveform-bar {
+  width: 3px;
+  background: linear-gradient(to top, #ff3366, #ff6b9d);
+  border-radius: 2px;
+  transition: height 0.1s ease-out;
+  min-height: 4px;
+}
+
+/* Current brush indicator */
+.capture-brush-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.capture-brush-preview {
+  border-radius: 50%;
+  box-shadow: 0 0 6px currentColor;
+}
+
+/* Hint text */
+.capture-hint {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+  margin-left: 8px;
+  white-space: nowrap;
+}
+
+/* ============================================
+   CORNER HINTS
+   ============================================ */
+
+.capture-corner-hint {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: rgba(10, 10, 15, 0.9);
+  border: 1px solid rgba(255, 51, 102, 0.3);
+  border-radius: 8px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.7);
+  pointer-events: none;
+  backdrop-filter: blur(8px);
+}
+
+.capture-corner-hint svg {
+  font-size: 16px;
+  color: #ff3366;
+}
+
+.capture-corner-hint.top-left {
+  top: 16px;
+  left: 16px;
+}
+
+.capture-corner-hint.top-right {
+  top: 16px;
+  right: 16px;
+}
+
+/* ============================================
+   RIGHT-CLICK BRUSH PALETTE
+   ============================================ */
+
+.capture-palette {
+  position: fixed;
+  z-index: 100;
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  padding: 8px;
+  background: rgba(10, 10, 15, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  backdrop-filter: blur(12px);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.05);
+  transform: translate(-50%, -100%) translateY(-12px);
+  animation: palette-appear 0.15s ease-out;
+}
+
+@keyframes palette-appear {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -100%) translateY(-8px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -100%) translateY(-12px) scale(1);
+  }
+}
+
+.capture-palette-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 8px;
+}
+
+.capture-palette-label {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.capture-palette-divider {
+  width: 1px;
+  background: rgba(255, 255, 255, 0.1);
+  margin: 4px 0;
+}
+
+.capture-palette-sizes {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.capture-palette-size {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.1s ease;
+}
+
+.capture-palette-size:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.capture-palette-size.active {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.capture-palette-size-dot {
+  border-radius: 50%;
+  transition: transform 0.1s ease;
+}
+
+.capture-palette-size:hover .capture-palette-size-dot {
+  transform: scale(1.1);
+}
+
+.capture-palette-colors {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.capture-palette-color {
+  width: 24px;
+  height: 24px;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.1s ease;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2);
+}
+
+.capture-palette-color:hover {
+  transform: scale(1.15);
+}
+
+.capture-palette-color.active {
+  border-color: #ffffff;
+  transform: scale(1.1);
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.2),
+    0 0 8px currentColor;
+}
+
+/* ============================================
+   RESPONSIVE
+   ============================================ */
+
+@media (max-width: 768px) {
+  .capture-indicator-content {
+    padding: 10px 16px;
+    gap: 8px;
+  }
+
+  .capture-hint {
+    display: none;
+  }
+
+  .capture-corner-hint {
+    display: none;
+  }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .capture-record-dot,
+  .capture-overlay::before {
+    animation: none;
+  }
+}

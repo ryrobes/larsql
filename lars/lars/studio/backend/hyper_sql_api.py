@@ -476,3 +476,201 @@ def toggle_favorite(file_id: str):
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
+
+
+# ============================================================================
+# DASHBOARD BUILDER - AI-powered dashboard generation
+# ============================================================================
+
+@hyper_sql_bp.route('/api/hyper/generate-dashboard', methods=['POST'])
+def generate_dashboard():
+    """
+    Generate a dashboard using the hyper_dashboard_builder cascade.
+
+    Request body:
+        - request: Natural language description of what the user wants
+        - current_sql: Current SQL in the editor (optional)
+        - annotated_screenshot: Base64 image with user annotations (optional)
+        - panel_data: JSON of rendered panel data (optional)
+
+    Returns:
+        JSON with generated SQL
+    """
+    import json
+    import base64
+    import tempfile
+
+    try:
+        data = request.json or {}
+        user_request = data.get('request', '')
+        current_sql = data.get('current_sql', '')
+        annotated_screenshot = data.get('annotated_screenshot')  # base64 data URL
+        panel_data = data.get('panel_data')
+
+        if not user_request.strip():
+            return jsonify({'error': 'Request description is required'}), 400
+
+        # Import cascade runner
+        from lars import run_cascade
+        from lars.session_naming import generate_woodland_id
+
+        # Find the cascade file (cascades/ is at repo root, not inside lars/)
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../..'))
+        cascade_path = os.path.join(repo_root, 'cascades', 'hyper_dashboard_builder.yaml')
+
+        if not os.path.exists(cascade_path):
+            return jsonify({'error': f'Cascade not found: {cascade_path}'}), 500
+
+        # Prepare inputs
+        inputs = {
+            'request': user_request,
+            'current_sql': current_sql or '',
+            'panel_data': json.dumps(panel_data) if panel_data else None,
+        }
+
+        # Handle image - save to temp file if provided
+        image_path = None
+        if annotated_screenshot:
+            try:
+                # Extract base64 data from data URL
+                if annotated_screenshot.startswith('data:'):
+                    _, b64_data = annotated_screenshot.split(',', 1)
+                else:
+                    b64_data = annotated_screenshot
+
+                # Decode and save to temp file
+                image_bytes = base64.b64decode(b64_data)
+                with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as f:
+                    f.write(image_bytes)
+                    image_path = f.name
+
+                inputs['annotated_screenshot'] = image_path
+            except Exception as e:
+                print(f"[Hyper] Failed to process screenshot: {e}")
+
+        # Generate session ID
+        session_id = f"hyper_{generate_woodland_id()}"
+
+        try:
+            # Run the cascade
+            result = run_cascade(cascade_path, inputs, session_id=session_id)
+
+            # Extract the generated SQL from the result
+            # When LLM uses tools, the lineage 'output' contains all tool calls concatenated.
+            # We need to extract the actual SQL from:
+            # 1. The last verify_hyper tool call's sql argument, OR
+            # 2. The final assistant text message from history
+            generated_sql = None
+
+            def extract_verify_hyper_sql(text):
+                """Extract SQL from the last verify_hyper tool call in text."""
+                if 'verify_hyper' not in text:
+                    return None
+
+                # Find the last occurrence of verify_hyper tool call
+                idx = text.rfind('"verify_hyper"')
+                if idx == -1:
+                    return None
+
+                # Go backwards to find the start of this JSON object
+                start = idx
+                while start > 0 and text[start] != '{':
+                    start -= 1
+
+                # Now parse forward using brace counting
+                brace_count = 0
+                end = start
+                in_string = False
+                escape_next = False
+
+                for i, c in enumerate(text[start:]):
+                    if escape_next:
+                        escape_next = False
+                        continue
+                    if c == '\\' and in_string:
+                        escape_next = True
+                        continue
+                    if c == '"' and not escape_next:
+                        in_string = not in_string
+                        continue
+                    if not in_string:
+                        if c == '{':
+                            brace_count += 1
+                        elif c == '}':
+                            brace_count -= 1
+                            if brace_count == 0:
+                                end = start + i + 1
+                                break
+
+                # Try to parse the JSON
+                try:
+                    json_str = text[start:end]
+                    tool_call = json.loads(json_str)
+                    return tool_call.get('arguments', {}).get('sql')
+                except:
+                    return None
+
+            # Strategy 1: Look for verify_hyper tool call in the lineage output
+            for entry in result.get('lineage', []):
+                if entry.get('cell') == 'build_dashboard':
+                    output = entry.get('output', '')
+                    if isinstance(output, str):
+                        generated_sql = extract_verify_hyper_sql(output)
+                        if generated_sql:
+                            print(f"[Hyper] Extracted SQL from verify_hyper tool call ({len(generated_sql)} chars)")
+                        else:
+                            print(f"[Hyper] No verify_hyper SQL found in output ({len(output)} chars)")
+                    break
+
+            # Strategy 2: Check history for the last assistant message with SQL content
+            if not generated_sql:
+                history = result.get('history', [])
+                for msg in reversed(history):
+                    if msg.get('role') == 'assistant':
+                        content = msg.get('content', '')
+                        # Skip if it's tool calls
+                        if content and '{"tool"' not in content[:50]:
+                            # Check if it looks like HyperSQL
+                            if '--- PANEL' in content or ('--- HYPER' in content and 'SELECT' in content.upper()):
+                                generated_sql = content
+                                break
+
+            # Strategy 3: Fallback to state
+            if not generated_sql:
+                state = result.get('state', {})
+                generated_sql = state.get('output_build_dashboard', {})
+                if isinstance(generated_sql, dict):
+                    generated_sql = generated_sql.get('content') or generated_sql.get('text')
+
+            # Clean up the SQL (remove markdown code fences if present)
+            if generated_sql:
+                generated_sql = generated_sql.strip()
+                if generated_sql.startswith('```sql'):
+                    generated_sql = generated_sql[6:]
+                if generated_sql.startswith('```'):
+                    generated_sql = generated_sql[3:]
+                if generated_sql.endswith('```'):
+                    generated_sql = generated_sql[:-3]
+                generated_sql = generated_sql.strip()
+
+            return jsonify({
+                'success': True,
+                'sql': generated_sql,
+                'session_id': session_id
+            })
+
+        finally:
+            # Cleanup temp image file
+            if image_path and os.path.exists(image_path):
+                try:
+                    os.remove(image_path)
+                except:
+                    pass
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500

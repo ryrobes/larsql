@@ -59,7 +59,7 @@ def _register_all_skills():
     _SKILLS_REGISTERED = True
 
     # Import and register skills
-    from .skills.sql import run_sql
+    from .skills.sql import run_sql, smart_sql_run
     from .skills.extras import take_screenshot, linux_shell, curl_text, fetch_url_with_browser
     from .skills.human import ask_human, ask_human_custom, request_decision
     from .skills.display import show_ui
@@ -90,9 +90,10 @@ def _register_all_skills():
     from .skills.cascade_validator import validate_cascade_overrides
     from .skills.bi_tools import find_understanding, save_understanding
     from .skills.valid_json import valid_json, valid_json_array
+    from .skills.hyper_tools import verify_hyper, valid_hyper
 
     # Core tools
-    register_skill("smart_sql_run", run_sql)
+    register_skill("smart_sql_run", smart_sql_run)
     register_skill("linux_shell", linux_shell)
     register_skill("curl_text", curl_text)
     register_skill("fetch_url_with_browser", fetch_url_with_browser)
@@ -179,6 +180,10 @@ def _register_all_skills():
     register_skill("rabbitize_execute", rabbitize_execute)
     register_skill("rabbitize_extract", rabbitize_extract)
     register_skill("rabbitize_status", rabbitize_status)
+
+    # HyperSQL tools
+    register_skill("verify_hyper", verify_hyper)
+    register_skill("valid_hyper", valid_hyper)
 
     # Native Python browser tools (browser, control_browser, etc.)
     try:

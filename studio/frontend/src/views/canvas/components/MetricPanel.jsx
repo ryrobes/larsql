@@ -131,13 +131,13 @@ const MetricPanel = ({ content, isAuto = false }) => {
       const valueEl = valueRef.current;
 
       // Get available space (with padding)
-      const availableWidth = container.clientWidth - 32;
+      const availableWidth = container.clientWidth - 42;
       const availableHeight = container.clientHeight - (label ? 60 : 32);
 
       if (availableWidth <= 0 || availableHeight <= 0) return;
 
       // Set to reference size and measure
-      const referenceSize = 100;
+      const referenceSize = 60;
       valueEl.style.fontSize = `${referenceSize}px`;
 
       // Force reflow to get accurate measurements
@@ -152,7 +152,7 @@ const MetricPanel = ({ content, isAuto = false }) => {
       const scale = Math.min(scaleX, scaleY);
 
       // Calculate optimal font size, clamped to reasonable bounds
-      const optimalSize = Math.max(16, Math.min(200, Math.floor(referenceSize * scale)));
+      const optimalSize = Math.max(16, Math.min(100, Math.floor(referenceSize * scale)));
 
       setFontSize(optimalSize);
     };

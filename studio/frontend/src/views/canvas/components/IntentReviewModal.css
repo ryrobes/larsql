@@ -1,0 +1,486 @@
+/* ============================================
+   INTENT REVIEW MODAL
+   ============================================ */
+
+.intent-review-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  padding: 24px;
+}
+
+.intent-review-modal {
+  background: var(--color-bg-secondary, #0d0d12);
+  border: 1px solid var(--color-border-dim, rgba(255, 255, 255, 0.1));
+  border-radius: 16px;
+  width: 70vw;
+  height: 80vh;
+  max-width: 1400px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow:
+    0 24px 80px rgba(0, 0, 0, 0.6),
+    0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+/* ============================================
+   HEADER
+   ============================================ */
+
+.intent-review-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--color-border-dim, rgba(255, 255, 255, 0.1));
+  background: var(--color-bg-tertiary, #08080c);
+}
+
+.intent-review-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-text-primary, #ffffff);
+}
+
+.intent-review-title svg {
+  font-size: 20px;
+  color: #ff3366;
+}
+
+.intent-review-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--color-text-dim, rgba(255, 255, 255, 0.4));
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.intent-review-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--color-text-primary, #ffffff);
+}
+
+.intent-review-close svg {
+  font-size: 18px;
+}
+
+/* ============================================
+   CONTENT
+   ============================================ */
+
+.intent-review-content {
+  flex: 1;
+  overflow: hidden;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-height: 0; /* Allow flex shrinking */
+}
+
+/* ============================================
+   IMAGE SECTION
+   ============================================ */
+
+.intent-review-image-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-height: 0; /* Allow flex shrinking */
+}
+
+.intent-review-image-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-muted, rgba(255, 255, 255, 0.7));
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.intent-review-image-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.intent-review-draw-btn,
+.intent-review-undo-btn,
+.intent-review-clear-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: transparent;
+  border: 1px solid var(--color-border-dim, rgba(255, 255, 255, 0.15));
+  border-radius: 6px;
+  color: var(--color-text-muted, rgba(255, 255, 255, 0.7));
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.intent-review-draw-btn:hover,
+.intent-review-undo-btn:hover,
+.intent-review-clear-btn:hover {
+  background: rgba(255, 51, 102, 0.1);
+  border-color: rgba(255, 51, 102, 0.4);
+  color: #ff3366;
+}
+
+.intent-review-draw-btn.active {
+  background: #ff3366;
+  border-color: #ff3366;
+  color: #ffffff;
+}
+
+.intent-review-draw-btn.active:hover {
+  background: #ff4d7a;
+}
+
+.intent-review-undo-btn svg,
+.intent-review-clear-btn svg {
+  font-size: 14px;
+}
+
+.intent-review-image-container {
+  position: relative;
+  background: var(--color-bg-primary, #0a0a0f);
+  border: 1px solid var(--color-border-dim, rgba(255, 255, 255, 0.1));
+  border-radius: 12px;
+  overflow: hidden;
+  flex: 1;
+  min-height: 300px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.intent-review-image-container.draw-mode {
+  border-color: rgba(255, 51, 102, 0.5);
+  box-shadow: 0 0 0 2px rgba(255, 51, 102, 0.2);
+}
+
+.intent-review-canvas {
+  display: block;
+  cursor: default;
+  border-radius: 8px;
+}
+
+.intent-review-image-container.draw-mode .intent-review-canvas {
+  cursor: crosshair;
+}
+
+.intent-review-draw-hint {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 12px;
+  background: rgba(255, 51, 102, 0.9);
+  border-radius: 100px;
+  font-size: 11px;
+  color: #ffffff;
+  pointer-events: none;
+}
+
+/* ============================================
+   TRANSCRIPT SECTION
+   ============================================ */
+
+.intent-review-transcript-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0; /* Don't shrink, stay at natural size */
+}
+
+.intent-review-transcript-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-muted, rgba(255, 255, 255, 0.7));
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.intent-review-transcript-header svg {
+  font-size: 14px;
+  color: #ff3366;
+}
+
+.intent-review-transcript-source {
+  font-weight: 400;
+  text-transform: none;
+  color: var(--color-text-dim, rgba(255, 255, 255, 0.4));
+}
+
+.intent-review-textarea {
+  width: 100%;
+  padding: 14px 16px;
+  background: var(--color-bg-primary, #0a0a0f);
+  border: 1px solid var(--color-border-dim, rgba(255, 255, 255, 0.15));
+  border-radius: 10px;
+  color: var(--color-text-primary, #ffffff);
+  font-size: 14px;
+  font-family: inherit;
+  line-height: 1.5;
+  resize: vertical;
+  min-height: 100px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.intent-review-textarea:focus {
+  outline: none;
+  border-color: rgba(255, 51, 102, 0.5);
+  box-shadow: 0 0 0 3px rgba(255, 51, 102, 0.15);
+}
+
+.intent-review-textarea::placeholder {
+  color: var(--color-text-dim, rgba(255, 255, 255, 0.3));
+}
+
+.intent-review-transcript-hint {
+  font-size: 11px;
+  color: var(--color-text-dim, rgba(255, 255, 255, 0.4));
+}
+
+/* Include data checkbox */
+.intent-review-checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  margin-top: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--color-border-dim, rgba(255, 255, 255, 0.1));
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.intent-review-checkbox:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 51, 102, 0.3);
+}
+
+.intent-review-checkbox input {
+  display: none;
+}
+
+.intent-review-checkbox-mark {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+  transition: all 0.15s ease;
+  position: relative;
+}
+
+.intent-review-checkbox-mark::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 5px;
+  width: 5px;
+  height: 9px;
+  border: solid #ffffff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg) scale(0);
+  transition: transform 0.15s ease;
+}
+
+.intent-review-checkbox input:checked + .intent-review-checkbox-mark {
+  background: #ff3366;
+  border-color: #ff3366;
+}
+
+.intent-review-checkbox input:checked + .intent-review-checkbox-mark::after {
+  transform: rotate(45deg) scale(1);
+}
+
+.intent-review-checkbox-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-primary, #ffffff);
+}
+
+.intent-review-checkbox-hint {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--color-text-dim, rgba(255, 255, 255, 0.5));
+}
+
+/* ============================================
+   FOOTER
+   ============================================ */
+
+.intent-review-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-top: 1px solid var(--color-border-dim, rgba(255, 255, 255, 0.1));
+  background: var(--color-bg-tertiary, #08080c);
+}
+
+.intent-review-footer-hint {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--color-text-dim, rgba(255, 255, 255, 0.4));
+}
+
+.intent-review-footer-hint kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+}
+
+.intent-review-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.intent-review-cancel-btn {
+  padding: 10px 18px;
+  background: transparent;
+  border: 1px solid var(--color-border-dim, rgba(255, 255, 255, 0.2));
+  border-radius: 8px;
+  color: var(--color-text-muted, rgba(255, 255, 255, 0.7));
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.intent-review-cancel-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.intent-review-cancel-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.intent-review-submit-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background: #ff3366;
+  border: none;
+  border-radius: 8px;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.intent-review-submit-btn:hover:not(:disabled) {
+  background: #ff4d7a;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(255, 51, 102, 0.4);
+}
+
+.intent-review-submit-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.intent-review-submit-btn svg {
+  font-size: 18px;
+}
+
+/* Spinning animation for loading state */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.intent-review-submit-btn .spinning {
+  animation: spin 1s linear infinite;
+}
+
+/* ============================================
+   RESPONSIVE
+   ============================================ */
+
+@media (max-width: 640px) {
+  .intent-review-overlay {
+    padding: 12px;
+  }
+
+  .intent-review-modal {
+    max-height: calc(100vh - 24px);
+  }
+
+  .intent-review-content {
+    padding: 16px;
+  }
+
+  .intent-review-image-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .intent-review-footer {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .intent-review-footer-hint {
+    display: none;
+  }
+
+  .intent-review-footer-actions {
+    width: 100%;
+  }
+
+  .intent-review-cancel-btn,
+  .intent-review-submit-btn {
+    flex: 1;
+    justify-content: center;
+  }
+}

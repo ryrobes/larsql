@@ -321,7 +321,7 @@ class Config(BaseModel):
     # Content below this is passed inline as normal
     ephemeral_rag_threshold: int = Field(
         default_factory=lambda: int(os.getenv(
-            "LARS_EPHEMERAL_RAG_THRESHOLD", "25000"
+            "LARS_EPHEMERAL_RAG_THRESHOLD", "2125000"
         ))
     )
 

@@ -17,7 +17,8 @@ export function parsePanelLayout(sql) {
 
   // Pattern: --- PANEL 'name' (col, row, colspan, rowspan) [rest...]
   // We capture: name, col, row, colspan, rowspan
-  const panelPattern = /^---\s*PANEL\s+['"]([^'"]+)['"](?:\s*\((\d+)\s*,\s*(\d+)(?:\s*,\s*(\d+)\s*,\s*(\d+))?\))?/;
+  // Note: Allow optional leading whitespace with ^\s*
+  const panelPattern = /^\s*---\s*PANEL\s+['"]([^'"]+)['"](?:\s*\((\d+)\s*,\s*(\d+)(?:\s*,\s*(\d+)\s*,\s*(\d+))?\))?/;
 
   lines.forEach((line, index) => {
     const match = line.match(panelPattern);
