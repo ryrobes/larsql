@@ -109,6 +109,7 @@ const DataGridPanel = ({ content, onRowClick, interactive, multiSelect, selected
     filter: true,
     resizable: true,
     minWidth: 80,
+    flex: 1,  // Columns expand to fill available width
   }), []);
 
   // Store grid API when ready

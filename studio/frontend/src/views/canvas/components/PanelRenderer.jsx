@@ -2,6 +2,7 @@ import React from 'react';
 import { Icon } from '@iconify/react';
 import MermaidPanel from './MermaidPanel';
 import DataGridPanel from './DataGridPanel';
+import MetricPanel from './MetricPanel';
 import TextPanel from './TextPanel';
 import './PanelRenderer.css';
 
@@ -19,7 +20,7 @@ import './PanelRenderer.css';
  * @param {function} onInteraction - Callback for panel interactions
  */
 const PanelRenderer = ({ panel, style, onInteraction }) => {
-  const { name, content, type, on_select, multi_select, selected_values, selected_value, select_field } = panel;
+  const { name, content, type, on_select, multi_select, selected_values, selected_value, select_field, isAutoMetric } = panel;
 
   // Get icon for panel type
   const getIcon = () => {
@@ -30,6 +31,8 @@ const PanelRenderer = ({ panel, style, onInteraction }) => {
         return 'mdi:timeline';
       case 'data-grid':
         return 'mdi:table';
+      case 'metric':
+        return 'mdi:counter';
       default:
         return 'mdi:text';
     }
@@ -54,6 +57,16 @@ const PanelRenderer = ({ panel, style, onInteraction }) => {
       case 'mermaid-graph':
       case 'mermaid-timeline':
         return <MermaidPanel content={content} />;
+
+      case 'metric':
+        // For auto-metric, extract the single value from the data
+        if (isAutoMetric && Array.isArray(content) && content.length === 1) {
+          const row = content[0];
+          const keys = Object.keys(row).filter(k => k !== 'format');
+          const value = row[keys[0]];
+          return <MetricPanel content={value} isAuto={true} />;
+        }
+        return <MetricPanel content={content} isAuto={false} />;
 
       case 'data-grid':
         return (

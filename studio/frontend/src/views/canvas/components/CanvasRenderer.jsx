@@ -54,6 +54,36 @@ const CanvasRenderer = ({ data, columns, isCanvas, canvasData, isMultiPanel, mul
         panelData.length === 1 &&
         panelData[0]?.mermaid;
 
+      // Detect explicit metric: single-row array with format: "metric"
+      const isExplicitMetric = Array.isArray(panelData) &&
+        panelData.length === 1 &&
+        panelData[0]?.format === 'metric';
+
+      // Detect auto-metric: single row with single value column
+      // (excluding 'format' key if present)
+      const isAutoMetric = !isMermaid && !isExplicitMetric &&
+        Array.isArray(panelData) &&
+        panelData.length === 1 &&
+        (() => {
+          const row = panelData[0];
+          if (!row || typeof row !== 'object') return false;
+          const keys = Object.keys(row).filter(k => k !== 'format');
+          return keys.length === 1;
+        })();
+
+      // Determine panel type
+      let panelType = 'data-grid';
+      let isAutoMetricFlag = false;
+
+      if (isMermaid) {
+        panelType = 'mermaid-graph';
+      } else if (isExplicitMetric) {
+        panelType = 'metric';
+      } else if (isAutoMetric) {
+        panelType = 'metric';
+        isAutoMetricFlag = true;
+      }
+
       // Calculate grid position
       let gridStyle = {};
       if (panel.position) {
@@ -71,9 +101,10 @@ const CanvasRenderer = ({ data, columns, isCanvas, canvasData, isMultiPanel, mul
 
       return {
         name: panel.name,
-        type: isMermaid ? 'mermaid-graph' : 'data-grid',
+        type: panelType,
         content: panelData,
         gridStyle,
+        isAutoMetric: isAutoMetricFlag,
         // Pass through interaction metadata
         on_select: panel.on_select,
         multi_select: panel.multi_select,
