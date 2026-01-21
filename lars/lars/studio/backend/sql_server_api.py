@@ -155,7 +155,7 @@ def _split_sql_statements(sql: str) -> list[str]:
 
 def _extract_params_key(on_select_template: str):
     """
-    Extract the param key and field name from an on_select template.
+    Extract the param key and field name from a multi-select on_select template.
 
     Template format: @params_set('key', field)
     Returns: (param_key, field_name) or (None, None) if not found
@@ -167,6 +167,25 @@ def _extract_params_key(on_select_template: str):
     import re
     # Match @params_set('key', field) or @params_set("key", field)
     match = re.match(r"@params_set\(['\"]([^'\"]+)['\"],\s*(\w+)\)", on_select_template)
+    if match:
+        return match.group(1), match.group(2)
+    return None, None
+
+
+def _extract_param_key(on_select_template: str):
+    """
+    Extract the param key and field name from a single-select on_select template.
+
+    Template format: @param_set('key', field)
+    Returns: (param_key, field_name) or (None, None) if not found
+
+    Example:
+        _extract_param_key("@param_set('level', level)")
+        -> ('level', 'level')
+    """
+    import re
+    # Match @param_set('key', field) or @param_set("key", field)
+    match = re.match(r"@param_set\(['\"]([^'\"]+)['\"],\s*(\w+)\)", on_select_template)
     if match:
         return match.group(1), match.group(2)
     return None, None
@@ -506,6 +525,14 @@ def execute_sql():
                             from lars.sql_tools.param_store import params_store_get
                             selected_values = params_store_get(database, param_key)
                             panel_result["selected_values"] = selected_values
+                            panel_result["select_field"] = select_field
+                    else:
+                        # For single-select panels, include current selection state
+                        param_key, select_field = _extract_param_key(panel_on_select)
+                        if param_key and select_field:
+                            from lars.sql_tools.param_store import param_store_get
+                            selected_value = param_store_get(database, param_key)
+                            panel_result["selected_value"] = selected_value
                             panel_result["select_field"] = select_field
 
                 panel_results.append(panel_result)

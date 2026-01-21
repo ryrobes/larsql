@@ -35,9 +35,10 @@ const darkTheme = themeQuartz.withParams({
  * @param {boolean} interactive - Whether the grid is interactive (shows hover states)
  * @param {boolean} multiSelect - Whether to enable checkbox multi-select mode
  * @param {array} selectedValues - Array of values currently selected (for multi-select)
+ * @param {string} selectedValue - Single value currently selected (for single-select)
  * @param {string} selectField - Field name to match for selection highlighting
  */
-const DataGridPanel = ({ content, onRowClick, interactive, multiSelect, selectedValues, selectField }) => {
+const DataGridPanel = ({ content, onRowClick, interactive, multiSelect, selectedValues, selectedValue, selectField }) => {
   const gridRef = useRef(null);
   const gridApiRef = useRef(null);
   // Track selection state for detecting individual toggles
@@ -141,14 +142,33 @@ const DataGridPanel = ({ content, onRowClick, interactive, multiSelect, selected
         isInitializingRef.current = false;
       }, 0);
     }
-  }, [multiSelect, selectedValues, selectField]);
+
+    // Single-select: highlight the selected row
+    if (!multiSelect && selectedValue !== null && selectedValue !== undefined && selectField) {
+      params.api.forEachNode((node) => {
+        const fieldValue = String(node.data[selectField]);
+        if (fieldValue === String(selectedValue)) {
+          node.setSelected(true);
+        }
+      });
+    }
+  }, [multiSelect, selectedValues, selectedValue, selectField]);
 
   // Handle row click (single-select mode)
   const handleRowClicked = useCallback((event) => {
     if (onRowClick && !multiSelect) {
+      // Check if clicking the already-selected row (toggle off)
+      if (selectField && selectedValue !== null && selectedValue !== undefined) {
+        const clickedValue = String(event.data[selectField]);
+        if (clickedValue === String(selectedValue)) {
+          // This is a deselect - pass flag to handler
+          onRowClick({ ...event.data, _isDeselect: true });
+          return;
+        }
+      }
       onRowClick(event.data);
     }
-  }, [onRowClick, multiSelect]);
+  }, [onRowClick, multiSelect, selectField, selectedValue]);
 
   // Handle checkbox selection change (multi-select mode)
   // Detects which row was toggled and emits just that row
@@ -227,6 +247,25 @@ const DataGridPanel = ({ content, onRowClick, interactive, multiSelect, selected
       isInitializingRef.current = false;
     }, 0);
   }, [selectedValues, selectField, multiSelect]);
+
+  // Sync selection when selectedValue changes (single-select mode)
+  useEffect(() => {
+    if (multiSelect || !selectField || !gridApiRef.current) return;
+
+    const api = gridApiRef.current;
+
+    // Update selection state for all nodes
+    api.forEachNode((node) => {
+      const fieldValue = String(node.data[selectField]);
+      const shouldBeSelected = selectedValue !== null && selectedValue !== undefined &&
+        fieldValue === String(selectedValue);
+      const isSelected = node.isSelected();
+
+      if (shouldBeSelected !== isSelected) {
+        node.setSelected(shouldBeSelected);
+      }
+    });
+  }, [selectedValue, selectField, multiSelect]);
 
   // Empty/invalid states
   if (!data) {

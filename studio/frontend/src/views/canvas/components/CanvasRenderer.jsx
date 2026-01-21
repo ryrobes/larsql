@@ -77,7 +77,8 @@ const CanvasRenderer = ({ data, columns, isCanvas, canvasData, isMultiPanel, mul
         // Pass through interaction metadata
         on_select: panel.on_select,
         multi_select: panel.multi_select,
-        selected_values: panel.selected_values,
+        selected_values: panel.selected_values,  // multi-select
+        selected_value: panel.selected_value,    // single-select
         select_field: panel.select_field,
       };
     });

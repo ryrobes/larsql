@@ -19,7 +19,7 @@ import './PanelRenderer.css';
  * @param {function} onInteraction - Callback for panel interactions
  */
 const PanelRenderer = ({ panel, style, onInteraction }) => {
-  const { name, content, type, on_select, multi_select, selected_values, select_field } = panel;
+  const { name, content, type, on_select, multi_select, selected_values, selected_value, select_field } = panel;
 
   // Get icon for panel type
   const getIcon = () => {
@@ -63,6 +63,7 @@ const PanelRenderer = ({ panel, style, onInteraction }) => {
             interactive={!!on_select}
             multiSelect={!!multi_select}
             selectedValues={selected_values}
+            selectedValue={selected_value}
             selectField={select_field}
           />
         );

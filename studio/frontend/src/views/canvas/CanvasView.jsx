@@ -134,16 +134,29 @@ const CanvasView = () => {
 
     if (!onSelectTemplate) return;
 
-    // Fill the cascade template with values from clicked row
-    const filledCascade = fillCascadeTemplate(onSelectTemplate, rowData);
+    let cascadeToExecute;
+
+    // Check for deselect (toggle off) - single-select only
+    if (rowData._isDeselect) {
+      // Extract param key from template like @param_set('level', level)
+      const match = onSelectTemplate.match(/@param_set\(['"]([^'"]+)['"]/);
+      if (match) {
+        cascadeToExecute = `@param_clear('${match[1]}')`;
+      } else {
+        return; // Can't determine param key
+      }
+    } else {
+      // Fill the cascade template with values from clicked row
+      cascadeToExecute = fillCascadeTemplate(onSelectTemplate, rowData);
+    }
 
     try {
-      // Execute the cascade (e.g., @param_set('region', 'US'))
+      // Execute the cascade (e.g., @param_set('region', 'US') or @param_clear('region'))
       await fetch(`${API_BASE_URL}/api/sql/execute`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          query: `SELECT ${filledCascade}`,
+          query: `SELECT ${cascadeToExecute}`,
           database: selectedDatabase
         })
       });
