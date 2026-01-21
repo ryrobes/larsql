@@ -2,6 +2,7 @@ import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { Icon } from '@iconify/react';
 import Editor from '@monaco-editor/react';
 import CanvasRenderer from './components/CanvasRenderer';
+import ParamsPanel from './components/ParamsPanel';
 import { configureMonacoTheme, STUDIO_THEME_NAME, handleEditorMount } from '../../studio/utils/monacoTheme';
 import { API_BASE_URL } from '../../config/api';
 import { fillCascadeTemplate } from './utils/cascadeTemplate';
@@ -101,6 +102,10 @@ const CanvasView = () => {
   const [databases, setDatabases] = useState([{ name: 'memory', type: 'memory' }]);
   const [selectedDatabase, setSelectedDatabase] = useState('memory');
 
+  // Params panel state
+  const [paramsCollapsed, setParamsCollapsed] = useState(true);
+  const [paramsRefreshTrigger, setParamsRefreshTrigger] = useState(0);
+
   const editorRef = useRef(null);
   const monacoRef = useRef(null);
 
@@ -159,6 +164,9 @@ const CanvasView = () => {
       }
 
       setResult(data);
+
+      // Trigger params panel refresh
+      setParamsRefreshTrigger(t => t + 1);
     } catch (err) {
       setError(err.message || 'Failed to execute query');
       setExecutionTime(Date.now() - startTime);
@@ -240,6 +248,9 @@ const CanvasView = () => {
       }
 
       setResult(newResult);
+
+      // Trigger params panel refresh
+      setParamsRefreshTrigger(t => t + 1);
     } catch (err) {
       console.error('Interaction failed:', err);
       setError(err.message || 'Failed to execute interaction');
@@ -361,6 +372,13 @@ const CanvasView = () => {
               options={editorOptions}
             />
           </div>
+          <ParamsPanel
+            database={selectedDatabase}
+            refreshTrigger={paramsRefreshTrigger}
+            collapsed={paramsCollapsed}
+            onToggle={() => setParamsCollapsed(c => !c)}
+            onParamChange={executeQuery}
+          />
         </div>
 
         {/* Result pane */}

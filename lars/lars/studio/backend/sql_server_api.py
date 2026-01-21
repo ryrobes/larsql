@@ -864,3 +864,125 @@ def health_check():
             "error": str(e),
             "traceback": traceback.format_exc()
         }), 500
+
+
+@sql_server_api.route('/api/sql/params/<database>', methods=['GET'])
+def get_session_params(database: str):
+    """
+    Get all parameters for a session/database.
+
+    GET /api/sql/params/<database>
+
+    Returns:
+    {
+      "params": [
+        {"key": "cat", "value": "Electronics", "type": "scalar"},
+        {"key": "dates", "value": {"start": "2024-01-01", "end": "2024-04-30"}, "type": "scalar"},
+        {"key": "selected_items", "value": ["a", "b"], "type": "array"}
+      ],
+      "database": "memory"
+    }
+    """
+    try:
+        from lars.sql_tools.param_store import param_store_list, params_store_get, _params_store, _params_store_lock
+        import json
+
+        # Get scalar params
+        scalar_params = param_store_list(database)
+
+        # Get array params
+        with _params_store_lock:
+            array_params = _params_store.get(database, {})
+
+        # Build combined list
+        params = []
+
+        for key, value in scalar_params.items():
+            # Try to parse JSON values
+            parsed_value = value
+            if value and isinstance(value, str):
+                try:
+                    parsed_value = json.loads(value)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
+            params.append({
+                "key": key,
+                "value": parsed_value,
+                "type": "scalar"
+            })
+
+        for key, values in array_params.items():
+            params.append({
+                "key": key,
+                "value": values,
+                "type": "array"
+            })
+
+        # Sort by key for consistent ordering
+        params.sort(key=lambda p: p["key"])
+
+        return jsonify({
+            "params": params,
+            "database": database
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@sql_server_api.route('/api/sql/params/<database>/<key>', methods=['DELETE'])
+def clear_session_param(database: str, key: str):
+    """
+    Clear a specific parameter for a session.
+
+    DELETE /api/sql/params/<database>/<key>
+
+    Returns:
+    {
+      "success": true,
+      "cleared": "cat"
+    }
+    """
+    try:
+        from lars.sql_tools.param_store import param_store_clear, params_store_clear
+
+        # Clear from both stores (scalar and array)
+        param_store_clear(database, key)
+        params_store_clear(database, key)
+
+        return jsonify({
+            "success": True,
+            "cleared": key
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@sql_server_api.route('/api/sql/params/<database>', methods=['DELETE'])
+def clear_all_session_params(database: str):
+    """
+    Clear all parameters for a session.
+
+    DELETE /api/sql/params/<database>
+
+    Returns:
+    {
+      "success": true,
+      "database": "memory"
+    }
+    """
+    try:
+        from lars.sql_tools.param_store import param_store_clear_session, params_store_clear_session
+
+        param_store_clear_session(database)
+        params_store_clear_session(database)
+
+        return jsonify({
+            "success": True,
+            "database": database
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
