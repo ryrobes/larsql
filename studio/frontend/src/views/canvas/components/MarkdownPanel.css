@@ -1,0 +1,30 @@
+/* ============================================
+   MARKDOWN PANEL
+   ============================================ */
+
+.markdown-panel {
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  padding: 4px;
+}
+
+/* Adjust RichMarkdown inside panel for better fit */
+.markdown-panel .rich-markdown {
+  font-size: 0.9em;
+}
+
+/* Remove top margin from first heading */
+.markdown-panel .rich-markdown > h1:first-child,
+.markdown-panel .rich-markdown > h2:first-child,
+.markdown-panel .rich-markdown > h3:first-child,
+.markdown-panel .rich-markdown > h4:first-child,
+.markdown-panel .rich-markdown > h5:first-child,
+.markdown-panel .rich-markdown > h6:first-child {
+  margin-top: 0;
+}
+
+/* Remove bottom margin from last element */
+.markdown-panel .rich-markdown > *:last-child {
+  margin-bottom: 0;
+}

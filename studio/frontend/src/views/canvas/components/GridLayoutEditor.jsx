@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import GridLayout from 'react-grid-layout';
+import { noCompactor } from 'react-grid-layout/core';
 import { Icon } from '@iconify/react';
 import {
   parsePanelLayout,
@@ -8,8 +9,75 @@ import {
   parseGridSize,
   updateGridSize,
 } from '../utils/sqlPanelLayout';
+import PanelRenderer from './PanelRenderer';
+import { isDataDrivenChart, processDataDrivenChart } from './chartConfigExpander';
 import 'react-grid-layout/css/styles.css';
 import './GridLayoutEditor.css';
+
+/**
+ * Convert API panel format to PanelRenderer format
+ * API gives: { name, data, on_select, ... }
+ * PanelRenderer expects: { name, content, type, ... }
+ */
+function convertPanelForRenderer(apiPanel) {
+  const panelData = apiPanel.data;
+
+  // Detect panel type based on content
+  const isMermaid = Array.isArray(panelData) && panelData.length === 1 && panelData[0]?.mermaid;
+  const isExplicitMetric = Array.isArray(panelData) && panelData.length === 1 && panelData[0]?.format === 'metric';
+  const isSlider = Array.isArray(panelData) && panelData.length === 1 && panelData[0]?.format === 'slider';
+  const isDropdown = Array.isArray(panelData) && panelData.length > 0 && panelData[0]?.format === 'dropdown';
+  const isDateRange = Array.isArray(panelData) && panelData.length === 1 && panelData[0]?.format === 'daterange';
+  const isToggle = Array.isArray(panelData) && panelData.length === 1 && panelData[0]?.format === 'toggle';
+  const isSparkline = Array.isArray(panelData) && panelData.length > 0 && panelData[0]?.format === 'sparkline';
+
+  // Check for data-driven chart
+  const dataDrivenChart = isDataDrivenChart(panelData) ? processDataDrivenChart(panelData) : null;
+
+  const isPlotly = !dataDrivenChart && Array.isArray(panelData) && panelData.length === 1 && panelData[0]?.format === 'plotly';
+  const isVegaLite = !dataDrivenChart && Array.isArray(panelData) && panelData.length === 1 && panelData[0]?.format === 'vega-lite';
+
+  // Auto-metric detection
+  const isAutoMetric = !isMermaid && !isExplicitMetric && !isSlider && !isDropdown && !isDateRange && !isToggle && !isSparkline && !isPlotly && !isVegaLite && !dataDrivenChart &&
+    Array.isArray(panelData) && panelData.length === 1 && (() => {
+      const row = panelData[0];
+      if (!row || typeof row !== 'object') return false;
+      const keys = Object.keys(row).filter(k => k !== 'format');
+      return keys.length === 1;
+    })();
+
+  let panelType = 'data-grid';
+  let panelContent = panelData;
+
+  if (isMermaid) panelType = 'mermaid-graph';
+  else if (isExplicitMetric) panelType = 'metric';
+  else if (isSlider) panelType = 'slider';
+  else if (isDropdown) panelType = 'dropdown';
+  else if (isDateRange) panelType = 'daterange';
+  else if (isToggle) panelType = 'toggle';
+  else if (isSparkline) panelType = 'sparkline';
+  else if (isAutoMetric) panelType = 'metric';
+  else if (dataDrivenChart) {
+    panelType = dataDrivenChart.format;
+    panelContent = [{ format: dataDrivenChart.format, spec: dataDrivenChart.spec }];
+  }
+  else if (isPlotly) panelType = 'plotly';
+  else if (isVegaLite) panelType = 'vega-lite';
+
+  return {
+    name: apiPanel.name,
+    type: panelType,
+    content: panelContent,
+    isAutoMetric,
+    on_select: apiPanel.on_select,
+    multi_select: apiPanel.multi_select,
+    selected_values: apiPanel.selected_values,
+    selected_value: apiPanel.selected_value,
+    select_field: apiPanel.select_field,
+    hide_border: apiPanel.hide_border,
+    hide_title: apiPanel.hide_title,
+  };
+}
 
 /**
  * GridLayoutEditor - Visual drag/drop grid editor for Hyper dashboards
@@ -31,56 +99,60 @@ const GridLayoutEditor = ({
   sql,
   onSqlChange,
   multiPanelData,
-  panelThumbnails = {},
   onInteraction,
   editMode,
   onExitEdit,
 }) => {
-  // Parse layout from SQL
+  // Parse layout from SQL (only used for initialization)
   const parsed = useMemo(() => parsePanelLayout(sql), [sql]);
   const explicitGridSize = useMemo(() => parseGridSize(sql), [sql]);
 
-  // Grid dimensions state - initialize from SQL or parsed
+  // Local layout state - only written to SQL on "Done"
+  const [localLayout, setLocalLayout] = useState(() => toRGLLayout(parsed.panels));
   const [gridCols, setGridCols] = useState(explicitGridSize?.cols || parsed.gridSize.cols);
   const [gridRows, setGridRows] = useState(explicitGridSize?.rows || parsed.gridSize.rows);
 
-  // Update grid size when SQL changes
+  // Re-initialize local state when entering edit mode or SQL changes externally
+  const prevEditMode = React.useRef(editMode);
   useEffect(() => {
-    const newExplicit = parseGridSize(sql);
-    const newParsed = parsePanelLayout(sql);
-    setGridCols(newExplicit?.cols || newParsed.gridSize.cols);
-    setGridRows(newExplicit?.rows || newParsed.gridSize.rows);
-  }, [sql]);
-
-  // Convert to react-grid-layout format
-  const layout = useMemo(() => toRGLLayout(parsed.panels), [parsed.panels]);
+    // Only reset when entering edit mode (not while dragging)
+    if (editMode && !prevEditMode.current) {
+      const newParsed = parsePanelLayout(sql);
+      const newExplicit = parseGridSize(sql);
+      setLocalLayout(toRGLLayout(newParsed.panels));
+      setGridCols(newExplicit?.cols || newParsed.gridSize.cols);
+      setGridRows(newExplicit?.rows || newParsed.gridSize.rows);
+    }
+    prevEditMode.current = editMode;
+  }, [editMode, sql]);
 
   const containerRef = React.useRef(null);
 
   // Fixed cell dimensions for edit mode
-  const CELL_SIZE = 140; // Fixed 100x100 cells
+  const CELL_SIZE = 140;
   const GRID_MARGIN = 10;
-  const EDITOR_COLS = 12; // Fixed large grid for editor canvas
+  const EDITOR_COLS = 12;
 
-  // Calculate GridLayout width based on fixed cell size and editor columns
-  // Formula: width = (cellSize * cols) + (margin * (cols - 1))
   const gridLayoutWidth = (CELL_SIZE * EDITOR_COLS) + (GRID_MARGIN * (EDITOR_COLS - 1));
 
-  // Handle layout change from drag/resize
+  // Handle layout change from drag/resize - only update local state
   const handleLayoutChange = useCallback((newLayout) => {
-    // Update SQL with new positions
-    const updatedSql = updatePanelPositions(sql, newLayout);
-    onSqlChange(updatedSql);
-  }, [sql, onSqlChange]);
+    setLocalLayout(newLayout);
+  }, []);
 
-  // Handle grid size change
+  // Handle grid size change - only update local state
   const handleGridSizeChange = useCallback((newCols, newRows) => {
     setGridCols(newCols);
     setGridRows(newRows);
-    // Update SQL with grid comment
-    const updatedSql = updateGridSize(sql, newCols, newRows);
-    onSqlChange(updatedSql);
-  }, [sql, onSqlChange]);
+  }, []);
+
+  // Apply changes to SQL when "Done" is clicked
+  const handleDone = useCallback(() => {
+    let updatedSql = updatePanelPositions(sql, localLayout);
+    updatedSql = updateGridSize(updatedSql, gridCols, gridRows);
+    // Pass updated SQL to onExitEdit so it can update state and run query atomically
+    onExitEdit(updatedSql);
+  }, [sql, localLayout, gridCols, gridRows, onExitEdit]);
 
   // Build panel content map from executed data
   const panelContentMap = useMemo(() => {
@@ -129,7 +201,7 @@ const GridLayoutEditor = ({
           </label>
         </div>
         <div className="grid-editor-toolbar-right">
-          <button className="grid-editor-done-btn" onClick={onExitEdit}>
+          <button className="grid-editor-done-btn" onClick={handleDone}>
             <Icon icon="mdi:check" width="16" />
             Done
           </button>
@@ -140,31 +212,35 @@ const GridLayoutEditor = ({
       <div className="grid-editor-canvas">
         <GridLayout
           className="grid-layout"
-          layout={layout}
+          layout={localLayout}
           cols={EDITOR_COLS}
           rowHeight={CELL_SIZE}
           width={gridLayoutWidth}
           margin={[GRID_MARGIN, GRID_MARGIN]}
           containerPadding={[0, 0]}
+          compactor={noCompactor}
+          allowOverlap={true}
+          preventCollision={false}
           onLayoutChange={handleLayoutChange}
           isDraggable={true}
           isResizable={true}
           resizeHandles={['se', 'sw', 'ne', 'nw']}
         >
           {parsed.panels.map(panel => {
-            const panelData = panelContentMap[panel.name];
+            const apiPanel = panelContentMap[panel.name];
 
             return (
               <div key={panel.name} className="grid-editor-panel">
-                {panelThumbnails[panel.name] ? (
-                  <img
-                    src={panelThumbnails[panel.name]}
-                    alt={panel.name}
-                    className="grid-panel-thumbnail"
-                  />
-                ) : panelData ? (
-                  <div className="grid-panel-placeholder">
-                    <Icon icon="mdi:image-outline" width="24" />
+                {apiPanel ? (
+                  <div className="grid-panel-scaled-content">
+                    <PanelRenderer
+                      panel={{
+                        ...convertPanelForRenderer(apiPanel),
+                        hide_title: true,
+                        hide_border: true,
+                      }}
+                      onInteraction={null}
+                    />
                   </div>
                 ) : (
                   <div className="grid-panel-placeholder">

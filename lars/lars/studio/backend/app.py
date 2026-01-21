@@ -85,6 +85,7 @@ from credits_api import credits_bp
 from context_assessment_api import context_assessment_bp
 from apps_api import apps_bp
 from sql_trail_api import sql_trail_bp
+from hyper_sql_api import hyper_sql_bp
 from training_api import training_bp
 from catalog_api import catalog_bp
 from watchers_api import watchers_bp
@@ -112,6 +113,8 @@ app.register_blueprint(credits_bp)
 app.register_blueprint(apps_bp)
 # SQL Trail API - query-level analytics for SQL semantic workflows
 app.register_blueprint(sql_trail_bp)
+# Hyper SQL Files API - save/load SQL queries
+app.register_blueprint(hyper_sql_bp)
 # Training API - Universal few-shot learning system
 app.register_blueprint(training_bp)
 # Catalog API - Unified system components browser

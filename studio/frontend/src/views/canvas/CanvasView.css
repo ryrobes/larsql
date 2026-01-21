@@ -117,6 +117,28 @@
   background: #33eeff;
 }
 
+/* Files Button */
+.canvas-file-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid var(--color-border-dim);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.canvas-file-btn:hover {
+  background: rgba(0, 229, 255, 0.1);
+  border-color: var(--color-accent-cyan);
+  color: var(--color-accent-cyan);
+}
+
 /* Database Selector */
 .canvas-db-selector {
   display: flex;
@@ -316,6 +338,26 @@
 .canvas-empty p {
   margin: 0;
   font-size: var(--font-size-sm);
+}
+
+.canvas-empty-clickable {
+  cursor: pointer;
+  padding: 40px;
+  border-radius: var(--radius-lg);
+  transition: all var(--transition-fast);
+}
+
+.canvas-empty-clickable:hover {
+  background: rgba(0, 229, 255, 0.05);
+  color: var(--color-accent-cyan);
+}
+
+.canvas-empty-clickable:hover h3 {
+  color: var(--color-accent-cyan);
+}
+
+.canvas-empty-clickable:active {
+  background: rgba(0, 229, 255, 0.1);
 }
 
 .canvas-error {

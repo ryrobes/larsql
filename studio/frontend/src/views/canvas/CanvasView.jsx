@@ -1,10 +1,10 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Icon } from '@iconify/react';
 import Editor from '@monaco-editor/react';
-import html2canvas from 'html2canvas';
 import CanvasRenderer from './components/CanvasRenderer';
 import GridLayoutEditor from './components/GridLayoutEditor';
 import ParamsPanel from './components/ParamsPanel';
+import SqlFileModal from './components/SqlFileModal';
 import { configureMonacoTheme, STUDIO_THEME_NAME, handleEditorMount } from '../../studio/utils/monacoTheme';
 import { API_BASE_URL } from '../../config/api';
 import { fillCascadeTemplate } from './utils/cascadeTemplate';
@@ -114,8 +114,8 @@ const CanvasView = () => {
   // Layout edit mode
   const [layoutEditMode, setLayoutEditMode] = useState(false);
 
-  // Panel thumbnails for edit mode preview
-  const [panelThumbnails, setPanelThumbnails] = useState({});
+  // SQL Files modal
+  const [showFileModal, setShowFileModal] = useState(false);
 
   const editorRef = useRef(null);
   const monacoRef = useRef(null);
@@ -140,9 +140,11 @@ const CanvasView = () => {
     fetchDatabases();
   }, []);
 
-  // Execute query
-  const executeQuery = useCallback(async () => {
-    if (!sql.trim()) return;
+  // Execute query (optionally with provided SQL to avoid state timing issues)
+  const executeQuery = useCallback(async (overrideSql) => {
+    // Handle case where overrideSql is an event object from onClick
+    const queryToRun = (typeof overrideSql === 'string') ? overrideSql : sql;
+    if (!queryToRun.trim()) return;
 
     setLoading(true);
     setError(null);
@@ -154,7 +156,7 @@ const CanvasView = () => {
       const response = await fetch(`${API_BASE_URL}/api/sql/execute`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: sql, database: selectedDatabase })
+        body: JSON.stringify({ query: queryToRun, database: selectedDatabase })
       });
 
       const data = await response.json();
@@ -179,9 +181,6 @@ const CanvasView = () => {
 
       // Trigger params panel refresh
       setParamsRefreshTrigger(t => t + 1);
-
-      // Schedule thumbnail capture after charts render
-      setTimeout(() => capturePanelThumbnails(), 500);
     } catch (err) {
       setError(err.message || 'Failed to execute query');
       setExecutionTime(Date.now() - startTime);
@@ -189,35 +188,6 @@ const CanvasView = () => {
       setLoading(false);
     }
   }, [sql, selectedDatabase]);
-
-  // Capture panel thumbnails for edit mode preview
-  const capturePanelThumbnails = useCallback(async () => {
-    if (!resultWrapperRef.current) return;
-
-    const panelElements = resultWrapperRef.current.querySelectorAll('[data-panel-name]');
-    if (panelElements.length === 0) return;
-
-    const thumbnails = {};
-
-    for (const panelEl of panelElements) {
-      const panelName = panelEl.getAttribute('data-panel-name');
-      if (!panelName) continue;
-
-      try {
-        const canvas = await html2canvas(panelEl, {
-          scale: 0.5, // Smaller scale for thumbnails
-          logging: false,
-          useCORS: true,
-          backgroundColor: '#0a0a0f',
-        });
-        thumbnails[panelName] = canvas.toDataURL('image/png');
-      } catch (err) {
-        console.warn(`[Hyper] Failed to capture thumbnail for panel "${panelName}":`, err);
-      }
-    }
-
-    setPanelThumbnails(thumbnails);
-  }, []);
 
   // Handle panel interactions (clicks, etc.)
   // Executes the cascade and re-runs the dashboard
@@ -301,6 +271,14 @@ const CanvasView = () => {
     }
   }, [sql, selectedDatabase]);
 
+  // Handle loading a file from the modal
+  const handleLoadFile = useCallback((loadedSql) => {
+    setSql(loadedSql);
+    // Clear previous results when loading a new file
+    setResult(null);
+    setError(null);
+  }, []);
+
   // Handle editor mount
   const handleEditorDidMount = useCallback((editor, monaco) => {
     editorRef.current = editor;
@@ -380,6 +358,14 @@ const CanvasView = () => {
               {executionTime}ms
             </span>
           )}
+          <button
+            className="canvas-file-btn"
+            onClick={() => setShowFileModal(true)}
+            title="Open saved SQL files"
+          >
+            <Icon icon="mdi:folder-open" width="16" />
+            Files
+          </button>
           <button
             className={`canvas-layout-btn ${layoutEditMode ? 'active' : ''}`}
             onClick={() => setLayoutEditMode(m => !m)}
@@ -485,10 +471,10 @@ const CanvasView = () => {
             )}
 
             {!loading && !error && !result && (
-              <div className="canvas-empty">
+              <div className="canvas-empty canvas-empty-clickable" onClick={executeQuery}>
                 <Icon icon="mdi:play-circle-outline" width="48" />
                 <h3>Run a query to see results</h3>
-                <p>Press Ctrl+Enter or click Run</p>
+                <p>Click here, press Ctrl+Enter, or click Run</p>
               </div>
             )}
 
@@ -520,19 +506,29 @@ const CanvasView = () => {
                 sql={sql}
                 onSqlChange={setSql}
                 multiPanelData={multiPanelData}
-                panelThumbnails={panelThumbnails}
                 onInteraction={handleInteraction}
                 editMode={layoutEditMode}
-                onExitEdit={() => {
+                onExitEdit={(updatedSql) => {
+                  if (updatedSql) {
+                    setSql(updatedSql);
+                  }
                   setLayoutEditMode(false);
-                  // Re-run query to apply layout changes
-                  executeQuery();
+                  // Re-run query with the updated SQL directly
+                  executeQuery(updatedSql);
                 }}
               />
             )}
           </div>
         </div>
       </div>
+
+      {/* SQL Files Modal */}
+      <SqlFileModal
+        isOpen={showFileModal}
+        onClose={() => setShowFileModal(false)}
+        onLoad={handleLoadFile}
+        currentSql={sql}
+      />
     </div>
   );
 };

@@ -85,6 +85,11 @@ const CanvasRenderer = ({ data, columns, isCanvas, canvasData, isMultiPanel, mul
         panelData.length > 0 &&
         panelData[0]?.format === 'sparkline';
 
+      // Detect markdown: array with format: "markdown" and code/content/markdown/text/body field
+      const isMarkdown = Array.isArray(panelData) &&
+        panelData.length === 1 &&
+        panelData[0]?.format === 'markdown';
+
       // Detect data-driven chart: multiple rows with format, config, and data columns
       // e.g., SELECT 'vega-lite' as format, {mark: 'bar', x: 'month', y: 'value'} as config, month, value FROM data
       const dataDrivenChart = isDataDrivenChart(panelData) ? processDataDrivenChart(panelData) : null;
@@ -101,7 +106,7 @@ const CanvasRenderer = ({ data, columns, isCanvas, canvasData, isMultiPanel, mul
 
       // Detect auto-metric: single row with single value column
       // (excluding 'format' key if present)
-      const isAutoMetric = !isMermaid && !isExplicitMetric && !isSlider && !isDropdown && !isDateRange && !isToggle && !isSparkline && !isPlotly && !isVegaLite && !dataDrivenChart &&
+      const isAutoMetric = !isMermaid && !isExplicitMetric && !isSlider && !isDropdown && !isDateRange && !isToggle && !isSparkline && !isMarkdown && !isPlotly && !isVegaLite && !dataDrivenChart &&
         Array.isArray(panelData) &&
         panelData.length === 1 &&
         (() => {
@@ -130,6 +135,8 @@ const CanvasRenderer = ({ data, columns, isCanvas, canvasData, isMultiPanel, mul
         panelType = 'toggle';
       } else if (isSparkline) {
         panelType = 'sparkline';
+      } else if (isMarkdown) {
+        panelType = 'markdown';
       } else if (isAutoMetric) {
         panelType = 'metric';
         isAutoMetricFlag = true;

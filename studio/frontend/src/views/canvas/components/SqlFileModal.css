@@ -1,0 +1,382 @@
+/* ============================================
+   SQL FILE MODAL - Save/Load SQL Files
+   ============================================ */
+
+/* Actions Bar */
+.sql-file-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--color-border-dim);
+}
+
+.sql-file-save-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: var(--color-accent-cyan);
+  border: none;
+  border-radius: 6px;
+  color: var(--color-bg-primary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+.sql-file-save-btn:hover:not(:disabled) {
+  background: #33eeff;
+}
+
+.sql-file-save-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.sql-file-back-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: transparent;
+  border: 1px solid var(--color-border-dim);
+  border-radius: 6px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.sql-file-back-btn:hover {
+  border-color: var(--color-accent-cyan);
+  color: var(--color-accent-cyan);
+}
+
+/* Search Input */
+.sql-file-search {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border-dim);
+  border-radius: 6px;
+  transition: all var(--transition-fast);
+}
+
+.sql-file-search:focus-within {
+  border-color: var(--color-accent-cyan);
+  box-shadow: 0 0 0 3px rgba(0, 229, 255, 0.1);
+}
+
+.sql-file-search input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--color-text-primary);
+  font-size: var(--font-size-sm);
+  outline: none;
+}
+
+.sql-file-search input::placeholder {
+  color: var(--color-text-dim);
+}
+
+.sql-file-search-clear {
+  background: transparent;
+  border: none;
+  color: var(--color-text-dim);
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  transition: all var(--transition-fast);
+}
+
+.sql-file-search-clear:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--color-text-primary);
+}
+
+/* Error Display */
+.sql-file-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: rgba(255, 82, 82, 0.1);
+  border: 1px solid rgba(255, 82, 82, 0.3);
+  border-radius: 6px;
+  color: var(--color-accent-red);
+  font-size: var(--font-size-sm);
+  margin-bottom: 16px;
+}
+
+/* Loading State */
+.sql-file-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 60px 20px;
+  color: var(--color-text-muted);
+}
+
+/* Empty State */
+.sql-file-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 60px 20px;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.sql-file-empty p {
+  margin: 0;
+  font-size: var(--font-size-sm);
+}
+
+/* File Count */
+.sql-file-count {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-dim);
+  margin-bottom: 12px;
+  font-family: var(--font-mono);
+}
+
+/* File Grid */
+.sql-file-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+/* File Card */
+.sql-file-card {
+  padding: 14px;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border-dim);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.sql-file-card:hover {
+  border-color: var(--color-accent-cyan);
+  background: rgba(0, 229, 255, 0.05);
+}
+
+.sql-file-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  color: var(--color-accent-cyan);
+}
+
+.sql-file-name {
+  flex: 1;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sql-file-favorite {
+  background: transparent;
+  border: none;
+  color: var(--color-text-dim);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all var(--transition-fast);
+}
+
+.sql-file-favorite:hover {
+  color: var(--color-accent-yellow);
+  background: rgba(255, 215, 0, 0.1);
+}
+
+.sql-file-favorite.active {
+  color: var(--color-accent-yellow);
+}
+
+.sql-file-delete {
+  background: transparent;
+  border: none;
+  color: var(--color-text-dim);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all var(--transition-fast);
+  opacity: 0;
+}
+
+.sql-file-card:hover .sql-file-delete {
+  opacity: 1;
+}
+
+.sql-file-delete:hover {
+  color: var(--color-accent-red);
+  background: rgba(255, 82, 82, 0.1);
+}
+
+.sql-file-description {
+  margin: 0 0 8px 0;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  line-height: 1.4;
+}
+
+.sql-file-preview {
+  margin: 0 0 10px 0;
+  padding: 10px;
+  background: var(--color-bg-primary);
+  border-radius: 4px;
+  font-size: var(--font-size-xxs);
+  font-family: var(--font-mono);
+  color: var(--color-text-dim);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 60px;
+  overflow: hidden;
+  line-height: 1.4;
+}
+
+.sql-file-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  font-size: var(--font-size-xxs);
+  color: var(--color-text-dim);
+}
+
+.sql-file-time {
+  font-family: var(--font-mono);
+}
+
+/* Save Form */
+.sql-file-save-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sql-file-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sql-file-form-field label {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+}
+
+.sql-file-form-field input,
+.sql-file-form-field textarea {
+  padding: 10px 12px;
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border-dim);
+  border-radius: 6px;
+  color: var(--color-text-primary);
+  font-size: var(--font-size-sm);
+  font-family: var(--font-sans);
+  transition: all var(--transition-fast);
+  resize: vertical;
+}
+
+.sql-file-form-field input:focus,
+.sql-file-form-field textarea:focus {
+  outline: none;
+  border-color: var(--color-accent-cyan);
+  box-shadow: 0 0 0 3px rgba(0, 229, 255, 0.1);
+}
+
+.sql-file-form-field input::placeholder,
+.sql-file-form-field textarea::placeholder {
+  color: var(--color-text-dim);
+}
+
+.sql-file-sql-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sql-file-sql-preview label {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+}
+
+.sql-file-sql-preview pre {
+  margin: 0;
+  padding: 12px;
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border-dim);
+  border-radius: 6px;
+  font-size: var(--font-size-xs);
+  font-family: var(--font-mono);
+  color: var(--color-text-muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 120px;
+  overflow-y: auto;
+  line-height: 1.5;
+}
+
+/* Scrollbar */
+.sql-file-grid::-webkit-scrollbar,
+.sql-file-sql-preview pre::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sql-file-grid::-webkit-scrollbar-track,
+.sql-file-sql-preview pre::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.sql-file-grid::-webkit-scrollbar-thumb,
+.sql-file-sql-preview pre::-webkit-scrollbar-thumb {
+  background: rgba(0, 229, 255, 0.3);
+  border-radius: 3px;
+}
+
+.sql-file-grid::-webkit-scrollbar-thumb:hover,
+.sql-file-sql-preview pre::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 229, 255, 0.5);
+}
+
+/* Spinning animation */
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

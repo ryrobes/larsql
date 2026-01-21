@@ -1,6 +1,7 @@
 import React from 'react';
 import { Icon } from '@iconify/react';
 import MermaidPanel from './MermaidPanel';
+import MarkdownPanel from './MarkdownPanel';
 import DataGridPanel from './DataGridPanel';
 import MetricPanel from './MetricPanel';
 import PlotlyPanel from './PlotlyPanel';
@@ -54,6 +55,8 @@ const PanelRenderer = ({ panel, style, onInteraction }) => {
         return 'mdi:toggle-switch';
       case 'sparkline':
         return 'mdi:chart-timeline-variant';
+      case 'markdown':
+        return 'mdi:language-markdown';
       default:
         return 'mdi:text';
     }
@@ -166,6 +169,9 @@ const PanelRenderer = ({ panel, style, onInteraction }) => {
 
       case 'sparkline':
         return <SparklinePanel content={content} />;
+
+      case 'markdown':
+        return <MarkdownPanel content={content} />;
 
       case 'text':
       default:
