@@ -595,6 +595,7 @@ def log_query_complete(
             ALTER TABLE sql_query_log
             UPDATE {set_clause}
             WHERE query_id = '{query_id}'
+            SETTINGS mutations_sync = 1
         """)
 
         logger.debug(f"SQL Trail: Completed query {query_id[:8]} ({status})")
@@ -644,6 +645,7 @@ def log_query_error(
             ALTER TABLE sql_query_log
             UPDATE {set_clause}
             WHERE query_id = '{query_id}'
+            SETTINGS mutations_sync = 1
         """)
 
         logger.debug(f"SQL Trail: Query {query_id[:8]} error: {error_message[:50]}")
@@ -701,6 +703,7 @@ def cleanup_orphaned_sql_queries(max_age_minutes: int = 15) -> int:
                     ALTER TABLE sql_query_log
                     UPDATE status = 'killed', completed_at = now64(6)
                     WHERE query_id = '{query_id}'
+                    SETTINGS mutations_sync = 1
                 """)
                 logger.info(f"SQL Trail: Marked orphaned query {query_id[:8]} (caller={caller_id}) as killed")
             except Exception as e:

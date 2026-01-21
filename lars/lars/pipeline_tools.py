@@ -15,6 +15,42 @@ Usage in cascade YAML:
 
 from typing import Any, Dict, List, Optional
 import json
+import hashlib
+import logging
+
+logger = logging.getLogger(__name__)
+
+# =============================================================================
+# render_canvas Cache - Hash-based memoization for pure transformations
+# =============================================================================
+
+_render_canvas_cache: dict[str, Dict[str, Any]] = {}
+_render_canvas_stats = {'hits': 0, 'misses': 0}
+_RENDER_CANVAS_CACHE_MAX = 500
+
+
+def _render_canvas_cache_key(table: List[Dict], layout_type: str, dim1: int, dim2: int) -> str:
+    """Generate cache key from render_canvas inputs."""
+    # Serialize inputs to a stable string for hashing
+    key_data = json.dumps({
+        'table': table,
+        'layout_type': layout_type,
+        'dim1': dim1,
+        'dim2': dim2
+    }, sort_keys=True, default=str)
+    return hashlib.md5(key_data.encode('utf-8')).hexdigest()
+
+
+def get_render_canvas_cache_stats() -> dict:
+    """Get render_canvas cache statistics."""
+    total = _render_canvas_stats['hits'] + _render_canvas_stats['misses']
+    hit_rate = _render_canvas_stats['hits'] / total if total > 0 else 0
+    return {
+        'hits': _render_canvas_stats['hits'],
+        'misses': _render_canvas_stats['misses'],
+        'size': len(_render_canvas_cache),
+        'hit_rate': f"{hit_rate:.1%}"
+    }
 
 
 def compute_stats(
@@ -605,7 +641,17 @@ def render_canvas(
             PANEL('Chart', 50, 50, chart_data, width := 400, height := 300),
             PANEL('Info', 500, 50, info_data, width := 200, height := 150)
         ) WITH FLOATING(800, 600)
+
+    Note:
+        Results are cached by input hash since this is a pure transformation.
     """
+    # Check cache first - pure function, same inputs = same output
+    cache_key = _render_canvas_cache_key(_table, layout_type, dim1, dim2)
+    if cache_key in _render_canvas_cache:
+        _render_canvas_stats['hits'] += 1
+        logger.debug(f"render_canvas cache HIT (stats: {get_render_canvas_cache_stats()})")
+        return _render_canvas_cache[cache_key]
+
     # Normalize layout_type (may come quoted from SQL)
     layout_type = str(layout_type).strip("'\"").lower()
     is_floating = layout_type == "floating"
@@ -714,12 +760,24 @@ def render_canvas(
         "panels": panels
     }
 
-    return {
+    result = {
         "data": [{
             "canvas": canvas,
             "format": "canvas"
         }]
     }
+
+    # Cache the result
+    if len(_render_canvas_cache) >= _RENDER_CANVAS_CACHE_MAX:
+        # Simple eviction: clear half
+        keys = list(_render_canvas_cache.keys())
+        for k in keys[:len(keys)//2]:
+            del _render_canvas_cache[k]
+    _render_canvas_cache[cache_key] = result
+    _render_canvas_stats['misses'] += 1
+    logger.debug(f"render_canvas cache MISS (stats: {get_render_canvas_cache_stats()})")
+
+    return result
 
 
 def _detect_panel_type(content: Any) -> str:

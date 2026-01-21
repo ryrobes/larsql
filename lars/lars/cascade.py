@@ -1697,6 +1697,15 @@ class CascadeConfig(BaseModel):
     # Use this for meta-cascades that analyze other cascades to prevent self-referential loops
     internal: bool = False
 
+    # Pure cascade flag - enables input-based result caching
+    # When true, the cascade is treated as a pure function:
+    # - Output depends ONLY on inputs (no side effects, no external state)
+    # - Results are cached by input hash
+    # - On cache hit, cascade is NOT launched at all (skips all startup overhead)
+    # Use this for deterministic transformation cascades like render_canvas
+    # IMPORTANT: Only set this for truly pure cascades - incorrect use causes stale results
+    pure: bool = False
+
     # Manifest visibility flag
     # When true, this cascade appears in the Quartermaster's tool selection
     # Cascades are opt-in for manifest visibility - most cascades are internal

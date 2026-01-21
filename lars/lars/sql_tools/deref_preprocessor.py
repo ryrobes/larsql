@@ -46,6 +46,10 @@ def preprocess_deref_cascades(sql: str, session_context: dict) -> str:
 
     Returns:
         SQL with all @cascade() replaced by literal values
+
+    Note:
+        Uses per-query caching: identical @cascade(args) calls within the same
+        query are executed once and the result is reused for all occurrences.
     """
     # Debug logging
     print(f"[DEREF] preprocess_deref_cascades called with sql: {sql[:100]}...")
@@ -58,13 +62,17 @@ def preprocess_deref_cascades(sql: str, session_context: dict) -> str:
 
     print(f"[DEREF] Found @ in sql, checking for patterns...")
 
+    # Per-query cache: key = "cascade_name|arg1|arg2|..." -> escaped result string
+    # This avoids re-executing identical @cascade() calls within the same query
+    deref_cache: dict[str, str] = {}
+
     # Recurse until no more @cascade patterns (handles nested derefs)
     max_iterations = 100  # Safety limit
     iterations = 0
 
     while has_deref_pattern(sql) and iterations < max_iterations:
         prev_sql = sql
-        sql = _process_one_deref(sql, session_context)
+        sql = _process_one_deref(sql, session_context, deref_cache)
         iterations += 1
 
         # If no change was made, stop iterating
@@ -76,6 +84,10 @@ def preprocess_deref_cascades(sql: str, session_context: dict) -> str:
     if iterations >= max_iterations:
         logger.warning("Deref preprocessing hit iteration limit - possible infinite loop")
 
+    # Log cache stats
+    if deref_cache:
+        print(f"[DEREF] Cache stats: {len(deref_cache)} unique calls cached")
+
     return sql
 
 
@@ -86,7 +98,7 @@ def has_deref_pattern(sql: str) -> bool:
     return result
 
 
-def _process_one_deref(sql: str, session_context: dict) -> str:
+def _process_one_deref(sql: str, session_context: dict, deref_cache: dict[str, str]) -> str:
     """Process the first (innermost) @cascade() found in SQL."""
     # Find all candidate positions
     matches = list(DEREF_PATTERN.finditer(sql))
@@ -134,6 +146,18 @@ def _process_one_deref(sql: str, session_context: dict) -> str:
             accessor, expr_end = _parse_accessor(sql, expr_end)
         print(f"[DEREF]   expr_end={expr_end}, accessor={accessor}")
 
+        # Build cache key: cascade_name + args_str + accessor
+        # This uniquely identifies the deref call
+        accessor_str = str(accessor) if accessor else ''
+        cache_key = f"{cascade_name}|{args_str}|{accessor_str}"
+
+        # Check cache first
+        if cache_key in deref_cache:
+            escaped = deref_cache[cache_key]
+            print(f"[DEREF]   CACHE HIT: {escaped}")
+            result = sql[:start] + escaped + sql[expr_end:]
+            return result
+
         # Execute the cascade
         try:
             args = _parse_cascade_args(args_str)
@@ -150,6 +174,10 @@ def _process_one_deref(sql: str, session_context: dict) -> str:
             # SQL-escape and replace
             escaped = _sql_escape(final_value)
             print(f"[DEREF]   escaped: {escaped}")
+
+            # Store in cache for future identical calls in this query
+            deref_cache[cache_key] = escaped
+            print(f"[DEREF]   CACHE STORE: {cache_key[:50]}...")
 
             logger.debug(f"Deref @{cascade_name}({args_str}){accessor or ''} -> {escaped}")
 

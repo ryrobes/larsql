@@ -5,6 +5,8 @@ import DataGridPanel from './DataGridPanel';
 import MetricPanel from './MetricPanel';
 import PlotlyPanel from './PlotlyPanel';
 import VegaLitePanel from './VegaLitePanel';
+import SliderPanel from './SliderPanel';
+import DropdownPanel from './DropdownPanel';
 import TextPanel from './TextPanel';
 import './PanelRenderer.css';
 
@@ -39,6 +41,10 @@ const PanelRenderer = ({ panel, style, onInteraction }) => {
         return 'mdi:chart-line';
       case 'vega-lite':
         return 'mdi:chart-bar';
+      case 'slider':
+        return 'mdi:tune-vertical';
+      case 'dropdown':
+        return 'mdi:form-dropdown';
       default:
         return 'mdi:text';
     }
@@ -106,6 +112,26 @@ const PanelRenderer = ({ panel, style, onInteraction }) => {
             selectedValues={selected_values}
             selectedValue={selected_value}
             selectField={select_field}
+          />
+        );
+
+      case 'slider':
+        return (
+          <SliderPanel
+            content={content}
+            onChange={on_select ? handleDataClick : null}
+            interactive={!!on_select}
+            selectedValue={selected_value}
+          />
+        );
+
+      case 'dropdown':
+        return (
+          <DropdownPanel
+            content={content}
+            onChange={on_select ? handleDataClick : null}
+            interactive={!!on_select}
+            selectedValue={selected_value}
           />
         );
 

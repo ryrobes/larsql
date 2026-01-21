@@ -60,7 +60,7 @@ sql_function:
 cells:
   - name: extract_triples
     #model: google/gemini-3-flash-preview
-    model: x-ai/grok-4
+    #model: x-ai/grok-4
     instructions: |
       Extract knowledge graph triples from this text.
 
@@ -151,24 +151,24 @@ cells:
       Example valid output:
       [{"subject": "John", "predicate": "works_at", "object": "Acme"}, {"subject": "John", "predicate": "emailed", "object": "Jane"}]
   
-    takes:
-      evaluator_instructions: |
-        Evaluate these 3 responses. Pick the best based on the request and the data.
-        Output: ``` WINNER: [0, 1, or 2] REASONING: [1-2 sentences] ```'
-      evaluator_model: x-ai/grok-4.1-fast
-      factor: 3
-      #model_strategy: round_robin
-      models:
-      # - anthropic/claude-sonnet-4.5
-      # - openai/gpt-5.2
-      - x-ai/grok-4.1-fast
-      # - amazon/nova-premier-v1
-      # - anthropic/claude-opus-4.5
-      # - meta-llama/llama-3.1-405b-instruct
-      # - google/gemini-3-pro-preview
-      #- ollama/gpt-oss:20b
-      mutate: true
-      mutation_mode: rewrite
+    # takes:
+    #   evaluator_instructions: |
+    #     Evaluate these 3 responses. Pick the best based on the request and the data.
+    #     Output: ``` WINNER: [0, 1, or 2] REASONING: [1-2 sentences] ```'
+    #   evaluator_model: x-ai/grok-4.1-fast
+    #   factor: 3
+    #   #model_strategy: round_robin
+    #   models:
+    #   # - anthropic/claude-sonnet-4.5
+    #   # - openai/gpt-5.2
+    #   - x-ai/grok-4.1-fast
+    #   # - amazon/nova-premier-v1
+    #   # - anthropic/claude-opus-4.5
+    #   # - meta-llama/llama-3.1-405b-instruct
+    #   # - google/gemini-3-pro-preview
+    #   #- ollama/gpt-oss:20b
+    #   mutate: true
+    #   mutation_mode: rewrite
 
     rules:
       max_turns: 2

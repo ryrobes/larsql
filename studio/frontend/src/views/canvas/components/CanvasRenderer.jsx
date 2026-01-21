@@ -60,6 +60,16 @@ const CanvasRenderer = ({ data, columns, isCanvas, canvasData, isMultiPanel, mul
         panelData.length === 1 &&
         panelData[0]?.format === 'metric';
 
+      // Detect slider: single-row array with format: "slider"
+      const isSlider = Array.isArray(panelData) &&
+        panelData.length === 1 &&
+        panelData[0]?.format === 'slider';
+
+      // Detect dropdown: array with format: "dropdown" (can have multiple rows for options)
+      const isDropdown = Array.isArray(panelData) &&
+        panelData.length > 0 &&
+        panelData[0]?.format === 'dropdown';
+
       // Detect data-driven chart: multiple rows with format, config, and data columns
       // e.g., SELECT 'vega-lite' as format, {mark: 'bar', x: 'month', y: 'value'} as config, month, value FROM data
       const dataDrivenChart = isDataDrivenChart(panelData) ? processDataDrivenChart(panelData) : null;
@@ -76,7 +86,7 @@ const CanvasRenderer = ({ data, columns, isCanvas, canvasData, isMultiPanel, mul
 
       // Detect auto-metric: single row with single value column
       // (excluding 'format' key if present)
-      const isAutoMetric = !isMermaid && !isExplicitMetric && !isPlotly && !isVegaLite && !dataDrivenChart &&
+      const isAutoMetric = !isMermaid && !isExplicitMetric && !isSlider && !isDropdown && !isPlotly && !isVegaLite && !dataDrivenChart &&
         Array.isArray(panelData) &&
         panelData.length === 1 &&
         (() => {
@@ -95,6 +105,10 @@ const CanvasRenderer = ({ data, columns, isCanvas, canvasData, isMultiPanel, mul
         panelType = 'mermaid-graph';
       } else if (isExplicitMetric) {
         panelType = 'metric';
+      } else if (isSlider) {
+        panelType = 'slider';
+      } else if (isDropdown) {
+        panelType = 'dropdown';
       } else if (isAutoMetric) {
         panelType = 'metric';
         isAutoMetricFlag = true;

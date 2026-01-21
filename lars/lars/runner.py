@@ -5042,52 +5042,59 @@ Refinement directive: {reforge_config.honing_prompt}
             logger = logging.getLogger(__name__)
             logger.debug(f"Could not create session state: {e}")
 
-        # Save cascade definition and inputs for perfect replay
+        # Save cascade definition and inputs for perfect replay (async - fire and forget)
+        def _save_cascade_session():
+            try:
+                from .db_adapter import get_db
+                from datetime import datetime
+                import yaml
+                import json
+
+                db = get_db()
+
+                # Read original cascade file contents (preserve YAML/JSON as-is)
+                if isinstance(self.config_path, str):
+                    # It's a file path - read raw contents
+                    with open(self.config_path, 'r') as f:
+                        cascade_def_raw = f.read()
+                else:
+                    # It's an inline dict - dump to YAML (preserves all data)
+                    cascade_def_raw = yaml.dump(self.config_path, default_flow_style=False, sort_keys=False)
+
+                # Serialize input data to JSON (small, simple data structure)
+                input_json = json.dumps(input_data if input_data else {}, indent=2)
+
+                # Get config path (ClickHouse String type doesn't support None)
+                config_path_str = str(self.config_path) if isinstance(self.config_path, str) else ''
+
+                # Insert into cascade_sessions table using insert_rows method
+                db.insert_rows(
+                    'cascade_sessions',
+                    [{
+                        'session_id': self.session_id,
+                        'cascade_id': self.config.cascade_id,
+                        'cascade_definition': cascade_def_raw,  # Store raw YAML/JSON, not parsed/re-serialized
+                        'input_data': input_json,
+                        'config_path': config_path_str,
+                        'created_at': datetime.now(),
+                        'parent_session_id': self.parent_session_id or '',  # ClickHouse doesn't support None for String type
+                        'depth': self.depth,
+                        'caller_id': self.caller_id or '',
+                        'invocation_metadata_json': json.dumps(self.invocation_metadata) if self.invocation_metadata else '{}'
+                    }],
+                    columns=['session_id', 'cascade_id', 'cascade_definition', 'input_data', 'config_path', 'created_at', 'parent_session_id', 'depth', 'caller_id', 'invocation_metadata_json']
+                )
+            except Exception as e:
+                # Don't fail cascade if cascade_sessions save fails (table might not exist yet)
+                logger = logging.getLogger(__name__)
+                logger.debug(f"Could not save cascade definition to cascade_sessions: {e}")
+
+        # Submit to tracking executor (fire-and-forget)
         try:
-            from .db_adapter import get_db
-            from datetime import datetime
-            import yaml
-            import json
-            import sys
-
-            db = get_db()
-
-            # Read original cascade file contents (preserve YAML/JSON as-is)
-            if isinstance(self.config_path, str):
-                # It's a file path - read raw contents
-                with open(self.config_path, 'r') as f:
-                    cascade_def_raw = f.read()
-            else:
-                # It's an inline dict - dump to YAML (preserves all data)
-                cascade_def_raw = yaml.dump(self.config_path, default_flow_style=False, sort_keys=False)
-
-            # Serialize input data to JSON (small, simple data structure)
-            input_json = json.dumps(input_data if input_data else {}, indent=2)
-
-            # Get config path (ClickHouse String type doesn't support None)
-            config_path_str = str(self.config_path) if isinstance(self.config_path, str) else ''
-
-            # Insert into cascade_sessions table using insert_rows method
-            db.insert_rows(
-                'cascade_sessions',
-                [{
-                    'session_id': self.session_id,
-                    'cascade_id': self.config.cascade_id,
-                    'cascade_definition': cascade_def_raw,  # Store raw YAML/JSON, not parsed/re-serialized
-                    'input_data': input_json,
-                    'config_path': config_path_str,
-                    'created_at': datetime.now(),
-                    'parent_session_id': self.parent_session_id or '',  # ClickHouse doesn't support None for String type
-                    'depth': self.depth,
-                    'caller_id': self.caller_id or '',
-                    'invocation_metadata_json': json.dumps(self.invocation_metadata) if self.invocation_metadata else '{}'
-                }],
-                columns=['session_id', 'cascade_id', 'cascade_definition', 'input_data', 'config_path', 'created_at', 'parent_session_id', 'depth', 'caller_id', 'invocation_metadata_json']
-            )
-        except Exception as e:
-            # Don't fail cascade if cascade_sessions save fails (table might not exist yet)
-            logger = logging.getLogger(__name__)
-            logger.debug(f"Could not save cascade definition to cascade_sessions: {e}")
+            from .session_state import _get_tracking_executor
+            _get_tracking_executor().submit(_save_cascade_session)
+        except Exception:
+            pass  # If executor not available, skip async save
 
         # Compute cascade-level genus_hash for analytics and trending
         try:

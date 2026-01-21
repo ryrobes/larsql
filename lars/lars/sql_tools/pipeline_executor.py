@@ -31,6 +31,107 @@ from .pipeline_parser import PipelineStage, ChooseStage, ChooseBranch
 
 log = logging.getLogger(__name__)
 
+# =============================================================================
+# Pure Cascade Cache
+# =============================================================================
+# For cascades with `pure: true` flag, we cache results by input hash.
+# This allows skipping cascade launch entirely when inputs match.
+# Key insight: pure cascades have no side effects - output depends ONLY on inputs.
+#
+# Uses SemanticCache for cross-process caching:
+# - L1: In-memory dict (fast, per-process)
+# - L2: ClickHouse table (persistent, cross-process)
+
+_pure_cascade_stats = {'hits': 0, 'misses': 0}
+
+
+def _normalize_pure_cascade_inputs(inputs: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Normalize inputs for pure cascade caching.
+
+    Removes execution metadata and ensures deterministic ordering for cache key generation.
+
+    Args:
+        inputs: Raw input dict
+
+    Returns:
+        Normalized input dict suitable for caching
+    """
+    cache_inputs = {}
+    for k, v in inputs.items():
+        # Skip execution context - it's metadata, not semantic input
+        if k == '_pipeline_context':
+            continue
+        # For _table, sort rows for order-independence
+        if k == '_table' and isinstance(v, list):
+            # Sort by JSON representation of each row for deterministic ordering
+            try:
+                sorted_rows = sorted(v, key=lambda row: json.dumps(row, sort_keys=True, default=str))
+                cache_inputs[k] = sorted_rows
+            except Exception:
+                cache_inputs[k] = v  # Fallback if sorting fails
+        else:
+            cache_inputs[k] = v
+    return cache_inputs
+
+
+def _pure_cascade_cache_get(cascade_name: str, inputs: Dict[str, Any]) -> Tuple[bool, Any]:
+    """
+    Check pure cascade cache for cached result.
+
+    Uses SemanticCache for L1 (in-memory) + L2 (ClickHouse) caching.
+
+    Args:
+        cascade_name: Name of the cascade
+        inputs: Input dict
+
+    Returns:
+        Tuple of (found, result) - found=True if cache hit
+    """
+    from .cache_adapter import get_cache
+
+    # Normalize inputs (remove metadata, sort table rows for deterministic keys)
+    normalized_inputs = _normalize_pure_cascade_inputs(inputs)
+
+    # Use a special function name prefix for pure cascade results
+    cache_fn_name = f"__pure_cascade__{cascade_name}"
+
+    cache = get_cache()
+    found, result, _ = cache.get(cache_fn_name, normalized_inputs)
+
+    if found:
+        _pure_cascade_stats['hits'] += 1
+        log.info(f"[pipeline] PURE CACHE HIT for {cascade_name} (hits={_pure_cascade_stats['hits']})")
+        return True, result
+
+    return False, None
+
+
+def _pure_cascade_cache_set(cascade_name: str, inputs: Dict[str, Any], result: Any) -> None:
+    """
+    Store result in pure cascade cache.
+
+    Uses SemanticCache for L1 (in-memory) + L2 (ClickHouse) caching.
+
+    Args:
+        cascade_name: Name of the cascade
+        inputs: Input dict (used to compute key)
+        result: Result to cache
+    """
+    from .cache_adapter import get_cache
+
+    # Normalize inputs (remove metadata, sort table rows for deterministic keys)
+    normalized_inputs = _normalize_pure_cascade_inputs(inputs)
+
+    # Use a special function name prefix for pure cascade results
+    cache_fn_name = f"__pure_cascade__{cascade_name}"
+
+    cache = get_cache()
+    cache.set(cache_fn_name, normalized_inputs, result, result_type="JSON")
+
+    _pure_cascade_stats['misses'] += 1
+    log.info(f"[pipeline] PURE CACHE STORE for {cascade_name} (misses={_pure_cascade_stats['misses']})")
+
 
 def _get_dataframe_schema(df: pd.DataFrame) -> Tuple[List[str], List[str]]:
     """
@@ -901,21 +1002,40 @@ def execute_pipeline_stages(
         try:
             from ..runner import LARSRunner
             from .. import _register_all_skills
+            from ..semantic_sql.executor import _extract_cascade_output
 
             _register_all_skills()
 
-            stage_session_id = f"{session_id}_stage_{idx}"
-            runner = LARSRunner(
-                cascade_entry.cascade_path,
-                session_id=stage_session_id,
-                caller_id=caller_id
-            )
+            # Check for pure cascade cache (skips cascade launch entirely on hit)
+            is_pure = cascade_entry.config.get('pure', False)
+            output = None
 
-            result = runner.run(input_data=cascade_inputs)
+            if is_pure:
+                found, cached_output = _pure_cascade_cache_get(stage.name, cascade_inputs)
+                if found:
+                    output = cached_output
+                    print(f"[pipeline] ⚡ PURE CACHE HIT: {stage.name} - skipping cascade launch")
+                    log.info(f"[pipeline] Stage {stage.name} PURE CACHE HIT - skipping cascade launch")
+                else:
+                    print(f"[pipeline] ❌ PURE CACHE MISS: {stage.name} - will run cascade")
 
-            # Extract output from cascade
-            from ..semantic_sql.executor import _extract_cascade_output
-            output = _extract_cascade_output(result)
+            if output is None:
+                # Cache miss or not pure - run cascade normally
+                stage_session_id = f"{session_id}_stage_{idx}"
+                runner = LARSRunner(
+                    cascade_entry.cascade_path,
+                    session_id=stage_session_id,
+                    caller_id=caller_id
+                )
+
+                result = runner.run(input_data=cascade_inputs)
+
+                # Extract output from cascade
+                output = _extract_cascade_output(result)
+
+                # Cache result for pure cascades
+                if is_pure:
+                    _pure_cascade_cache_set(stage.name, cascade_inputs, output)
 
             # Deserialize back to DataFrame
             current_df = _deserialize_result(output, current_df)
@@ -1103,21 +1223,40 @@ def execute_pipeline_with_into(
         try:
             from ..runner import LARSRunner
             from .. import _register_all_skills
+            from ..semantic_sql.executor import _extract_cascade_output
 
             _register_all_skills()
 
-            stage_session_id = f"{session_id}_stage_{idx}"
-            runner = LARSRunner(
-                cascade_entry.cascade_path,
-                session_id=stage_session_id,
-                caller_id=caller_id
-            )
+            # Check for pure cascade cache (skips cascade launch entirely on hit)
+            is_pure = cascade_entry.config.get('pure', False)
+            output = None
 
-            result = runner.run(input_data=cascade_inputs)
+            if is_pure:
+                found, cached_output = _pure_cascade_cache_get(stage.name, cascade_inputs)
+                if found:
+                    output = cached_output
+                    print(f"[pipeline] ⚡ PURE CACHE HIT: {stage.name} - skipping cascade launch")
+                    log.info(f"[pipeline] Stage {stage.name} PURE CACHE HIT - skipping cascade launch")
+                else:
+                    print(f"[pipeline] ❌ PURE CACHE MISS: {stage.name} - will run cascade")
 
-            # Extract output from cascade
-            from ..semantic_sql.executor import _extract_cascade_output
-            output = _extract_cascade_output(result)
+            if output is None:
+                # Cache miss or not pure - run cascade normally
+                stage_session_id = f"{session_id}_stage_{idx}"
+                runner = LARSRunner(
+                    cascade_entry.cascade_path,
+                    session_id=stage_session_id,
+                    caller_id=caller_id
+                )
+
+                result = runner.run(input_data=cascade_inputs)
+
+                # Extract output from cascade
+                output = _extract_cascade_output(result)
+
+                # Cache result for pure cascades
+                if is_pure:
+                    _pure_cascade_cache_set(stage.name, cascade_inputs, output)
 
             # Deserialize back to DataFrame
             current_df = _deserialize_result(output, current_df)

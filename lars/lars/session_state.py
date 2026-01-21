@@ -23,10 +23,44 @@ from dataclasses import dataclass, field
 from typing import Optional, Any, Dict, List
 from datetime import datetime, timezone
 from enum import Enum
+from concurrent.futures import ThreadPoolExecutor
 import json
 import threading
 import time
+import atexit
 
+# =============================================================================
+# Async Tracking Executor
+# =============================================================================
+# Shared thread pool for fire-and-forget ClickHouse tracking operations.
+# Pre-creates worker threads to avoid per-operation thread creation overhead.
+# All session state writes (except final COMPLETED/ERROR) use this for non-blocking I/O.
+
+_tracking_executor: Optional[ThreadPoolExecutor] = None
+_executor_lock = threading.Lock()
+
+
+def _get_tracking_executor() -> ThreadPoolExecutor:
+    """Get or create the shared tracking executor (lazy init, thread-safe)."""
+    global _tracking_executor
+    if _tracking_executor is None:
+        with _executor_lock:
+            if _tracking_executor is None:
+                _tracking_executor = ThreadPoolExecutor(
+                    max_workers=4,
+                    thread_name_prefix="lars_tracking"
+                )
+                # Ensure clean shutdown on process exit
+                atexit.register(_shutdown_tracking_executor)
+    return _tracking_executor
+
+
+def _shutdown_tracking_executor():
+    """Shutdown the tracking executor gracefully."""
+    global _tracking_executor
+    if _tracking_executor is not None:
+        _tracking_executor.shutdown(wait=False)
+        _tracking_executor = None
 
 
 def _utcnow() -> datetime:
@@ -298,7 +332,9 @@ class SessionStateManager:
             self._cache[session_id] = state
 
         if self.use_db:
-            self._save_state(state)
+            # Use sync=True for terminal states to ensure they persist before process exit
+            is_terminal = status in (SessionStatus.COMPLETED, SessionStatus.ERROR, SessionStatus.CANCELLED)
+            self._save_state(state, sync=is_terminal)
 
     def set_blocked(
         self,
@@ -563,8 +599,25 @@ class SessionStateManager:
     # Database Operations
     # =========================================================================
 
-    def _save_state(self, state: SessionState):
-        """Save session state to ClickHouse."""
+    def _save_state(self, state: SessionState, sync: bool = False):
+        """
+        Save session state to ClickHouse.
+
+        Args:
+            state: SessionState to persist
+            sync: If True, block until write completes. If False (default),
+                  submit to background thread pool for fire-and-forget execution.
+                  Use sync=True for final COMPLETED/ERROR states to ensure they persist.
+        """
+        if sync:
+            self._save_state_sync(state)
+        else:
+            # Fire-and-forget via thread pool
+            executor = _get_tracking_executor()
+            executor.submit(self._save_state_sync, state)
+
+    def _save_state_sync(self, state: SessionState):
+        """Save session state to ClickHouse (synchronous)."""
         try:
             from .db_adapter import get_db
             db = get_db()

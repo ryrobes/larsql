@@ -47,6 +47,66 @@ Both transform into:
 from typing import Any, Optional, List, Tuple
 from dataclasses import dataclass
 from enum import Enum
+import hashlib
+import logging
+
+logger = logging.getLogger(__name__)
+
+# =============================================================================
+# Rewrite Cache - Hash-based memoization for pure string transformations
+# =============================================================================
+
+# Cache: query_hash -> rewritten_sql
+_rewrite_cache: dict[str, str] = {}
+_cache_stats = {'hits': 0, 'misses': 0}
+_CACHE_MAX_SIZE = 1000  # Prevent unbounded growth
+
+
+def _cache_key(sql: str) -> str:
+    """Generate cache key from SQL string."""
+    return hashlib.md5(sql.encode('utf-8')).hexdigest()
+
+
+def _cache_get(sql: str) -> Optional[str]:
+    """Get cached rewrite result."""
+    key = _cache_key(sql)
+    if key in _rewrite_cache:
+        _cache_stats['hits'] += 1
+        return _rewrite_cache[key]
+    return None
+
+
+def _cache_put(sql: str, result: str) -> None:
+    """Store rewrite result in cache."""
+    # Simple eviction: clear half when full
+    if len(_rewrite_cache) >= _CACHE_MAX_SIZE:
+        keys = list(_rewrite_cache.keys())
+        for k in keys[:len(keys)//2]:
+            del _rewrite_cache[k]
+        logger.debug(f"Canvas rewrite cache evicted {len(keys)//2} entries")
+
+    key = _cache_key(sql)
+    _rewrite_cache[key] = result
+    _cache_stats['misses'] += 1
+
+
+def get_cache_stats() -> dict:
+    """Get cache statistics."""
+    total = _cache_stats['hits'] + _cache_stats['misses']
+    hit_rate = _cache_stats['hits'] / total if total > 0 else 0
+    return {
+        'hits': _cache_stats['hits'],
+        'misses': _cache_stats['misses'],
+        'size': len(_rewrite_cache),
+        'hit_rate': f"{hit_rate:.1%}"
+    }
+
+
+def clear_cache() -> None:
+    """Clear the rewrite cache."""
+    _rewrite_cache.clear()
+    _cache_stats['hits'] = 0
+    _cache_stats['misses'] = 0
 
 
 class LayoutType(Enum):
@@ -219,9 +279,19 @@ def rewrite_canvas_syntax(sql: str, _duckdb_conn=None) -> str:
 
     Returns:
         Rewritten SQL query
+
+    Note:
+        Results are cached by query hash since rewriting is a pure transformation.
+        The @param_get() calls pass through unchanged and are evaluated later.
     """
     if not has_canvas_syntax(sql):
         return sql
+
+    # Check cache first - rewriting is pure, so same input = same output
+    cached = _cache_get(sql)
+    if cached is not None:
+        logger.debug(f"Canvas rewrite cache HIT (stats: {get_cache_stats()})")
+        return cached
 
     # Tokenize
     tokens = tokenize(sql)
@@ -261,7 +331,13 @@ def rewrite_canvas_syntax(sql: str, _duckdb_conn=None) -> str:
     # Build rewritten query
     rewritten = _build_rewritten_query(canvas_def, with_prefix)
 
-    return leading_part + rewritten
+    result = leading_part + rewritten
+
+    # Cache the result for future identical queries
+    _cache_put(sql, result)
+    logger.debug(f"Canvas rewrite cache MISS - stored (stats: {get_cache_stats()})")
+
+    return result
 
 
 def _find_canvas_structure(tokens: List[Token]) -> Optional[Tuple[int, int, List[Token], LayoutType, int, int]]:

@@ -1,5 +1,6 @@
 cascade_id: pipeline_render_canvas
 internal: true
+pure: true  # Output depends ONLY on inputs - enables cascade-level caching that skips launch entirely
 description: |
   PIPELINE cascade for composing multiple visualization panels into a canvas layout.
 
@@ -55,7 +56,7 @@ sql_function:
     - "THEN RENDER_CANVAS('{{ layout_type }}')"
     - "THEN RENDER_CANVAS('{{ layout_type }}', {{ dim1 }})"
     - "THEN RENDER_CANVAS('{{ layout_type }}', {{ dim1 }}, {{ dim2 }})"
-  cache: false
+  cache: true
 
 cells:
   - name: render
