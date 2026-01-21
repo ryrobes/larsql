@@ -558,14 +558,22 @@ def render_canvas(
             layout_type: "grid"
             dim1: Number of grid columns
             dim2: Number of grid rows
-            _table columns: name, content, col, row, colspan, rowspan
+            _table columns: name, content, col, row, colspan, rowspan,
+                           [on_select, multi_select, hide_border, hide_title]
 
     FLOATING Layout (pixel-based):
         Args:
             layout_type: "floating"
             dim1: Canvas width in pixels
             dim2: Canvas height in pixels
-            _table columns: name, content, x, y, width, height
+            _table columns: name, content, x, y, width, height,
+                           [on_select, multi_select, hide_border, hide_title]
+
+    Optional columns (both layouts):
+        on_select: Cascade template for click interactions (e.g., "@param_set('cat', label)")
+        multi_select: Boolean, true for checkbox-style multi-select
+        hide_border: Boolean, true to hide panel border
+        hide_title: Boolean, true to hide panel header
 
     Returns:
         Dict with 'data' key containing single row with canvas JSON:
@@ -580,10 +588,16 @@ def render_canvas(
         }
 
     Example SQL usage:
-        -- GRID layout
+        -- GRID layout with basic panels
         SELECT * FROM CANVAS(
             PANEL('Graph', 1, 1, graph_data),
             PANEL('Table', 2, 1, table_data)
+        ) WITH GRID(2, 1)
+
+        -- GRID layout with interactive panels
+        SELECT * FROM CANVAS(
+            PANEL('Filter', 1, 1, categories, on_select := '@param_set(''cat'', category)'),
+            PANEL('Chart', 2, 1, chart_data, hide_border := true, hide_title := true)
         ) WITH GRID(2, 1)
 
         -- FLOATING layout
@@ -660,6 +674,24 @@ def render_canvas(
                 int(row_data.get("colspan", 1)),
                 int(row_data.get("rowspan", 1))
             ]
+
+        # Interaction options
+        on_select = row_data.get("on_select")
+        if on_select and on_select != "NULL":
+            panel["on_select"] = str(on_select)
+            panel["multi_select"] = bool(row_data.get("multi_select", False))
+            # Extract select_field from template: @param_set('key', field) -> field
+            # This is used for toggle/deselect detection
+            import re
+            match = re.search(r"@param_set\s*\(\s*['\"][^'\"]+['\"]\s*,\s*(\w+)\s*\)", on_select)
+            if match:
+                panel["select_field"] = match.group(1)
+
+        # Display options
+        if row_data.get("hide_border"):
+            panel["hide_border"] = True
+        if row_data.get("hide_title"):
+            panel["hide_title"] = True
 
         panels.append(panel)
 

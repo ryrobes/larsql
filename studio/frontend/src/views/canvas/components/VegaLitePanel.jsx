@@ -36,6 +36,9 @@ const VegaLitePanel = ({ content, onClick, interactive, selectedValue, selectFie
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // Debug: log props on render
+  console.log('[VegaLitePanel] Render props:', { interactive, selectedValue, selectField });
+
   // Extract and parse the Vega-Lite spec
   const spec = useMemo(() => {
     try {
@@ -159,11 +162,25 @@ const VegaLitePanel = ({ content, onClick, interactive, selectedValue, selectFie
               // Remove internal Vega fields
               delete clickedData._vgsid_;
 
+              // Debug: log click and selection state
+              console.log('[VegaLitePanel] Click:', {
+                clickedData,
+                selectField,
+                selectedValue,
+                clickedFieldValue: selectField ? clickedData[selectField] : 'N/A'
+              });
+
               // Check if this is a toggle-off (clicking already selected item)
               if (selectField && selectedValue !== null && selectedValue !== undefined) {
                 const clickedFieldValue = String(clickedData[selectField]);
+                console.log('[VegaLitePanel] Deselect check:', {
+                  clickedFieldValue,
+                  selectedValue: String(selectedValue),
+                  match: clickedFieldValue === String(selectedValue)
+                });
                 if (clickedFieldValue === String(selectedValue)) {
                   // This is a deselect
+                  console.log('[VegaLitePanel] Triggering deselect');
                   onClick({ ...clickedData, _isDeselect: true });
                   return;
                 }

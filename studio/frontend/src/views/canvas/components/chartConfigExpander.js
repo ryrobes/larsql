@@ -274,6 +274,8 @@ export function expandPlotlyConfig(config, data) {
       trace.values = values ? getColumn(values) : [];
       trace.labels = labels ? getColumn(labels) : [];
       trace.hole = config.hole || 0; // 0 for pie, 0.4 for donut
+      // Store original row data for click handling (maps label back to original columns)
+      trace.customdata = data;
       break;
 
     case 'heatmap':
@@ -288,6 +290,7 @@ export function expandPlotlyConfig(config, data) {
       trace.x = x ? getColumn(x) : [];
       trace.y = y ? getColumn(y) : [];
       trace.mode = mode || 'markers';
+      trace.customdata = data; // Store original row data for click handling
       if (color) {
         trace.marker = { color: getColumn(color) };
       }
@@ -298,6 +301,7 @@ export function expandPlotlyConfig(config, data) {
     default:
       trace.x = x ? getColumn(x) : [];
       trace.y = y ? getColumn(y) : [];
+      trace.customdata = data; // Store original row data for click handling
       if (type === 'line') {
         trace.type = 'scatter';
         trace.mode = mode || 'lines';
@@ -310,6 +314,7 @@ export function expandPlotlyConfig(config, data) {
           name,
           x: x ? groupData.map(row => row[x]) : [],
           y: y ? groupData.map(row => row[y]) : [],
+          customdata: groupData, // Store original row data for each trace
         }));
         return {
           data: traces,

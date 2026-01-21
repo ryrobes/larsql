@@ -197,12 +197,19 @@ def rewrite_lars_syntax(query: str, duckdb_conn=None) -> str:
         if has_pipeline:
             pipeline = parse_pipeline_syntax(inner_query)
             if pipeline and pipeline.stages:
-                from lars.sql_explain import explain_pipeline_query
-                result = explain_pipeline_query(
-                    pipeline=pipeline,
-                    original_query=inner_query,
-                    duckdb_conn=duckdb_conn
-                )
+                try:
+                    from lars.sql_explain import explain_pipeline_query
+                    result = explain_pipeline_query(
+                        pipeline=pipeline,
+                        original_query=inner_query,
+                        duckdb_conn=duckdb_conn
+                    )
+                except Exception as e:
+                    # If pipeline explain fails, fall back to semantic query explain
+                    # This ensures we always return an explain plan, not execute the query
+                    import logging
+                    logging.getLogger(__name__).warning(f"[explain] Pipeline explain failed, falling back: {e}")
+                    result = explain_semantic_query(inner_query, duckdb_conn)
             else:
                 # Pipeline parse failed, fall through to semantic query
                 result = explain_semantic_query(inner_query, duckdb_conn)

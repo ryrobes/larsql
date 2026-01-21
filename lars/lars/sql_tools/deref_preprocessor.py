@@ -63,8 +63,15 @@ def preprocess_deref_cascades(sql: str, session_context: dict) -> str:
     iterations = 0
 
     while has_deref_pattern(sql) and iterations < max_iterations:
+        prev_sql = sql
         sql = _process_one_deref(sql, session_context)
         iterations += 1
+
+        # If no change was made, stop iterating
+        # (remaining @ patterns are inside strings or otherwise not processable)
+        if sql == prev_sql:
+            print(f"[DEREF] No change made in iteration {iterations}, stopping")
+            break
 
     if iterations >= max_iterations:
         logger.warning("Deref preprocessing hit iteration limit - possible infinite loop")

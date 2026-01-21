@@ -15,6 +15,26 @@ FLOATING Layout (pixel-based):
       PANEL('Info', 500, 50, info_data, width := 200, height := 150)
     ) WITH FLOATING(800, 600)
 
+PANEL() supports these kwargs:
+    Layout (GRID):
+        colspan := 2          -- Span multiple columns
+        rowspan := 2          -- Span multiple rows
+    Layout (FLOATING):
+        width := 400          -- Panel width in pixels
+        height := 300         -- Panel height in pixels
+    Interaction:
+        on_select := '@param_set(''cat'', category)'    -- Click handler (single-select)
+        on_select_multi := '@params_set(''ids'', id)'   -- Click handler (multi-select)
+    Display:
+        hide_border := true   -- Remove panel border
+        hide_title := true    -- Hide panel header
+
+Example with interactive panels:
+    SELECT * FROM CANVAS(
+      PANEL('Filter', 1, 1, categories, on_select := '@param_set(''cat'', category)'),
+      PANEL('Chart', 2, 1, chart_data, hide_border := true, hide_title := true)
+    ) WITH GRID(2, 1)
+
 Both transform into:
     WITH
       ... (existing CTEs),
@@ -24,7 +44,7 @@ Both transform into:
     -- or RENDER_CANVAS('floating', width, height)
 """
 
-from typing import Optional, List, Tuple
+from typing import Any, Optional, List, Tuple
 from dataclasses import dataclass
 from enum import Enum
 
@@ -47,6 +67,12 @@ class PanelDef:
     # FLOATING mode
     width: Optional[int] = None
     height: Optional[int] = None
+    # Interaction options
+    on_select: Optional[str] = None  # e.g., "@param_set('cat', label)"
+    multi_select: bool = False  # True for ON_SELECT[], False for ON_SELECT
+    # Display options
+    hide_border: bool = False
+    hide_title: bool = False
 
 
 @dataclass
@@ -496,6 +522,10 @@ def _parse_panel_args(tokens: List[Token]) -> Optional[PanelDef]:
     rowspan = 1
     width = None
     height = None
+    on_select = None
+    multi_select = False
+    hide_border = False
+    hide_title = False
 
     for arg_tokens in args[4:]:
         kwarg = _parse_kwarg(arg_tokens)
@@ -510,6 +540,15 @@ def _parse_panel_args(tokens: List[Token]) -> Optional[PanelDef]:
                 width = int(value)
             elif key_lower == 'height':
                 height = int(value)
+            elif key_lower == 'on_select':
+                on_select = str(value)
+            elif key_lower == 'on_select_multi':
+                on_select = str(value)
+                multi_select = True
+            elif key_lower == 'hide_border':
+                hide_border = bool(value)
+            elif key_lower == 'hide_title':
+                hide_title = bool(value)
 
     return PanelDef(
         name=name,
@@ -519,7 +558,11 @@ def _parse_panel_args(tokens: List[Token]) -> Optional[PanelDef]:
         colspan=colspan,
         rowspan=rowspan,
         width=width,
-        height=height
+        height=height,
+        on_select=on_select,
+        multi_select=multi_select,
+        hide_border=hide_border,
+        hide_title=hide_title,
     )
 
 
@@ -557,8 +600,15 @@ def _extract_identifier_value(tokens: List[Token]) -> Optional[str]:
     return result if result else None
 
 
-def _parse_kwarg(tokens: List[Token]) -> Optional[Tuple[str, str]]:
-    """Parse a key := value kwarg from tokens."""
+def _parse_kwarg(tokens: List[Token]) -> Optional[Tuple[str, Any]]:
+    """
+    Parse a key := value kwarg from tokens.
+
+    Supports:
+    - Numbers: colspan := 2
+    - Strings: on_select := '@param_set(...)'
+    - Booleans: hide_border := true
+    """
     key = None
     value = None
     saw_assign = False
@@ -568,11 +618,31 @@ def _parse_kwarg(tokens: List[Token]) -> Optional[Tuple[str, str]]:
             key = tok.value
         elif tok.type == 'symbol' and tok.value == ':=':
             saw_assign = True
-        elif saw_assign and tok.type == 'number':
-            value = tok.value
-            break
+        elif saw_assign and value is None:
+            if tok.type == 'number':
+                value = int(float(tok.value))
+                break
+            elif tok.type == 'string':
+                # Remove quotes
+                s = tok.value
+                if len(s) >= 2 and s[0] in ('"', "'") and s[-1] == s[0]:
+                    value = s[1:-1]
+                else:
+                    value = s
+                break
+            elif tok.type == 'word':
+                # Boolean: true/false
+                word_lower = tok.value.lower()
+                if word_lower == 'true':
+                    value = True
+                elif word_lower == 'false':
+                    value = False
+                else:
+                    # Could be an identifier reference
+                    value = tok.value
+                break
 
-    if key and value and saw_assign:
+    if key and value is not None and saw_assign:
         return (key, value)
     return None
 
@@ -641,38 +711,52 @@ def _build_rewritten_query(canvas_def: CanvasDef, with_prefix: str) -> str:
             f"  )"
         )
 
+        # Build interaction/display options (common to both layouts)
+        on_select_sql = f"'{panel.on_select}'" if panel.on_select else "NULL"
+        multi_select_sql = "true" if panel.multi_select else "false"
+        hide_border_sql = "true" if panel.hide_border else "false"
+        hide_title_sql = "true" if panel.hide_title else "false"
+
         # Build the SELECT for the panels union
         if is_floating:
-            # FLOATING: x, y, width, height
+            # FLOATING: x, y, width, height, + options
             if i == 0:
                 panel_selects.append(
                     f"    SELECT '{panel.name}' as name, "
                     f"(SELECT _content FROM {cte_name}) as content, "
                     f"{panel.pos1} as x, {panel.pos2} as y, "
-                    f"{panel.width} as width, {panel.height} as height"
+                    f"{panel.width} as width, {panel.height} as height, "
+                    f"{on_select_sql} as on_select, {multi_select_sql} as multi_select, "
+                    f"{hide_border_sql} as hide_border, {hide_title_sql} as hide_title"
                 )
             else:
                 panel_selects.append(
                     f"    SELECT '{panel.name}', "
                     f"(SELECT _content FROM {cte_name}), "
                     f"{panel.pos1}, {panel.pos2}, "
-                    f"{panel.width}, {panel.height}"
+                    f"{panel.width}, {panel.height}, "
+                    f"{on_select_sql}, {multi_select_sql}, "
+                    f"{hide_border_sql}, {hide_title_sql}"
                 )
         else:
-            # GRID: col, row, colspan, rowspan
+            # GRID: col, row, colspan, rowspan, + options
             if i == 0:
                 panel_selects.append(
                     f"    SELECT '{panel.name}' as name, "
                     f"(SELECT _content FROM {cte_name}) as content, "
                     f"{panel.pos1} as col, {panel.pos2} as row, "
-                    f"{panel.colspan} as colspan, {panel.rowspan} as rowspan"
+                    f"{panel.colspan} as colspan, {panel.rowspan} as rowspan, "
+                    f"{on_select_sql} as on_select, {multi_select_sql} as multi_select, "
+                    f"{hide_border_sql} as hide_border, {hide_title_sql} as hide_title"
                 )
             else:
                 panel_selects.append(
                     f"    SELECT '{panel.name}', "
                     f"(SELECT _content FROM {cte_name}), "
                     f"{panel.pos1}, {panel.pos2}, "
-                    f"{panel.colspan}, {panel.rowspan}"
+                    f"{panel.colspan}, {panel.rowspan}, "
+                    f"{on_select_sql}, {multi_select_sql}, "
+                    f"{hide_border_sql}, {hide_title_sql}"
                 )
 
     # Build the _canvas_panels CTE

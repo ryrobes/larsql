@@ -420,6 +420,9 @@ def explain_semantic_query(
         fingerprint=fingerprint,
     )
 
+    # Extract LIMIT clause for row estimation (if present)
+    estimated_rows = _extract_limit_from_query(query)
+
     # Analyze for prewarm opportunities (scalar semantic function calls)
     from lars.sql_tools.prewarm_analyzer import analyze_query_for_prewarm
     prewarm_specs = analyze_query_for_prewarm(query)
@@ -431,7 +434,24 @@ def explain_semantic_query(
             duckdb_conn=duckdb_conn,
             execute_distinct=execute_distinct
         )
+        # Adjust LLM calls based on LIMIT if available
+        if estimated_rows and operation.estimated_llm_calls == 1:
+            operation = _adjust_operation_row_count(operation, estimated_rows)
         result.operations.append(operation)
+
+    # Fallback: Detect scalar semantic functions via regex (catches what sqlglot misses)
+    try:
+        scalar_funcs = _detect_scalar_semantic_functions_fallback(query)
+        existing_funcs = {op.function.lower() for op in result.operations}
+        for scalar_spec in scalar_funcs:
+            if scalar_spec['function'].lower() not in existing_funcs:
+                operation = _create_scalar_operation_fallback(scalar_spec)
+                # Adjust LLM calls based on LIMIT if available
+                if estimated_rows:
+                    operation = _adjust_operation_row_count(operation, estimated_rows)
+                result.operations.append(operation)
+    except Exception as e:
+        log.debug(f"[explain] Failed to detect scalar functions (fallback): {e}")
 
     # Analyze LLM aggregate functions (SUMMARIZE, TOPICS, SENTIMENT_AGG, etc.)
     aggregate_specs = _detect_llm_aggregates(query)
@@ -619,6 +639,9 @@ def explain_pipeline_query(
         rewritten_sql=original_query,
     )
 
+    # Extract LIMIT clause for row estimation (from base SQL)
+    estimated_rows = _extract_limit_from_query(pipeline.base_sql)
+
     # 1. Analyze base SQL for semantic operations (scalar functions)
     try:
         from lars.sql_tools.prewarm_analyzer import analyze_query_for_prewarm
@@ -626,6 +649,9 @@ def explain_pipeline_query(
 
         for spec in prewarm_specs:
             operation = _analyze_semantic_operation(spec, duckdb_conn, execute_distinct)
+            # Adjust LLM calls based on LIMIT if available
+            if estimated_rows and operation.estimated_llm_calls == 1:
+                operation = _adjust_operation_row_count(operation, estimated_rows)
             result.operations.append(operation)
     except Exception as e:
         log.debug(f"[explain] Failed to analyze base SQL operations: {e}")
@@ -635,6 +661,9 @@ def explain_pipeline_query(
         lateral_funcs = _detect_lateral_semantic_functions(pipeline.base_sql)
         for lateral_spec in lateral_funcs:
             operation = _create_lateral_operation(lateral_spec)
+            # Adjust LLM calls based on LIMIT if available
+            if estimated_rows:
+                operation = _adjust_operation_row_count(operation, estimated_rows)
             result.operations.append(operation)
     except Exception as e:
         log.debug(f"[explain] Failed to detect LATERAL functions: {e}")
@@ -647,6 +676,9 @@ def explain_pipeline_query(
         for scalar_spec in scalar_funcs:
             if scalar_spec['function'].lower() not in existing_funcs:
                 operation = _create_scalar_operation_fallback(scalar_spec)
+                # Adjust LLM calls based on LIMIT if available
+                if estimated_rows:
+                    operation = _adjust_operation_row_count(operation, estimated_rows)
                 result.operations.append(operation)
     except Exception as e:
         log.debug(f"[explain] Failed to detect scalar functions (fallback): {e}")
@@ -775,6 +807,64 @@ def _analyze_pipeline_stage(stage, index: int) -> PipelineStageExplain:
 # ============================================================================
 # Analysis Helpers
 # ============================================================================
+
+def _extract_limit_from_query(sql: str) -> Optional[int]:
+    """
+    Extract LIMIT value from a SQL query for row estimation.
+
+    Returns:
+        The LIMIT value if found, None otherwise.
+    """
+    import re
+
+    # Match LIMIT followed by a number (with optional whitespace)
+    # Must not be inside a string or comment
+    # Simple approach: find LIMIT at word boundary followed by digits
+    match = re.search(r'\bLIMIT\s+(\d+)\b', sql, re.IGNORECASE)
+    if match:
+        try:
+            return int(match.group(1))
+        except ValueError:
+            pass
+
+    return None
+
+
+def _adjust_operation_row_count(operation: 'SemanticOperation', row_count: int) -> 'SemanticOperation':
+    """
+    Create a copy of a SemanticOperation with adjusted row count estimates.
+
+    Args:
+        operation: Original operation
+        row_count: Estimated number of rows
+
+    Returns:
+        New SemanticOperation with adjusted estimates
+    """
+    # Estimate cost per call (use historical or model-based)
+    cost_per_call = operation.historical_cost_per_call if operation.historical_cost_per_call > 0 else 0.0001
+
+    return SemanticOperation(
+        function=operation.function,
+        cascade_path=operation.cascade_path,
+        model=operation.model,
+        cells=operation.cells,
+        takes=operation.takes,
+        arg_expression=operation.arg_expression,
+        distinct_query=operation.distinct_query,
+        distinct_count=operation.distinct_count or row_count,
+        cache_hits=operation.cache_hits,
+        cache_total=operation.cache_total,
+        cache_hit_rate=operation.cache_hit_rate,
+        historical_cost_per_call=operation.historical_cost_per_call,
+        historical_cost_stddev=operation.historical_cost_stddev,
+        historical_runs=operation.historical_runs,
+        estimated_llm_calls=row_count,
+        estimated_cost=row_count * cost_per_call,
+        prewarm_eligible=operation.prewarm_eligible,
+        prewarm_reason=operation.prewarm_reason,
+    )
+
 
 def _detect_lateral_semantic_functions(sql: str) -> List[Dict[str, Any]]:
     """
@@ -931,7 +1021,7 @@ def _detect_scalar_semantic_functions_fallback(sql: str) -> List[Dict[str, Any]]
     results = []
     seen = set()
 
-    # Get all SCALAR functions from registry
+    # Get all SCALAR functions from registry (including operator aliases)
     try:
         from lars.semantic_sql.registry import get_sql_function_registry
         registry = get_sql_function_registry()
@@ -939,6 +1029,7 @@ def _detect_scalar_semantic_functions_fallback(sql: str) -> List[Dict[str, Any]]
         scalar_functions = {}
         for name, entry in registry.items():
             if entry.shape == 'SCALAR':
+                # Add the canonical name
                 scalar_functions[name.lower()] = {
                     'name': name,
                     'cascade_path': entry.cascade_path,
@@ -950,6 +1041,19 @@ def _detect_scalar_semantic_functions_fallback(sql: str) -> List[Dict[str, Any]]
                         'name': name,
                         'cascade_path': entry.cascade_path,
                     }
+
+                # ALSO extract function names from operator patterns
+                # Patterns like "TLDR({{ text }})" or "CONDENSE({{ text }}, '{{ focus }}')"
+                if entry.operators:
+                    for operator_pattern in entry.operators:
+                        op_match = re.match(r'^([A-Za-z_][A-Za-z0-9_]*)\s*\(', operator_pattern)
+                        if op_match:
+                            op_func_name = op_match.group(1).lower()
+                            if op_func_name not in scalar_functions:
+                                scalar_functions[op_func_name] = {
+                                    'name': name,  # Map to canonical name
+                                    'cascade_path': entry.cascade_path,
+                                }
 
     except Exception as e:
         log.debug(f"[explain] Could not load SCALAR functions from registry: {e}")

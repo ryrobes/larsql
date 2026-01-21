@@ -611,10 +611,30 @@ def execute_sql():
 
         else:  # records (default)
             # Records format (array of objects)
+            data = _sanitize_for_json(result_df.to_dict('records'))
+
+            # Post-process CANVAS format to add selected_value for interactive panels
+            if len(data) == 1 and data[0].get('format') == 'canvas':
+                canvas_data = data[0].get('canvas', {})
+                panels = canvas_data.get('panels', [])
+                for panel in panels:
+                    on_select = panel.get('on_select')
+                    if on_select:
+                        # Extract param_key and select_field from on_select template
+                        param_key, select_field = _extract_param_key(on_select)
+                        if param_key and select_field:
+                            # Ensure select_field is set on the panel
+                            if not panel.get('select_field'):
+                                panel['select_field'] = select_field
+                            # Look up current param value for single-select panels
+                            from lars.sql_tools.param_store import param_store_get
+                            selected_value = param_store_get(database, param_key)
+                            panel['selected_value'] = selected_value
+
             return jsonify({
                 "success": True,
                 "columns": list(result_df.columns),
-                "data": _sanitize_for_json(result_df.to_dict('records')),
+                "data": data,
                 "row_count": len(result_df),
                 "database": database,
                 "execution_time_ms": execution_time_ms

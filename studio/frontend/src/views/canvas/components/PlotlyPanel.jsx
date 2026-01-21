@@ -78,11 +78,27 @@ const PlotlyPanel = ({ content, onClick, interactive, selectedValue, selectField
 
     const point = event.points[0];
 
+    // Debug: log what we receive from Plotly
+    console.log('[PlotlyPanel] Click event point:', point);
+    console.log('[PlotlyPanel] point.customdata:', point.customdata);
+    console.log('[PlotlyPanel] point.data.customdata:', point.data?.customdata);
+
     // Build data object from clicked point
-    // For pie charts: label and value
-    // For bar/line/scatter: x, y, and any custom data
+    // Start with original row data from customdata (preserves SQL column names)
+    // Then overlay Plotly's standard fields
     const clickedData = {};
 
+    // Merge original row data if available (from customdata)
+    // This gives us the original SQL column names (e.g., 'category' instead of 'label')
+    // Note: point.customdata can be an array (for pie charts) or object (for other charts)
+    if (point.customdata) {
+      const rowData = Array.isArray(point.customdata) ? point.customdata[0] : point.customdata;
+      if (rowData && typeof rowData === 'object') {
+        Object.assign(clickedData, rowData);
+      }
+    }
+
+    // Overlay Plotly's standard fields
     if (point.label !== undefined) {
       // Pie chart - use label field
       clickedData.label = point.label;
@@ -136,6 +152,10 @@ const PlotlyPanel = ({ content, onClick, interactive, selectedValue, selectField
       </div>
     );
   }
+
+  // Debug: log the spec to verify customdata is set
+  console.log('[PlotlyPanel] Rendering spec:', spec);
+  console.log('[PlotlyPanel] First trace customdata:', spec.data?.[0]?.customdata);
 
   return (
     <div className={`plotly-panel ${interactive ? 'plotly-interactive' : ''}`}>

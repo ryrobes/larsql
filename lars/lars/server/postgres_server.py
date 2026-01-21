@@ -6557,12 +6557,12 @@ class ClientConnection:
                     styled_print(f"[{self.session_id}]   {S.WARN} Pipeline EXPLAIN failed: {e}")
                     # Fall through to regular EXPLAIN handling
 
-        # For non-pipeline queries, use the existing rewriter-based EXPLAIN
-        from ..sql_rewriter import rewrite_lars_syntax
-        explain_sql = rewrite_lars_syntax(query, duckdb_conn=self.duckdb_conn)
-
-        # Execute the rewritten explain query
+        # For non-pipeline queries (or if pipeline explain failed), use rewriter-based EXPLAIN
         try:
+            from ..sql_rewriter import rewrite_lars_syntax
+            explain_sql = rewrite_lars_syntax(query, duckdb_conn=self.duckdb_conn)
+
+            # Execute the rewritten explain query
             result_df = self.duckdb_conn.execute(explain_sql).fetchdf()
 
             # Format native DuckDB EXPLAIN results for better readability
@@ -6571,6 +6571,7 @@ class ClientConnection:
             send_execute_results(self.sock, result_df, send_row_description=send_row_description)
             styled_print(f"[{self.session_id}]   {S.OK} Returned EXPLAIN plan (Extended)")
         except Exception as e:
+            styled_print(f"[{self.session_id}]   {S.WARN} EXPLAIN fallback failed: {e}")
             self.sock.sendall(ErrorResponse.encode('ERROR', f"EXPLAIN execution failed: {e}"))
 
     def _handle_pipeline_query(self, pipeline, original_query: str, extended_query_mode: bool = False, send_row_description: bool = True):
@@ -7350,10 +7351,14 @@ class ClientConnection:
 
                 # EXPLAIN queries - return query_plan column without executing the query
                 # Must be checked BEFORE pipeline syntax to avoid executing full pipeline
+                # IMPORTANT: Check original_query (not rewritten query) because rewrite_lars_syntax()
+                # transforms EXPLAIN into SELECT '...' AS query_plan during Parse phase
                 import re
-                if re.match(r'^EXPLAIN[\s(]', query_upper):
+                original_query = portal.get('original_query') or query
+                explain_check = (original_query).upper().strip()
+                if re.match(r'^EXPLAIN[\s(]', explain_check):
                     # Check for FORMAT JSON in EXPLAIN options
-                    is_json = 'FORMAT' in query_upper and 'JSON' in query_upper
+                    is_json = 'FORMAT' in explain_check and 'JSON' in explain_check
                     if is_json:
                         columns = [('QUERY PLAN', 'JSON')]
                     else:

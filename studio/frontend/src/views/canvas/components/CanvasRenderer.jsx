@@ -167,10 +167,10 @@ const CanvasRenderer = ({ data, columns, isCanvas, canvasData, isMultiPanel, mul
 
   // Canvas format: render layout with panels
   if (isCanvas && canvasData) {
-    const { layout, panels } = canvasData;
+    const { layout, panels: rawPanels } = canvasData;
     const isFloating = layout?.type === 'floating';
 
-    if (!panels || panels.length === 0) {
+    if (!rawPanels || rawPanels.length === 0) {
       return (
         <div className="canvas-renderer-empty">
           No panels in canvas
@@ -179,7 +179,7 @@ const CanvasRenderer = ({ data, columns, isCanvas, canvasData, isMultiPanel, mul
     }
 
     // Client-side check for duplicate panel names (prevents React key issues)
-    const panelNames = panels.map(p => p.name);
+    const panelNames = rawPanels.map(p => p.name);
     const duplicates = panelNames.filter((name, idx) => panelNames.indexOf(name) !== idx);
     if (duplicates.length > 0) {
       return (
@@ -189,6 +189,32 @@ const CanvasRenderer = ({ data, columns, isCanvas, canvasData, isMultiPanel, mul
         </div>
       );
     }
+
+    // Process panels to detect data-driven charts (same logic as multi-panel)
+    const panels = rawPanels.map(panel => {
+      const panelData = panel.content;
+
+      // Debug: log panel processing
+      console.log('[CanvasRenderer] Processing panel:', panel.name, 'content type:', typeof panelData);
+      console.log('[CanvasRenderer] isDataDrivenChart:', isDataDrivenChart(panelData));
+
+      // Check for data-driven chart format
+      const dataDrivenChart = isDataDrivenChart(panelData) ? processDataDrivenChart(panelData) : null;
+
+      if (dataDrivenChart) {
+        console.log('[CanvasRenderer] Processed chart:', dataDrivenChart.format);
+        console.log('[CanvasRenderer] Spec customdata:', dataDrivenChart.spec?.data?.[0]?.customdata);
+        // Transform to chart panel
+        return {
+          ...panel,
+          type: dataDrivenChart.format,
+          content: [{ format: dataDrivenChart.format, spec: dataDrivenChart.spec }],
+        };
+      }
+
+      // Keep original panel (already has type from backend)
+      return panel;
+    });
 
     // FLOATING layout: absolute positioning
     if (isFloating) {
