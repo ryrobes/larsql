@@ -684,7 +684,7 @@ def _generate_index_html(artifacts):
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {{
-            --bg-darkest: #0a0a0a;
+            --bg-darkest: #000001;
             --bg-dark: #121212;
             --bg-card: #1a1a1a;
             --border-default: #333;
@@ -883,7 +883,7 @@ def _get_base_styles():
     """Base CSS styles for standalone artifact viewing."""
     return '''
 :root {
-  --bg-darkest: #0a0a0a;
+  --bg-darkest: #000001;
   --bg-dark: #121212;
   --bg-card: #1a1a1a;
   --border-default: #333;
@@ -965,7 +965,7 @@ def _add_navigation_to_artifact(html_content, artifact):
         left: 0;
         right: 0;
         z-index: 9999;
-        background: linear-gradient(135deg, #1a1a1a, #0a0a0a);
+        background: linear-gradient(135deg, #1a1a1a, #000001);
         border-bottom: 1px solid #333;
         padding: 0.75rem 1.5rem;
         display: flex;

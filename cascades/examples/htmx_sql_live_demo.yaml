@@ -36,7 +36,7 @@ cells:
     \ For Plotly - use the indices:\n  const trace = {\n    x: result.rows.map(r =>\
     \ r[stateIdx]),  // state column\n    y: result.rows.map(r => r[countIdx]),  //\
     \ count column\n    type: 'bar',\n    marker: {color: '#a78bfa'}\n  };\n  Plotly.newPlot('chart',\
-    \ [trace], {\n    paper_bgcolor: '#1a1a1a',\n    plot_bgcolor: '#0a0a0a',\n  \
+    \ [trace], {\n    paper_bgcolor: '#1a1a1a',\n    plot_bgcolor: '#000001',\n  \
     \  font: {color: '#e5e7eb'}\n  });\n\n  // For Vega-Lite (needs objects):\n  const\
     \ data = result.rows.map(row =>\n    Object.fromEntries(result.columns.map((col,\
     \ i) => [col, row[i]]))\n  );\n  vegaEmbed('#chart', {\n    data: {values: data},\n\

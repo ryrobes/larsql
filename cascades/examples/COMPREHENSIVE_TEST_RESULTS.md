@@ -91,7 +91,7 @@ decision_points:
 - Artifact ID: `artifact_fa3d3a82e56a`
 - Features:
   - Tabbed navigation (Insights / Top Performers / Recommendations)
-  - Dark theme (#0a0a0a)
+  - Dark theme (#000001)
   - Hover effects
   - Responsive design
 - Saved to ClickHouse `artifacts` table

@@ -65,7 +65,7 @@ var data = [{
 var layout = {
   title: 'Quarterly Sales',
   paper_bgcolor: '#1a1a1a',
-  plot_bgcolor: '#0a0a0a',
+  plot_bgcolor: '#000001',
   font: {color: '#e5e7eb'}
 };
 
@@ -251,7 +251,7 @@ Always use Lars colors:
 // Plotly
 {
   paper_bgcolor: '#1a1a1a',
-  plot_bgcolor: '#0a0a0a',
+  plot_bgcolor: '#000001',
   font: {color: '#e5e7eb'},
   xaxis: {gridcolor: '#333'},
   yaxis: {gridcolor: '#333'}
@@ -349,7 +349,7 @@ data.y.forEach((val, i) => {
 // Ensure you set both backgrounds
 {
   paper_bgcolor: '#1a1a1a',  // Outer area
-  plot_bgcolor: '#0a0a0a',    // Chart area
+  plot_bgcolor: '#000001',    // Chart area
   font: {color: '#e5e7eb'}     // Text color
 }
 ```

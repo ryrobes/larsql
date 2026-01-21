@@ -4248,6 +4248,13 @@ class ClientConnection:
                 self._handle_explain_query(query)
                 return
 
+            # Pre-process CANVAS syntax before pipeline check
+            # CANVAS() rewrites to SQL with THEN RENDER_CANVAS(...) which needs pipeline handling
+            from ..sql_tools.canvas_rewriter import has_canvas_syntax, rewrite_canvas_syntax
+            if has_canvas_syntax(query):
+                query = rewrite_canvas_syntax(query)
+                styled_print(f"[{self.session_id}]   {S.INFO} CANVAS syntax rewritten")
+
             # Handle PIPELINE syntax (THEN/INTO for post-query processing)
             # Syntax: SELECT * FROM table THEN ANALYZE 'prompt' INTO result_table
             from ..sql_tools.pipeline_parser import has_pipeline_syntax, parse_pipeline_syntax
@@ -7376,6 +7383,13 @@ class ClientConnection:
                 # with semantic SQL rewriters that might transform function names (e.g., DEDUPE)
                 from ..sql_tools.pipeline_parser import has_pipeline_syntax, parse_pipeline_syntax
                 original_query = portal.get('original_query') or query
+
+                # Pre-process CANVAS syntax - rewrites to SQL with THEN RENDER_CANVAS(...)
+                from ..sql_tools.canvas_rewriter import has_canvas_syntax, rewrite_canvas_syntax
+                if has_canvas_syntax(original_query):
+                    original_query = rewrite_canvas_syntax(original_query)
+                    styled_print(f"[{self.session_id}]      {S.INFO} CANVAS syntax rewritten (Describe)")
+
                 if has_pipeline_syntax(original_query):
                     styled_print(f"[{self.session_id}]      {S.PIPELINE} PIPELINE query detected in Describe - executing to determine columns")
                     try:
@@ -8119,6 +8133,13 @@ class ClientConnection:
             # Use original_query for pipeline detection to avoid conflicts with semantic rewriters
             from ..sql_tools.pipeline_parser import has_pipeline_syntax, parse_pipeline_syntax
             original_query = portal.get('original_query') or query
+
+            # Pre-process CANVAS syntax - rewrites to SQL with THEN RENDER_CANVAS(...)
+            from ..sql_tools.canvas_rewriter import has_canvas_syntax, rewrite_canvas_syntax
+            if has_canvas_syntax(original_query):
+                original_query = rewrite_canvas_syntax(original_query)
+                styled_print(f"[{self.session_id}]      {S.INFO} CANVAS syntax rewritten (Execute)")
+
             if has_pipeline_syntax(original_query):
                 pipeline = parse_pipeline_syntax(original_query)
                 if pipeline and pipeline.stages:

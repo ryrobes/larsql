@@ -153,7 +153,7 @@ const ParetoLayer = ({ paretoData }) => {
           <polygon
             points={getStarPoints(cx, cy, size, size / 2)}
             fill="#FFD700"
-            stroke="#0a0a0a"
+            stroke="#000001"
             strokeWidth="1"
           />
         </g>
@@ -166,7 +166,7 @@ const ParetoLayer = ({ paretoData }) => {
         cy={cy}
         r={size}
         fill={type === 'frontier' ? payload.color : '#4a5568'}
-        stroke={type === 'frontier' ? '#0a0a0a' : 'none'}
+        stroke={type === 'frontier' ? '#000001' : 'none'}
         strokeWidth="1.5"
         opacity={type === 'frontier' ? 1 : 0.4}
         style={{ cursor: 'pointer' }}

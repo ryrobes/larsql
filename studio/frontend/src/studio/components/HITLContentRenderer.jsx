@@ -268,7 +268,7 @@ function processTemplateVariables(html, vars) {
 function buildIframeDocument(bodyHTML, compact) {
   const baseCSS = `
     :root {
-      --bg-primary: #0a0a0a;
+      --bg-primary: #000001;
       --bg-secondary: #121212;
       --bg-tertiary: #1a1a1a;
       --text-primary: #f1f5f9;

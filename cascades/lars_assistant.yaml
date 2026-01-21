@@ -92,7 +92,7 @@ cells:
     ```html
     <form hx-post="/api/checkpoints/{{ checkpoint_id }}/respond" hx-ext="json-enc" hx-swap="outerHTML">
       <p>Your message here</p>
-      <input name="response[query]" placeholder="Instructions..." style="width:100%;padding:12px;background:#0a0a0a;border:1px solid #333;color:#e5e7eb;border-radius:8px;"/>
+      <input name="response[query]" placeholder="Instructions..." style="width:100%;padding:12px;background:#000001;border:1px solid #333;color:#e5e7eb;border-radius:8px;"/>
       <button type="submit" style="margin-top:12px;padding:10px 24px;background:#a78bfa;color:white;border:none;border-radius:8px;">Continue</button>
     </form>
     ```

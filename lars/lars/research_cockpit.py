@@ -78,7 +78,7 @@ Use html with an embedded form when you need free-form text input:
     <p>Your message to the user here...</p>
     <input type="text" name="response[query]"
            placeholder="Ask a question or give instructions..."
-           style="width: 100%; padding: 12px; background: #0a0a0a;
+           style="width: 100%; padding: 12px; background: #000001;
                   border: 1px solid #333; color: #e5e7eb; border-radius: 8px;" />
     <button type="submit" style="margin-top: 12px; padding: 10px 24px;
             background: #a78bfa; color: white; border: none;
@@ -320,7 +320,7 @@ REFERENCE_TEMPLATES = {
 <form hx-post="/api/checkpoints/{{ checkpoint_id }}/respond" hx-ext="json-enc" hx-swap="outerHTML">
   <input type="text" name="response[query]"
          placeholder="Next question, or leave empty to continue current topic..."
-         style="width: 100%; padding: 12px; background: #0a0a0a; border: 1px solid #333; color: #e5e7eb; border-radius: 8px;" />
+         style="width: 100%; padding: 12px; background: #000001; border: 1px solid #333; color: #e5e7eb; border-radius: 8px;" />
   <button type="submit" style="margin-top: 12px; padding: 10px 24px; background: #a78bfa; color: white; border: none; border-radius: 8px; cursor: pointer;">
     Continue Research
   </button>

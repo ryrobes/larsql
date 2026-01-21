@@ -87,7 +87,7 @@ def create_artifact(
           marker: {color: '#a78bfa'}
         }], {
           paper_bgcolor: '#1a1a1a',
-          plot_bgcolor: '#0a0a0a',
+          plot_bgcolor: '#000001',
           font: {color: '#e5e7eb'}
         });
       }).catch(err => {
@@ -158,7 +158,7 @@ def create_artifact(
                 }], {
                   title: 'Monthly Revenue',
                   paper_bgcolor: '#1a1a1a',
-                  plot_bgcolor: '#0a0a0a',
+                  plot_bgcolor: '#000001',
                   font: {color: '#e5e7eb'}
                 });
 
@@ -171,7 +171,7 @@ def create_artifact(
                 }], {
                   title: 'Growth Rate %',
                   paper_bgcolor: '#1a1a1a',
-                  plot_bgcolor: '#0a0a0a'
+                  plot_bgcolor: '#000001'
                 });
               </script>
             </div>

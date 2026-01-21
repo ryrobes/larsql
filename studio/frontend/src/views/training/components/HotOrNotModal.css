@@ -19,7 +19,7 @@
   height: 100%;
   max-width: 800px;
   max-height: 90vh;
-  background: linear-gradient(180deg, #0a0a0a 0%, #000000 100%);
+  background: linear-gradient(180deg, #000001 0%, #000000 100%);
   border: 1px solid rgba(0, 229, 255, 0.2);
   border-radius: 20px;
   overflow: hidden;

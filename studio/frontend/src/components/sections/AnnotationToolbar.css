@@ -78,7 +78,7 @@
   height: 28px;
   border-radius: 6px;
   border: 1px solid #333;
-  background: #0a0a0a;
+  background: #000001;
   cursor: pointer;
   transition: all 0.15s;
   display: flex;
@@ -110,7 +110,7 @@
   padding: 6px 10px;
   border-radius: 6px;
   border: 1px solid #333;
-  background: #0a0a0a;
+  background: #000001;
   color: #e5e7eb;
   font-size: 0.8rem;
   font-weight: 500;

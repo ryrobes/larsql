@@ -23,7 +23,7 @@ cells:
     \ Plotly is available in the iframe. Use this pattern:\n\n<div id=\"myChart\"\
     ></div>\n<script>\n  var data = [{\n    x: [1, 2, 3, 4],\n    y: [10, 15, 13,\
     \ 17],\n    type: 'scatter'\n  }];\n  var layout = {title: 'My Chart', paper_bgcolor:\
-    \ '#1a1a1a', plot_bgcolor: '#0a0a0a'};\n  Plotly.newPlot('myChart', data, layout,\
+    \ '#1a1a1a', plot_bgcolor: '#000001'};\n  Plotly.newPlot('myChart', data, layout,\
     \ {responsive: true});\n</script>\n\nThen add approval form below the chart.\n\
     When approved/rejected, route to final_report.\n"
 - name: final_report

@@ -7,7 +7,7 @@
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background-color: #0a0a0a;
+  background-color: #000001;
   color: #94a3b8;
   overflow: hidden;
 }
@@ -188,7 +188,7 @@
 
 .catalog-content {
   flex: 1;
-  background-color: #0a0a0a;
+  background-color: #000001;
   overflow: hidden;
   display: flex;
   flex-direction: column;

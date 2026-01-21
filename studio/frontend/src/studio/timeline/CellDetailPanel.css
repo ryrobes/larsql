@@ -172,7 +172,7 @@
   width: 14px;
   height: 14px;
   border: 2px solid rgba(10, 10, 10, 0.3);
-  border-top-color: #0a0a0a;
+  border-top-color: #000001;
   border-radius: 50%;
   animation: cell-detail-spin 0.8s linear infinite;
 }
@@ -242,7 +242,7 @@
 }
 
 .cell-detail-split > .gutter:hover::after {
-  background-color: #0a0a0a;
+  background-color: #000001;
 }
 
 .cell-detail-code-only {

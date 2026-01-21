@@ -346,7 +346,7 @@
 }
 
 .table-row {
-  background: #0a0a0a;
+  background: #000001;
   border-radius: 4px;
   font-size: 12px;
 }
@@ -408,7 +408,7 @@
   flex-direction: column;
   gap: 4px;
   padding: 10px 14px;
-  background: #0a0a0a;
+  background: #000001;
   border: 1px solid #2a2a32;
   border-radius: 6px;
   min-width: 120px;

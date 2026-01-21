@@ -159,7 +159,7 @@ const CostTrendChart = ({ data = [], loading = false, granularity = 'daily', onP
               activeDot={{
                 r: 4,
                 fill: '#00e5ff',
-                stroke: '#0a0a0a',
+                stroke: '#000001',
                 strokeWidth: 2,
                 cursor: onPointClick ? 'pointer' : 'default'
               }}

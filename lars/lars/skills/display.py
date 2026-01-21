@@ -69,7 +69,7 @@ def show_ui(
               var layout = {
                 title: 'Quarterly Sales',
                 paper_bgcolor: '#1a1a1a',
-                plot_bgcolor: '#0a0a0a',
+                plot_bgcolor: '#000001',
                 font: {color: '#e5e7eb'}
               };
               Plotly.newPlot('sales-chart', data, layout, {responsive: true});

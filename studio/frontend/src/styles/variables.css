@@ -9,7 +9,7 @@
      ============================================ */
   --color-bg-primary: #000000;           /* Pure black - main canvas */
   --color-bg-secondary: #000000;         /* Pure black - panels */
-  --color-bg-tertiary: #0a0a0a;          /* Very dark gray - tooltips */
+  --color-bg-tertiary: #000001;          /* Very dark gray - tooltips */
   --color-bg-card: #000000;              /* Pure black - cards */
   --color-bg-input: #000000;             /* Pure black - inputs */
 

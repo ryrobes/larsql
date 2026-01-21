@@ -218,7 +218,7 @@ function RecentRunsSection() {
                               height: '6px',
                               borderRadius: '50%',
                               background: '#f87171',
-                              border: '1px solid #0a0a0a'
+                              border: '1px solid #000001'
                             }}
                             title="Statistical outlier"
                           />

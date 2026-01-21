@@ -83,7 +83,7 @@ def _save_matplotlib_figure(fig, session_id: str, cell_name: str) -> Dict[str, A
     filepath = os.path.join(session_dir, filename)
 
     # Save figure
-    fig.savefig(filepath, dpi=150, bbox_inches='tight', facecolor='#0a0a0a', edgecolor='none')
+    fig.savefig(filepath, dpi=150, bbox_inches='tight', facecolor='#000001', edgecolor='none')
 
     # Close the figure to free memory
     import matplotlib.pyplot as plt

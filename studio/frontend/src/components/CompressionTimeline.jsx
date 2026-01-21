@@ -49,7 +49,7 @@ const CompressionTimeline = ({ turns, config, height = 200 }) => {
     ctx.scale(dpr, dpr);
 
     // Clear
-    ctx.fillStyle = '#0a0a0a';
+    ctx.fillStyle = '#000001';
     ctx.fillRect(0, 0, width, canvasHeight);
 
     // Margins

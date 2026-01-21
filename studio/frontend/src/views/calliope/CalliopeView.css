@@ -11,7 +11,7 @@
   justify-content: center;
   min-height: 100%;
   padding: 24px;
-  background: #0a0a0a;
+  background: #000001;
 }
 
 .welcome-content {
@@ -124,7 +124,7 @@
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: #0a0a0a;
+  background: #000001;
 }
 
 .calliope-split {
@@ -149,7 +149,7 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: #0a0a0a;
+  background: #000001;
   border-right: 1px solid #1a1628;
 }
 
@@ -370,7 +370,7 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: #0a0a0a;
+  background: #000001;
   overflow: hidden;
 }
 
@@ -500,7 +500,7 @@
 
 .spawned-checkpoint-panel {
   border-top: 1px solid #1a1628;
-  background: #0a0a0a;
+  background: #000001;
   display: flex;
   flex-direction: column;
   min-height: 0;

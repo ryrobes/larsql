@@ -199,7 +199,7 @@
 
 .cascade-btn-primary {
   background-color: #00e5ff;
-  color: #0a0a0a;
+  color: #000001;
   border-color: #00e5ff;
 }
 
@@ -235,7 +235,7 @@
   width: 14px;
   height: 14px;
   border: 2px solid rgba(10, 10, 10, 0.3);
-  border-top-color: #0a0a0a;
+  border-top-color: #000001;
   border-radius: 50%;
   animation: cascade-spin 0.8s linear infinite;
 }
@@ -615,7 +615,7 @@
   justify-content: center;
   gap: 12px;
   color: #475569;
-  /* background-color: #0a0a0a; */
+  /* background-color: #000001; */
 }
 
 .cascade-empty-detail p {

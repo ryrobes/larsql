@@ -193,7 +193,7 @@
 
 /* Code Block */
 .detail-code-block {
-  background: #0a0a0a;
+  background: #000001;
   border: 1px solid rgba(100, 116, 139, 0.12);
   border-radius: 6px;
   overflow: hidden;

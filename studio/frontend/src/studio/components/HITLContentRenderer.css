@@ -6,7 +6,7 @@
   position: relative;
   border-radius: 8px;
   overflow: hidden;
-  background: var(--bg-primary, #0a0a0a);
+  background: var(--bg-primary, #000001);
   border: 1px solid var(--border-color, #333);
 }
 
@@ -36,7 +36,7 @@
 
 /* Iframe styling */
 .hitl-renderer-iframe {
-  background: var(--bg-primary, #0a0a0a);
+  background: var(--bg-primary, #000001);
   border-radius: 8px;
 }
 

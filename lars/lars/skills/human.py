@@ -1521,7 +1521,7 @@ def _build_screenshot_html(body_html: str) -> str:
 :root {
   /* Backgrounds */
   --color-bg-primary: #000000;
-  --color-bg-secondary: #0a0a0a;
+  --color-bg-secondary: #000001;
   --color-bg-card: #000000;
   --color-bg-input: #000000;
 

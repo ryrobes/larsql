@@ -4,7 +4,7 @@
   position: absolute;
   width: 580px;
   max-height: 82vh;
-  background: linear-gradient(180deg, #0a0a0a 0%, #000000 100%);
+  background: linear-gradient(180deg, #000001 0%, #000000 100%);
   border: 1px solid rgba(0, 229, 255, 0.3);
   border-radius: 16px;
   overflow: hidden;

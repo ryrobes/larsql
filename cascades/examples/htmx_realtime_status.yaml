@@ -26,10 +26,10 @@ cells:
     \ every 2s -->\n  <div hx-get=\"/api/session/{{ session_id }}/mock-status\"\n\
     \       hx-trigger=\"every 2s\"\n       hx-swap=\"innerHTML\">\n    <span class=\"\
     status-badge\">Checking...</span>\n  </div>\n\n  <!-- Progress bar -->\n  <div\
-    \ style=\"background:#0a0a0a; border-radius:4px; height:20px; margin:16px 0;\"\
+    \ style=\"background:#000001; border-radius:4px; height:20px; margin:16px 0;\"\
     >\n    <div id=\"progress\" style=\"background:#10b981; height:100%; width:0%;\
     \ transition:width 0.5s;\"></div>\n  </div>\n\n  <!-- Activity log -->\n  <div\
-    \ id=\"activity-log\" style=\"background:#0a0a0a; padding:12px; border-radius:4px;\
+    \ id=\"activity-log\" style=\"background:#000001; padding:12px; border-radius:4px;\
     \ height:150px; overflow-y:auto;\">\n    <div>• Starting monitoring...</div>\n\
     \  </div>\n\n  <script>\n    // Simulate progress updates\n    let progress =\
     \ 0;\n    setInterval(() => {\n      progress = Math.min(progress + Math.random()\

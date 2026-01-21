@@ -492,7 +492,7 @@
 }
 
 .spec-yaml-modal {
-  background: #0a0a0a;
+  background: #000001;
   border: 1px solid #1a1628;
   border-radius: 8px;
   width: calc(100vw - 80px);
