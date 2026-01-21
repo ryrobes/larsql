@@ -56,6 +56,60 @@ from .postgres_protocol import (
 )
 
 
+# ============================================================================
+# EXPLAIN Formatting Helper
+# ============================================================================
+
+def _format_native_explain_df(result_df):
+    """
+    Format native DuckDB EXPLAIN results for better readability.
+
+    DuckDB EXPLAIN returns a DataFrame with columns ['explain_key', 'explain_value']:
+    - explain_key: 'physical_plan' (or 'logical_plan' for EXPLAIN (LOGICAL))
+    - explain_value: The actual plan tree as ASCII text
+
+    This function transforms the raw DuckDB output into a single-column result
+    with the plan type label followed by the formatted plan tree.
+
+    For semantic SQL EXPLAIN results (which already have a single 'query_plan' column),
+    this function passes them through unchanged.
+
+    Args:
+        result_df: DataFrame from DuckDB EXPLAIN query
+
+    Returns:
+        DataFrame with single 'query_plan' column containing the formatted plan,
+        or the original DataFrame if it doesn't match the DuckDB EXPLAIN format.
+    """
+    import pandas as pd
+
+    # Check if this is a native DuckDB EXPLAIN result
+    columns = list(result_df.columns)
+
+    if columns == ['explain_key', 'explain_value']:
+        # Native DuckDB EXPLAIN format - format it nicely
+        plan_parts = []
+        for _, row in result_df.iterrows():
+            plan_type = str(row['explain_key'])
+            plan_text = str(row['explain_value'])
+
+            # Format with plan type header
+            # Replace escaped newlines with actual newlines if needed
+            if '\\n' in plan_text:
+                plan_text = plan_text.replace('\\n', '\n')
+
+            plan_parts.append(f"{plan_type}:\n{plan_text}")
+
+        # Combine all plan parts (usually just one, but EXPLAIN ANALYZE may have more)
+        formatted_plan = '\n'.join(plan_parts)
+
+        return pd.DataFrame([{'query_plan': formatted_plan}])
+
+    # Not a DuckDB EXPLAIN format - return unchanged
+    # This handles semantic EXPLAIN results that already have a 'query_plan' column
+    return result_df
+
+
 class ClientConnection:
     """
     Represents a single client connection.
@@ -6437,6 +6491,13 @@ class ClientConnection:
         # Execute the rewritten explain query
         try:
             result_df = self.duckdb_conn.execute(explain_sql).fetchdf()
+
+            # Format native DuckDB EXPLAIN results for better readability
+            # DuckDB returns columns ['explain_key', 'explain_value'] where:
+            # - explain_key is 'physical_plan' (or 'logical_plan' for EXPLAIN ANALYZE)
+            # - explain_value is the actual plan tree text
+            result_df = _format_native_explain_df(result_df)
+
             send_query_results(self.sock, result_df, self.transaction_status)
             styled_print(f"[{self.session_id}]   {S.OK} Returned EXPLAIN plan")
         except Exception as e:
@@ -6503,6 +6564,10 @@ class ClientConnection:
         # Execute the rewritten explain query
         try:
             result_df = self.duckdb_conn.execute(explain_sql).fetchdf()
+
+            # Format native DuckDB EXPLAIN results for better readability
+            result_df = _format_native_explain_df(result_df)
+
             send_execute_results(self.sock, result_df, send_row_description=send_row_description)
             styled_print(f"[{self.session_id}]   {S.OK} Returned EXPLAIN plan (Extended)")
         except Exception as e:

@@ -3,6 +3,8 @@ import { Icon } from '@iconify/react';
 import MermaidPanel from './MermaidPanel';
 import DataGridPanel from './DataGridPanel';
 import MetricPanel from './MetricPanel';
+import PlotlyPanel from './PlotlyPanel';
+import VegaLitePanel from './VegaLitePanel';
 import TextPanel from './TextPanel';
 import './PanelRenderer.css';
 
@@ -33,6 +35,10 @@ const PanelRenderer = ({ panel, style, onInteraction }) => {
         return 'mdi:table';
       case 'metric':
         return 'mdi:counter';
+      case 'plotly':
+        return 'mdi:chart-line';
+      case 'vega-lite':
+        return 'mdi:chart-bar';
       default:
         return 'mdi:text';
     }
@@ -67,6 +73,12 @@ const PanelRenderer = ({ panel, style, onInteraction }) => {
           return <MetricPanel content={value} isAuto={true} />;
         }
         return <MetricPanel content={content} isAuto={false} />;
+
+      case 'plotly':
+        return <PlotlyPanel content={content} />;
+
+      case 'vega-lite':
+        return <VegaLitePanel content={content} />;
 
       case 'data-grid':
         return (

@@ -59,9 +59,19 @@ const CanvasRenderer = ({ data, columns, isCanvas, canvasData, isMultiPanel, mul
         panelData.length === 1 &&
         panelData[0]?.format === 'metric';
 
+      // Detect Plotly chart: single-row array with format: "plotly"
+      const isPlotly = Array.isArray(panelData) &&
+        panelData.length === 1 &&
+        panelData[0]?.format === 'plotly';
+
+      // Detect Vega-Lite chart: single-row array with format: "vega-lite"
+      const isVegaLite = Array.isArray(panelData) &&
+        panelData.length === 1 &&
+        panelData[0]?.format === 'vega-lite';
+
       // Detect auto-metric: single row with single value column
       // (excluding 'format' key if present)
-      const isAutoMetric = !isMermaid && !isExplicitMetric &&
+      const isAutoMetric = !isMermaid && !isExplicitMetric && !isPlotly && !isVegaLite &&
         Array.isArray(panelData) &&
         panelData.length === 1 &&
         (() => {
@@ -82,6 +92,10 @@ const CanvasRenderer = ({ data, columns, isCanvas, canvasData, isMultiPanel, mul
       } else if (isAutoMetric) {
         panelType = 'metric';
         isAutoMetricFlag = true;
+      } else if (isPlotly) {
+        panelType = 'plotly';
+      } else if (isVegaLite) {
+        panelType = 'vega-lite';
       }
 
       // Calculate grid position

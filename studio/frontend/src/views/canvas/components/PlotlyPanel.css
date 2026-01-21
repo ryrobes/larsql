@@ -1,0 +1,55 @@
+/* ============================================
+   PLOTLY PANEL
+   Interactive charts via Plotly.js
+   ============================================ */
+
+.plotly-panel {
+  width: 100%;
+  height: 100%;
+  min-height: 200px;
+}
+
+.plotly-panel .js-plotly-plot {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.plotly-panel .plotly {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Style the modebar to match dark theme */
+.plotly-panel .modebar {
+  top: 4px !important;
+  right: 4px !important;
+}
+
+.plotly-panel .modebar-btn {
+  fill: #64748b !important;
+}
+
+.plotly-panel .modebar-btn:hover {
+  fill: #00e5ff !important;
+}
+
+.plotly-panel .modebar-btn.active {
+  fill: #00e5ff !important;
+}
+
+/* Error state */
+.plotly-panel-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 100%;
+  min-height: 120px;
+  color: var(--color-text-dim, #94a3b8);
+  font-size: var(--font-size-sm, 13px);
+}
+
+.plotly-panel-error svg {
+  opacity: 0.6;
+}

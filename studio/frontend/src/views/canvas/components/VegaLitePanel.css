@@ -1,0 +1,85 @@
+/* ============================================
+   VEGA-LITE PANEL
+   Declarative charts via Vega-Lite
+   ============================================ */
+
+.vega-panel {
+  width: 100%;
+  height: 100%;
+  min-height: 200px;
+  position: relative;
+}
+
+.vega-panel-container {
+  width: 100%;
+  height: 100%;
+}
+
+/* Make the Vega container fill the panel */
+.vega-panel-container .vega-embed {
+  width: 100%;
+  height: 100%;
+}
+
+.vega-panel-container .vega-embed summary {
+  /* Style the actions dropdown */
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  opacity: 0.5;
+  cursor: pointer;
+}
+
+.vega-panel-container .vega-embed summary:hover {
+  opacity: 1;
+}
+
+.vega-panel-container .vega-embed details[open] summary ~ * {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 4px;
+}
+
+.vega-panel-container .vega-embed .vega-actions a {
+  color: #94a3b8;
+  padding: 6px 12px;
+  display: block;
+}
+
+.vega-panel-container .vega-embed .vega-actions a:hover {
+  color: #00e5ff;
+  background: #0f172a;
+}
+
+/* Loading state */
+.vega-panel-loading {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--color-text-dim, #94a3b8);
+  font-size: var(--font-size-sm, 13px);
+}
+
+/* Error state */
+.vega-panel-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 100%;
+  min-height: 120px;
+  color: var(--color-text-dim, #94a3b8);
+  font-size: var(--font-size-sm, 13px);
+}
+
+.vega-panel-error svg {
+  opacity: 0.6;
+}

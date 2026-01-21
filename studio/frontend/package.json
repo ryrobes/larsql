@@ -32,6 +32,9 @@
     "remark-emoji": "^5.0.2",
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
+    "vega": "^6.2.0",
+    "vega-embed": "^7.1.0",
+    "vega-lite": "^6.4.2",
     "zustand": "^5.0.9"
   },
   "devDependencies": {
