@@ -1,6 +1,7 @@
 import React from 'react';
 import PanelRenderer from './PanelRenderer';
 import DataGridPanel from './DataGridPanel';
+import { isDataDrivenChart, processDataDrivenChart } from './chartConfigExpander';
 import './CanvasRenderer.css';
 
 /**
@@ -59,19 +60,23 @@ const CanvasRenderer = ({ data, columns, isCanvas, canvasData, isMultiPanel, mul
         panelData.length === 1 &&
         panelData[0]?.format === 'metric';
 
-      // Detect Plotly chart: single-row array with format: "plotly"
-      const isPlotly = Array.isArray(panelData) &&
+      // Detect data-driven chart: multiple rows with format, config, and data columns
+      // e.g., SELECT 'vega-lite' as format, {mark: 'bar', x: 'month', y: 'value'} as config, month, value FROM data
+      const dataDrivenChart = isDataDrivenChart(panelData) ? processDataDrivenChart(panelData) : null;
+
+      // Detect Plotly chart: single-row array with format: "plotly" (legacy spec format)
+      const isPlotly = !dataDrivenChart && Array.isArray(panelData) &&
         panelData.length === 1 &&
         panelData[0]?.format === 'plotly';
 
-      // Detect Vega-Lite chart: single-row array with format: "vega-lite"
-      const isVegaLite = Array.isArray(panelData) &&
+      // Detect Vega-Lite chart: single-row array with format: "vega-lite" (legacy spec format)
+      const isVegaLite = !dataDrivenChart && Array.isArray(panelData) &&
         panelData.length === 1 &&
         panelData[0]?.format === 'vega-lite';
 
       // Detect auto-metric: single row with single value column
       // (excluding 'format' key if present)
-      const isAutoMetric = !isMermaid && !isExplicitMetric && !isPlotly && !isVegaLite &&
+      const isAutoMetric = !isMermaid && !isExplicitMetric && !isPlotly && !isVegaLite && !dataDrivenChart &&
         Array.isArray(panelData) &&
         panelData.length === 1 &&
         (() => {
@@ -81,9 +86,10 @@ const CanvasRenderer = ({ data, columns, isCanvas, canvasData, isMultiPanel, mul
           return keys.length === 1;
         })();
 
-      // Determine panel type
+      // Determine panel type and content
       let panelType = 'data-grid';
       let isAutoMetricFlag = false;
+      let panelContent = panelData;
 
       if (isMermaid) {
         panelType = 'mermaid-graph';
@@ -92,6 +98,10 @@ const CanvasRenderer = ({ data, columns, isCanvas, canvasData, isMultiPanel, mul
       } else if (isAutoMetric) {
         panelType = 'metric';
         isAutoMetricFlag = true;
+      } else if (dataDrivenChart) {
+        // Data-driven chart: use processed spec
+        panelType = dataDrivenChart.format;
+        panelContent = [{ format: dataDrivenChart.format, spec: dataDrivenChart.spec }];
       } else if (isPlotly) {
         panelType = 'plotly';
       } else if (isVegaLite) {
@@ -116,7 +126,7 @@ const CanvasRenderer = ({ data, columns, isCanvas, canvasData, isMultiPanel, mul
       return {
         name: panel.name,
         type: panelType,
-        content: panelData,
+        content: panelContent,
         gridStyle,
         isAutoMetric: isAutoMetricFlag,
         // Pass through interaction metadata

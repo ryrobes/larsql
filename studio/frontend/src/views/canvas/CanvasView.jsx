@@ -7,44 +7,85 @@ import { API_BASE_URL } from '../../config/api';
 import { fillCascadeTemplate } from './utils/cascadeTemplate';
 import './CanvasView.css';
 
-// Default example query demonstrating reactive panels with ON_SELECT
-// Shows both single-select (click row) and multi-select (checkboxes) modes
-const DEFAULT_QUERY = `-- Reactive Dashboard with Multi-Select
--- ON_SELECT = single-click mode (click row to select)
--- ON_SELECT[] = multi-select mode (checkboxes, toggle values)
+// Default example query demonstrating SQL-native chart specs
+const DEFAULT_QUERY = `-- SQL-Native Charts Demo with Interactive Filters
+-- ON_SELECT[] = multi-select (checkboxes), ON_SELECT = single-select (click row)
+-- Charts use format + config columns - data comes from the query itself
 
-WITH
-  departments AS (
-    SELECT * FROM (VALUES
-      ('Engineering', 12, 450000),
-      ('Marketing', 8, 280000),
-      ('Sales', 15, 520000),
-      ('Support', 6, 180000)
-    ) AS t(dept, headcount, budget)
-  ),
-  employees AS (
-    SELECT * FROM (VALUES
-      ('Alice', 28, 'Engineering', 'Senior'),
-      ('Bob', 34, 'Marketing', 'Lead'),
-      ('Carol', 29, 'Engineering', 'Mid'),
-      ('Dave', 42, 'Sales', 'Director'),
-      ('Eve', 31, 'Support', 'Senior'),
-      ('Frank', 26, 'Engineering', 'Junior'),
-      ('Grace', 38, 'Sales', 'Senior'),
-      ('Henry', 33, 'Marketing', 'Mid')
-    ) AS t(name, age, dept, level)
-  )
+CREATE OR REPLACE TABLE sales AS
+SELECT * FROM (VALUES
+  ('Jan', 'Electronics', 12400, 89),
+  ('Jan', 'Clothing', 8200, 156),
+  ('Jan', 'Food', 15600, 423),
+  ('Feb', 'Electronics', 14100, 102),
+  ('Feb', 'Clothing', 9800, 178),
+  ('Feb', 'Food', 14200, 398),
+  ('Mar', 'Electronics', 15800, 118),
+  ('Mar', 'Clothing', 11200, 201),
+  ('Mar', 'Food', 16800, 445),
+  ('Apr', 'Electronics', 13900, 95),
+  ('Apr', 'Clothing', 12400, 223),
+  ('Apr', 'Food', 18200, 489)
+) AS t(month, category, revenue, units);
 
---- PANEL 'Departments' (1, 1) ON_SELECT[] @params_set('depts', dept)
-SELECT dept, headcount, budget FROM departments;
+--- PANEL 'Categories' (1, 1, 1, 1) ON_SELECT[] @params_set('cats', category)
+SELECT DISTINCT category FROM sales;
 
---- PANEL 'Employees' (2, 1)
-SELECT name, age, level, dept
-FROM employees
-WHERE CASE
-  WHEN len(@params_get('depts')) = 0 THEN true
-  ELSE list_contains(@params_get('depts'), dept)
-END;`;
+--- PANEL 'Months' (2, 1, 1, 1) ON_SELECT @param_set('month', month)
+SELECT DISTINCT month FROM sales;
+
+--- PANEL 'Monthly Trend' (1, 2, 1, 1)
+SELECT
+  'vega-lite' as format,
+  {mark: 'line', x: 'month', y: 'total_revenue', title: 'Monthly Revenue'} as config,
+  month, SUM(revenue) as total_revenue
+FROM sales
+WHERE (CASE WHEN len(@params_get('cats')) = 0 THEN true ELSE list_contains(@params_get('cats'), category) END)
+  AND (CASE WHEN @param_get('month') IS NULL THEN true ELSE month = @param_get('month') END)
+GROUP BY month;
+
+--- PANEL 'Category Breakdown' (2, 2, 1, 1)
+SELECT
+  'plotly' as format,
+  {type: 'pie', values: 'revenue', labels: 'category', title: 'Revenue by Category'} as config,
+  category, SUM(revenue) as revenue
+FROM sales
+WHERE (CASE WHEN len(@params_get('cats')) = 0 THEN true ELSE list_contains(@params_get('cats'), category) END)
+  AND (CASE WHEN @param_get('month') IS NULL THEN true ELSE month = @param_get('month') END)
+GROUP BY category;
+
+--- PANEL 'Revenue by Category' (1, 3, 1, 1)
+SELECT
+  'vega-lite' as format,
+  {
+    mark: {type: 'bar', cornerRadius: 4},
+    encoding: {
+      x: {field: 'category', type: 'nominal', axis: {labelAngle: 0}},
+      y: {field: 'revenue', type: 'quantitative', title: 'Revenue ($)'},
+      color: {field: 'category', type: 'nominal', legend: null}
+    }
+  } as config,
+  category, SUM(revenue) as revenue
+FROM sales
+WHERE (CASE WHEN len(@params_get('cats')) = 0 THEN true ELSE list_contains(@params_get('cats'), category) END)
+  AND (CASE WHEN @param_get('month') IS NULL THEN true ELSE month = @param_get('month') END)
+GROUP BY category;
+
+--- PANEL 'Stacked Area' (2, 3, 1, 1)
+SELECT
+  'vega-lite' as format,
+  {
+    mark: 'area',
+    encoding: {
+      x: {field: 'month', type: 'ordinal'},
+      y: {field: 'revenue', type: 'quantitative', stack: 'zero'},
+      color: {field: 'category', type: 'nominal'}
+    }
+  } as config,
+  month, category, revenue
+FROM sales
+WHERE (CASE WHEN len(@params_get('cats')) = 0 THEN true ELSE list_contains(@params_get('cats'), category) END)
+  AND (CASE WHEN @param_get('month') IS NULL THEN true ELSE month = @param_get('month') END);`;
 
 /**
  * CanvasView - Hypermedia SQL Client

@@ -186,8 +186,22 @@ def rewrite_lars_syntax(query: str, duckdb_conn=None) -> str:
         if duckdb_conn is None:
             return "SELECT 'ERROR: EXPLAIN requires database connection for analysis' AS error"
 
-        # Check if it's LARS MAP/RUN syntax or inline semantic functions
-        if _is_map_run_statement(inner_query):
+        # Check for pipeline syntax (THEN/INTO) first - must be before other checks
+        from lars.sql_tools.pipeline_parser import has_pipeline_syntax, parse_pipeline_syntax
+        if has_pipeline_syntax(inner_query):
+            pipeline = parse_pipeline_syntax(inner_query)
+            if pipeline and pipeline.stages:
+                from lars.sql_explain import explain_pipeline_query
+                result = explain_pipeline_query(
+                    pipeline=pipeline,
+                    original_query=inner_query,
+                    duckdb_conn=duckdb_conn
+                )
+            else:
+                # Pipeline parse failed, fall through to semantic query
+                result = explain_semantic_query(inner_query, duckdb_conn)
+        elif _is_map_run_statement(inner_query):
+            # Check if it's LARS MAP/RUN syntax
             # Parse the LARS statement
             stmt = _parse_lars_statement(inner_query)
 

@@ -214,7 +214,8 @@ const DataGridPanel = ({ content, onRowClick, interactive, multiSelect, selected
     return multiSelect ? 'multiple' : 'single';
   }, [interactive, multiSelect]);
 
-  // Sync selection when selectedValues changes (after initial render)
+  // Sync selection when selectedValues or data changes (after initial render)
+  // We need to re-apply selection when data refreshes, even if selectedValues is unchanged
   useEffect(() => {
     if (!multiSelect || !selectField || !gridApiRef.current) return;
 
@@ -247,9 +248,10 @@ const DataGridPanel = ({ content, onRowClick, interactive, multiSelect, selected
     setTimeout(() => {
       isInitializingRef.current = false;
     }, 0);
-  }, [selectedValues, selectField, multiSelect]);
+  }, [selectedValues, selectField, multiSelect, data]);
 
-  // Sync selection when selectedValue changes (single-select mode)
+  // Sync selection when selectedValue or data changes (single-select mode)
+  // We need to re-apply selection when data refreshes, even if selectedValue is unchanged
   useEffect(() => {
     if (multiSelect || !selectField || !gridApiRef.current) return;
 
@@ -266,7 +268,7 @@ const DataGridPanel = ({ content, onRowClick, interactive, multiSelect, selected
         node.setSelected(shouldBeSelected);
       }
     });
-  }, [selectedValue, selectField, multiSelect]);
+  }, [selectedValue, selectField, multiSelect, data]);
 
   // Empty/invalid states
   if (!data) {

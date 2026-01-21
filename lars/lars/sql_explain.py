@@ -246,6 +246,56 @@ class ExplainResult:
 # Native DuckDB EXPLAIN Helper
 # ============================================================================
 
+def _strip_deref_patterns(sql: str) -> str:
+    """
+    Strip @cascade() deref patterns from SQL for EXPLAIN purposes.
+
+    Deref patterns like @param_get('key') are evaluated at runtime
+    and injected into the query. For EXPLAIN, we replace them with
+    NULL placeholders so DuckDB can parse the query structure.
+
+    Args:
+        sql: SQL that may contain @cascade() patterns
+
+    Returns:
+        SQL with deref patterns replaced by NULL
+    """
+    import re
+
+    # Pattern: @identifier( ... ) with balanced parens
+    # We need to handle nested parens inside the deref call
+    result = sql
+    pattern = re.compile(r'@(\w+)\s*\(')
+
+    max_iterations = 50  # Safety limit
+    for _ in range(max_iterations):
+        match = pattern.search(result)
+        if not match:
+            break
+
+        start = match.start()
+        paren_start = match.end() - 1
+
+        # Find matching close paren
+        depth = 1
+        pos = paren_start + 1
+        while pos < len(result) and depth > 0:
+            if result[pos] == '(':
+                depth += 1
+            elif result[pos] == ')':
+                depth -= 1
+            pos += 1
+
+        if depth == 0:
+            # Replace the entire @cascade(...) with NULL
+            result = result[:start] + 'NULL /*@deref*/' + result[pos:]
+        else:
+            # Unbalanced parens, just break to avoid infinite loop
+            break
+
+    return result
+
+
 def _get_native_duckdb_plan(sql: str, duckdb_conn) -> Optional[str]:
     """
     Get the native DuckDB EXPLAIN output for a SQL query.
@@ -261,16 +311,21 @@ def _get_native_duckdb_plan(sql: str, duckdb_conn) -> Optional[str]:
         Formatted EXPLAIN output string, or None if EXPLAIN fails
     """
     if not duckdb_conn:
-        return None
+        return "(Native plan unavailable: no database connection)"
 
+    rewritten_sql = None
     try:
         # Rewrite the query to replace semantic operators with UDF calls
         from lars.sql_rewriter import rewrite_lars_syntax
 
         rewritten_sql = rewrite_lars_syntax(sql, duckdb_conn=duckdb_conn)
 
-        # Run native EXPLAIN on the rewritten query
-        explain_query = f"EXPLAIN {rewritten_sql}"
+        # Strip @cascade() deref patterns - these are runtime-resolved
+        # and can't be EXPLAINed by DuckDB. Replace with NULL placeholders.
+        explain_sql = _strip_deref_patterns(rewritten_sql)
+
+        # Run native EXPLAIN on the processed query
+        explain_query = f"EXPLAIN {explain_sql}"
         result = duckdb_conn.execute(explain_query)
         rows = result.fetchall()
 
@@ -278,6 +333,10 @@ def _get_native_duckdb_plan(sql: str, duckdb_conn) -> Optional[str]:
         # e.g., ('physical_plan', '┌───────────...┘')
         if rows:
             plan_parts = []
+
+            # Show the rewritten SQL for transparency (full, no truncation)
+            plan_parts.append(f"Rewritten SQL:\n  {rewritten_sql}\n")
+
             for row in rows:
                 if len(row) >= 2:
                     # Format: "plan_type:\n plan_text"
@@ -289,7 +348,27 @@ def _get_native_duckdb_plan(sql: str, duckdb_conn) -> Optional[str]:
             return '\n'.join(plan_parts)
 
     except Exception as e:
-        log.debug(f"[explain] Failed to get native DuckDB plan: {e}")
+        log.warning(f"[explain] Failed to get native DuckDB plan: {e}")
+        # Return helpful error message instead of None
+        error_msg = str(e).split('\n')[0]  # First line only
+
+        lines = []
+        if rewritten_sql and rewritten_sql != sql:
+            lines.append(f"Rewritten SQL:")
+            # Show full rewritten SQL (no truncation)
+            lines.append(f"  {rewritten_sql}")
+            lines.append("")
+
+        if "Catalog Error" in str(e) and "does not exist" in str(e):
+            lines.append(f"(Native plan unavailable: Semantic UDFs not registered)")
+            lines.append(f"  Hint: The DuckDB EXPLAIN requires UDFs like semantic_matches()")
+            lines.append(f"  to be registered. This works in PGwire sessions but not in")
+            lines.append(f"  standalone analysis. The rewritten SQL above shows the query")
+            lines.append(f"  that would be executed after semantic operator substitution.")
+        else:
+            lines.append(f"(Native plan unavailable: {error_msg})")
+
+        return '\n'.join(lines) if lines else None
 
     return None
 
@@ -1718,25 +1797,25 @@ def format_explain_result(result: ExplainResult) -> str:
     if result.rewritten_sql:
         lines.append(f"  │")
         lines.append(f"  ├─ Rewritten SQL:")
-        sql_lines = result.rewritten_sql.split('\n')[:10]
+        sql_lines = result.rewritten_sql.split('\n')
         for sql_line in sql_lines:
             lines.append(f"  │    {sql_line}")
-        if len(result.rewritten_sql.split('\n')) > 10:
-            lines.append("  │    ... (truncated)")
 
-    # Native DuckDB execution plan
+    # Native DuckDB execution plan (data processing after LLM calls)
     if result.native_plan:
         lines.append(f"  │")
-        lines.append(f"  └─ DuckDB Execution Plan:")
+        lines.append(f"  └─ Data Processing Plan (DuckDB):")
+        lines.append(f"      ─────────────────────────────────")
         plan_lines = result.native_plan.split('\n')
-        for plan_line in plan_lines[:20]:  # Limit to 20 lines
+        for plan_line in plan_lines:
             lines.append(f"      {plan_line}")
-        if len(plan_lines) > 20:
-            lines.append("      ... (truncated)")
     else:
+        # Show message if native plan couldn't be generated
+        lines.append(f"  │")
+        lines.append(f"  └─ Data Processing Plan: (not available)")
         # Close the tree if no native plan
-        if lines and lines[-1].startswith("  │"):
-            lines[-1] = lines[-1].replace("├─", "└─")
+        if lines and len(lines) > 2 and lines[-3].startswith("  │"):
+            lines[-3] = lines[-3].replace("├─", "└─")
 
     # Analysis metadata
     lines.append(f"")
