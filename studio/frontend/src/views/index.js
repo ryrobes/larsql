@@ -146,10 +146,10 @@ export const views = {
     enabled: process.env.NODE_ENV === 'development',
   },
 
-  canvas: {
+  hyper: {
     component: lazy(() => import('./canvas/CanvasView')),
     icon: 'mdi:view-dashboard-variant',
-    label: 'Canvas',
+    label: 'Hyper',
     position: 'top',
     enabled: true,
   },

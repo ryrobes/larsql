@@ -123,6 +123,11 @@
   overflow: hidden;
 }
 
+/* Full-width mode when editor is hidden */
+.canvas-layout.canvas-editor-hidden .canvas-result-pane {
+  width: 100%;
+}
+
 /* ============================================
    EDITOR PANE
    ============================================ */
@@ -149,12 +154,61 @@
 }
 
 .canvas-hint {
-  margin-left: auto;
   font-size: var(--font-size-xxs);
   color: var(--color-text-dim);
   padding: 2px 6px;
   background: rgba(255, 255, 255, 0.05);
   border-radius: var(--radius-xs);
+}
+
+.canvas-editor-toggle {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  color: var(--color-text-dim);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.canvas-editor-toggle:hover {
+  background: rgba(0, 229, 255, 0.15);
+  border-color: var(--color-accent-cyan);
+  color: var(--color-accent-cyan);
+}
+
+/* Collapsed editor bar */
+.canvas-editor-collapsed {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 8px 4px;
+  gap: 8px;
+  width: 28px;
+  background: var(--color-bg-secondary);
+  border-right: 1px solid var(--color-border-dim);
+  cursor: pointer;
+  color: var(--color-text-dim);
+  transition: all var(--transition-fast);
+}
+
+.canvas-editor-collapsed:hover {
+  background: var(--color-bg-tertiary);
+  color: var(--color-accent-cyan);
+}
+
+.canvas-editor-collapsed-label {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  font-size: var(--font-size-xxs);
+  text-transform: uppercase;
+  letter-spacing: 1px;
 }
 
 .canvas-editor-wrapper {

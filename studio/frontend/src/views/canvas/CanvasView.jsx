@@ -88,9 +88,9 @@ WHERE (CASE WHEN @param_get('cat') IS NULL THEN true ELSE category = @param_get(
   AND (CASE WHEN @param_get('month') IS NULL THEN true ELSE month = @param_get('month') END);`;
 
 /**
- * CanvasView - Hypermedia SQL Client
+ * HyperView - Hypermedia SQL Client
  *
- * A simple SQL client where queries return self-describing data.
+ * A SQL-native HATEOAS system where queries return self-describing data.
  * The UI interprets the response format and renders accordingly.
  */
 const CanvasView = () => {
@@ -105,6 +105,9 @@ const CanvasView = () => {
   // Params panel state
   const [paramsCollapsed, setParamsCollapsed] = useState(true);
   const [paramsRefreshTrigger, setParamsRefreshTrigger] = useState(0);
+
+  // Editor panel visibility
+  const [editorHidden, setEditorHidden] = useState(false);
 
   const editorRef = useRef(null);
   const monacoRef = useRef(null);
@@ -310,7 +313,7 @@ const CanvasView = () => {
       <div className="canvas-header">
         <div className="canvas-header-left">
           <Icon icon="mdi:view-dashboard-variant" width="22" />
-          <h1>Canvas</h1>
+          <h1>Hyper</h1>
           <span className="canvas-subtitle">Hypermedia SQL Client</span>
         </div>
         <div className="canvas-header-right">
@@ -352,13 +355,29 @@ const CanvasView = () => {
       </div>
 
       {/* Main layout */}
-      <div className="canvas-layout">
+      <div className={`canvas-layout ${editorHidden ? 'canvas-editor-hidden' : ''}`}>
+        {/* Collapsed editor bar - shows when editor is hidden */}
+        {editorHidden && (
+          <div className="canvas-editor-collapsed" onClick={() => setEditorHidden(false)}>
+            <Icon icon="mdi:chevron-right" width="16" />
+            <span className="canvas-editor-collapsed-label">SQL</span>
+          </div>
+        )}
+
         {/* Editor pane */}
+        {!editorHidden && (
         <div className="canvas-editor-pane">
           <div className="canvas-editor-header">
             <Icon icon="mdi:code-tags" width="14" />
             <span>SQL Query</span>
             <span className="canvas-hint">Ctrl+Enter to run</span>
+            <button
+              className="canvas-editor-toggle"
+              onClick={() => setEditorHidden(true)}
+              title="Hide editor"
+            >
+              <Icon icon="mdi:chevron-left" width="16" />
+            </button>
           </div>
           <div className="canvas-editor-wrapper">
             <Editor
@@ -380,6 +399,7 @@ const CanvasView = () => {
             onParamChange={executeQuery}
           />
         </div>
+        )}
 
         {/* Result pane */}
         <div className="canvas-result-pane">

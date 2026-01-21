@@ -68,6 +68,9 @@ export const ROUTES = {
   // Tests - Test Dashboard
   TESTS: '/tests',
 
+  // Hyper - Hypermedia SQL Client
+  HYPER: '/hyper',
+
   // Legacy routes (for future migration)
   PLAYGROUND: '/playground',
   playgroundWithSession: (sessionId) => `/playground/${encodeURIComponent(sessionId)}`,
@@ -120,6 +123,7 @@ export function getViewFromPath(pathname) {
     'catalog': 'catalog',
     'watchers': 'watchers',
     'tests': 'tests',
+    'hyper': 'hyper',
     // Legacy
     'playground': 'playground',
     'sessions': 'sessions',
@@ -160,6 +164,7 @@ export function getRouteForView(viewId) {
     'catalog': ROUTES.CATALOG,
     'watchers': ROUTES.WATCHERS,
     'tests': ROUTES.TESTS,
+    'hyper': ROUTES.HYPER,
     // Legacy
     'playground': ROUTES.PLAYGROUND,
     'sessions': ROUTES.SESSIONS,
