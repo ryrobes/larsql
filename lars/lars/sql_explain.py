@@ -619,7 +619,7 @@ def explain_pipeline_query(
         rewritten_sql=original_query,
     )
 
-    # 1. Analyze base SQL for semantic operations
+    # 1. Analyze base SQL for semantic operations (scalar functions)
     try:
         from lars.sql_tools.prewarm_analyzer import analyze_query_for_prewarm
         prewarm_specs = analyze_query_for_prewarm(pipeline.base_sql)
@@ -629,6 +629,27 @@ def explain_pipeline_query(
             result.operations.append(operation)
     except Exception as e:
         log.debug(f"[explain] Failed to analyze base SQL operations: {e}")
+
+    # 1b. Detect LATERAL semantic table functions (e.g., LATERAL triples_rows(...))
+    try:
+        lateral_funcs = _detect_lateral_semantic_functions(pipeline.base_sql)
+        for lateral_spec in lateral_funcs:
+            operation = _create_lateral_operation(lateral_spec)
+            result.operations.append(operation)
+    except Exception as e:
+        log.debug(f"[explain] Failed to detect LATERAL functions: {e}")
+
+    # 1c. Fallback: Detect scalar semantic functions via regex (catches what sqlglot misses)
+    try:
+        scalar_funcs = _detect_scalar_semantic_functions_fallback(pipeline.base_sql)
+        # Only add functions not already detected
+        existing_funcs = {op.function.lower().replace('lateral ', '') for op in result.operations}
+        for scalar_spec in scalar_funcs:
+            if scalar_spec['function'].lower() not in existing_funcs:
+                operation = _create_scalar_operation_fallback(scalar_spec)
+                result.operations.append(operation)
+    except Exception as e:
+        log.debug(f"[explain] Failed to detect scalar functions (fallback): {e}")
 
     # 2. Detect aggregates in base SQL
     try:
@@ -754,6 +775,269 @@ def _analyze_pipeline_stage(stage, index: int) -> PipelineStageExplain:
 # ============================================================================
 # Analysis Helpers
 # ============================================================================
+
+def _detect_lateral_semantic_functions(sql: str) -> List[Dict[str, Any]]:
+    """
+    Detect LATERAL semantic table functions in SQL.
+
+    Looks for patterns like:
+        LATERAL triples_rows(e.message)
+        LATERAL timeline_rows(content)
+        LATERAL normalize_rows(text)
+
+    These are _rows variants of TABLE-shaped semantic SQL functions.
+
+    Returns:
+        List of dicts with function info (base_function, args, etc.)
+    """
+    import re
+
+    results = []
+    seen = set()
+
+    # Get registered TABLE-shaped functions from registry
+    try:
+        from lars.semantic_sql.registry import get_sql_function_registry
+        registry = get_sql_function_registry()
+
+        # Find functions that have returns_columns (TABLE shape)
+        table_functions = {}
+        for name, entry in registry.items():
+            if entry.returns_columns:
+                table_functions[name.lower()] = {
+                    'name': name,
+                    'cascade_path': entry.cascade_path,
+                    'returns_columns': entry.returns_columns,
+                }
+                # Also track the _rows variant name
+                rows_name = f"{name.lower()}_rows"
+                table_functions[rows_name] = {
+                    'name': name,  # Base function name
+                    'cascade_path': entry.cascade_path,
+                    'returns_columns': entry.returns_columns,
+                    'is_rows_variant': True,
+                }
+
+    except Exception as e:
+        log.debug(f"[explain] Could not load TABLE functions from registry: {e}")
+        table_functions = {}
+
+    if not table_functions:
+        return []
+
+    # Build regex pattern for LATERAL func_name(...)
+    # Pattern: LATERAL whitespace func_name whitespace* (
+    func_names_pattern = '|'.join(re.escape(fn) for fn in table_functions.keys())
+    pattern = re.compile(
+        rf'\bLATERAL\s+({func_names_pattern})\s*\(',
+        re.IGNORECASE
+    )
+
+    for match in pattern.finditer(sql):
+        func_name = match.group(1).lower()
+        func_info = table_functions.get(func_name)
+        if not func_info:
+            continue
+
+        # Extract the argument(s) by finding balanced parens
+        start_paren = match.end() - 1
+        depth = 1
+        i = start_paren + 1
+        while i < len(sql) and depth > 0:
+            if sql[i] == '(':
+                depth += 1
+            elif sql[i] == ')':
+                depth -= 1
+            i += 1
+
+        args_str = sql[start_paren + 1:i - 1].strip() if depth == 0 else ""
+
+        # Dedupe by base function name + args
+        key = (func_info['name'].lower(), args_str)
+        if key in seen:
+            continue
+        seen.add(key)
+
+        results.append({
+            'function': func_name,
+            'base_function': func_info['name'],
+            'cascade_path': func_info['cascade_path'],
+            'returns_columns': func_info['returns_columns'],
+            'args_str': args_str,
+            'is_rows_variant': func_info.get('is_rows_variant', False),
+        })
+
+    return results
+
+
+def _create_lateral_operation(spec: Dict[str, Any]) -> SemanticOperation:
+    """
+    Create a SemanticOperation for a LATERAL table function.
+
+    Args:
+        spec: Dict from _detect_lateral_semantic_functions
+
+    Returns:
+        SemanticOperation describing the LATERAL function
+    """
+    function_name = spec['function']
+    base_function = spec['base_function']
+    cascade_path = spec['cascade_path']
+    returns_columns = spec.get('returns_columns', [])
+    args_str = spec.get('args_str', '')
+
+    # Load cascade info
+    cascade_info = _load_cascade_info(cascade_path)
+
+    # Format returns_columns for display
+    cols_display = ', '.join(f"{c['name']}:{c['type']}" for c in returns_columns[:3])
+    if len(returns_columns) > 3:
+        cols_display += f", ... ({len(returns_columns)} cols)"
+
+    return SemanticOperation(
+        function=f"LATERAL {function_name}",
+        cascade_path=cascade_path,
+        model=cascade_info['model'],
+        cells=cascade_info['cells'],
+        takes=cascade_info['takes'],
+        arg_expression=args_str,
+        distinct_query="",  # Not applicable for LATERAL
+        distinct_count=0,  # Unknown at explain time
+        cache_hits=0,
+        cache_total=0,
+        cache_hit_rate=0.0,
+        historical_cost_per_call=0.0,  # Would need historical data
+        historical_cost_stddev=0.0,
+        historical_runs=0,
+        estimated_llm_calls=1,  # At least 1 call (depends on row count)
+        estimated_cost=0.0,  # Unknown without row count
+        prewarm_eligible=False,
+        prewarm_reason=f"TABLE function ({base_function}) returns: {cols_display}",
+    )
+
+
+def _detect_scalar_semantic_functions_fallback(sql: str) -> List[Dict[str, Any]]:
+    """
+    Fallback detection for scalar semantic functions via regex.
+
+    This catches functions that sqlglot's parser might miss due to
+    complex SQL syntax or qualified references like t.column.
+
+    Returns:
+        List of dicts with function info
+    """
+    import re
+
+    results = []
+    seen = set()
+
+    # Get all SCALAR functions from registry
+    try:
+        from lars.semantic_sql.registry import get_sql_function_registry
+        registry = get_sql_function_registry()
+
+        scalar_functions = {}
+        for name, entry in registry.items():
+            if entry.shape == 'SCALAR':
+                scalar_functions[name.lower()] = {
+                    'name': name,
+                    'cascade_path': entry.cascade_path,
+                }
+                # Also track without semantic_ prefix
+                if name.lower().startswith('semantic_'):
+                    short_name = name.lower().replace('semantic_', '')
+                    scalar_functions[short_name] = {
+                        'name': name,
+                        'cascade_path': entry.cascade_path,
+                    }
+
+    except Exception as e:
+        log.debug(f"[explain] Could not load SCALAR functions from registry: {e}")
+        return []
+
+    if not scalar_functions:
+        return []
+
+    # Build regex pattern for func_name(...)
+    # Must NOT be preceded by LATERAL (those are handled separately)
+    func_names_pattern = '|'.join(re.escape(fn) for fn in scalar_functions.keys())
+    pattern = re.compile(
+        rf'(?<!\bLATERAL\s)(?<!\bLATERAL\s\s)\b({func_names_pattern})\s*\(',
+        re.IGNORECASE
+    )
+
+    for match in pattern.finditer(sql):
+        func_name = match.group(1).lower()
+        func_info = scalar_functions.get(func_name)
+        if not func_info:
+            continue
+
+        # Extract the argument(s) by finding balanced parens
+        start_paren = match.end() - 1
+        depth = 1
+        i = start_paren + 1
+        while i < len(sql) and depth > 0:
+            if sql[i] == '(':
+                depth += 1
+            elif sql[i] == ')':
+                depth -= 1
+            i += 1
+
+        args_str = sql[start_paren + 1:i - 1].strip() if depth == 0 else ""
+
+        # Dedupe by canonical function name + args
+        key = (func_info['name'].lower(), args_str)
+        if key in seen:
+            continue
+        seen.add(key)
+
+        results.append({
+            'function': func_info['name'],
+            'cascade_path': func_info['cascade_path'],
+            'args_str': args_str,
+        })
+
+    return results
+
+
+def _create_scalar_operation_fallback(spec: Dict[str, Any]) -> SemanticOperation:
+    """
+    Create a SemanticOperation for a scalar function detected via fallback.
+
+    Args:
+        spec: Dict from _detect_scalar_semantic_functions_fallback
+
+    Returns:
+        SemanticOperation describing the scalar function
+    """
+    function_name = spec['function']
+    cascade_path = spec['cascade_path']
+    args_str = spec.get('args_str', '')
+
+    # Load cascade info
+    cascade_info = _load_cascade_info(cascade_path)
+
+    return SemanticOperation(
+        function=function_name,
+        cascade_path=cascade_path,
+        model=cascade_info['model'],
+        cells=cascade_info['cells'],
+        takes=cascade_info['takes'],
+        arg_expression=args_str,
+        distinct_query="",  # Unknown in fallback mode
+        distinct_count=0,  # Unknown
+        cache_hits=0,
+        cache_total=0,
+        cache_hit_rate=0.0,
+        historical_cost_per_call=0.0,
+        historical_cost_stddev=0.0,
+        historical_runs=0,
+        estimated_llm_calls=1,  # At least 1 call
+        estimated_cost=0.0,  # Unknown without more context
+        prewarm_eligible=False,
+        prewarm_reason="Detected via fallback (limited analysis)",
+    )
+
 
 def _analyze_semantic_operation(
     spec: Dict[str, Any],

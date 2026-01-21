@@ -53,3 +53,14 @@
 .plotly-panel-error svg {
   opacity: 0.6;
 }
+
+/* Interactive state - show pointer cursor on data points */
+.plotly-panel.plotly-interactive .nsewdrag {
+  cursor: pointer !important;
+}
+
+.plotly-panel.plotly-interactive .point,
+.plotly-panel.plotly-interactive .slice,
+.plotly-panel.plotly-interactive .bar {
+  cursor: pointer !important;
+}

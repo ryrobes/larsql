@@ -135,6 +135,9 @@ const CanvasRenderer = ({ data, columns, isCanvas, canvasData, isMultiPanel, mul
         selected_values: panel.selected_values,  // multi-select
         selected_value: panel.selected_value,    // single-select
         select_field: panel.select_field,
+        // Pass through display options
+        hide_border: panel.hide_border,
+        hide_title: panel.hide_title,
       };
     });
 

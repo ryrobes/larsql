@@ -28,11 +28,19 @@ SELECT * FROM (VALUES
   ('Apr', 'Food', 18200, 489)
 ) AS t(month, category, revenue, units);
 
---- PANEL 'Categories' (1, 1, 1, 1) ON_SELECT[] @params_set('cats', category)
-SELECT DISTINCT category FROM sales;
+--- PANEL 'Click a Slice' (1, 1, 1, 1) ON_SELECT @param_set('cat', label) HIDE_TITLE
+SELECT
+  'plotly' as format,
+  {type: 'pie', values: 'total', labels: 'category', title: 'By Category'} as config,
+  category, SUM(revenue) as total
+FROM sales GROUP BY category;
 
---- PANEL 'Months' (2, 1, 1, 1) ON_SELECT @param_set('month', month)
-SELECT DISTINCT month FROM sales;
+--- PANEL 'Click a Bar' (2, 1, 1, 1) ON_SELECT @param_set('month', month) HIDE_TITLE
+SELECT
+  'vega-lite' as format,
+  {mark: 'bar', x: 'month', y: 'total', title: 'By Month'} as config,
+  month, SUM(revenue) as total
+FROM sales GROUP BY month;
 
 --- PANEL 'Monthly Trend' (1, 2, 1, 1)
 SELECT
@@ -40,21 +48,11 @@ SELECT
   {mark: 'line', x: 'month', y: 'total_revenue', title: 'Monthly Revenue'} as config,
   month, SUM(revenue) as total_revenue
 FROM sales
-WHERE (CASE WHEN len(@params_get('cats')) = 0 THEN true ELSE list_contains(@params_get('cats'), category) END)
+WHERE (CASE WHEN @param_get('cat') IS NULL THEN true ELSE category = @param_get('cat') END)
   AND (CASE WHEN @param_get('month') IS NULL THEN true ELSE month = @param_get('month') END)
 GROUP BY month;
 
 --- PANEL 'Category Breakdown' (2, 2, 1, 1)
-SELECT
-  'plotly' as format,
-  {type: 'pie', values: 'revenue', labels: 'category', title: 'Revenue by Category'} as config,
-  category, SUM(revenue) as revenue
-FROM sales
-WHERE (CASE WHEN len(@params_get('cats')) = 0 THEN true ELSE list_contains(@params_get('cats'), category) END)
-  AND (CASE WHEN @param_get('month') IS NULL THEN true ELSE month = @param_get('month') END)
-GROUP BY category;
-
---- PANEL 'Revenue by Category' (1, 3, 1, 1)
 SELECT
   'vega-lite' as format,
   {
@@ -67,11 +65,11 @@ SELECT
   } as config,
   category, SUM(revenue) as revenue
 FROM sales
-WHERE (CASE WHEN len(@params_get('cats')) = 0 THEN true ELSE list_contains(@params_get('cats'), category) END)
+WHERE (CASE WHEN @param_get('cat') IS NULL THEN true ELSE category = @param_get('cat') END)
   AND (CASE WHEN @param_get('month') IS NULL THEN true ELSE month = @param_get('month') END)
 GROUP BY category;
 
---- PANEL 'Stacked Area' (2, 3, 1, 1)
+--- PANEL 'Stacked Area' (1, 3, 2, 1) HIDE_BORDER HIDE_TITLE
 SELECT
   'vega-lite' as format,
   {
@@ -80,11 +78,12 @@ SELECT
       x: {field: 'month', type: 'ordinal'},
       y: {field: 'revenue', type: 'quantitative', stack: 'zero'},
       color: {field: 'category', type: 'nominal'}
-    }
+    },
+    title: 'Revenue Over Time'
   } as config,
   month, category, revenue
 FROM sales
-WHERE (CASE WHEN len(@params_get('cats')) = 0 THEN true ELSE list_contains(@params_get('cats'), category) END)
+WHERE (CASE WHEN @param_get('cat') IS NULL THEN true ELSE category = @param_get('cat') END)
   AND (CASE WHEN @param_get('month') IS NULL THEN true ELSE month = @param_get('month') END);`;
 
 /**

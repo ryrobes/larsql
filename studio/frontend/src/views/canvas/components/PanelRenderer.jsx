@@ -22,7 +22,7 @@ import './PanelRenderer.css';
  * @param {function} onInteraction - Callback for panel interactions
  */
 const PanelRenderer = ({ panel, style, onInteraction }) => {
-  const { name, content, type, on_select, multi_select, selected_values, selected_value, select_field, isAutoMetric } = panel;
+  const { name, content, type, on_select, multi_select, selected_values, selected_value, select_field, isAutoMetric, hide_border, hide_title } = panel;
 
   // Get icon for panel type
   const getIcon = () => {
@@ -44,8 +44,8 @@ const PanelRenderer = ({ panel, style, onInteraction }) => {
     }
   };
 
-  // Handle row click from DataGridPanel
-  const handleRowClick = (rowData) => {
+  // Handle data click from DataGridPanel or chart panels
+  const handleDataClick = (rowData) => {
     if (onInteraction && on_select) {
       onInteraction({
         panelName: name,
@@ -75,16 +75,32 @@ const PanelRenderer = ({ panel, style, onInteraction }) => {
         return <MetricPanel content={content} isAuto={false} />;
 
       case 'plotly':
-        return <PlotlyPanel content={content} />;
+        return (
+          <PlotlyPanel
+            content={content}
+            onClick={on_select ? handleDataClick : null}
+            interactive={!!on_select}
+            selectedValue={selected_value}
+            selectField={select_field}
+          />
+        );
 
       case 'vega-lite':
-        return <VegaLitePanel content={content} />;
+        return (
+          <VegaLitePanel
+            content={content}
+            onClick={on_select ? handleDataClick : null}
+            interactive={!!on_select}
+            selectedValue={selected_value}
+            selectField={select_field}
+          />
+        );
 
       case 'data-grid':
         return (
           <DataGridPanel
             content={content}
-            onRowClick={on_select ? handleRowClick : null}
+            onRowClick={on_select ? handleDataClick : null}
             interactive={!!on_select}
             multiSelect={!!multi_select}
             selectedValues={selected_values}
@@ -99,13 +115,22 @@ const PanelRenderer = ({ panel, style, onInteraction }) => {
     }
   };
 
+  // Build class names based on display options
+  const panelClasses = [
+    'canvas-panel',
+    hide_border && 'canvas-panel-no-border',
+    hide_title && 'canvas-panel-no-title',
+  ].filter(Boolean).join(' ');
+
   return (
-    <div className="canvas-panel" style={style}>
-      <div className="canvas-panel-header">
-        <Icon icon={getIcon()} width="14" />
-        <span className="canvas-panel-title">{name}</span>
-        <span className="canvas-panel-type">{type}</span>
-      </div>
+    <div className={panelClasses} style={style}>
+      {!hide_title && (
+        <div className="canvas-panel-header">
+          <Icon icon={getIcon()} width="14" />
+          <span className="canvas-panel-title">{name}</span>
+          <span className="canvas-panel-type">{type}</span>
+        </div>
+      )}
       <div className="canvas-panel-content">
         {renderContent()}
       </div>

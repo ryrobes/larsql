@@ -83,3 +83,13 @@
 .vega-panel-error svg {
   opacity: 0.6;
 }
+
+/* Interactive state - show pointer cursor on marks */
+.vega-panel.vega-interactive .mark-rect,
+.vega-panel.vega-interactive .mark-arc,
+.vega-panel.vega-interactive .mark-symbol,
+.vega-panel.vega-interactive .mark-line,
+.vega-panel.vega-interactive .mark-area,
+.vega-panel.vega-interactive .mark-text {
+  cursor: pointer;
+}

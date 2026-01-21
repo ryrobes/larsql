@@ -23,9 +23,16 @@ const getVegaEmbed = async () => {
  *
  * Or array format from SQL:
  * [{ format: "vega-lite", spec: "..." }]
+ *
+ * @param {array|object} content - Chart content with spec
+ * @param {function} onClick - Callback when a data point is clicked (receives datum)
+ * @param {boolean} interactive - Whether chart is interactive (enables selection)
+ * @param {*} selectedValue - Currently selected value (for toggle detection)
+ * @param {string} selectField - Field name to match for selection
  */
-const VegaLitePanel = ({ content }) => {
+const VegaLitePanel = ({ content, onClick, interactive, selectedValue, selectField }) => {
   const containerRef = useRef(null);
+  const viewRef = useRef(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -119,7 +126,18 @@ const VegaLitePanel = ({ content }) => {
           },
         };
 
-        await vegaEmbed(container, fullSpec, {
+        // Add point selection for interactivity if onClick is provided
+        if (interactive && onClick) {
+          fullSpec.params = [
+            ...(fullSpec.params || []),
+            {
+              name: 'clickSelect',
+              select: { type: 'point', on: 'click' },
+            },
+          ];
+        }
+
+        const result = await vegaEmbed(container, fullSpec, {
           actions: {
             export: true,
             source: false,
@@ -128,6 +146,33 @@ const VegaLitePanel = ({ content }) => {
           },
           renderer: 'svg',
         });
+
+        // Store view reference for event handling
+        viewRef.current = result.view;
+
+        // Add click listener if interactive
+        if (interactive && onClick) {
+          result.view.addEventListener('click', (event, item) => {
+            if (item && item.datum) {
+              // Extract the data from the clicked mark
+              const clickedData = { ...item.datum };
+              // Remove internal Vega fields
+              delete clickedData._vgsid_;
+
+              // Check if this is a toggle-off (clicking already selected item)
+              if (selectField && selectedValue !== null && selectedValue !== undefined) {
+                const clickedFieldValue = String(clickedData[selectField]);
+                if (clickedFieldValue === String(selectedValue)) {
+                  // This is a deselect
+                  onClick({ ...clickedData, _isDeselect: true });
+                  return;
+                }
+              }
+
+              onClick(clickedData);
+            }
+          });
+        }
       } catch (err) {
         console.error('Vega-Lite render error:', err);
         setError(err.message || 'Failed to render chart');
@@ -153,8 +198,10 @@ const VegaLitePanel = ({ content }) => {
       if (resizeObserver) {
         resizeObserver.disconnect();
       }
+      // Clean up view reference
+      viewRef.current = null;
     };
-  }, [spec, darkConfig]);
+  }, [spec, darkConfig, interactive, onClick, selectedValue, selectField]);
 
   if (error) {
     return (
@@ -175,7 +222,7 @@ const VegaLitePanel = ({ content }) => {
   }
 
   return (
-    <div className="vega-panel">
+    <div className={`vega-panel ${interactive ? 'vega-interactive' : ''}`}>
       {loading && (
         <div className="vega-panel-loading">
           <Icon icon="mdi:loading" width="24" className="spinning" />

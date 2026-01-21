@@ -8092,10 +8092,14 @@ class ClientConnection:
 
             # EXPLAIN queries - must be checked BEFORE pipeline syntax
             # because EXPLAIN SELECT ... THEN PIVOT would otherwise be intercepted by pipeline handler
+            # IMPORTANT: Check original_query (not rewritten query) because rewrite_lars_syntax()
+            # transforms EXPLAIN into SELECT '...' AS query_plan during Parse phase
             import re
-            if re.match(r'^EXPLAIN[\s(]', query_upper):
+            explain_check_query = (original_query or query).upper().strip()
+            if re.match(r'^EXPLAIN[\s(]', explain_check_query):
                 styled_print(f"[{self.session_id}]      Detected EXPLAIN via Extended Query")
-                self._handle_explain_query_extended(query, send_row_description=send_row_desc)
+                # Use original_query for explain handling (has EXPLAIN prefix)
+                self._handle_explain_query_extended(original_query or query, send_row_description=send_row_desc)
                 return
 
             # PIPELINE syntax (THEN/INTO) - Handle post-query result processing via Extended Query

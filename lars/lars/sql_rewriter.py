@@ -178,7 +178,14 @@ def rewrite_lars_syntax(query: str, duckdb_conn=None) -> str:
             format_json = True
             inner_query = inner_query[format_match.end():].strip()
 
-        if not _is_lars_statement(inner_query):
+        # Check for pipeline syntax (THEN/INTO) FIRST - before _is_lars_statement check
+        # This is critical because queries with THEN may have semantic functions that
+        # aren't detected by _is_lars_statement (e.g., LATERAL table functions)
+        from lars.sql_tools.pipeline_parser import has_pipeline_syntax, parse_pipeline_syntax
+        has_pipeline = has_pipeline_syntax(inner_query)
+
+        # If no pipeline syntax, check if it's a LARS statement at all
+        if not has_pipeline and not _is_lars_statement(inner_query):
             # Not an LARS statement, return as-is (might be regular EXPLAIN)
             return query
 
@@ -186,9 +193,8 @@ def rewrite_lars_syntax(query: str, duckdb_conn=None) -> str:
         if duckdb_conn is None:
             return "SELECT 'ERROR: EXPLAIN requires database connection for analysis' AS error"
 
-        # Check for pipeline syntax (THEN/INTO) first - must be before other checks
-        from lars.sql_tools.pipeline_parser import has_pipeline_syntax, parse_pipeline_syntax
-        if has_pipeline_syntax(inner_query):
+        # Handle pipeline queries
+        if has_pipeline:
             pipeline = parse_pipeline_syntax(inner_query)
             if pipeline and pipeline.stages:
                 from lars.sql_explain import explain_pipeline_query

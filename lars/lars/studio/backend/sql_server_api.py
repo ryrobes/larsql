@@ -214,17 +214,24 @@ def parse_multi_panel_query(query: str):
         --- PANEL 'Multi-Select' (1, 1) ON_SELECT[] @params_set('selected')
         SELECT * FROM items;
 
+        --- PANEL 'Borderless' (1, 1) HIDE_BORDER
+        SELECT * FROM items;
+
+        --- PANEL 'No Title' (1, 1) HIDE_TITLE HIDE_BORDER
+        SELECT * FROM items;
+
     Returns:
         Dict with:
             - setup: SQL to run before panels (DDL, CREATE TABLE, etc.)
-            - panels: List of panel dicts with keys: name, query, position, on_select, multi_select
+            - panels: List of panel dicts with keys: name, query, position, on_select, multi_select, hide_border, hide_title
         Returns None if no panel markers found (single-query mode).
     """
     import re
 
     # Pattern: --- PANEL 'name' with optional (col, row, colspan, rowspan) and ON_SELECT or ON_SELECT[] @cascade(...)
     # Groups: 1=name, 2=col, 3=row, 4=colspan, 5=rowspan, 6=[] (multi-select flag), 7=on_select cascade
-    panel_pattern = r'^---\s*PANEL\s+[\'"]([^\'"]+)[\'"](?:\s*\((\d+)\s*,\s*(\d+)(?:\s*,\s*(\d+)\s*,\s*(\d+))?\))?(?:\s+ON_SELECT(\[\])?\s+(@\w+\([^)]*\)))?\s*$'
+    # HIDE_BORDER and HIDE_TITLE are parsed separately as they can appear anywhere after the main pattern
+    panel_pattern = r'^---\s*PANEL\s+[\'"]([^\'"]+)[\'"](?:\s*\((\d+)\s*,\s*(\d+)(?:\s*,\s*(\d+)\s*,\s*(\d+))?\))?(?:\s+ON_SELECT(\[\])?\s+(@\w+\([^)]*\)))?'
 
     lines = query.split('\n')
     panels = []
@@ -233,10 +240,13 @@ def parse_multi_panel_query(query: str):
     current_position = None
     current_on_select = None
     current_multi_select = False
+    current_hide_border = False
+    current_hide_title = False
     current_lines = []
 
     for line in lines:
-        match = re.match(panel_pattern, line.strip(), re.IGNORECASE)
+        line_stripped = line.strip()
+        match = re.match(panel_pattern, line_stripped, re.IGNORECASE)
         if match:
             # Save previous panel if exists
             if current_panel is not None:
@@ -252,6 +262,10 @@ def parse_multi_panel_query(query: str):
                         panel_info['on_select'] = current_on_select
                         if current_multi_select:
                             panel_info['multi_select'] = True
+                    if current_hide_border:
+                        panel_info['hide_border'] = True
+                    if current_hide_title:
+                        panel_info['hide_title'] = True
                     panels.append(panel_info)
             else:
                 # This is the first panel - save any preceding lines as setup SQL
@@ -280,6 +294,11 @@ def parse_multi_panel_query(query: str):
             # Group 6 = '[]' if multi-select, Group 7 = cascade
             current_multi_select = bool(match.group(6))  # '[]' present
             current_on_select = match.group(7) if match.group(7) else None
+
+            # Parse optional HIDE_BORDER and HIDE_TITLE flags (can appear anywhere in the line)
+            line_upper = line_stripped.upper()
+            current_hide_border = 'HIDE_BORDER' in line_upper
+            current_hide_title = 'HIDE_TITLE' in line_upper
         else:
             current_lines.append(line)
 
@@ -297,6 +316,10 @@ def parse_multi_panel_query(query: str):
                 panel_info['on_select'] = current_on_select
                 if current_multi_select:
                     panel_info['multi_select'] = True
+            if current_hide_border:
+                panel_info['hide_border'] = True
+            if current_hide_title:
+                panel_info['hide_title'] = True
             panels.append(panel_info)
 
     # If no panel markers found, return None (single-query mode)
@@ -504,6 +527,8 @@ def execute_sql():
                 panel_position = panel_info.get('position')
                 panel_on_select = panel_info.get('on_select')
                 panel_multi_select = panel_info.get('multi_select', False)
+                panel_hide_border = panel_info.get('hide_border', False)
+                panel_hide_title = panel_info.get('hide_title', False)
 
                 result_df = execute_single_query(panel_query, conn, lock, database, caller_id)
                 panel_result = {
@@ -514,6 +539,10 @@ def execute_sql():
                 }
                 if panel_position:
                     panel_result["position"] = panel_position
+                if panel_hide_border:
+                    panel_result["hide_border"] = True
+                if panel_hide_title:
+                    panel_result["hide_title"] = True
                 if panel_on_select:
                     panel_result["on_select"] = panel_on_select
                     panel_result["multi_select"] = panel_multi_select

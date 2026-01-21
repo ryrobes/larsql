@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useCallback } from 'react';
 import Plot from 'react-plotly.js';
 import { Icon } from '@iconify/react';
 import './PlotlyPanel.css';
@@ -14,8 +14,14 @@ import './PlotlyPanel.css';
  *
  * Or array format from SQL:
  * [{ format: "plotly", spec: "..." }]
+ *
+ * @param {array|object} content - Chart content with spec
+ * @param {function} onClick - Callback when a data point is clicked (receives point data)
+ * @param {boolean} interactive - Whether chart is interactive (shows cursor)
+ * @param {*} selectedValue - Currently selected value (for toggle detection)
+ * @param {string} selectField - Field name to match for selection
  */
-const PlotlyPanel = ({ content }) => {
+const PlotlyPanel = ({ content, onClick, interactive, selectedValue, selectField }) => {
   // Extract and parse the Plotly spec
   const { spec, error } = useMemo(() => {
     try {
@@ -66,6 +72,53 @@ const PlotlyPanel = ({ content }) => {
     ...spec?.layout,
   }), [spec?.layout]);
 
+  // Handle click on data point
+  const handleClick = useCallback((event) => {
+    if (!onClick || !event.points || event.points.length === 0) return;
+
+    const point = event.points[0];
+
+    // Build data object from clicked point
+    // For pie charts: label and value
+    // For bar/line/scatter: x, y, and any custom data
+    const clickedData = {};
+
+    if (point.label !== undefined) {
+      // Pie chart - use label field
+      clickedData.label = point.label;
+      clickedData.value = point.value;
+    }
+    if (point.x !== undefined) {
+      clickedData.x = point.x;
+    }
+    if (point.y !== undefined) {
+      clickedData.y = point.y;
+    }
+    if (point.z !== undefined) {
+      clickedData.z = point.z;
+    }
+
+    // Include the trace name if available (for multi-series)
+    if (point.data?.name) {
+      clickedData._series = point.data.name;
+    }
+
+    // Include point index for reference
+    clickedData._pointIndex = point.pointIndex;
+
+    // Check if this is a toggle-off (clicking already selected item)
+    if (selectField && selectedValue !== null && selectedValue !== undefined) {
+      const clickedFieldValue = String(clickedData[selectField]);
+      if (clickedFieldValue === String(selectedValue)) {
+        // This is a deselect
+        onClick({ ...clickedData, _isDeselect: true });
+        return;
+      }
+    }
+
+    onClick(clickedData);
+  }, [onClick, selectedValue, selectField]);
+
   if (error) {
     return (
       <div className="plotly-panel-error">
@@ -85,7 +138,7 @@ const PlotlyPanel = ({ content }) => {
   }
 
   return (
-    <div className="plotly-panel">
+    <div className={`plotly-panel ${interactive ? 'plotly-interactive' : ''}`}>
       <Plot
         data={spec.data || []}
         layout={darkLayout}
@@ -97,6 +150,7 @@ const PlotlyPanel = ({ content }) => {
         }}
         useResizeHandler={true}
         style={{ width: '100%', height: '100%' }}
+        onClick={interactive ? handleClick : undefined}
       />
     </div>
   );

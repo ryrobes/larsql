@@ -42,3 +42,19 @@
   overflow: auto;
   padding: 12px;
 }
+
+/* HIDE_BORDER option */
+.canvas-panel.canvas-panel-no-border {
+  border: none;
+  background: transparent;
+}
+
+/* HIDE_TITLE option - adjust content padding */
+.canvas-panel.canvas-panel-no-title .canvas-panel-content {
+  padding-top: 0;
+}
+
+/* Combined: no border and no title - minimal chrome */
+.canvas-panel.canvas-panel-no-border.canvas-panel-no-title .canvas-panel-content {
+  padding: 0;
+}
