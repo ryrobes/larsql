@@ -70,6 +70,21 @@ const CanvasRenderer = ({ data, columns, isCanvas, canvasData, isMultiPanel, mul
         panelData.length > 0 &&
         panelData[0]?.format === 'dropdown';
 
+      // Detect daterange: single-row array with format: "daterange"
+      const isDateRange = Array.isArray(panelData) &&
+        panelData.length === 1 &&
+        panelData[0]?.format === 'daterange';
+
+      // Detect toggle: single-row array with format: "toggle"
+      const isToggle = Array.isArray(panelData) &&
+        panelData.length === 1 &&
+        panelData[0]?.format === 'toggle';
+
+      // Detect sparkline: array with format: "sparkline"
+      const isSparkline = Array.isArray(panelData) &&
+        panelData.length > 0 &&
+        panelData[0]?.format === 'sparkline';
+
       // Detect data-driven chart: multiple rows with format, config, and data columns
       // e.g., SELECT 'vega-lite' as format, {mark: 'bar', x: 'month', y: 'value'} as config, month, value FROM data
       const dataDrivenChart = isDataDrivenChart(panelData) ? processDataDrivenChart(panelData) : null;
@@ -86,7 +101,7 @@ const CanvasRenderer = ({ data, columns, isCanvas, canvasData, isMultiPanel, mul
 
       // Detect auto-metric: single row with single value column
       // (excluding 'format' key if present)
-      const isAutoMetric = !isMermaid && !isExplicitMetric && !isSlider && !isDropdown && !isPlotly && !isVegaLite && !dataDrivenChart &&
+      const isAutoMetric = !isMermaid && !isExplicitMetric && !isSlider && !isDropdown && !isDateRange && !isToggle && !isSparkline && !isPlotly && !isVegaLite && !dataDrivenChart &&
         Array.isArray(panelData) &&
         panelData.length === 1 &&
         (() => {
@@ -109,6 +124,12 @@ const CanvasRenderer = ({ data, columns, isCanvas, canvasData, isMultiPanel, mul
         panelType = 'slider';
       } else if (isDropdown) {
         panelType = 'dropdown';
+      } else if (isDateRange) {
+        panelType = 'daterange';
+      } else if (isToggle) {
+        panelType = 'toggle';
+      } else if (isSparkline) {
+        panelType = 'sparkline';
       } else if (isAutoMetric) {
         panelType = 'metric';
         isAutoMetricFlag = true;

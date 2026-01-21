@@ -1,0 +1,122 @@
+/* ============================================
+   TOGGLE PANEL
+   Boolean toggle switch for on/off filtering
+   ============================================ */
+
+.toggle-panel {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.toggle-panel-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.toggle-panel-main {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.toggle-panel-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: right;
+}
+
+.toggle-panel-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text, #f1f5f9);
+}
+
+.toggle-panel-description {
+  font-size: 11px;
+  color: var(--color-text-dim, #64748b);
+}
+
+/* Toggle switch */
+.toggle-panel-switch {
+  position: relative;
+  width: 52px;
+  height: 28px;
+  padding: 0;
+  background: var(--color-surface-elevated, #334155);
+  border: 2px solid var(--color-border, #475569);
+  border-radius: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  outline: none;
+}
+
+.toggle-panel-switch:hover:not(:disabled) {
+  border-color: var(--color-text-dim, #94a3b8);
+}
+
+.toggle-panel-switch:focus:not(:disabled) {
+  box-shadow: 0 0 0 3px rgba(0, 229, 255, 0.15);
+}
+
+.toggle-panel-switch:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.toggle-panel-switch-on {
+  background: var(--color-accent, #00e5ff);
+  border-color: var(--color-accent, #00e5ff);
+}
+
+.toggle-panel-switch-on:hover:not(:disabled) {
+  border-color: var(--color-accent, #00e5ff);
+  filter: brightness(1.1);
+}
+
+/* Toggle thumb */
+.toggle-panel-switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  background: var(--color-text-dim, #94a3b8);
+  border-radius: 50%;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.toggle-panel-switch-on .toggle-panel-switch-thumb {
+  left: calc(100% - 22px);
+  background: var(--color-surface, #1e293b);
+}
+
+/* Status text */
+.toggle-panel-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--color-text-dim, #64748b);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.toggle-panel-status-divider {
+  opacity: 0.5;
+}
+
+.toggle-panel-status-active {
+  color: var(--color-accent, #00e5ff);
+  font-weight: 600;
+}

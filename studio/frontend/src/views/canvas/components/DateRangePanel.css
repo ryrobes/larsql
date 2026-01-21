@@ -1,0 +1,125 @@
+/* ============================================
+   DATE RANGE PANEL
+   Date range picker for time-based filtering
+   ============================================ */
+
+.daterange-panel {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.daterange-panel-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 400px;
+  gap: 12px;
+}
+
+.daterange-panel-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-dim, #94a3b8);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.daterange-panel-inputs {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.daterange-panel-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.daterange-panel-field-label {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--color-text-dim, #64748b);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.daterange-panel-input {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--color-text, #f1f5f9);
+  background: var(--color-surface-elevated, #334155);
+  border: 1px solid var(--color-border, #475569);
+  border-radius: 6px;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.daterange-panel-input:hover:not(:disabled) {
+  border-color: var(--color-accent, #00e5ff);
+}
+
+.daterange-panel-input:focus:not(:disabled) {
+  border-color: var(--color-accent, #00e5ff);
+  box-shadow: 0 0 0 3px rgba(0, 229, 255, 0.15);
+}
+
+.daterange-panel-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Style the date picker icon */
+.daterange-panel-input::-webkit-calendar-picker-indicator {
+  filter: invert(0.7);
+  cursor: pointer;
+}
+
+.daterange-panel-separator {
+  color: var(--color-text-dim, #64748b);
+  font-size: 16px;
+  padding-top: 18px;
+}
+
+.daterange-panel-presets {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.daterange-panel-presets button {
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--color-text-dim, #94a3b8);
+  background: var(--color-surface-elevated, #334155);
+  border: 1px solid var(--color-border, #475569);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.daterange-panel-presets button:hover:not(:disabled) {
+  color: var(--color-accent, #00e5ff);
+  border-color: var(--color-accent, #00e5ff);
+  background: rgba(0, 229, 255, 0.1);
+}
+
+.daterange-panel-presets button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

@@ -25,8 +25,77 @@ Accessor Examples:
 
 import re
 import logging
+import time
 
 logger = logging.getLogger(__name__)
+
+
+def _get_value_type(value) -> str:
+    """Determine the type of a resolved value for logging."""
+    if value is None:
+        return 'null'
+    if isinstance(value, bool):
+        return 'boolean'
+    if isinstance(value, (int, float)):
+        return 'number'
+    if isinstance(value, str):
+        return 'string'
+    if isinstance(value, (list, tuple)):
+        return 'array'
+    if isinstance(value, dict):
+        return 'object'
+    return 'unknown'
+
+
+def _log_deref(
+    cascade_name: str,
+    args: list,
+    args_str: str,
+    accessor: list | None,
+    resolved_value,
+    escaped_value: str,
+    session_context: dict,
+    cache_hit: bool = False,
+    duration_ms: float = 0.0,
+    error_message: str | None = None
+):
+    """Log a deref operation to ClickHouse asynchronously."""
+    try:
+        from lars.db_adapter import get_deref_logger
+        deref_logger = get_deref_logger()
+        if deref_logger is None:
+            return
+
+        # Build the full deref expression
+        accessor_str = ''.join(
+            f'[{a[1]}]' if a[0] == 'index' else
+            '[*]' if a[0] == 'gather' else
+            f'.{a[1]}' if a[0] == 'field' else ''
+            for a in (accessor or [])
+        )
+        deref_expression = f"@{cascade_name}({args_str}){accessor_str}"
+
+        deref_logger.log_deref(
+            deref_expression=deref_expression,
+            cascade_name=cascade_name,
+            args=args,
+            accessor_chain=accessor_str if accessor_str else None,
+            resolved_value=escaped_value,
+            resolved_value_type=_get_value_type(resolved_value),
+            session_id=session_context.get('session_id', 'unknown'),
+            protocol=session_context.get('protocol', 'unknown'),
+            database_name=session_context.get('database_name', ''),
+            user_name=session_context.get('user_name', ''),
+            application_name=session_context.get('application_name', ''),
+            client_address=session_context.get('client_address', ''),
+            caller_id=session_context.get('caller_id'),
+            cache_hit=cache_hit,
+            duration_ms=duration_ms,
+            error_message=error_message
+        )
+    except Exception as e:
+        # Never let logging failures affect the main deref path
+        logger.debug(f"Failed to log deref: {e}")
 
 
 # Pattern to detect potential @cascade( starts
@@ -155,11 +224,30 @@ def _process_one_deref(sql: str, session_context: dict, deref_cache: dict[str, s
         if cache_key in deref_cache:
             escaped = deref_cache[cache_key]
             print(f"[DEREF]   CACHE HIT: {escaped}")
+
+            # Log cache hit (parse args for logging)
+            try:
+                cached_args = _parse_cascade_args(args_str)
+                _log_deref(
+                    cascade_name=cascade_name,
+                    args=cached_args,
+                    args_str=args_str,
+                    accessor=accessor,
+                    resolved_value=None,  # We don't have the original value, just escaped
+                    escaped_value=escaped,
+                    session_context=session_context,
+                    cache_hit=True,
+                    duration_ms=0.0
+                )
+            except Exception:
+                pass  # Don't let logging fail affect the main path
+
             result = sql[:start] + escaped + sql[expr_end:]
             return result
 
         # Execute the cascade
         try:
+            start_time = time.time()
             args = _parse_cascade_args(args_str)
             print(f"[DEREF]   parsed args: {args}")
             raw_result = _execute_deref_cascade(cascade_name, args, session_context)
@@ -173,11 +261,25 @@ def _process_one_deref(sql: str, session_context: dict, deref_cache: dict[str, s
 
             # SQL-escape and replace
             escaped = _sql_escape(final_value)
+            duration_ms = (time.time() - start_time) * 1000
             print(f"[DEREF]   escaped: {escaped}")
 
             # Store in cache for future identical calls in this query
             deref_cache[cache_key] = escaped
             print(f"[DEREF]   CACHE STORE: {cache_key[:50]}...")
+
+            # Log successful deref
+            _log_deref(
+                cascade_name=cascade_name,
+                args=args,
+                args_str=args_str,
+                accessor=accessor,
+                resolved_value=final_value,
+                escaped_value=escaped,
+                session_context=session_context,
+                cache_hit=False,
+                duration_ms=duration_ms
+            )
 
             logger.debug(f"Deref @{cascade_name}({args_str}){accessor or ''} -> {escaped}")
 
@@ -190,6 +292,25 @@ def _process_one_deref(sql: str, session_context: dict, deref_cache: dict[str, s
             import traceback
             traceback.print_exc()
             logger.error(f"Deref @{cascade_name} failed: {e}")
+
+            # Log failed deref
+            try:
+                error_args = _parse_cascade_args(args_str) if args_str else []
+            except Exception:
+                error_args = []
+            _log_deref(
+                cascade_name=cascade_name,
+                args=error_args,
+                args_str=args_str,
+                accessor=accessor,
+                resolved_value=None,
+                escaped_value='NULL',
+                session_context=session_context,
+                cache_hit=False,
+                duration_ms=0.0,
+                error_message=str(e)
+            )
+
             # On error, replace with NULL to avoid infinite loop
             return sql[:start] + 'NULL' + sql[expr_end:]
 

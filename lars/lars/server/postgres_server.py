@@ -4551,6 +4551,11 @@ class ClientConnection:
             deref_context = {
                 'session_id': self.session_id,
                 'protocol': 'pgwire',
+                'database_name': self.database_name,
+                'user_name': self.user_name,
+                'application_name': self.application_name,
+                'client_address': f"{self.addr[0]}:{self.addr[1]}" if self.addr else '',
+                'caller_id': getattr(self, '_current_caller_id', None),
             }
             query = preprocess_deref_cascades(query, deref_context)
 
@@ -6614,6 +6619,11 @@ class ClientConnection:
             deref_context = {
                 'session_id': self.session_id,
                 'protocol': 'pgwire',
+                'database_name': self.database_name,
+                'user_name': self.user_name,
+                'application_name': self.application_name,
+                'client_address': f"{self.addr[0]}:{self.addr[1]}" if self.addr else '',
+                'caller_id': getattr(self, '_current_caller_id', None),
             }
             base_sql = preprocess_deref_cascades(base_sql, deref_context)
 
@@ -7407,6 +7417,11 @@ class ClientConnection:
                             deref_context = {
                                 'session_id': self.session_id,
                                 'protocol': 'pgwire',
+                                'database_name': self.database_name,
+                                'user_name': self.user_name,
+                                'application_name': self.application_name,
+                                'client_address': f"{self.addr[0]}:{self.addr[1]}" if self.addr else '',
+                                'caller_id': getattr(self, '_current_caller_id', None),
                             }
                             base_sql = preprocess_deref_cascades(base_sql, deref_context)
 
@@ -7533,6 +7548,11 @@ class ClientConnection:
                         deref_context = {
                             'session_id': self.session_id,
                             'protocol': 'pgwire',
+                            'database_name': self.database_name,
+                            'user_name': self.user_name,
+                            'application_name': self.application_name,
+                            'client_address': f"{self.addr[0]}:{self.addr[1]}" if self.addr else '',
+                            'caller_id': getattr(self, '_current_caller_id', None),
                         }
                         desc_query = preprocess_deref_cascades(desc_query, deref_context)
 
@@ -8723,6 +8743,11 @@ class ClientConnection:
             deref_context = {
                 'session_id': self.session_id,
                 'protocol': 'pgwire',
+                'database_name': self.database_name,
+                'user_name': self.user_name,
+                'application_name': self.application_name,
+                'client_address': f"{self.addr[0]}:{self.addr[1]}" if self.addr else '',
+                'caller_id': getattr(self, '_current_caller_id', None),
             }
             duckdb_query = preprocess_deref_cascades(duckdb_query, deref_context)
 

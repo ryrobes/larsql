@@ -7,6 +7,9 @@ import PlotlyPanel from './PlotlyPanel';
 import VegaLitePanel from './VegaLitePanel';
 import SliderPanel from './SliderPanel';
 import DropdownPanel from './DropdownPanel';
+import DateRangePanel from './DateRangePanel';
+import TogglePanel from './TogglePanel';
+import SparklinePanel from './SparklinePanel';
 import TextPanel from './TextPanel';
 import './PanelRenderer.css';
 
@@ -45,6 +48,12 @@ const PanelRenderer = ({ panel, style, onInteraction }) => {
         return 'mdi:tune-vertical';
       case 'dropdown':
         return 'mdi:form-dropdown';
+      case 'daterange':
+        return 'mdi:calendar-range';
+      case 'toggle':
+        return 'mdi:toggle-switch';
+      case 'sparkline':
+        return 'mdi:chart-timeline-variant';
       default:
         return 'mdi:text';
     }
@@ -134,6 +143,29 @@ const PanelRenderer = ({ panel, style, onInteraction }) => {
             selectedValue={selected_value}
           />
         );
+
+      case 'daterange':
+        return (
+          <DateRangePanel
+            content={content}
+            onChange={on_select ? handleDataClick : null}
+            interactive={!!on_select}
+            selectedValue={selected_value}
+          />
+        );
+
+      case 'toggle':
+        return (
+          <TogglePanel
+            content={content}
+            onChange={on_select ? handleDataClick : null}
+            interactive={!!on_select}
+            selectedValue={selected_value}
+          />
+        );
+
+      case 'sparkline':
+        return <SparklinePanel content={content} />;
 
       case 'text':
       default:

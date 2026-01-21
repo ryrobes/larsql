@@ -386,6 +386,263 @@ def get_query_logger() -> Optional[QueryLogger]:
     return _query_logger
 
 
+# =============================================================================
+# Deref Logging System - Async fire-and-forget logging for @cascade() evaluations
+# =============================================================================
+
+class DerefLogger:
+    """
+    Async fire-and-forget logger for @cascade() deref evaluations.
+
+    Records deref operations to ClickHouse for:
+    - Debugging: See what values were injected into queries
+    - Analytics: Track usage patterns of param_get/param_set/etc.
+    - UI surfacing: Show deref values alongside query results
+    - Audit trail: Know which sessions/clients are using what parameters
+
+    Features:
+    - Uses a separate ClickHouse client connection (bypasses main query lock)
+    - Queue-based batching for efficient inserts
+    - Background daemon thread flushes batches periodically
+    - Never blocks the deref preprocessing path
+    - Graceful shutdown on process exit
+    """
+
+    _instance = None
+    _lock = threading.Lock()
+
+    # Batch settings
+    BATCH_SIZE = 100  # Flush after this many entries (derefs can be frequent)
+    FLUSH_INTERVAL = 3.0  # Flush every N seconds regardless of batch size
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+                    cls._instance._initialized = False
+        return cls._instance
+
+    def __init__(self, host: str | None = None, port: int | None = None, database: str | None = None,
+                 user: str | None = None, password: str | None = None):
+        """Initialize the deref logger (singleton - only runs once)."""
+        if self._initialized:
+            return
+
+        self._queue = queue.Queue()
+        self._client = None
+        self._host = host
+        self._port = port
+        self._database = database
+        self._user = user
+        self._password = password
+        self._shutdown = False
+        self._enabled = True  # Can be disabled if table creation fails
+
+        # Start background flush thread
+        self._flush_thread = threading.Thread(target=self._flush_loop, daemon=True)
+        self._flush_thread.start()
+
+        # Register shutdown handler
+        atexit.register(self._shutdown_handler)
+
+        self._initialized = True
+
+    def _get_client(self):
+        """Lazily create a dedicated ClickHouse client for logging."""
+        if self._client is not None:
+            return self._client
+
+        if self._host is None:
+            # Get config from main adapter if not provided
+            try:
+                from .config import get_config
+                config = get_config()
+                self._host = config.clickhouse_host
+                self._port = config.clickhouse_port
+                self._database = config.clickhouse_database
+                self._user = config.clickhouse_user
+                self._password = config.clickhouse_password
+            except Exception:
+                self._enabled = False
+                return None
+
+        try:
+            from clickhouse_driver import Client
+            self._client = Client(
+                host=self._host,
+                port=self._port,
+                database=self._database,
+                user=self._user,
+                password=self._password,
+                connect_timeout=5,
+                send_receive_timeout=10,
+                settings={
+                    'use_numpy': False,
+                    'max_execution_time': 10,
+                }
+            )
+            return self._client
+        except Exception as e:
+            print(f"[DerefLogger] Failed to create client: {e}")
+            self._enabled = False
+            return None
+
+    def log_deref(
+        self,
+        deref_expression: str,
+        cascade_name: str,
+        args: list,
+        accessor_chain: str | None,
+        resolved_value: str,
+        resolved_value_type: str,
+        session_id: str,
+        protocol: str = 'pgwire',
+        database_name: str = '',
+        user_name: str = '',
+        application_name: str = '',
+        client_address: str = '',
+        caller_id: str | None = None,
+        cache_hit: bool = False,
+        duration_ms: float = 0.0,
+        error_message: str | None = None
+    ):
+        """
+        Log a deref operation asynchronously (fire-and-forget).
+
+        Args:
+            deref_expression: The full deref expression (e.g., '@param_get("region", "ALL")')
+            cascade_name: The cascade name (e.g., 'param_get')
+            args: Parsed arguments list
+            accessor_chain: Accessor suffix if any (e.g., '[0].field')
+            resolved_value: The SQL-escaped value that was injected
+            resolved_value_type: Type of the resolved value
+            session_id: Session identifier
+            protocol: 'pgwire' or 'http'
+            database_name: Database being queried
+            user_name: User name from connection
+            application_name: Client application name
+            client_address: Client IP:port
+            caller_id: Pipeline caller ID if available
+            cache_hit: Whether this was served from cache
+            duration_ms: Resolution time in milliseconds
+            error_message: Error message if resolution failed
+        """
+        if not self._enabled or self._shutdown:
+            return
+
+        try:
+            # Convert args to JSON
+            args_json = json.dumps(args, default=str, ensure_ascii=False)
+
+            entry = {
+                'deref_expression': deref_expression[:1000],  # Truncate very long expressions
+                'cascade_name': cascade_name,
+                'args_json': args_json,
+                'accessor_chain': accessor_chain or '',
+                'resolved_value': resolved_value[:5000] if resolved_value else '',  # Truncate large values
+                'resolved_value_type': resolved_value_type,
+                'cache_hit': cache_hit,
+                'duration_ms': duration_ms,
+                'error_message': error_message[:500] if error_message else '',
+                'session_id': session_id,
+                'protocol': protocol,
+                'database_name': database_name,
+                'user_name': user_name,
+                'application_name': application_name,
+                'client_address': client_address,
+                'caller_id': caller_id,
+            }
+
+            # Non-blocking put
+            self._queue.put_nowait(entry)
+        except queue.Full:
+            pass  # Drop entry if queue is full - never block
+        except Exception:
+            pass  # Silently ignore any logging errors
+
+    def _flush_loop(self):
+        """Background thread that flushes batched entries to ClickHouse."""
+        batch = []
+        last_flush = time.time()
+
+        while not self._shutdown:
+            try:
+                # Try to get an entry with timeout
+                try:
+                    entry = self._queue.get(timeout=0.5)
+                    batch.append(entry)
+                except queue.Empty:
+                    pass
+
+                # Flush if batch is full or interval elapsed
+                now = time.time()
+                should_flush = (
+                    len(batch) >= self.BATCH_SIZE or
+                    (batch and now - last_flush >= self.FLUSH_INTERVAL)
+                )
+
+                if should_flush and batch:
+                    self._flush_batch(batch)
+                    batch = []
+                    last_flush = now
+
+            except Exception:
+                # Never crash the flush thread
+                pass
+
+        # Final flush on shutdown
+        if batch:
+            self._flush_batch(batch)
+
+    def _flush_batch(self, batch: List[Dict]):
+        """Flush a batch of entries to ClickHouse."""
+        client = self._get_client()
+        if client is None or not batch:
+            return
+
+        try:
+            columns = [
+                'deref_expression', 'cascade_name', 'args_json', 'accessor_chain',
+                'resolved_value', 'resolved_value_type', 'cache_hit', 'duration_ms',
+                'error_message', 'session_id', 'protocol', 'database_name',
+                'user_name', 'application_name', 'client_address', 'caller_id'
+            ]
+
+            values = []
+            for entry in batch:
+                values.append(tuple(entry.get(col) for col in columns))
+
+            cols_str = ', '.join(columns)
+            client.execute(
+                f"INSERT INTO deref_log ({cols_str}) VALUES",
+                values,
+                settings={'use_numpy': False}
+            )
+        except Exception as e:
+            # Log but don't crash
+            print(f"[DerefLogger] Flush failed: {e}")
+
+    def _shutdown_handler(self):
+        """Handle graceful shutdown."""
+        self._shutdown = True
+        # Give the flush thread a moment to finish
+        if self._flush_thread.is_alive():
+            self._flush_thread.join(timeout=1.0)
+
+
+# Global deref logger singleton (lazily initialized)
+_deref_logger: Optional[DerefLogger] = None
+
+
+def get_deref_logger() -> Optional[DerefLogger]:
+    """Get the deref logger singleton (lazily initialized)."""
+    global _deref_logger
+    if _deref_logger is None:
+        _deref_logger = DerefLogger()
+    return _deref_logger
+
+
 class ClickHouseAdapter:
     """
     Pure ClickHouse adapter - single implementation for all database operations.

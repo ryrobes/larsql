@@ -165,8 +165,8 @@ def _extract_params_key(on_select_template: str):
         -> ('depts', 'dept')
     """
     import re
-    # Match @params_set('key', field) or @params_set("key", field)
-    match = re.match(r"@params_set\(['\"]([^'\"]+)['\"],\s*(\w+)\)", on_select_template)
+    # Match @params_set('key', field) or @params_set("key", field) or @params_set('key', *)
+    match = re.match(r"@params_set\(['\"]([^'\"]+)['\"],\s*(\w+|\*)\)", on_select_template)
     if match:
         return match.group(1), match.group(2)
     return None, None
@@ -176,16 +176,18 @@ def _extract_param_key(on_select_template: str):
     """
     Extract the param key and field name from a single-select on_select template.
 
-    Template format: @param_set('key', field)
+    Template format: @param_set('key', field) or @param_set('key', *)
     Returns: (param_key, field_name) or (None, None) if not found
 
     Example:
         _extract_param_key("@param_set('level', level)")
         -> ('level', 'level')
+        _extract_param_key("@param_set('dates', *)")
+        -> ('dates', '*')
     """
     import re
-    # Match @param_set('key', field) or @param_set("key", field)
-    match = re.match(r"@param_set\(['\"]([^'\"]+)['\"],\s*(\w+)\)", on_select_template)
+    # Match @param_set('key', field) or @param_set("key", field) or @param_set('key', *)
+    match = re.match(r"@param_set\(['\"]([^'\"]+)['\"],\s*(\w+|\*)\)", on_select_template)
     if match:
         return match.group(1), match.group(2)
     return None, None
@@ -347,9 +349,25 @@ def execute_single_query(query: str, conn, lock, database: str, caller_id: str =
     from lars.sql_tools.deref_preprocessor import preprocess_deref_cascades
 
     # Deref preprocessing: evaluate @cascade() expressions first
+    # Try to get client info from Flask request context
+    client_address = ''
+    user_agent = ''
+    try:
+        from flask import request, has_request_context
+        if has_request_context():
+            client_address = request.remote_addr or ''
+            user_agent = request.headers.get('User-Agent', '')[:100]  # Truncate
+    except Exception:
+        pass
+
     session_context = {
         'session_id': database,
         'protocol': 'http',
+        'database_name': database,
+        'user_name': '',  # HTTP doesn't have user auth yet
+        'application_name': user_agent,
+        'client_address': client_address,
+        'caller_id': caller_id,
     }
     query = preprocess_deref_cascades(query, session_context)
 
