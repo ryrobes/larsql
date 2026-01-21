@@ -4485,6 +4485,14 @@ class ClientConnection:
                 # Prewarm failures are non-fatal
                 styled_print(f"[{self.session_id}]   {S.WARN}  Prewarm check failed: {prewarm_e}")
 
+            # Deref preprocessing: evaluate @cascade() expressions first
+            from ..sql_tools.deref_preprocessor import preprocess_deref_cascades
+            deref_context = {
+                'session_id': self.session_id,
+                'protocol': 'pgwire',
+            }
+            query = preprocess_deref_cascades(query, deref_context)
+
             # Rewrite LARS MAP/RUN syntax to standard SQL
             # This strips annotations/comments, so prewarm check must happen first
             # Arrow syntax (-> table_name) is converted to hint comments here
@@ -6528,6 +6536,14 @@ class ClientConnection:
             # 1. Execute base SQL with unified rewriting (handles dimension functions, semantic operators, etc.)
             base_sql = pipeline.base_sql
 
+            # Deref preprocessing: evaluate @cascade() expressions first
+            from ..sql_tools.deref_preprocessor import preprocess_deref_cascades
+            deref_context = {
+                'session_id': self.session_id,
+                'protocol': 'pgwire',
+            }
+            base_sql = preprocess_deref_cascades(base_sql, deref_context)
+
             # Use the unified rewriter - same as normal query path
             # This ensures dimension functions (vibes, topics, etc.) get CTE transformation
             # BEFORE semantic rewriters inject ROW_NUMBER() for lineage tracking
@@ -7301,6 +7317,15 @@ class ClientConnection:
                         if pipeline and pipeline.stages:
                             # Execute base SQL with unified rewriting (handles dimension functions, semantic operators, etc.)
                             base_sql = pipeline.base_sql
+
+                            # Deref preprocessing: evaluate @cascade() expressions first
+                            from ..sql_tools.deref_preprocessor import preprocess_deref_cascades
+                            deref_context = {
+                                'session_id': self.session_id,
+                                'protocol': 'pgwire',
+                            }
+                            base_sql = preprocess_deref_cascades(base_sql, deref_context)
+
                             base_sql = rewrite_lars_syntax(base_sql, duckdb_conn=self.duckdb_conn)
 
                             # Preprocess CTEs with THEN pipeline syntax
@@ -7418,6 +7443,14 @@ class ClientConnection:
                         #     print(f"[DEBUG] pg_class: AFTER pg_inherits - WHERE: {'WHERE' in desc_query.upper()}")
                         desc_query = self._rewrite_pg_get_expr_calls(desc_query)
                         desc_query = self._rewrite_missing_pg_database_columns(desc_query)
+
+                        # Deref preprocessing: evaluate @cascade() expressions
+                        from ..sql_tools.deref_preprocessor import preprocess_deref_cascades
+                        deref_context = {
+                            'session_id': self.session_id,
+                            'protocol': 'pgwire',
+                        }
+                        desc_query = preprocess_deref_cascades(desc_query, deref_context)
 
                         # Strip PostgreSQL type casts that DuckDB doesn't support
                         for cast in ['::regclass', '::regtype', '::regproc', '::oid', '::bigint',
@@ -8589,6 +8622,14 @@ class ClientConnection:
             duckdb_query = self._rewrite_pg_inherits_subqueries(duckdb_query)
             duckdb_query = self._rewrite_pg_get_expr_calls(duckdb_query)
             duckdb_query = self._rewrite_missing_pg_database_columns(duckdb_query)
+
+            # Deref preprocessing: evaluate @cascade() expressions
+            from ..sql_tools.deref_preprocessor import preprocess_deref_cascades
+            deref_context = {
+                'session_id': self.session_id,
+                'protocol': 'pgwire',
+            }
+            duckdb_query = preprocess_deref_cascades(duckdb_query, deref_context)
 
             print(f"[{self.session_id}]      Converted query: {duckdb_query[:80]}...")
             print(f"[{self.session_id}]      Parameters: {params}")

@@ -1,0 +1,38 @@
+cascade_id: param_get
+internal: true
+description: |
+  Get a session parameter value.
+
+  Used with @deref syntax:
+      SELECT @param_get('region')
+      SELECT @param_get('region', 'default_value')
+
+  Parameters are session-scoped and persist across queries within the same session.
+
+inputs_schema:
+  key: The parameter key to retrieve
+  default: Optional default value if parameter is not set
+  _session_id: Session ID (injected by deref preprocessor)
+
+sql_function:
+  name: param_get
+  description: Get a session parameter value
+  args:
+    - name: key
+      type: VARCHAR
+    - name: default
+      type: VARCHAR
+      optional: true
+  returns: VARCHAR
+  shape: SCALAR
+  deref: true  # Marks this as a @deref callable cascade
+  cache: false
+
+cells:
+  - name: get_param
+    deterministic: true
+    tool: python:lars.sql_tools.param_store.param_store_get
+    inputs:
+      session_id: "{{ input._session_id }}"
+      key: "{{ input.key }}"
+      default: "{{ input.default | default(None) }}"

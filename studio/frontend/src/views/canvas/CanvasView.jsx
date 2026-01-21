@@ -1,39 +1,50 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { Icon } from '@iconify/react';
 import Editor from '@monaco-editor/react';
 import CanvasRenderer from './components/CanvasRenderer';
 import { configureMonacoTheme, STUDIO_THEME_NAME, handleEditorMount } from '../../studio/utils/monacoTheme';
 import { API_BASE_URL } from '../../config/api';
+import { fillCascadeTemplate } from './utils/cascadeTemplate';
 import './CanvasView.css';
 
-// Default example query using CANVAS/PANEL/GRID syntax
-const DEFAULT_QUERY = `-- Canvas: SQL-defined dashboards
--- Compose multiple visualizations into a single view
+// Default example query demonstrating reactive panels with ON_SELECT
+// Shows both single-select (click row) and multi-select (checkboxes) modes
+const DEFAULT_QUERY = `-- Reactive Dashboard with Multi-Select
+-- ON_SELECT = single-click mode (click row to select)
+-- ON_SELECT[] = multi-select mode (checkboxes, toggle values)
 
 WITH
-  -- Define your data as regular CTEs
+  departments AS (
+    SELECT * FROM (VALUES
+      ('Engineering', 12, 450000),
+      ('Marketing', 8, 280000),
+      ('Sales', 15, 520000),
+      ('Support', 6, 180000)
+    ) AS t(dept, headcount, budget)
+  ),
   employees AS (
     SELECT * FROM (VALUES
-      ('Alice', 28, 'Engineering'),
-      ('Bob', 34, 'Marketing'),
-      ('Carol', 29, 'Engineering'),
-      ('Dave', 42, 'Sales')
-    ) AS t(name, age, dept)
-  ),
-  metrics AS (
-    SELECT * FROM (VALUES
-      ('Revenue', 125000),
-      ('Users', 8420),
-      ('Growth', 12.5)
-    ) AS t(metric, value)
+      ('Alice', 28, 'Engineering', 'Senior'),
+      ('Bob', 34, 'Marketing', 'Lead'),
+      ('Carol', 29, 'Engineering', 'Mid'),
+      ('Dave', 42, 'Sales', 'Director'),
+      ('Eve', 31, 'Support', 'Senior'),
+      ('Frank', 26, 'Engineering', 'Junior'),
+      ('Grace', 38, 'Sales', 'Senior'),
+      ('Henry', 33, 'Marketing', 'Mid')
+    ) AS t(name, age, dept, level)
   )
 
--- CANVAS composes panels into a dashboard
--- PANEL(title, column, row, cte_reference)
-SELECT * FROM CANVAS(
-  PANEL('Team', 1, 1, employees),
-  PANEL('Metrics', 2, 1, metrics)
-) WITH GRID(2, 1)`;
+--- PANEL 'Departments' (1, 1) ON_SELECT[] @params_set('depts', dept)
+SELECT dept, headcount, budget FROM departments;
+
+--- PANEL 'Employees' (2, 1)
+SELECT name, age, level, dept
+FROM employees
+WHERE CASE
+  WHEN len(@params_get('depts')) = 0 THEN true
+  ELSE list_contains(@params_get('depts'), dept)
+END;`;
 
 /**
  * CanvasView - Hypermedia SQL Client
@@ -52,6 +63,9 @@ const CanvasView = () => {
 
   const editorRef = useRef(null);
   const monacoRef = useRef(null);
+
+  // Track previous panel data for smart re-render diffing
+  const prevPanelsRef = useRef({});
 
   // Fetch available databases on mount
   useEffect(() => {
@@ -95,12 +109,87 @@ const CanvasView = () => {
         return;
       }
 
+      // Update previous panels ref for smart diffing
+      if (data.multi_panel && data.panels) {
+        const panelMap = {};
+        data.panels.forEach(p => {
+          panelMap[p.name] = JSON.stringify(p.data);
+        });
+        prevPanelsRef.current = panelMap;
+      }
+
       setResult(data);
     } catch (err) {
       setError(err.message || 'Failed to execute query');
       setExecutionTime(Date.now() - startTime);
     } finally {
       setLoading(false);
+    }
+  }, [sql, selectedDatabase]);
+
+  // Handle panel interactions (clicks, etc.)
+  // Executes the cascade and re-runs the dashboard
+  const handleInteraction = useCallback(async (event) => {
+    const { panelName, data: rowData, onSelectTemplate } = event;
+
+    if (!onSelectTemplate) return;
+
+    // Fill the cascade template with values from clicked row
+    const filledCascade = fillCascadeTemplate(onSelectTemplate, rowData);
+
+    try {
+      // Execute the cascade (e.g., @param_set('region', 'US'))
+      await fetch(`${API_BASE_URL}/api/sql/execute`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: `SELECT ${filledCascade}`,
+          database: selectedDatabase
+        })
+      });
+
+      // Re-run the entire dashboard query
+      // The smart diffing happens in React - panels with unchanged data
+      // will keep their identity and not re-render
+      const startTime = Date.now();
+
+      const response = await fetch(`${API_BASE_URL}/api/sql/execute`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: sql, database: selectedDatabase })
+      });
+
+      const newResult = await response.json();
+      setExecutionTime(Date.now() - startTime);
+
+      if (!newResult.success) {
+        setError(newResult.error || 'Query execution failed');
+        return;
+      }
+
+      // Smart update: compare with previous panel data
+      // Only panels with changed data will get new object references
+      if (newResult.multi_panel && newResult.panels) {
+        newResult.panels = newResult.panels.map(panel => {
+          const prevDataStr = prevPanelsRef.current[panel.name];
+          const newDataStr = JSON.stringify(panel.data);
+
+          // If data is the same, preserve the previous data reference
+          // This helps React skip re-rendering unchanged panels
+          if (prevDataStr === newDataStr) {
+            return { ...panel, _unchanged: true };
+          }
+
+          // Update the ref with new data
+          prevPanelsRef.current[panel.name] = newDataStr;
+          return panel;
+        });
+      }
+
+      setResult(newResult);
+    } catch (err) {
+      console.error('Interaction failed:', err);
+      setError(err.message || 'Failed to execute interaction');
     }
   }, [sql, selectedDatabase]);
 
@@ -143,7 +232,9 @@ const CanvasView = () => {
     cursorBlinking: 'smooth',
   };
 
-  // Detect if result is a canvas or error
+  // Detect result format: multi-panel, canvas, or error
+  const isMultiPanelResult = result?.multi_panel === true;
+  const multiPanelData = isMultiPanelResult ? result.panels : null;
   const isCanvasResult = result?.data?.[0]?.format === 'canvas';
   const canvasData = isCanvasResult ? result.data[0].canvas : null;
   const isErrorResult = result?.data?.[0]?.format === 'error';
@@ -226,9 +317,11 @@ const CanvasView = () => {
             <span>Output</span>
             {result && (
               <span className="canvas-result-info">
-                {isCanvasResult
-                  ? `${canvasData?.panels?.length || 0} panels`
-                  : `${result.row_count} rows`
+                {isMultiPanelResult
+                  ? `${multiPanelData?.length || 0} panels`
+                  : isCanvasResult
+                    ? `${canvasData?.panels?.length || 0} panels`
+                    : `${result.row_count} rows`
                 }
               </span>
             )}
@@ -275,6 +368,9 @@ const CanvasView = () => {
                 columns={result.columns}
                 isCanvas={isCanvasResult}
                 canvasData={canvasData}
+                isMultiPanel={isMultiPanelResult}
+                multiPanelData={multiPanelData}
+                onInteraction={handleInteraction}
               />
             )}
           </div>

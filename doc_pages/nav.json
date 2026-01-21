@@ -60,6 +60,29 @@
           ]
         },
         {
+          "id": "environment-variables",
+          "title": "Environment Variables",
+          "sections": [
+            { "anchor": "overview", "title": "Overview" },
+            { "anchor": "core", "title": "Core Configuration (Required)" },
+            { "anchor": "directories", "title": "Directories" },
+            { "anchor": "models", "title": "LLM Models" },
+            { "anchor": "rag", "title": "Ephemeral RAG" },
+            { "anchor": "databases", "title": "External Databases" },
+            { "anchor": "sql", "title": "SQL & Semantic Operators" },
+            { "anchor": "ollama", "title": "Ollama" },
+            { "anchor": "vertex", "title": "Google Vertex AI" },
+            { "anchor": "bedrock", "title": "AWS Bedrock" },
+            { "anchor": "azure", "title": "Azure OpenAI" },
+            { "anchor": "harbor", "title": "Harbor (HuggingFace)" },
+            { "anchor": "mcp", "title": "MCP Integration" },
+            { "anchor": "analytics", "title": "Analytics & Assessment" },
+            { "anchor": "ui", "title": "UI & Visualization" },
+            { "anchor": "third-party", "title": "Third-Party Services" },
+            { "anchor": "misc", "title": "Miscellaneous" }
+          ]
+        },
+        {
           "id": "thinking-mode",
           "title": "Thinking Mode",
           "sections": [

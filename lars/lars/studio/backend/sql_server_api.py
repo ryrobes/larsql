@@ -51,6 +51,317 @@ def list_databases():
         return jsonify({"error": str(e)}), 500
 
 
+def _sanitize_for_json(data: list[dict]) -> list[dict]:
+    """
+    Sanitize data for JSON serialization.
+
+    Converts:
+    - NaN and Infinity to None (null in JSON)
+    - numpy arrays to Python lists
+    - numpy scalars to Python scalars
+    """
+    import math
+    import numpy as np
+
+    def sanitize_value(v):
+        # Handle numpy arrays
+        if isinstance(v, np.ndarray):
+            return v.tolist()
+        # Handle numpy scalar types
+        if isinstance(v, (np.integer, np.floating)):
+            v = v.item()
+        # Handle NaN/Inf floats
+        if isinstance(v, float):
+            if math.isnan(v) or math.isinf(v):
+                return None
+        return v
+
+    return [
+        {k: sanitize_value(v) for k, v in row.items()}
+        for row in data
+    ]
+
+
+def _split_sql_statements(sql: str) -> list[str]:
+    """
+    Split SQL into individual statements, respecting string literals and comments.
+
+    Splits on semicolons that are not inside strings or comments.
+    """
+    statements = []
+    current = []
+    in_string = None
+    in_line_comment = False
+    in_block_comment = False
+    i = 0
+
+    while i < len(sql):
+        char = sql[i]
+        next_char = sql[i + 1] if i + 1 < len(sql) else ''
+
+        # Handle comments
+        if not in_string:
+            if not in_block_comment and char == '-' and next_char == '-':
+                in_line_comment = True
+            elif in_line_comment and char == '\n':
+                in_line_comment = False
+            elif not in_line_comment and char == '/' and next_char == '*':
+                in_block_comment = True
+            elif in_block_comment and char == '*' and next_char == '/':
+                in_block_comment = False
+                current.append(char)
+                current.append(next_char)
+                i += 2
+                continue
+
+        # Skip if in comment
+        if in_line_comment or in_block_comment:
+            current.append(char)
+            i += 1
+            continue
+
+        # Handle strings
+        if char in ("'", '"'):
+            if in_string is None:
+                in_string = char
+            elif in_string == char:
+                # Check for escaped quote
+                if next_char == char:
+                    current.append(char)
+                    current.append(next_char)
+                    i += 2
+                    continue
+                else:
+                    in_string = None
+
+        # Statement separator
+        if char == ';' and not in_string:
+            stmt = ''.join(current).strip()
+            if stmt:
+                statements.append(stmt)
+            current = []
+        else:
+            current.append(char)
+
+        i += 1
+
+    # Don't forget the last statement
+    stmt = ''.join(current).strip()
+    if stmt:
+        statements.append(stmt)
+
+    return statements
+
+
+def _extract_params_key(on_select_template: str):
+    """
+    Extract the param key and field name from an on_select template.
+
+    Template format: @params_set('key', field)
+    Returns: (param_key, field_name) or (None, None) if not found
+
+    Example:
+        _extract_params_key("@params_set('depts', dept)")
+        -> ('depts', 'dept')
+    """
+    import re
+    # Match @params_set('key', field) or @params_set("key", field)
+    match = re.match(r"@params_set\(['\"]([^'\"]+)['\"],\s*(\w+)\)", on_select_template)
+    if match:
+        return match.group(1), match.group(2)
+    return None, None
+
+
+def parse_multi_panel_query(query: str):
+    """
+    Parse a query with explicit panel markers.
+
+    Syntax:
+        -- Setup SQL (CREATE TABLE, etc.) runs before panels
+        CREATE TABLE foo AS SELECT 1;
+
+        --- PANEL 'Panel Name'
+        SELECT * FROM foo;
+
+        --- PANEL 'Another Panel' (col, row)
+        SELECT * FROM bar;
+
+        --- PANEL 'Wide Panel' (col, row, colspan, rowspan)
+        SELECT * FROM baz;
+
+        --- PANEL 'Interactive' (1, 1) ON_SELECT @param_set('selected')
+        SELECT * FROM items;
+
+        --- PANEL 'Multi-Select' (1, 1) ON_SELECT[] @params_set('selected')
+        SELECT * FROM items;
+
+    Returns:
+        Dict with:
+            - setup: SQL to run before panels (DDL, CREATE TABLE, etc.)
+            - panels: List of panel dicts with keys: name, query, position, on_select, multi_select
+        Returns None if no panel markers found (single-query mode).
+    """
+    import re
+
+    # Pattern: --- PANEL 'name' with optional (col, row, colspan, rowspan) and ON_SELECT or ON_SELECT[] @cascade(...)
+    # Groups: 1=name, 2=col, 3=row, 4=colspan, 5=rowspan, 6=[] (multi-select flag), 7=on_select cascade
+    panel_pattern = r'^---\s*PANEL\s+[\'"]([^\'"]+)[\'"](?:\s*\((\d+)\s*,\s*(\d+)(?:\s*,\s*(\d+)\s*,\s*(\d+))?\))?(?:\s+ON_SELECT(\[\])?\s+(@\w+\([^)]*\)))?\s*$'
+
+    lines = query.split('\n')
+    panels = []
+    setup_lines = []  # SQL before first panel marker
+    current_panel = None
+    current_position = None
+    current_on_select = None
+    current_multi_select = False
+    current_lines = []
+
+    for line in lines:
+        match = re.match(panel_pattern, line.strip(), re.IGNORECASE)
+        if match:
+            # Save previous panel if exists
+            if current_panel is not None:
+                query_text = '\n'.join(current_lines).strip()
+                if query_text:
+                    panel_info = {
+                        'name': current_panel,
+                        'query': query_text,
+                    }
+                    if current_position:
+                        panel_info['position'] = current_position
+                    if current_on_select:
+                        panel_info['on_select'] = current_on_select
+                        if current_multi_select:
+                            panel_info['multi_select'] = True
+                    panels.append(panel_info)
+            else:
+                # This is the first panel - save any preceding lines as setup SQL
+                setup_lines = current_lines.copy()
+
+            # Start new panel
+            current_panel = match.group(1)
+            current_lines = []
+
+            # Parse optional position/size
+            if match.group(2) and match.group(3):
+                col = int(match.group(2))
+                row = int(match.group(3))
+                colspan = int(match.group(4)) if match.group(4) else 1
+                rowspan = int(match.group(5)) if match.group(5) else 1
+                current_position = {
+                    'col': col,
+                    'row': row,
+                    'colspan': colspan,
+                    'rowspan': rowspan,
+                }
+            else:
+                current_position = None
+
+            # Parse optional ON_SELECT or ON_SELECT[]
+            # Group 6 = '[]' if multi-select, Group 7 = cascade
+            current_multi_select = bool(match.group(6))  # '[]' present
+            current_on_select = match.group(7) if match.group(7) else None
+        else:
+            current_lines.append(line)
+
+    # Save last panel
+    if current_panel is not None:
+        query_text = '\n'.join(current_lines).strip()
+        if query_text:
+            panel_info = {
+                'name': current_panel,
+                'query': query_text,
+            }
+            if current_position:
+                panel_info['position'] = current_position
+            if current_on_select:
+                panel_info['on_select'] = current_on_select
+                if current_multi_select:
+                    panel_info['multi_select'] = True
+            panels.append(panel_info)
+
+    # If no panel markers found, return None (single-query mode)
+    if not panels:
+        return None
+
+    # Return both setup SQL and panels
+    setup_sql = '\n'.join(setup_lines).strip()
+    return {
+        'setup': setup_sql if setup_sql else None,
+        'panels': panels
+    }
+
+
+def execute_single_query(query: str, conn, lock, database: str, caller_id: str = None):
+    """
+    Execute a single SQL query and return the result as a DataFrame.
+
+    Handles LARS syntax rewriting and pipeline execution.
+    """
+    import pandas as pd
+    from lars.sql_rewriter import rewrite_lars_syntax
+    from lars.sql_tools.pipeline_parser import has_pipeline_syntax, parse_pipeline_syntax
+    from lars.sql_tools.database_manager import ensure_lazy_attach
+    from lars.sql_tools.deref_preprocessor import preprocess_deref_cascades
+
+    # Deref preprocessing: evaluate @cascade() expressions first
+    session_context = {
+        'session_id': database,
+        'protocol': 'http',
+    }
+    query = preprocess_deref_cascades(query, session_context)
+
+    # Ensure external databases referenced in query are attached
+    ensure_lazy_attach(conn, query)
+
+    # Apply LARS syntax rewriting
+    rewritten_query = rewrite_lars_syntax(query, duckdb_conn=conn)
+
+    # Check for PIPELINE syntax
+    if has_pipeline_syntax(rewritten_query):
+        from lars.sql_tools.pipeline_executor import execute_pipeline_with_into
+        from lars.sql_tools.pipeline_parser import preprocess_cte_pipelines
+
+        pipeline = parse_pipeline_syntax(rewritten_query)
+        if pipeline and pipeline.stages:
+            base_sql = pipeline.base_sql
+
+            # Preprocess CTEs with THEN pipeline syntax
+            base_sql = preprocess_cte_pipelines(
+                base_sql,
+                duckdb_conn=conn,
+                session_id=database,
+                caller_id=caller_id,
+            )
+
+            # Execute base query
+            with lock:
+                result = conn.execute(base_sql)
+                columns = [desc[0] for desc in result.description]
+                rows = result.fetchall()
+            initial_df = pd.DataFrame(rows, columns=columns)
+
+            # Execute pipeline stages
+            result_df = execute_pipeline_with_into(
+                stages=pipeline.stages,
+                initial_df=initial_df,
+                into_table=pipeline.into_table,
+                duckdb_conn=conn,
+                session_id=database,
+                caller_id=caller_id,
+                original_query=query,
+                base_into_table=pipeline.base_into_table,
+            )
+        else:
+            with lock:
+                result_df = conn.execute(rewritten_query).fetchdf()
+    else:
+        with lock:
+            result_df = conn.execute(rewritten_query).fetchdf()
+
+    return result_df
+
+
 @sql_server_api.route('/api/sql/execute', methods=['POST'])
 def execute_sql():
     """
@@ -117,10 +428,9 @@ def execute_sql():
         from lars.sql_tools.database_manager import (
             get_database_connection,
             get_database_lock,
-            ensure_lazy_attach
         )
-        from lars.sql_rewriter import rewrite_lars_syntax, _is_lars_statement
-        from lars.sql_tools.pipeline_parser import has_pipeline_syntax, parse_pipeline_syntax
+        from lars.sql_rewriter import _is_lars_statement
+        from lars.sql_tools.pipeline_parser import has_pipeline_syntax
 
         # Get fully initialized database connection (UDFs, auto-attach, etc.)
         conn = get_database_connection(database)
@@ -140,59 +450,81 @@ def execute_sql():
             )
             set_caller_context(caller_id, metadata)
 
-        # Ensure external databases referenced in query are attached
-        ensure_lazy_attach(conn, query)
+        # Check for multi-panel query syntax (--- PANEL 'name')
+        parsed = parse_multi_panel_query(query)
 
-        # First, apply LARS syntax rewriting (CANVAS, semantic operators, etc.)
-        # This may produce THEN pipeline syntax (e.g., CANVAS -> ... THEN RENDER_CANVAS)
-        rewritten_query = rewrite_lars_syntax(query, duckdb_conn=conn)
+        if parsed:
+            # Multi-panel mode: execute setup SQL first, then each panel query
+            setup_sql = parsed.get('setup')
+            panels = parsed.get('panels', [])
 
-        # Check for PIPELINE syntax (THEN/INTO) on the REWRITTEN query
-        # This catches both original pipelines AND pipelines generated by rewriting
-        if has_pipeline_syntax(rewritten_query):
-            from lars.sql_tools.pipeline_executor import execute_pipeline_with_into
-            from lars.sql_tools.pipeline_parser import preprocess_cte_pipelines
+            # Execute setup SQL (CREATE TABLE, etc.) before panels
+            if setup_sql:
+                # Split setup SQL into individual statements and execute each
+                # This handles multiple CREATE TABLE statements
+                for statement in _split_sql_statements(setup_sql):
+                    # Skip empty statements and comment-only statements
+                    cleaned = statement.strip()
+                    if not cleaned:
+                        continue
+                    # Check if it's only comments (lines starting with --)
+                    non_comment_lines = [
+                        line for line in cleaned.split('\n')
+                        if line.strip() and not line.strip().startswith('--')
+                    ]
+                    if not non_comment_lines:
+                        continue
+                    execute_single_query(statement, conn, lock, database, caller_id)
 
-            pipeline = parse_pipeline_syntax(rewritten_query)
-            if pipeline and pipeline.stages:
-                # Execute base SQL (already rewritten above, but base_sql needs extraction)
-                base_sql = pipeline.base_sql
+            panel_results = []
+            total_rows = 0
 
-                # Preprocess CTEs with THEN pipeline syntax
-                # This executes pipelines inside CTEs and replaces them with materialized results
-                base_sql = preprocess_cte_pipelines(
-                    base_sql,
-                    duckdb_conn=conn,
-                    session_id=database,
-                    caller_id=caller_id,
-                )
+            for panel_info in panels:
+                panel_name = panel_info['name']
+                panel_query = panel_info['query']
+                panel_position = panel_info.get('position')
+                panel_on_select = panel_info.get('on_select')
+                panel_multi_select = panel_info.get('multi_select', False)
 
-                # Execute base query (use lock for thread safety)
-                with lock:
-                    result = conn.execute(base_sql)
-                    columns = [desc[0] for desc in result.description]
-                    rows = result.fetchall()
-                initial_df = pd.DataFrame(rows, columns=columns)
+                result_df = execute_single_query(panel_query, conn, lock, database, caller_id)
+                panel_result = {
+                    "name": panel_name,
+                    "columns": list(result_df.columns),
+                    "data": _sanitize_for_json(result_df.to_dict('records')),
+                    "row_count": len(result_df)
+                }
+                if panel_position:
+                    panel_result["position"] = panel_position
+                if panel_on_select:
+                    panel_result["on_select"] = panel_on_select
+                    panel_result["multi_select"] = panel_multi_select
 
-                # Execute pipeline stages
-                result_df = execute_pipeline_with_into(
-                    stages=pipeline.stages,
-                    initial_df=initial_df,
-                    into_table=pipeline.into_table,
-                    duckdb_conn=conn,
-                    session_id=database,
-                    caller_id=caller_id,
-                    original_query=query,
-                    base_into_table=pipeline.base_into_table,
-                )
-            else:
-                # Fallback if parsing fails
-                with lock:
-                    result_df = conn.execute(rewritten_query).fetchdf()
-        else:
-            # Regular query - already rewritten, just execute (use lock for thread safety)
-            with lock:
-                result_df = conn.execute(rewritten_query).fetchdf()
+                    # For multi-select panels, include current selection state
+                    if panel_multi_select:
+                        param_key, select_field = _extract_params_key(panel_on_select)
+                        if param_key and select_field:
+                            from lars.sql_tools.param_store import params_store_get
+                            selected_values = params_store_get(database, param_key)
+                            panel_result["selected_values"] = selected_values
+                            panel_result["select_field"] = select_field
+
+                panel_results.append(panel_result)
+                total_rows += len(result_df)
+
+            execution_time_ms = (time.time() - start_time) * 1000
+
+            return jsonify({
+                "success": True,
+                "multi_panel": True,
+                "panels": panel_results,
+                "panel_count": len(panel_results),
+                "total_rows": total_rows,
+                "database": database,
+                "execution_time_ms": execution_time_ms
+            })
+
+        # Single query mode (existing behavior)
+        result_df = execute_single_query(query, conn, lock, database, caller_id)
 
         execution_time_ms = (time.time() - start_time) * 1000
 
@@ -206,10 +538,16 @@ def execute_sql():
 
         elif output_format == 'json':
             # JSON format (array of arrays)
+            # Replace NaN/Inf with None for JSON compatibility
+            import math
+            data = [
+                [None if isinstance(v, float) and (math.isnan(v) or math.isinf(v)) else v for v in row]
+                for row in result_df.values.tolist()
+            ]
             return jsonify({
                 "success": True,
                 "columns": list(result_df.columns),
-                "data": result_df.values.tolist(),
+                "data": data,
                 "row_count": len(result_df),
                 "database": database,
                 "execution_time_ms": execution_time_ms
@@ -220,7 +558,7 @@ def execute_sql():
             return jsonify({
                 "success": True,
                 "columns": list(result_df.columns),
-                "data": result_df.to_dict('records'),
+                "data": _sanitize_for_json(result_df.to_dict('records')),
                 "row_count": len(result_df),
                 "database": database,
                 "execution_time_ms": execution_time_ms

@@ -1,0 +1,32 @@
+cascade_id: param_clear
+internal: true
+description: |
+  Clear a session parameter.
+
+  Used with @deref syntax:
+      SELECT @param_clear('region')
+
+  Removes the parameter from the session. Subsequent gets will return the default.
+
+inputs_schema:
+  key: The parameter key to clear
+  _session_id: Session ID (injected by deref preprocessor)
+
+sql_function:
+  name: param_clear
+  description: Clear a session parameter
+  args:
+    - name: key
+      type: VARCHAR
+  returns: VARCHAR
+  shape: SCALAR
+  deref: true  # Marks this as a @deref callable cascade
+  cache: false
+
+cells:
+  - name: clear_param
+    deterministic: true
+    tool: python:lars.sql_tools.param_store.param_store_clear
+    inputs:
+      session_id: "{{ input._session_id }}"
+      key: "{{ input.key }}"

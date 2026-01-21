@@ -1,0 +1,1011 @@
+<h1>Environment Variables</h1>
+<p class="lead">
+  Complete reference for all environment variables used by LARS. Configure AI providers, database connections,
+  analytics behavior, and more through environment variables.
+</p>
+
+<div class="toc">
+  <div class="toc-title">On This Page</div>
+  <ul>
+    <li><a href="#overview">Overview</a></li>
+    <li><a href="#core">Core Configuration (Required)</a></li>
+    <li><a href="#directories">Directories</a></li>
+    <li><a href="#models">LLM Models</a></li>
+    <li><a href="#rag">Ephemeral RAG</a></li>
+    <li><a href="#databases">External Databases</a></li>
+    <li><a href="#sql">SQL & Semantic Operators</a></li>
+    <li><a href="#ollama">Ollama</a></li>
+    <li><a href="#vertex">Google Vertex AI</a></li>
+    <li><a href="#bedrock">AWS Bedrock</a></li>
+    <li><a href="#azure">Azure OpenAI</a></li>
+    <li><a href="#harbor">Harbor (HuggingFace)</a></li>
+    <li><a href="#mcp">MCP Integration</a></li>
+    <li><a href="#analytics">Analytics & Assessment</a></li>
+    <li><a href="#ui">UI & Visualization</a></li>
+    <li><a href="#third-party">Third-Party Services</a></li>
+    <li><a href="#misc">Miscellaneous</a></li>
+  </ul>
+</div>
+
+<h2 id="overview">Overview</h2>
+
+<p>
+  LARS uses environment variables for configuration. Variables prefixed with <code>LARS_</code> are LARS-specific,
+  while others are standard credentials for external services.
+</p>
+
+<div class="info-box tip">
+  <div class="info-box-title">Configuration Priority</div>
+  <p>
+    Environment variables override defaults but can be overridden by cascade-level or cell-level configuration.
+    Most variables are read at module initialization time.
+  </p>
+</div>
+
+<div class="info-box note">
+  <div class="info-box-title">Boolean Values</div>
+  <p>
+    Boolean environment variables accept <code>true</code>, <code>1</code>, <code>yes</code> for true,
+    and <code>false</code>, <code>0</code>, <code>no</code> for false. Values are case-insensitive.
+  </p>
+</div>
+
+<hr>
+
+<h2 id="core">Core Configuration (Required)</h2>
+
+<p>
+  These variables configure essential LARS services. At minimum, you need an <code>OPENROUTER_API_KEY</code>
+  and a running ClickHouse instance.
+</p>
+
+<div class="info-box warning">
+  <div class="info-box-title">Required Services</div>
+  <p>
+    LARS requires both an LLM provider (OpenRouter by default) and ClickHouse for logging and analytics.
+    See the <a href="#/quickstart">Quickstart Guide</a> for setup instructions.
+  </p>
+</div>
+
+<table class="reference-table">
+  <thead>
+    <tr>
+      <th>Variable</th>
+      <th>Default</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>OPENROUTER_API_KEY</code></td>
+      <td><em>Required</em></td>
+      <td>OpenRouter API key for LLM inference (primary provider)</td>
+    </tr>
+    <tr>
+      <td><code>LARS_ROOT</code></td>
+      <td>Current directory</td>
+      <td>Root directory for all LARS data, cascades, skills, and artifacts</td>
+    </tr>
+    <tr>
+      <td><code>LARS_DEFAULT_MODEL</code></td>
+      <td><code>x-ai/grok-4.1-fast</code></td>
+      <td>Default LLM model used everywhere a model isn't explicitly specified. Only set if you want to override the default.</td>
+    </tr>
+    <tr>
+      <td><code>LARS_CLICKHOUSE_HOST</code></td>
+      <td><code>localhost</code></td>
+      <td>ClickHouse server hostname</td>
+    </tr>
+    <tr>
+      <td><code>LARS_CLICKHOUSE_PORT</code></td>
+      <td><code>9000</code></td>
+      <td>ClickHouse native protocol port</td>
+    </tr>
+    <tr>
+      <td><code>LARS_CLICKHOUSE_DATABASE</code></td>
+      <td><code>lars</code></td>
+      <td>ClickHouse database name</td>
+    </tr>
+    <tr>
+      <td><code>LARS_CLICKHOUSE_USER</code></td>
+      <td><code>lars</code></td>
+      <td>ClickHouse username</td>
+    </tr>
+    <tr>
+      <td><code>LARS_CLICKHOUSE_PASSWORD</code></td>
+      <td><code>lars</code></td>
+      <td>ClickHouse password</td>
+    </tr>
+  </tbody>
+</table>
+
+<hr>
+
+<h2 id="directories">Directories</h2>
+
+<p>All directory variables default to subdirectories of <code>LARS_ROOT</code>.</p>
+
+<table class="reference-table">
+  <thead>
+    <tr>
+      <th>Variable</th>
+      <th>Default</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>LARS_LOG_DIR</code></td>
+      <td><code>$LARS_ROOT/logs</code></td>
+      <td>Logging directory</td>
+    </tr>
+    <tr>
+      <td><code>LARS_DATA_DIR</code></td>
+      <td><code>$LARS_ROOT/data</code></td>
+      <td>Data directory (RAG index files, artifacts)</td>
+    </tr>
+    <tr>
+      <td><code>LARS_GRAPH_DIR</code></td>
+      <td><code>$LARS_ROOT/graphs</code></td>
+      <td>Mermaid graph output directory</td>
+    </tr>
+    <tr>
+      <td><code>LARS_IMAGE_DIR</code></td>
+      <td><code>$LARS_ROOT/images</code></td>
+      <td>Image artifact directory</td>
+    </tr>
+    <tr>
+      <td><code>LARS_AUDIO_DIR</code></td>
+      <td><code>$LARS_ROOT/audio</code></td>
+      <td>Audio artifact directory</td>
+    </tr>
+    <tr>
+      <td><code>LARS_CASCADES_DIR</code></td>
+      <td><code>$LARS_ROOT/cascades</code></td>
+      <td>Cascade definitions directory</td>
+    </tr>
+    <tr>
+      <td><code>LARS_SKILLS_DIR</code></td>
+      <td><code>$LARS_ROOT/skills</code></td>
+      <td>Custom skills (tools) directory</td>
+    </tr>
+    <tr>
+      <td><code>LARS_EXAMPLES_DIR</code></td>
+      <td><code>$LARS_ROOT/cascades/examples</code></td>
+      <td>Example cascades directory</td>
+    </tr>
+  </tbody>
+</table>
+
+<hr>
+
+<h2 id="models">LLM Models</h2>
+
+<p>Configure which models are used for various LARS subsystems.</p>
+
+<table class="reference-table">
+  <thead>
+    <tr>
+      <th>Variable</th>
+      <th>Default</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>LARS_DEFAULT_EMBED_MODEL</code></td>
+      <td><code>qwen/qwen3-embedding-8b</code></td>
+      <td>Embedding model for RAG and semantic search</td>
+    </tr>
+    <tr>
+      <td><code>LARS_GENERATIVE_UI_MODEL</code></td>
+      <td><code>google/gemini-3-pro-preview</code></td>
+      <td>Model for generative UI generation (ask_human_custom)</td>
+    </tr>
+    <tr>
+      <td><code>LARS_CONTEXT_SELECTOR_MODEL</code></td>
+      <td><code>google/gemini-2.5-flash-lite</code></td>
+      <td>Model for auto-context selection in multi-cell sessions</td>
+    </tr>
+    <tr>
+      <td><code>LARS_STT_MODEL</code></td>
+      <td><code>google/gemini-2.5-flash-preview-09-2025</code></td>
+      <td>Speech-to-text model (audio-capable)</td>
+    </tr>
+    <tr>
+      <td><code>LARS_UI_INTENT_MODEL</code></td>
+      <td><code>$LARS_GENERATIVE_UI_MODEL</code></td>
+      <td>Model for UI intent classification</td>
+    </tr>
+    <tr>
+      <td><code>LARS_UI_COMPLEX_MODEL</code></td>
+      <td><code>$LARS_GENERATIVE_UI_MODEL</code></td>
+      <td>Model for complex UI generation</td>
+    </tr>
+    <tr>
+      <td><code>LARS_UI_GENERATOR_MODEL</code></td>
+      <td><code>google/gemini-2.5-flash-lite</code></td>
+      <td>Primary model for UI generation</td>
+    </tr>
+    <tr>
+      <td><code>LARS_REWRITE_MODEL</code></td>
+      <td>LLM default</td>
+      <td>Model for rewriting/refining content in soundings</td>
+    </tr>
+    <tr>
+      <td><code>LARS_SMART_SEARCH_MODEL</code></td>
+      <td><code>google/gemini-2.5-flash-lite</code></td>
+      <td>Model for LLM-powered RAG filtering</td>
+    </tr>
+  </tbody>
+</table>
+
+<hr>
+
+<h2 id="rag">Ephemeral RAG (Auto-Indexing)</h2>
+
+<p>Automatically indexes large content for efficient retrieval.</p>
+
+<table class="reference-table">
+  <thead>
+    <tr>
+      <th>Variable</th>
+      <th>Default</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>LARS_EPHEMERAL_RAG_ENABLED</code></td>
+      <td><code>true</code></td>
+      <td>Enable automatic indexing of large content</td>
+    </tr>
+    <tr>
+      <td><code>LARS_EPHEMERAL_RAG_THRESHOLD</code></td>
+      <td><code>25000</code></td>
+      <td>Character threshold for automatic indexing (~6K tokens)</td>
+    </tr>
+    <tr>
+      <td><code>LARS_EPHEMERAL_RAG_CHUNK_SIZE</code></td>
+      <td><code>1500</code></td>
+      <td>Chunk size for splitting large content (chars)</td>
+    </tr>
+    <tr>
+      <td><code>LARS_EPHEMERAL_RAG_CHUNK_OVERLAP</code></td>
+      <td><code>200</code></td>
+      <td>Overlap between chunks (chars)</td>
+    </tr>
+    <tr>
+      <td><code>LARS_LARGE_INPUT_THRESHOLD</code></td>
+      <td><code>25000</code></td>
+      <td>Character threshold for large input handling</td>
+    </tr>
+    <tr>
+      <td><code>LARS_SMART_SEARCH</code></td>
+      <td><code>true</code></td>
+      <td>Enable LLM-powered post-filtering of RAG results</td>
+    </tr>
+    <tr>
+      <td><code>LARS_ENABLE_EMBEDDINGS</code></td>
+      <td><code>false</code></td>
+      <td>Enable embedding worker for RAG indexing</td>
+    </tr>
+  </tbody>
+</table>
+
+<hr>
+
+<h2 id="databases">External Databases & Connections</h2>
+
+<p>Configure how LARS connects to external data sources.</p>
+
+<table class="reference-table">
+  <thead>
+    <tr>
+      <th>Variable</th>
+      <th>Default</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>LARS_AUTO_ATTACH_ALL</code></td>
+      <td><code>1</code></td>
+      <td>Auto-attach all configured database connections on session start</td>
+    </tr>
+    <tr>
+      <td><code>LARS_LAZY_ATTACH</code></td>
+      <td><code>1</code></td>
+      <td>Enable lazy attachment of external databases on first reference</td>
+    </tr>
+    <tr>
+      <td><code>LARS_LAZY_ATTACH_CSV_MATERIALIZE</code></td>
+      <td><code>0</code></td>
+      <td>Materialize CSV files instead of streaming</td>
+    </tr>
+    <tr>
+      <td><code>LARS_LAZY_ATTACH_JSONL_MATERIALIZE</code></td>
+      <td><code>0</code></td>
+      <td>Materialize JSONL files instead of streaming</td>
+    </tr>
+    <tr>
+      <td><code>LARS_ELASTICSEARCH_HOST</code></td>
+      <td><code>http://localhost:9200</code></td>
+      <td>Elasticsearch server for hybrid search</td>
+    </tr>
+  </tbody>
+</table>
+
+<hr>
+
+<h2 id="sql">SQL & Semantic Operators</h2>
+
+<p>Control SQL execution and semantic operator behavior.</p>
+
+<table class="reference-table">
+  <thead>
+    <tr>
+      <th>Variable</th>
+      <th>Default</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>LARS_SEMANTIC_REWRITE_V2</code></td>
+      <td><code>true</code></td>
+      <td>Use token-aware semantic rewriter (v2) instead of regex-based</td>
+    </tr>
+    <tr>
+      <td><code>LARS_UDF_BATCH_TIMEOUT</code></td>
+      <td><code>600</code></td>
+      <td>Total timeout for parallel LLM calls in UDFs (seconds)</td>
+    </tr>
+    <tr>
+      <td><code>LARS_UDF_RESULT_TIMEOUT</code></td>
+      <td><code>300</code></td>
+      <td>Timeout for individual UDF result retrieval (seconds)</td>
+    </tr>
+    <tr>
+      <td><code>LARS_SQL_VERBOSE</code></td>
+      <td><code>false</code></td>
+      <td>Enable verbose SQL logging</td>
+    </tr>
+    <tr>
+      <td><code>LARS_PARALLEL_WORKERS</code></td>
+      <td><code>8</code></td>
+      <td>Number of parallel workers for Arrow vectorized UDF execution</td>
+    </tr>
+    <tr>
+      <td><code>LARS_PG_LOG_STARTUP_PARAMS</code></td>
+      <td><code>0</code></td>
+      <td>Log PostgreSQL startup parameters (PGwire server)</td>
+    </tr>
+  </tbody>
+</table>
+
+<hr>
+
+<h2 id="ollama">Ollama (Local/Remote LLM)</h2>
+
+<p>Configure local or remote Ollama servers for zero-cost inference.</p>
+
+<table class="reference-table">
+  <thead>
+    <tr>
+      <th>Variable</th>
+      <th>Default</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>LARS_OLLAMA_ENABLED</code></td>
+      <td><code>true</code></td>
+      <td>Enable Ollama integration</td>
+    </tr>
+    <tr>
+      <td><code>LARS_OLLAMA_BASE_URL</code></td>
+      <td><code>http://localhost:11434</code></td>
+      <td>Default Ollama server URL</td>
+    </tr>
+    <tr>
+      <td><code>LARS_OLLAMA_HOSTS</code></td>
+      <td><em>empty</em></td>
+      <td>JSON/YAML of named Ollama host aliases for remote servers</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Remote Ollama Example</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Configure named remote hosts</span>
+<span class="key">LARS_OLLAMA_HOSTS</span>=<span class="str">'{"gpu1": "http://10.10.10.1:11434", "gpu2": "http://192.168.1.50:11434"}'</span>
+
+<span class="cmt"># Then use in cascades:</span>
+<span class="cmt"># model: ollama@gpu1/llama3.3:70b</span></pre>
+  </div>
+</div>
+
+<hr>
+
+<h2 id="vertex">Google Vertex AI</h2>
+
+<table class="reference-table">
+  <thead>
+    <tr>
+      <th>Variable</th>
+      <th>Default</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>LARS_VERTEX_ENABLED</code></td>
+      <td><code>false</code></td>
+      <td>Enable Vertex AI as additional provider</td>
+    </tr>
+    <tr>
+      <td><code>LARS_VERTEX_PROJECT</code></td>
+      <td><em>auto-detected</em></td>
+      <td>Google Cloud project ID for Vertex AI</td>
+    </tr>
+    <tr>
+      <td><code>LARS_VERTEX_LOCATION</code></td>
+      <td><code>us-central1</code></td>
+      <td>Vertex AI region/location</td>
+    </tr>
+    <tr>
+      <td><code>LARS_VERTEX_PRICING_JSON</code></td>
+      <td><em>built-in</em></td>
+      <td>JSON pricing table for cost calculation</td>
+    </tr>
+    <tr>
+      <td><code>GOOGLE_APPLICATION_CREDENTIALS</code></td>
+      <td><em>none</em></td>
+      <td>Path to service account JSON or raw JSON string</td>
+    </tr>
+    <tr>
+      <td><code>VERTEXAI_PROJECT</code></td>
+      <td><em>none</em></td>
+      <td>Fallback project ID (Google SDK convention)</td>
+    </tr>
+    <tr>
+      <td><code>GOOGLE_CLOUD_PROJECT</code></td>
+      <td><em>none</em></td>
+      <td>Fallback project ID (Google SDK convention)</td>
+    </tr>
+    <tr>
+      <td><code>GCLOUD_PROJECT</code></td>
+      <td><em>none</em></td>
+      <td>Fallback project ID (gcloud CLI convention)</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="info-box note">
+  <div class="info-box-title">Project ID Priority</div>
+  <p>
+    LARS checks project ID in this order: <code>LARS_VERTEX_PROJECT</code> &rarr;
+    <code>VERTEXAI_PROJECT</code> &rarr; <code>GOOGLE_CLOUD_PROJECT</code> &rarr; <code>GCLOUD_PROJECT</code>
+  </p>
+</div>
+
+<hr>
+
+<h2 id="bedrock">AWS Bedrock</h2>
+
+<table class="reference-table">
+  <thead>
+    <tr>
+      <th>Variable</th>
+      <th>Default</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>LARS_BEDROCK_ENABLED</code></td>
+      <td><em>auto</em></td>
+      <td>Enable AWS Bedrock (auto-enabled with AWS credentials)</td>
+    </tr>
+    <tr>
+      <td><code>LARS_BEDROCK_REGION</code></td>
+      <td><code>us-east-1</code></td>
+      <td>AWS region for Bedrock</td>
+    </tr>
+    <tr>
+      <td><code>AWS_ACCESS_KEY_ID</code></td>
+      <td><em>none</em></td>
+      <td>AWS access key for Bedrock authentication</td>
+    </tr>
+    <tr>
+      <td><code>AWS_SECRET_ACCESS_KEY</code></td>
+      <td><em>none</em></td>
+      <td>AWS secret key for Bedrock authentication</td>
+    </tr>
+    <tr>
+      <td><code>AWS_REGION</code></td>
+      <td><em>none</em></td>
+      <td>AWS region (standard AWS variable)</td>
+    </tr>
+    <tr>
+      <td><code>AWS_DEFAULT_REGION</code></td>
+      <td><em>none</em></td>
+      <td>AWS default region fallback</td>
+    </tr>
+    <tr>
+      <td><code>AWS_PROFILE</code></td>
+      <td><em>none</em></td>
+      <td>AWS named profile for credential chain</td>
+    </tr>
+  </tbody>
+</table>
+
+<hr>
+
+<h2 id="azure">Azure OpenAI</h2>
+
+<table class="reference-table">
+  <thead>
+    <tr>
+      <th>Variable</th>
+      <th>Default</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>AZURE_API_KEY</code></td>
+      <td><em>none</em></td>
+      <td>Azure OpenAI API key</td>
+    </tr>
+    <tr>
+      <td><code>LARS_AZURE_API_KEY</code></td>
+      <td><em>none</em></td>
+      <td>Azure OpenAI API key (LARS-specific fallback)</td>
+    </tr>
+    <tr>
+      <td><code>AZURE_API_BASE</code></td>
+      <td><em>none</em></td>
+      <td>Azure OpenAI endpoint (https://&lt;resource&gt;.openai.azure.com)</td>
+    </tr>
+    <tr>
+      <td><code>LARS_AZURE_API_BASE</code></td>
+      <td><em>none</em></td>
+      <td>Azure OpenAI endpoint (LARS-specific fallback)</td>
+    </tr>
+    <tr>
+      <td><code>AZURE_API_VERSION</code></td>
+      <td><code>2024-10-21</code></td>
+      <td>Azure OpenAI API version</td>
+    </tr>
+    <tr>
+      <td><code>LARS_AZURE_API_VERSION</code></td>
+      <td><code>2024-10-21</code></td>
+      <td>Azure OpenAI API version (LARS-specific fallback)</td>
+    </tr>
+    <tr>
+      <td><code>LARS_AZURE_PRICING_JSON</code></td>
+      <td><em>built-in</em></td>
+      <td>JSON pricing table for cost calculation</td>
+    </tr>
+  </tbody>
+</table>
+
+<hr>
+
+<h2 id="harbor">Harbor (HuggingFace Spaces)</h2>
+
+<table class="reference-table">
+  <thead>
+    <tr>
+      <th>Variable</th>
+      <th>Default</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>LARS_HARBOR_ENABLED</code></td>
+      <td><code>true</code></td>
+      <td>Enable HuggingFace Spaces integration</td>
+    </tr>
+    <tr>
+      <td><code>LARS_HARBOR_AUTO_DISCOVER</code></td>
+      <td><code>true</code></td>
+      <td>Auto-discover available spaces</td>
+    </tr>
+    <tr>
+      <td><code>LARS_HARBOR_CACHE_TTL</code></td>
+      <td><code>300</code></td>
+      <td>Cache TTL for space metadata (seconds)</td>
+    </tr>
+    <tr>
+      <td><code>HF_TOKEN</code></td>
+      <td><em>none</em></td>
+      <td>HuggingFace API token for private spaces</td>
+    </tr>
+  </tbody>
+</table>
+
+<hr>
+
+<h2 id="mcp">MCP Integration</h2>
+
+<table class="reference-table">
+  <thead>
+    <tr>
+      <th>Variable</th>
+      <th>Default</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>LARS_MCP_ENABLED</code></td>
+      <td><code>true</code></td>
+      <td>Enable MCP server support</td>
+    </tr>
+    <tr>
+      <td><code>LARS_MCP_SERVERS_YAML</code></td>
+      <td><em>from config file</em></td>
+      <td>YAML string with MCP server configurations</td>
+    </tr>
+    <tr>
+      <td><code>LARS_MCP_SERVERS_JSON</code></td>
+      <td><em>deprecated</em></td>
+      <td>JSON with MCP server configs (use YAML instead)</td>
+    </tr>
+  </tbody>
+</table>
+
+<hr>
+
+<h2 id="analytics">Analytics & Assessment</h2>
+
+<p>Control LARS's built-in analytics and quality assessment systems.</p>
+
+<table class="reference-table">
+  <thead>
+    <tr>
+      <th>Variable</th>
+      <th>Default</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>LARS_ENABLE_RELEVANCE_ANALYSIS</code></td>
+      <td><code>true</code></td>
+      <td>Enable context relevance analysis after cascade execution</td>
+    </tr>
+    <tr>
+      <td><code>LARS_MIN_CONTEXT_FOR_RELEVANCE</code></td>
+      <td><code>3</code></td>
+      <td>Minimum context messages before running relevance analysis (skips trivial one-shot cascades)</td>
+    </tr>
+    <tr>
+      <td><code>LARS_DISABLE_ANALYTICS</code></td>
+      <td><code>false</code></td>
+      <td>Disable all analytics collection</td>
+    </tr>
+    <tr>
+      <td><code>LARS_SHADOW_ASSESSMENT_ENABLED</code></td>
+      <td><code>false</code></td>
+      <td>Enable shadow relevance assessments for context strategies</td>
+    </tr>
+    <tr>
+      <td><code>LARS_CONFIDENCE_ASSESSMENT_ENABLED</code></td>
+      <td><code>false</code></td>
+      <td>Enable confidence scoring assessments</td>
+    </tr>
+  </tbody>
+</table>
+
+<hr>
+
+<h2 id="ui">UI & Visualization</h2>
+
+<table class="reference-table">
+  <thead>
+    <tr>
+      <th>Variable</th>
+      <th>Default</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>LARS_SHOW_CLI_IMAGES</code></td>
+      <td><code>true</code></td>
+      <td>Show images in CLI output</td>
+    </tr>
+    <tr>
+      <td><code>LARS_SHOW_CLI_MERMAID</code></td>
+      <td><code>true</code></td>
+      <td>Show Mermaid diagrams in CLI output</td>
+    </tr>
+    <tr>
+      <td><code>LARS_STUDIO_FRONTEND_BUILD</code></td>
+      <td><em>auto-detected</em></td>
+      <td>Path to pre-built Studio frontend</td>
+    </tr>
+    <tr>
+      <td><code>LARS_USE_CHECKPOINTS</code></td>
+      <td><code>false</code></td>
+      <td>Enable checkpoint system for web UI with generative UI</td>
+    </tr>
+    <tr>
+      <td><code>LARS_NO_SPLASH</code></td>
+      <td><em>unset</em></td>
+      <td>Skip splash screen on CLI startup</td>
+    </tr>
+  </tbody>
+</table>
+
+<hr>
+
+<h2 id="third-party">Third-Party Services</h2>
+
+<h3>Text-to-Speech (ElevenLabs)</h3>
+
+<table class="reference-table">
+  <thead>
+    <tr>
+      <th>Variable</th>
+      <th>Default</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>ELEVENLABS_API_KEY</code></td>
+      <td><em>none</em></td>
+      <td>ElevenLabs text-to-speech API key</td>
+    </tr>
+    <tr>
+      <td><code>ELEVENLABS_VOICE_ID</code></td>
+      <td><em>none</em></td>
+      <td>ElevenLabs voice ID for TTS</td>
+    </tr>
+    <tr>
+      <td><code>LARS_TTS_VOLUME</code></td>
+      <td><code>0.70</code></td>
+      <td>TTS volume level (0.0-1.0)</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Web Search</h3>
+
+<table class="reference-table">
+  <thead>
+    <tr>
+      <th>Variable</th>
+      <th>Default</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>BRAVE_SEARCH_API_KEY</code></td>
+      <td><em>none</em></td>
+      <td>Brave Search API key for web search capability</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Image Generation</h3>
+
+<table class="reference-table">
+  <thead>
+    <tr>
+      <th>Variable</th>
+      <th>Default</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>FAL_KEY</code> / <code>FAL_API_KEY</code></td>
+      <td><em>none</em></td>
+      <td>FAL.ai image generation API key</td>
+    </tr>
+    <tr>
+      <td><code>REPLICATE_API_TOKEN</code></td>
+      <td><em>none</em></td>
+      <td>Replicate.com API token</td>
+    </tr>
+    <tr>
+      <td><code>OPENAI_API_KEY</code></td>
+      <td><em>none</em></td>
+      <td>OpenAI API key (for DALL-E image generation)</td>
+    </tr>
+    <tr>
+      <td><code>STABILITY_API_KEY</code></td>
+      <td><em>none</em></td>
+      <td>Stability AI API key</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Browser Automation (Rabbitize)</h3>
+
+<table class="reference-table">
+  <thead>
+    <tr>
+      <th>Variable</th>
+      <th>Default</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>RABBITIZE_SERVER_URL</code></td>
+      <td><code>http://localhost:3037</code></td>
+      <td>Rabbitize browser automation server URL</td>
+    </tr>
+    <tr>
+      <td><code>RABBITIZE_EXECUTABLE</code></td>
+      <td><code>npx</code></td>
+      <td>Command to run Rabbitize</td>
+    </tr>
+    <tr>
+      <td><code>RABBITIZE_AUTO_START</code></td>
+      <td><code>false</code></td>
+      <td>Auto-start Rabbitize server</td>
+    </tr>
+    <tr>
+      <td><code>RABBITIZE_RUNS_DIR</code></td>
+      <td><em>none</em></td>
+      <td>Browser session artifacts directory</td>
+    </tr>
+    <tr>
+      <td><code>LARS_BROWSERS_DIR</code></td>
+      <td><em>from RABBITIZE_RUNS_DIR</em></td>
+      <td>Custom browsers directory (LARS-specific)</td>
+    </tr>
+  </tbody>
+</table>
+
+<hr>
+
+<h2 id="misc">Miscellaneous</h2>
+
+<table class="reference-table">
+  <thead>
+    <tr>
+      <th>Variable</th>
+      <th>Default</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>LARS_SESSION_ID_STYLE</code></td>
+      <td><code>woodland</code></td>
+      <td>Style for session ID generation</td>
+    </tr>
+    <tr>
+      <td><code>LARS_ORPHAN_THRESHOLD_SECONDS</code></td>
+      <td><code>300</code></td>
+      <td>Session timeout before marking orphaned (seconds)</td>
+    </tr>
+    <tr>
+      <td><code>LARS_WINNER_HISTORY_LIMIT</code></td>
+      <td><code>5</code></td>
+      <td>Number of winner histories to track in soundings</td>
+    </tr>
+    <tr>
+      <td><code>LARS_KEEP_RECENT_IMAGES</code></td>
+      <td><code>0</code></td>
+      <td>Number of recent images to keep (0=all)</td>
+    </tr>
+    <tr>
+      <td><code>LARS_KEEP_RECENT_TURNS</code></td>
+      <td><code>0</code></td>
+      <td>Number of recent turns to keep (0=all)</td>
+    </tr>
+    <tr>
+      <td><code>LARS_TOON_MIN_ROWS</code></td>
+      <td><code>5</code></td>
+      <td>Minimum rows for TOON encoding JSON arrays</td>
+    </tr>
+    <tr>
+      <td><code>LARS_TOON_TRANSPORT</code></td>
+      <td><code>1</code></td>
+      <td>Enable TOON transport encoding</td>
+    </tr>
+    <tr>
+      <td><code>LARS_RESEARCH_MODE</code></td>
+      <td><code>false</code></td>
+      <td>Enable research mode with additional debugging</td>
+    </tr>
+    <tr>
+      <td><code>LARS_AUTO_SAVE_RESEARCH</code></td>
+      <td><code>true</code></td>
+      <td>Auto-save research database snapshots</td>
+    </tr>
+    <tr>
+      <td><code>LARS_CONTEXT_CARDS_ENABLED</code></td>
+      <td><code>false</code></td>
+      <td>Enable context cards feature</td>
+    </tr>
+    <tr>
+      <td><code>LARS_PROVIDER_BASE_URL</code></td>
+      <td><code>https://openrouter.ai/api/v1</code></td>
+      <td>Custom LLM provider base URL</td>
+    </tr>
+    <tr>
+      <td><code>LARS_LOCAL_MODEL_CACHE_SIZE_GB</code></td>
+      <td><code>8</code></td>
+      <td>Local model cache size limit (GB)</td>
+    </tr>
+    <tr>
+      <td><code>LARS_LOCAL_MODEL_DEVICE</code></td>
+      <td><code>auto</code></td>
+      <td>Default device for local models (auto/cuda/cpu)</td>
+    </tr>
+  </tbody>
+</table>
+
+<hr>
+
+<h2>Quick Reference</h2>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Minimal .env File</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Required</span>
+<span class="key">OPENROUTER_API_KEY</span>=<span class="str">sk-or-v1-xxxxxxxxxxxx</span>
+
+<span class="cmt"># Optional - override default model</span>
+<span class="key">LARS_DEFAULT_MODEL</span>=<span class="str">anthropic/claude-sonnet-4</span>
+
+<span class="cmt"># Optional - ClickHouse (if not using defaults)</span>
+<span class="key">LARS_CLICKHOUSE_HOST</span>=<span class="str">localhost</span>
+<span class="key">LARS_CLICKHOUSE_PASSWORD</span>=<span class="str">your_password</span>
+
+<span class="cmt"># Optional - third party services</span>
+<span class="key">HF_TOKEN</span>=<span class="str">hf_xxxxxxxxxxxx</span>
+<span class="key">ELEVENLABS_API_KEY</span>=<span class="str">xxxxxxxxxxxx</span>
+<span class="key">BRAVE_SEARCH_API_KEY</span>=<span class="str">xxxxxxxxxxxx</span></pre>
+  </div>
+</div>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Enterprise .env Example</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Primary provider</span>
+<span class="key">OPENROUTER_API_KEY</span>=<span class="str">sk-or-v1-xxxxxxxxxxxx</span>
+
+<span class="cmt"># Google Vertex AI</span>
+<span class="key">LARS_VERTEX_ENABLED</span>=<span class="str">true</span>
+<span class="key">LARS_VERTEX_PROJECT</span>=<span class="str">my-gcp-project</span>
+<span class="key">GOOGLE_APPLICATION_CREDENTIALS</span>=<span class="str">/path/to/service-account.json</span>
+
+<span class="cmt"># AWS Bedrock</span>
+<span class="key">AWS_ACCESS_KEY_ID</span>=<span class="str">AKIAXXXXXXXXXXXX</span>
+<span class="key">AWS_SECRET_ACCESS_KEY</span>=<span class="str">xxxxxxxxxxxxxxxx</span>
+<span class="key">AWS_REGION</span>=<span class="str">us-east-1</span>
+
+<span class="cmt"># Azure OpenAI</span>
+<span class="key">AZURE_API_KEY</span>=<span class="str">xxxxxxxxxxxxxxxx</span>
+<span class="key">AZURE_API_BASE</span>=<span class="str">https://my-resource.openai.azure.com</span>
+
+<span class="cmt"># Local Ollama cluster</span>
+<span class="key">LARS_OLLAMA_HOSTS</span>=<span class="str">'{"gpu1": "http://10.0.0.1:11434", "gpu2": "http://10.0.0.2:11434"}'</span>
+
+<span class="cmt"># Analytics tuning</span>
+<span class="key">LARS_MIN_CONTEXT_FOR_RELEVANCE</span>=<span class="str">5</span>
+<span class="key">LARS_PARALLEL_WORKERS</span>=<span class="str">16</span></pre>
+  </div>
+</div>

@@ -1776,6 +1776,11 @@ def _create_context_breakdown(session_id: str, cell_name: str, cell_index: int,
                 # Check both: internal flag in cascade config AND session_id patterns for sub-sessions
                 if '_relevance_' in session_id or is_internal_cascade_by_id(cascade_id):
                     logger.debug(f"Skipping relevance analysis for internal/meta session {session_id}")
+
+                # Skip trivial one/two-shot cascades - not enough context to analyze meaningfully
+                elif len(breakdown_rows) < int(os.getenv('LARS_MIN_CONTEXT_FOR_RELEVANCE', '3')):
+                    logger.debug(f"Skipping relevance analysis for {cell_name}: {len(breakdown_rows)} context messages < minimum threshold")
+
                 else:
                     # Check if already analyzed (avoid duplicate runs)
                     check_query = f"""

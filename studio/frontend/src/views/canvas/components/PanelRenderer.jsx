@@ -13,9 +13,13 @@ import './PanelRenderer.css';
  * - mermaid-timeline: Mermaid timeline diagrams
  * - data-grid: Tabular data
  * - text: Plain text content
+ *
+ * @param {object} panel - Panel configuration (name, content, type, on_select, multi_select, etc.)
+ * @param {object} style - CSS styles for positioning
+ * @param {function} onInteraction - Callback for panel interactions
  */
-const PanelRenderer = ({ panel, style }) => {
-  const { name, content, type } = panel;
+const PanelRenderer = ({ panel, style, onInteraction }) => {
+  const { name, content, type, on_select, multi_select, selected_values, select_field } = panel;
 
   // Get icon for panel type
   const getIcon = () => {
@@ -31,6 +35,19 @@ const PanelRenderer = ({ panel, style }) => {
     }
   };
 
+  // Handle row click from DataGridPanel
+  const handleRowClick = (rowData) => {
+    if (onInteraction && on_select) {
+      onInteraction({
+        panelName: name,
+        panelType: type,
+        eventType: 'select',
+        data: rowData,
+        onSelectTemplate: on_select,
+      });
+    }
+  };
+
   // Render content based on type
   const renderContent = () => {
     switch (type) {
@@ -39,7 +56,16 @@ const PanelRenderer = ({ panel, style }) => {
         return <MermaidPanel content={content} />;
 
       case 'data-grid':
-        return <DataGridPanel content={content} />;
+        return (
+          <DataGridPanel
+            content={content}
+            onRowClick={on_select ? handleRowClick : null}
+            interactive={!!on_select}
+            multiSelect={!!multi_select}
+            selectedValues={selected_values}
+            selectField={select_field}
+          />
+        );
 
       case 'text':
       default:

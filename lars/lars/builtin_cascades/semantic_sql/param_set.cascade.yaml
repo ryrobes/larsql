@@ -1,0 +1,37 @@
+cascade_id: param_set
+internal: true
+description: |
+  Set a session parameter value.
+
+  Used with @deref syntax:
+      SELECT @param_set('region', 'US')
+
+  Parameters are session-scoped and persist across queries within the same session.
+  Returns the value that was set.
+
+inputs_schema:
+  key: The parameter key to set
+  value: The value to set
+  _session_id: Session ID (injected by deref preprocessor)
+
+sql_function:
+  name: param_set
+  description: Set a session parameter value
+  args:
+    - name: key
+      type: VARCHAR
+    - name: value
+      type: VARCHAR
+  returns: VARCHAR
+  shape: SCALAR
+  deref: true  # Marks this as a @deref callable cascade
+  cache: false
+
+cells:
+  - name: set_param
+    deterministic: true
+    tool: python:lars.sql_tools.param_store.param_store_set
+    inputs:
+      session_id: "{{ input._session_id }}"
+      key: "{{ input.key }}"
+      value: "{{ input.value }}"
