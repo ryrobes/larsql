@@ -1,0 +1,11 @@
+cascade_id: valid_hyper
+description: Validator cascade for HyperSQL - checks if text looks like valid HyperSQL dashboard SQL
+
+inputs_schema:
+  content: "The content to validate (LLM output)"
+
+cells:
+  - name: validate
+    tool: valid_hyper
+    inputs:
+      content: "{{ input.content }}"
