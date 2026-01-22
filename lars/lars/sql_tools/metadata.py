@@ -37,6 +37,14 @@ class TableMetadata:
             schemas = self.conn.list_jsonl_schemas(alias)
             return [(alias, schema) for schema in schemas]
 
+        elif config.type == "markdown_folder":
+            # For markdown folders, there's a single "documents" table
+            # Check if it exists and has rows
+            doc_count = self.conn.list_markdown_documents(alias)
+            if doc_count > 0:
+                return [(alias, "documents")]
+            return []
+
         elif config.type == "duckdb_folder":
             # For DuckDB folders, each .duckdb file is a separate attached database
             # Returns: [(db_name, table_name), ...]
@@ -283,6 +291,11 @@ class TableMetadata:
 
         elif config.type == "jsonl_folder":
             # For JSONL: jsonl_files.my_data
+            full_table_name = f"{alias}.{table_name}"
+            display_schema = alias
+
+        elif config.type == "markdown_folder":
+            # For Markdown: markdown_files.documents
             full_table_name = f"{alias}.{table_name}"
             display_schema = alias
 

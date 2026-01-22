@@ -421,6 +421,24 @@ class LazyAttachManager:
                     })
                 continue
 
+            if cfg.type == "markdown_folder":
+                try:
+                    doc_count = self._attach_markdown_folder(cfg)
+                    results.append({
+                        "connection": name,
+                        "type": cfg.type,
+                        "status": "attached",
+                        "message": f"{doc_count} documents"
+                    })
+                except Exception as e:
+                    results.append({
+                        "connection": name,
+                        "type": cfg.type,
+                        "status": "failed",
+                        "message": str(e)[:100]
+                    })
+                continue
+
             if cfg.type == "duckdb_folder":
                 try:
                     attached_files = self._attach_all_duckdb_folder_files(cfg)
@@ -627,6 +645,12 @@ class LazyAttachManager:
                     status = "attached"
                 elif name in self._failed_configs:
                     status = "failed"
+            # markdown_folder creates schemas, not catalogs
+            elif cfg.type == "markdown_folder":
+                if name in attached_schemas:
+                    status = "attached"
+                elif name in self._failed_configs:
+                    status = "failed"
             # duckdb_folder attaches individual files as catalogs
             elif cfg.type == "duckdb_folder":
                 # Check if any files from this folder are attached
@@ -766,10 +790,12 @@ class LazyAttachManager:
         if cfg.type == "clickhouse":
             self._attach_clickhouse(cfg)
             return
-        # csv_folder and jsonl_folder are handled via schema/table materialization (not catalog attach)
+        # csv_folder, jsonl_folder, and markdown_folder are handled via schema/table materialization (not catalog attach)
         if cfg.type == "csv_folder":
             return
         if cfg.type == "jsonl_folder":
+            return
+        if cfg.type == "markdown_folder":
             return
         if cfg.type == "duckdb_folder":
             # Individual duckdb files are attached on demand by name.
@@ -1605,6 +1631,102 @@ class LazyAttachManager:
         for ndjson_file in folder.glob("*.ndjson"):
             mapping[sanitize_name(ndjson_file.name)] = ndjson_file
         return mapping
+
+    # ---------------------------------------------------------------------
+    # Markdown folder materialization
+    # ---------------------------------------------------------------------
+
+    def _attach_markdown_folder(self, cfg: SqlConnectionConfig) -> int:
+        """
+        Create schema and materialize all markdown/text files from a markdown_folder connection.
+
+        Creates a single 'documents' table with columns:
+        - filename: Base filename (e.g., "notes.md")
+        - path: Full file path
+        - markdown_body: Full text content
+
+        Returns the number of documents loaded.
+        """
+        if not cfg.folder_path or not os.path.isdir(cfg.folder_path):
+            return 0
+
+        connection_name = cfg.connection_name
+        folder_str = cfg.folder_path.replace("'", "''")  # Escape single quotes
+
+        # Ensure schema exists
+        self._conn.execute(f"CREATE SCHEMA IF NOT EXISTS {_quote_ident(connection_name)};")
+
+        # Check if table already exists
+        try:
+            row = self._conn.execute(
+                """
+                SELECT COUNT(*) FROM information_schema.tables
+                WHERE table_schema = ? AND table_name = 'documents'
+                """,
+                [connection_name],
+            ).fetchone()
+            if row and row[0] > 0:
+                # Already exists, get count
+                count_row = self._conn.execute(
+                    f"SELECT COUNT(*) FROM {_quote_ident(connection_name)}.documents"
+                ).fetchone()
+                return count_row[0] if count_row else 0
+        except Exception:
+            pass
+
+        # Create documents table from markdown files
+        full_name = f"{_quote_ident(connection_name)}.documents"
+
+        try:
+            # Try to create table with all file types at once using UNION ALL
+            self._conn.execute(f"""
+                CREATE TABLE {full_name} AS
+                SELECT
+                    regexp_extract(filename, '[^/\\\\]+$') as filename,
+                    filename as path,
+                    content as markdown_body
+                FROM read_text('{folder_str}/**/*.md')
+                UNION ALL
+                SELECT
+                    regexp_extract(filename, '[^/\\\\]+$') as filename,
+                    filename as path,
+                    content as markdown_body
+                FROM read_text('{folder_str}/**/*.markdown')
+                UNION ALL
+                SELECT
+                    regexp_extract(filename, '[^/\\\\]+$') as filename,
+                    filename as path,
+                    content as markdown_body
+                FROM read_text('{folder_str}/**/*.txt')
+            """)
+
+            row_count = self._conn.execute(f"SELECT COUNT(*) FROM {full_name}").fetchone()
+            return row_count[0] if row_count else 0
+
+        except Exception as e:
+            error_str = str(e)
+            # Handle case where some patterns have no files
+            if "No files found" in error_str or "read_text" in error_str:
+                # Create empty table and try each pattern individually
+                self._conn.execute(f"CREATE TABLE {full_name} (filename VARCHAR, path VARCHAR, markdown_body VARCHAR);")
+
+                for ext in ["md", "markdown", "txt"]:
+                    try:
+                        self._conn.execute(f"""
+                            INSERT INTO {full_name}
+                            SELECT
+                                regexp_extract(filename, '[^/\\\\]+$') as filename,
+                                filename as path,
+                                content as markdown_body
+                            FROM read_text('{folder_str}/**/*.{ext}')
+                        """)
+                    except Exception:
+                        pass  # No files with this extension
+
+                row_count = self._conn.execute(f"SELECT COUNT(*) FROM {full_name}").fetchone()
+                return row_count[0] if row_count else 0
+            else:
+                raise
 
     # ---------------------------------------------------------------------
     # ClickHouse table materialization
