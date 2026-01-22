@@ -100,7 +100,7 @@ class SqlConnectionConfig(BaseModel):
     - Lakehouse: delta, iceberg
     - Scanners: odbc, adbc, gsheets, excel
     - Hybrid/Materialization: mongodb, cassandra, clickhouse
-    - File-based: csv_folder, jsonl_folder, duckdb_folder
+    - File-based: csv_folder, jsonl_folder, duckdb_folder, markdown_folder
     """
     connection_name: str
     type: Literal[
@@ -115,7 +115,9 @@ class SqlConnectionConfig(BaseModel):
         # Phase 4: Scanner functions
         "odbc", "adbc", "gsheets", "excel",
         # Phase 5: Hybrid/materialization
-        "mongodb", "cassandra"
+        "mongodb", "cassandra",
+        # Text file types
+        "markdown_folder"
     ]
     enabled: bool = True
 
@@ -301,6 +303,10 @@ def validate_connection_config(config: SqlConnectionConfig) -> List[str]:
     elif config.type == "duckdb_folder":
         if not config.folder_path:
             errors.append("duckdb_folder requires folder_path")
+
+    elif config.type == "markdown_folder":
+        if not config.folder_path:
+            errors.append("markdown_folder requires folder_path")
 
     elif config.type == "clickhouse":
         if not config.host:

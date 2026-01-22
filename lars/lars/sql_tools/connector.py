@@ -122,6 +122,9 @@ class DatabaseConnector:
         elif config.type == "jsonl_folder":
             self._attach_jsonl_folder(config, alias)
 
+        elif config.type == "markdown_folder":
+            self._attach_markdown_folder(config, alias)
+
         elif config.type == "duckdb_folder":
             self._attach_duckdb_folder(config, alias)
 
@@ -1331,6 +1334,123 @@ class DatabaseConnector:
             print(f"  └─ Total: {loaded_count} JSONL tables ({total_rows:,} rows) ready for queries")
         if failed_count > 0:
             print(f"      ({failed_count} file(s) skipped due to errors)")
+
+    def _attach_markdown_folder(self, config: SqlConnectionConfig, alias: str):
+        """
+        Attach markdown/text folder as a database.
+
+        Creates a single table with all markdown files:
+        - filename: Base filename (e.g., "notes.md")
+        - path: Full file path
+        - markdown_body: Full text content of the file
+
+        Supports .md, .markdown, and .txt extensions.
+        Query syntax: SELECT * FROM my_notes.documents
+        """
+        if not config.folder_path:
+            raise ValueError(f"Markdown folder connection {alias} missing folder_path")
+
+        folder = Path(config.folder_path)
+        if not folder.exists():
+            raise FileNotFoundError(f"Markdown folder not found: {config.folder_path}")
+
+        if not folder.is_dir():
+            raise ValueError(f"Markdown folder_path is not a directory: {config.folder_path}")
+
+        # Check if schema and table already exist (skip re-materialization)
+        schema_exists = self.conn.execute(f"""
+            SELECT COUNT(*) FROM information_schema.schemata
+            WHERE schema_name = '{alias}'
+        """).fetchone()[0] > 0
+
+        if schema_exists:
+            table_exists = self.conn.execute(f"""
+                SELECT COUNT(*) FROM information_schema.tables
+                WHERE table_schema = '{alias}' AND table_name = 'documents'
+            """).fetchone()[0] > 0
+
+            if table_exists:
+                # Already materialized, just mark as attached
+                self._attached.add(alias)
+                row_count = self.conn.execute(f"SELECT COUNT(*) FROM {alias}.documents").fetchone()[0]
+                print(f"[SQL] Using cached markdown schema: {alias} ({row_count:,} documents)")
+                return
+
+        # Create schema
+        self.conn.execute(f"CREATE SCHEMA IF NOT EXISTS {alias};")
+
+        # Build glob pattern for markdown files
+        # We use read_text with glob to read all matching files at once
+        folder_str = str(folder).replace("'", "''")  # Escape single quotes
+
+        # Try to materialize - use recursive glob for nested folders
+        try:
+            # First, try to read files and see what we get
+            # DuckDB's read_text returns: filename, content
+            self.conn.execute(f"""
+                CREATE TABLE {alias}.documents AS
+                SELECT
+                    regexp_extract(filename, '[^/\\\\]+$') as filename,
+                    filename as path,
+                    content as markdown_body
+                FROM read_text('{folder_str}/**/*.md')
+                UNION ALL
+                SELECT
+                    regexp_extract(filename, '[^/\\\\]+$') as filename,
+                    filename as path,
+                    content as markdown_body
+                FROM read_text('{folder_str}/**/*.markdown')
+                UNION ALL
+                SELECT
+                    regexp_extract(filename, '[^/\\\\]+$') as filename,
+                    filename as path,
+                    content as markdown_body
+                FROM read_text('{folder_str}/**/*.txt')
+            """)
+
+            row_count = self.conn.execute(f"SELECT COUNT(*) FROM {alias}.documents").fetchone()[0]
+            print(f"  └─ Materialized {row_count:,} markdown/text files → {alias}.documents")
+
+        except Exception as e:
+            error_str = str(e)
+            # Handle case where no files match (empty result is fine)
+            if "No files found" in error_str or "read_text" in error_str:
+                # Try each pattern individually, some may be empty
+                self.conn.execute(f"CREATE TABLE {alias}.documents (filename VARCHAR, path VARCHAR, markdown_body VARCHAR);")
+
+                for ext in ["md", "markdown", "txt"]:
+                    try:
+                        self.conn.execute(f"""
+                            INSERT INTO {alias}.documents
+                            SELECT
+                                regexp_extract(filename, '[^/\\\\]+$') as filename,
+                                filename as path,
+                                content as markdown_body
+                            FROM read_text('{folder_str}/**/*.{ext}')
+                        """)
+                    except Exception:
+                        pass  # No files with this extension, skip
+
+                row_count = self.conn.execute(f"SELECT COUNT(*) FROM {alias}.documents").fetchone()[0]
+                if row_count > 0:
+                    print(f"  └─ Materialized {row_count:,} markdown/text files → {alias}.documents")
+                else:
+                    print(f"  └─ Warning: No markdown/text files found in {config.folder_path}")
+            else:
+                raise
+
+    def list_markdown_documents(self, alias: str) -> int:
+        """
+        Get count of documents in a markdown_folder connection.
+
+        Returns:
+            Number of documents in the alias.documents table
+        """
+        try:
+            result = self.conn.execute(f"SELECT COUNT(*) FROM {alias}.documents").fetchone()
+            return result[0] if result else 0
+        except Exception:
+            return 0
 
     def _attach_duckdb_file(self, db_file: Path, db_name: str, max_retries: int = 2) -> bool:
         """

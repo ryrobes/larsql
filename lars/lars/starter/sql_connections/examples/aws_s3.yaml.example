@@ -1,0 +1,15 @@
+# AWS S3 bucket connection
+# Copy to aws_s3.yaml and update bucket name
+# Uses AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY env vars
+connection_name: aws_s3
+type: s3
+bucket: your-bucket-name-here
+region: us-east-1
+prefix: ""  # Optional: limit to specific path
+file_pattern: "*.parquet"
+access_key_env: AWS_ACCESS_KEY_ID
+secret_key_env: AWS_SECRET_ACCESS_KEY
+enabled: true
+read_only: true
+sample_row_limit: 100
+distinct_value_threshold: 50

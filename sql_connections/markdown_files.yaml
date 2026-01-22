@@ -1,0 +1,8 @@
+connection_name: markdown_files
+type: markdown_folder
+folder_path: /home/ryanr/extracted
+enabled: true
+
+# Optional settings (inherited from base config)
+sample_row_limit: 0
+distinct_value_threshold: 0
