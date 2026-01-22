@@ -1999,7 +1999,8 @@ class ClientConnection:
                 safe_caller_id = effective_caller_id.replace("'", "''")
                 safe_query_id = query_id.replace("'", "''")
                 safe_source_db = self.database_name.replace("'", "''")
-                safe_query = query[:10000].replace("'", "''")
+                # Escape single quotes for SQL and % for Python string formatting (ClickHouse driver uses %)
+                safe_query = query[:10000].replace("'", "''").replace("%", "%%")
 
                 # Format arrays for ClickHouse
                 columns_arr = "[" + ",".join(f"'{c.replace(chr(39), chr(39)+chr(39))}'" for c in sanitized_columns) + "]"
