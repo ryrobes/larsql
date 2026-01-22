@@ -1007,7 +1007,8 @@ def execute_pipeline_stages(
             _register_all_skills()
 
             # Check for pure cascade cache (skips cascade launch entirely on hit)
-            is_pure = cascade_entry.config.get('pure', False)
+            # Note: `is True` check is intentional - MagicMocks in tests return truthy values
+            is_pure = cascade_entry.config.get('pure', False) is True
             output = None
 
             if is_pure:
@@ -1228,7 +1229,8 @@ def execute_pipeline_with_into(
             _register_all_skills()
 
             # Check for pure cascade cache (skips cascade launch entirely on hit)
-            is_pure = cascade_entry.config.get('pure', False)
+            # Note: `is True` check is intentional - MagicMocks in tests return truthy values
+            is_pure = cascade_entry.config.get('pure', False) is True
             output = None
 
             if is_pure:

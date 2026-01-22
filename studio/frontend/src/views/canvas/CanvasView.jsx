@@ -12,6 +12,7 @@ import { configureMonacoTheme, STUDIO_THEME_NAME, handleEditorMount } from '../.
 import { API_BASE_URL } from '../../config/api';
 import { fillCascadeTemplate } from './utils/cascadeTemplate';
 import './CanvasView.css';
+//import { fontFamily } from 'html2canvas/dist/types/css/property-descriptors/font-family';
 
 // Default example query demonstrating SQL-native chart specs
 const DEFAULT_QUERY = `-- SQL-Native Charts Demo with Interactive Filters
@@ -666,9 +667,9 @@ const CanvasView = () => {
 
       {/* Header */}
       <div className="canvas-header">
-        <div className="canvas-header-left">
+        <div className="canvas-header-left"  >
           <Icon icon="mdi:view-dashboard-variant" width="22" />
-          <h1>Hyper</h1>
+          <div className="canvas-head-title">Hyper</div>
           <span className="canvas-subtitle">Hypermedia SQL Client</span>
         </div>
         <div className="canvas-header-right">
