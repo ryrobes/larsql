@@ -11,6 +11,7 @@ import IntentReviewModal from './components/IntentReviewModal';
 import { configureMonacoTheme, STUDIO_THEME_NAME, handleEditorMount } from '../../studio/utils/monacoTheme';
 import { API_BASE_URL } from '../../config/api';
 import { fillCascadeTemplate } from './utils/cascadeTemplate';
+import { injectRenderDimensions } from './utils/sqlPanelLayout';
 import './CanvasView.css';
 //import { fontFamily } from 'html2canvas/dist/types/css/property-descriptors/font-family';
 
@@ -444,8 +445,14 @@ const CanvasView = () => {
   // Execute query (optionally with provided SQL to avoid state timing issues)
   const executeQuery = useCallback(async (overrideSql) => {
     // Handle case where overrideSql is an event object from onClick
-    const queryToRun = (typeof overrideSql === 'string') ? overrideSql : sql;
+    let queryToRun = (typeof overrideSql === 'string') ? overrideSql : sql;
     if (!queryToRun.trim()) return;
+
+    // Inject RENDER dimensions based on container size
+    // This ensures rendered images match the panel's actual pixel dimensions
+    const containerWidth = resultWrapperRef.current?.offsetWidth || null;
+    const containerHeight = resultWrapperRef.current?.offsetHeight || null;
+    queryToRun = injectRenderDimensions(queryToRun, containerWidth, containerHeight);
 
     setLoading(true);
     setError(null);

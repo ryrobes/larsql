@@ -245,10 +245,23 @@ def parse_multi_panel_query(query: str):
         --- PANEL 'No Title' (1, 1) HIDE_TITLE HIDE_BORDER
         SELECT * FROM items;
 
+        --- PANEL 'Semi-Transparent' (1, 1) OPACITY(0.8)
+        SELECT * FROM items;
+
+        --- PANEL 'Blurred Background' (0, 0) OPACITY(0.3) BLUR(8px) COVER
+        SELECT 'image' as format, '/path/to/bg.png' as src;
+
+        --- PANEL 'Contained Image' (0, 0) CONTAIN
+        SELECT 'image' as format, '/path/to/logo.png' as src;
+
+    Special positions:
+        - (0, 0): Background panel - renders behind all other panels, covers entire canvas
+
     Returns:
         Dict with:
             - setup: SQL to run before panels (DDL, CREATE TABLE, etc.)
-            - panels: List of panel dicts with keys: name, query, position, on_select, multi_select, hide_border, hide_title
+            - panels: List of panel dicts with keys: name, query, position, on_select,
+                      multi_select, hide_border, hide_title, opacity, blur
         Returns None if no panel markers found (single-query mode).
     """
     import re
@@ -267,6 +280,9 @@ def parse_multi_panel_query(query: str):
     current_multi_select = False
     current_hide_border = False
     current_hide_title = False
+    current_opacity = None
+    current_blur = None
+    current_object_fit = None
     current_lines = []
 
     for line in lines:
@@ -291,6 +307,12 @@ def parse_multi_panel_query(query: str):
                         panel_info['hide_border'] = True
                     if current_hide_title:
                         panel_info['hide_title'] = True
+                    if current_opacity is not None:
+                        panel_info['opacity'] = current_opacity
+                    if current_blur:
+                        panel_info['blur'] = current_blur
+                    if current_object_fit:
+                        panel_info['object_fit'] = current_object_fit
                     panels.append(panel_info)
             else:
                 # This is the first panel - save any preceding lines as setup SQL
@@ -324,6 +346,20 @@ def parse_multi_panel_query(query: str):
             line_upper = line_stripped.upper()
             current_hide_border = 'HIDE_BORDER' in line_upper
             current_hide_title = 'HIDE_TITLE' in line_upper
+
+            # Parse optional OPACITY(value) and BLUR(value) modifiers
+            opacity_match = re.search(r'OPACITY\(([0-9.]+)\)', line_stripped, re.IGNORECASE)
+            blur_match = re.search(r'BLUR\((\d+(?:px)?)\)', line_stripped, re.IGNORECASE)
+            current_opacity = float(opacity_match.group(1)) if opacity_match else None
+            current_blur = blur_match.group(1) if blur_match else None
+
+            # Parse optional COVER/CONTAIN for image fit (backgrounds default to cover)
+            if 'CONTAIN' in line_upper:
+                current_object_fit = 'contain'
+            elif 'COVER' in line_upper:
+                current_object_fit = 'cover'
+            else:
+                current_object_fit = None
         else:
             current_lines.append(line)
 
@@ -345,6 +381,12 @@ def parse_multi_panel_query(query: str):
                 panel_info['hide_border'] = True
             if current_hide_title:
                 panel_info['hide_title'] = True
+            if current_opacity is not None:
+                panel_info['opacity'] = current_opacity
+            if current_blur:
+                panel_info['blur'] = current_blur
+            if current_object_fit:
+                panel_info['object_fit'] = current_object_fit
             panels.append(panel_info)
 
     # If no panel markers found, return None (single-query mode)
@@ -570,6 +612,9 @@ def execute_sql():
                 panel_multi_select = panel_info.get('multi_select', False)
                 panel_hide_border = panel_info.get('hide_border', False)
                 panel_hide_title = panel_info.get('hide_title', False)
+                panel_opacity = panel_info.get('opacity')
+                panel_blur = panel_info.get('blur')
+                panel_object_fit = panel_info.get('object_fit')
 
                 result_df = execute_single_query(panel_query, conn, lock, database, caller_id)
                 panel_result = {
@@ -584,6 +629,12 @@ def execute_sql():
                     panel_result["hide_border"] = True
                 if panel_hide_title:
                     panel_result["hide_title"] = True
+                if panel_opacity is not None:
+                    panel_result["opacity"] = panel_opacity
+                if panel_blur:
+                    panel_result["blur"] = panel_blur
+                if panel_object_fit:
+                    panel_result["object_fit"] = panel_object_fit
                 if panel_on_select:
                     panel_result["on_select"] = panel_on_select
                     panel_result["multi_select"] = panel_multi_select

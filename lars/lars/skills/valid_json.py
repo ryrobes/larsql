@@ -43,13 +43,64 @@ def _validate_json_structure(content: str, expected_keys: str = "subject,predica
         try:
             parsed = json.loads(text)
         except json.JSONDecodeError as e:
-            # Extract context around the error
-            error_pos = e.pos if hasattr(e, 'pos') else 0
-            context_start = max(0, error_pos - 30)
-            context_end = min(len(text), error_pos + 30)
-            context = text[context_start:context_end]
-            error_msg = f"Invalid JSON syntax at position {error_pos}: {e.msg}. Context: ...{context}..."
-            return {"valid": False, "error": error_msg, "reason": error_msg}
+            # Check if it's "Extra data" error - model added trailing garbage
+            if "Extra data" in str(e.msg):
+                # Try to extract just the valid JSON array portion
+                # Find the last ] that could close the array
+                try:
+                    # Find balanced brackets ending
+                    bracket_depth = 0
+                    brace_depth = 0
+                    in_string = False
+                    escape_next = False
+                    end_pos = 0
+
+                    for i, char in enumerate(text):
+                        if escape_next:
+                            escape_next = False
+                            continue
+                        if char == '\\' and in_string:
+                            escape_next = True
+                            continue
+                        if char == '"' and not escape_next:
+                            in_string = not in_string
+                            continue
+                        if in_string:
+                            continue
+                        if char == '[':
+                            bracket_depth += 1
+                        elif char == ']':
+                            bracket_depth -= 1
+                            if bracket_depth == 0 and brace_depth == 0:
+                                end_pos = i + 1
+                                break
+                        elif char == '{':
+                            brace_depth += 1
+                        elif char == '}':
+                            brace_depth -= 1
+
+                    if end_pos > 0:
+                        cleaned = text[:end_pos]
+                        parsed = json.loads(cleaned)
+                        # Continue with validation below
+                    else:
+                        raise e
+                except:
+                    # Fall back to original error
+                    error_pos = e.pos if hasattr(e, 'pos') else 0
+                    context_start = max(0, error_pos - 30)
+                    context_end = min(len(text), error_pos + 30)
+                    context = text[context_start:context_end]
+                    error_msg = f"Invalid JSON syntax at position {error_pos}: {e.msg}. Context: ...{context}..."
+                    return {"valid": False, "error": error_msg, "reason": error_msg}
+            else:
+                # Extract context around the error
+                error_pos = e.pos if hasattr(e, 'pos') else 0
+                context_start = max(0, error_pos - 30)
+                context_end = min(len(text), error_pos + 30)
+                context = text[context_start:context_end]
+                error_msg = f"Invalid JSON syntax at position {error_pos}: {e.msg}. Context: ...{context}..."
+                return {"valid": False, "error": error_msg, "reason": error_msg}
 
         # Must be an array
         if not isinstance(parsed, list):

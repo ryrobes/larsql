@@ -59,7 +59,8 @@ cells:
       - stylize
 
   - name: stylize
-    model: google/gemini-3-pro-image-preview
+    #model: google/gemini-3-pro-image-preview
+    model: sourceful/riverflow-v2-max-preview
     instructions: |
       You are an artist who repaints data visualizations in different artistic styles.
 

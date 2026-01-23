@@ -65,21 +65,29 @@ const CanvasRenderer = ({ data, columns, isCanvas, canvasData, isMultiPanel, mul
 
   // Multi-panel format: auto-generated grid from --- PANEL syntax
   if (isMultiPanel && multiPanelData && multiPanelData.length > 0) {
-    // Check if any panels have position hints
-    const hasPositionHints = multiPanelData.some(p => p.position);
+    // Separate background panels (position 0,0) from regular grid panels
+    const backgroundPanelData = multiPanelData.filter(p =>
+      p.position?.col === 0 && p.position?.row === 0
+    );
+    const gridPanelData = multiPanelData.filter(p =>
+      !(p.position?.col === 0 && p.position?.row === 0)
+    );
+
+    // Check if any grid panels have position hints
+    const hasPositionHints = gridPanelData.some(p => p.position);
 
     let cols, rows;
 
     if (hasPositionHints) {
-      // Calculate implied grid dimensions from position hints
+      // Calculate implied grid dimensions from position hints (excluding background panels)
       // Grid size = max extent of all panels (col + colspan - 1, row + rowspan - 1)
-      cols = Math.max(...multiPanelData.map(p => {
+      cols = Math.max(1, ...gridPanelData.map(p => {
         if (p.position) {
           return p.position.col + (p.position.colspan || 1) - 1;
         }
         return 1;
       }));
-      rows = Math.max(...multiPanelData.map(p => {
+      rows = Math.max(1, ...gridPanelData.map(p => {
         if (p.position) {
           return p.position.row + (p.position.rowspan || 1) - 1;
         }
@@ -87,9 +95,9 @@ const CanvasRenderer = ({ data, columns, isCanvas, canvasData, isMultiPanel, mul
       }));
     } else {
       // Auto-layout: calculate grid dimensions based on panel count
-      const panelCount = multiPanelData.length;
-      cols = panelCount <= 2 ? panelCount : panelCount <= 4 ? 2 : 3;
-      rows = Math.ceil(panelCount / cols);
+      const panelCount = gridPanelData.length;
+      cols = panelCount <= 2 ? Math.max(1, panelCount) : panelCount <= 4 ? 2 : 3;
+      rows = Math.max(1, Math.ceil(panelCount / cols));
     }
 
     // Convert multi-panel data to panel format for PanelRenderer
@@ -284,29 +292,81 @@ const CanvasRenderer = ({ data, columns, isCanvas, canvasData, isMultiPanel, mul
         // Pass through display options
         hide_border: panel.hide_border,
         hide_title: panel.hide_title,
+        // Pass through visual modifiers
+        opacity: panel.opacity,
+        blur: panel.blur,
+        objectFit: panel.object_fit,
+        // Track if this is a background panel (position 0,0)
+        isBackground: panel.position?.col === 0 && panel.position?.row === 0,
       };
     });
 
+    // Separate processed panels into background and grid panels
+    const backgroundPanels = panels.filter(p => p.isBackground);
+    const gridPanels = panels.filter(p => !p.isBackground);
+    const hasBackground = backgroundPanels.length > 0;
+
     return (
       <div
-        className="canvas-grid canvas-multi-panel"
+        className={`canvas-container ${hasBackground ? 'canvas-has-background' : ''}`}
         style={{
-          display: 'grid',
-          gridTemplateColumns: `repeat(${cols}, 1fr)`,
-          gridTemplateRows: `repeat(${rows}, minmax(200px, 1fr))`,
-          gap: '16px',
+          position: 'relative',
+          width: '100%',
           height: '100%',
           minHeight: '400px'
         }}
       >
-        {panels.map((panel, index) => (
-          <PanelRenderer
-            key={`${panel.name}_${index}`}
-            panel={panel}
-            style={panel.gridStyle}
-            onInteraction={onInteraction}
-          />
+        {/* Background panels - render first, behind everything */}
+        {backgroundPanels.map((panel, index) => (
+          <div
+            key={`bg-${panel.name}_${index}`}
+            className="canvas-background-panel"
+            data-object-fit={panel.objectFit || 'cover'}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              zIndex: 0,
+              pointerEvents: 'none',
+              opacity: panel.opacity ?? 1,
+              filter: panel.blur ? `blur(${panel.blur})` : undefined,
+              '--bg-object-fit': panel.objectFit || 'cover'
+            }}
+          >
+            <PanelRenderer
+              panel={{ ...panel, hide_border: true, hide_title: true }}
+              style={{ width: '100%', height: '100%' }}
+              isBackground={true}
+            />
+          </div>
         ))}
+
+        {/* Grid panels - render on top */}
+        <div
+          className="canvas-grid canvas-multi-panel"
+          style={{
+            position: 'relative',
+            zIndex: 1,
+            display: 'grid',
+            gridTemplateColumns: `repeat(${cols}, 1fr)`,
+            gridTemplateRows: `repeat(${rows}, minmax(200px, 1fr))`,
+            gap: '16px',
+            height: '100%',
+          }}
+        >
+          {gridPanels.map((panel, index) => (
+            <PanelRenderer
+              key={`${panel.name}_${index}`}
+              panel={panel}
+              style={{
+                ...panel.gridStyle,
+                // Pass opacity/blur as CSS variables for background-only effect
+                '--panel-bg-opacity': panel.opacity ?? 1,
+                '--panel-blur': panel.blur ? `blur(${panel.blur})` : 'none',
+              }}
+              onInteraction={onInteraction}
+            />
+          ))}
+        </div>
       </div>
     );
   }

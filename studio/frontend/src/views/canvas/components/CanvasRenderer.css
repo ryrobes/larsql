@@ -48,3 +48,103 @@
   border-radius: 8px;
   margin: 16px;
 }
+
+/* ============================================
+   BACKGROUND PANELS (position 0,0)
+   ============================================ */
+
+.canvas-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.canvas-background-panel {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+/* Background panels should fill their container and hide chrome */
+.canvas-background-panel .canvas-panel {
+  width: 100%;
+  height: 100%;
+  border: none !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+}
+
+.canvas-background-panel .canvas-panel-header {
+  display: none !important;
+}
+
+.canvas-background-panel .canvas-panel-content {
+  padding: 0 !important;
+  height: 100% !important;
+}
+
+/* Background images should fill the entire area */
+/* Override ImagePanel defaults which use auto sizing and object-fit: contain */
+.canvas-background-panel .image-panel {
+  width: 100% !important;
+  height: 100% !important;
+  padding: 0 !important;
+}
+
+.canvas-background-panel .image-panel-grid {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.canvas-background-panel .image-panel-grid.single-image {
+  display: block !important;
+}
+
+.canvas-background-panel .image-panel-item {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
+}
+
+.canvas-background-panel .image-panel-grid.single-image .image-panel-item {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Force image to fill container - override ImagePanel's auto sizing */
+.canvas-background-panel .image-panel-img,
+.canvas-background-panel .image-panel-grid.single-image .image-panel-img {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
+  object-fit: var(--bg-object-fit, cover) !important;
+}
+
+/* Explicit object-fit via data attribute */
+.canvas-background-panel[data-object-fit="cover"] .image-panel-img {
+  object-fit: cover !important;
+}
+
+.canvas-background-panel[data-object-fit="contain"] .image-panel-img {
+  object-fit: contain !important;
+}
+
+/* When canvas has a background, grid panels get slight transparency for visibility */
+.canvas-has-background .canvas-grid {
+  position: relative;
+  z-index: 1;
+}
+
+/* Optional: make panel backgrounds slightly transparent when there's a canvas background */
+.canvas-has-background .canvas-panel::before {
+  background: rgba(10, 10, 15, 0.85);
+}
+
+.canvas-has-background .canvas-panel-header::before {
+  background: rgba(15, 15, 20, 0.9);
+}

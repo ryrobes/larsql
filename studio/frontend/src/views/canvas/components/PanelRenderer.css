@@ -3,24 +3,63 @@
    ============================================ */
 
 .canvas-panel {
+  position: relative;
   display: flex;
   flex-direction: column;
+  background: transparent;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  /* Default opacity - can be overridden via CSS variable */
+  --panel-bg-opacity: 1;
+}
+
+/* Background layer with opacity support */
+.canvas-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
   background: var(--color-bg-secondary);
   border: 1px solid var(--color-border-dim);
   border-radius: var(--radius-md);
-  overflow: hidden;
+  opacity: var(--panel-bg-opacity, 1);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Ensure content stays above the background */
+.canvas-panel > * {
+  position: relative;
+  z-index: 1;
 }
 
 .canvas-panel-header {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  background: var(--color-bg-tertiary);
-  border-bottom: 1px solid var(--color-border-dim);
+  background: transparent;
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
   flex-shrink: 0;
+}
+
+/* Header background with opacity support */
+.canvas-panel-header::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--color-bg-tertiary);
+  border-bottom: 1px solid var(--color-border-dim);
+  opacity: var(--panel-bg-opacity, 1);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Header content above background */
+.canvas-panel-header > * {
+  position: relative;
+  z-index: 1;
 }
 
 .canvas-panel-title {
@@ -45,14 +84,15 @@
 }
 
 /* HIDE_BORDER option */
-.canvas-panel.canvas-panel-no-border {
+.canvas-panel.canvas-panel-no-border::before {
   border: none;
   background: transparent;
 }
 
 /* When border is hidden but title is shown, remove header's bottom border for seamless look */
-.canvas-panel.canvas-panel-no-border .canvas-panel-header {
+.canvas-panel.canvas-panel-no-border .canvas-panel-header::before {
   border-bottom: none;
+  background: transparent;
 }
 
 /* HIDE_TITLE option - adjust content padding */

@@ -58,6 +58,15 @@ sql_function:
       description: "Extracts event information"
 
 cells:
+  # Preprocess: Strip base64 images that non-vision models can't handle
+  - name: strip_images
+    deterministic: true
+    tool: python:lars.pipeline_tools.strip_base64_images
+    inputs:
+      text: "{{ input.text }}"
+    handoffs:
+      - extract_triples
+
   - name: extract_triples
     #model: google/gemini-3-flash-preview
     #model: x-ai/grok-4
@@ -65,7 +74,7 @@ cells:
       Extract knowledge graph triples from this text.
 
       TEXT:
-      {{ input.text }}
+      {{ outputs.strip_images.text }}
 
       {% if input.focus %}
       FOCUS ON: {{ input.focus }} relationships

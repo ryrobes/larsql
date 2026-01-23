@@ -1195,3 +1195,71 @@ def _sql_quote(identifier: str) -> str:
         return identifier
     # Quote with double quotes, escape any existing quotes
     return f'"{identifier.replace(chr(34), chr(34)+chr(34))}"'
+
+
+# =============================================================================
+# Text Preprocessing Utilities
+# =============================================================================
+
+def strip_base64_images(
+    text: str,
+    placeholder: str = "[IMAGE]"
+) -> Dict[str, Any]:
+    """
+    Strip base64-encoded images from text, replacing with placeholder.
+
+    This is useful for preprocessing text before sending to LLMs that
+    don't support multimodal input (images). Base64 images in markdown
+    are detected and removed.
+
+    Patterns handled:
+    - data:image/...;base64,... (inline data URIs)
+    - ![alt](data:image/...) (markdown image syntax)
+
+    Args:
+        text: Input text potentially containing base64 images
+        placeholder: Text to replace images with (default: "[IMAGE]")
+
+    Returns:
+        Dict with 'text' (cleaned) and 'images_removed' (count)
+
+    Usage in cascade:
+        - name: preprocess
+          deterministic: true
+          tool: python:lars.pipeline_tools.strip_base64_images
+          inputs:
+            text: "{{ input.text }}"
+    """
+    import re
+
+    if not text or not isinstance(text, str):
+        return {"text": text or "", "images_removed": 0}
+
+    images_removed = 0
+
+    # Pattern 1: Markdown image with base64 data URI
+    # ![alt text](data:image/png;base64,...)
+    markdown_pattern = r'!\[[^\]]*\]\(data:image/[^;]+;base64,[A-Za-z0-9+/=]+\)'
+    matches = re.findall(markdown_pattern, text)
+    images_removed += len(matches)
+    text = re.sub(markdown_pattern, placeholder, text)
+
+    # Pattern 2: Standalone data URI (not in markdown)
+    # data:image/png;base64,iVBORw0KGgo...
+    # Be careful not to match inside URLs or other contexts
+    standalone_pattern = r'(?<!["\'])data:image/[^;]+;base64,[A-Za-z0-9+/=]+'
+    matches = re.findall(standalone_pattern, text)
+    images_removed += len(matches)
+    text = re.sub(standalone_pattern, placeholder, text)
+
+    # Pattern 3: HTML img tags with base64 src
+    # <img src="data:image/png;base64,..." />
+    html_img_pattern = r'<img[^>]*src=["\']data:image/[^;]+;base64,[A-Za-z0-9+/=]+["\'][^>]*/?>'
+    matches = re.findall(html_img_pattern, text, re.IGNORECASE)
+    images_removed += len(matches)
+    text = re.sub(html_img_pattern, placeholder, text, flags=re.IGNORECASE)
+
+    return {
+        "text": text,
+        "images_removed": images_removed
+    }

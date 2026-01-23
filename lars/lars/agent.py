@@ -364,6 +364,12 @@ class Agent:
                 import time
                 start_time = time.time()
 
+                # DEBUG: Log critical routing params to diagnose intermittent API routing issues
+                # This helps identify when base_url or custom_llm_provider gets lost/overridden
+                print(f"[LiteLLM Call] model={args.get('model')}, base_url={args.get('base_url')}, "
+                      f"custom_llm_provider={args.get('custom_llm_provider')}, "
+                      f"api_key={'***' + args.get('api_key', '')[-4:] if args.get('api_key') else 'None'}")
+
                 response = litellm.completion(**args)
 
                 # Track LLM call for SQL Trail analytics (fire-and-forget)
@@ -771,10 +777,22 @@ class Agent:
                 if "status_code" in error_info:
                     print(f"  HTTP Status: {error_info['status_code']}")
                     print(f"  Response Body: {error_info.get('response_body', 'N/A')}")
-                print(f"\n  Request Payload (messages):")
-                print(json.dumps(args.get('messages', []), indent=2, default=str))
-                print(f"\n  Full Error Details:")
-                print(json.dumps(error_info, indent=2, default=str))
+                # Print truncated request payload to avoid flooding console
+                print(f"\n  Request Payload (messages) - truncated:")
+                messages = args.get('messages', [])
+                for i, msg in enumerate(messages):
+                    role = msg.get('role', 'unknown')
+                    content = msg.get('content', '')
+                    # Truncate content to 200 chars for readability
+                    if isinstance(content, str):
+                        content_preview = content[:200] + '...' if len(content) > 200 else content
+                    elif isinstance(content, list):
+                        content_preview = f"[{len(content)} content blocks]"
+                    else:
+                        content_preview = str(content)[:200]
+                    print(f"    [{i}] {role}: {content_preview}")
+                print(f"\n  Routing params: model={args.get('model')}, base_url={args.get('base_url')}, "
+                      f"custom_llm_provider={args.get('custom_llm_provider')}")
 
                 # Re-raise with enhanced message and full_request attached for upstream logging
                 # This allows runner to capture the request even on failure

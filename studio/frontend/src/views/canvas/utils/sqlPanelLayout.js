@@ -196,3 +196,66 @@ export function toRGLLayout(panels) {
     static: false,
   }));
 }
+
+/**
+ * Inject RENDER dimensions based on panel layout and container size
+ *
+ * Finds `THEN RENDER` without explicit args and injects calculated dimensions
+ * based on the grid layout and container size.
+ *
+ * @param {string} sql - SQL with potential RENDER pipeline stage
+ * @param {number} containerWidth - Container width in pixels (or null for default)
+ * @param {number} containerHeight - Container height in pixels (or null for default)
+ * @returns {string} SQL with RENDER dimensions injected (if applicable)
+ */
+export function injectRenderDimensions(sql, containerWidth, containerHeight) {
+  // Match "THEN RENDER" not followed by "(" (case insensitive)
+  // This avoids matching RENDER that already has explicit args
+  const renderPattern = /\bTHEN\s+RENDER\b(?!\s*\()/gi;
+
+  if (!renderPattern.test(sql)) {
+    return sql; // No bare RENDER found
+  }
+
+  // Reset regex lastIndex after test()
+  renderPattern.lastIndex = 0;
+
+  // Parse layout to determine grid and panel sizes
+  const layout = parsePanelLayout(sql);
+  const explicitGrid = parseGridSize(sql);
+  const cols = explicitGrid?.cols || layout.gridSize.cols || 2;
+  const rows = explicitGrid?.rows || layout.gridSize.rows || 2;
+
+  // Use provided dimensions or sensible defaults
+  // Defaults: assume ~1200px wide container, ~600px tall
+  const width = containerWidth || 1200;
+  const height = containerHeight || 600;
+
+  // Grid gap (matches CanvasRenderer.jsx)
+  const gap = 16;
+
+  // Calculate single cell dimensions
+  // Formula: (totalWidth - (cols-1)*gap) / cols
+  const cellWidth = Math.floor((width - (cols - 1) * gap) / cols);
+  const cellHeight = Math.floor((height - (rows - 1) * gap) / rows);
+
+  // For now, assume RENDER is in a 1x1 panel (most common case)
+  // TODO: Could parse which panel contains RENDER and use its colspan/rowspan
+  let renderWidth = cellWidth;
+  let renderHeight = cellHeight;
+
+  // Ensure minimum dimensions
+  renderWidth = Math.max(renderWidth, 400);
+  renderHeight = Math.max(renderHeight, 300);
+
+  // Device pixel ratio for crisp rendering
+  const scale = typeof window !== 'undefined' ? Math.min(window.devicePixelRatio || 2, 3) : 2;
+
+  // Inject dimensions into RENDER
+  const injectedSql = sql.replace(
+    renderPattern,
+    `THEN RENDER(${renderWidth}, ${renderHeight}, ${scale})`
+  );
+
+  return injectedSql;
+}
