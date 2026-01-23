@@ -472,6 +472,18 @@ def execute_deterministic_cell(
         else:
             # Keep all other outputs as-is (arrays from aggregate mode, dicts, strings)
             outputs[item["cell"]] = output
+
+    # Debug: Show outputs dict contents
+    print(f"\n[DEBUG] Deterministic cell '{cell.name}' outputs dict:")
+    for name, value in outputs.items():
+        val_type = type(value).__name__
+        if isinstance(value, dict):
+            print(f"  outputs.{name}: dict with keys {list(value.keys())}")
+        elif isinstance(value, str):
+            print(f"  outputs.{name}: str = {value[:100]}...")
+        else:
+            print(f"  outputs.{name}: {val_type}")
+
     render_context = {
         "input": input_data,
         "state": echo.state,

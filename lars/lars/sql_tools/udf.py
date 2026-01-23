@@ -594,7 +594,9 @@ def lars_cascade_udf_impl(
             increment_cache_miss(caller_id)
 
         # Cache result (with infinite TTL for backward compatibility)
-        if use_cache:
+        # Skip caching if cascade had errors - allow retry on next call
+        has_errors = result.get("has_errors", False)
+        if use_cache and not has_errors:
             _cache_set(_cascade_udf_cache, cache_key, json_result, ttl=None)
 
         # Extract specific field if requested
@@ -1595,6 +1597,16 @@ def register_lars_udf(connection: duckdb.DuckDBPyConnection, config: Dict[str, A
 
     # Register background job status UDFs
     _register_job_status_udfs(connection, existing)
+
+    # Register ClickHouse scanner UDFs (for live queries without materialization)
+    register_clickhouse_scan_udfs(connection, existing)
+
+    # Attach lars_system schema with views to LARS infrastructure tables
+    # DISABLED: View creation blocks on schema inference which can hang
+    # TODO: Re-enable with proper lazy schema resolution
+    # print("[DEBUG] About to attach lars_system schema...", flush=True)
+    # attach_lars_system_schema(connection)
+    # print("[DEBUG] lars_system schema done", flush=True)
 
 
 def _register_job_status_udfs(connection: duckdb.DuckDBPyConnection, existing: set | None = None):
@@ -2739,8 +2751,371 @@ def register_dynamic_sql_functions(connection, existing: set | None = None):
         # Only print summary if we actually registered something new
         if registered_count > 0:
             print(f"[DynamicUDF] Registered {registered_count} new SQL functions")
-        
+
     except Exception as e:
         print(f"[DynamicUDF] ERROR: Dynamic registration failed: {e}")
         import traceback
         traceback.print_exc()
+
+
+# =============================================================================
+# ClickHouse Scanner UDFs - Live queries to ClickHouse (no materialization)
+# =============================================================================
+
+def register_clickhouse_scan_udfs(connection: duckdb.DuckDBPyConnection, existing: set | None = None):
+    """
+    Register clickhouse_scan UDFs for live ClickHouse queries.
+
+    These UDFs allow querying ClickHouse directly without materializing data
+    into DuckDB. They return file paths to JSON files that can be read with
+    read_json_auto().
+
+    Usage:
+        -- Query a table (with default limit)
+        SELECT * FROM read_json_auto(clickhouse_scan('lars_embeddings'))
+
+        -- Query a table with custom limit
+        SELECT * FROM read_json_auto(clickhouse_scan('semantic_sql_cache', 10000))
+
+        -- Run arbitrary SQL
+        SELECT * FROM read_json_auto(clickhouse_query('SELECT * FROM lars_embeddings WHERE source_table = ''products'''))
+
+    Args:
+        connection: DuckDB connection to register with
+        existing: Pre-fetched set of existing function names
+    """
+    import tempfile
+    import json as json_module
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    if existing is None:
+        existing = get_registered_functions(connection)
+
+    def _get_clickhouse_client():
+        """Get ClickHouse client (lazy import to avoid circular deps)."""
+        try:
+            from ..db_adapter import get_db
+            return get_db()
+        except Exception as e:
+            logger.warning(f"[clickhouse_scan] Could not get ClickHouse client: {e}")
+            return None
+
+    def _safe_json_value(v):
+        """Convert value to JSON-serializable type."""
+        if v is None:
+            return None
+        if hasattr(v, 'isoformat'):  # datetime
+            return v.isoformat()
+        if hasattr(v, 'hex'):  # UUID
+            return str(v)
+        if isinstance(v, bytes):
+            return v.decode('utf-8', errors='replace')
+        if isinstance(v, (list, tuple)):
+            return [_safe_json_value(x) for x in v]
+        if isinstance(v, dict):
+            return {k: _safe_json_value(val) for k, val in v.items()}
+        return v
+
+    def clickhouse_scan_1(table_name: str) -> str:
+        """
+        Query a ClickHouse table with default limit (100,000 rows).
+
+        Args:
+            table_name: Name of the ClickHouse table to query
+
+        Returns:
+            Path to temp JSON file (use with read_json_auto)
+        """
+        return clickhouse_scan_2(table_name, 100000)
+
+    def clickhouse_scan_2(table_name: str, limit: int) -> str:
+        """
+        Query a ClickHouse table with custom limit.
+
+        Args:
+            table_name: Name of the ClickHouse table to query
+            limit: Maximum rows to return
+
+        Returns:
+            Path to temp JSON file (use with read_json_auto)
+        """
+        db = _get_clickhouse_client()
+        if db is None:
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+                json_module.dump([{"error": "ClickHouse not available"}], f)
+                return f.name
+
+        try:
+            # Sanitize table name (basic protection)
+            safe_table = table_name.replace(';', '').replace('--', '')
+            query = f"SELECT * FROM {safe_table} LIMIT {int(limit)}"
+
+            rows = db.query(query, output_format="dict")
+
+            # Convert to JSON-safe values
+            safe_rows = [
+                {k: _safe_json_value(v) for k, v in row.items()}
+                for row in (rows or [])
+            ]
+
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+                json_module.dump(safe_rows, f)
+                return f.name
+
+        except Exception as e:
+            logger.error(f"[clickhouse_scan] Query failed: {e}")
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+                json_module.dump([{"error": str(e)}], f)
+                return f.name
+
+    def clickhouse_query_1(sql: str) -> str:
+        """
+        Run arbitrary SQL against ClickHouse.
+
+        Args:
+            sql: SQL query to execute
+
+        Returns:
+            Path to temp JSON file (use with read_json_auto)
+        """
+        db = _get_clickhouse_client()
+        if db is None:
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+                json_module.dump([{"error": "ClickHouse not available"}], f)
+                return f.name
+
+        try:
+            rows = db.query(sql, output_format="dict")
+
+            # Convert to JSON-safe values
+            safe_rows = [
+                {k: _safe_json_value(v) for k, v in row.items()}
+                for row in (rows or [])
+            ]
+
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+                json_module.dump(safe_rows, f)
+                return f.name
+
+        except Exception as e:
+            logger.error(f"[clickhouse_query] Query failed: {e}")
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+                json_module.dump([{"error": str(e)}], f)
+                return f.name
+
+    # Register UDFs
+    safe_create_function(connection, "clickhouse_scan_1", clickhouse_scan_1, existing,
+                        return_type="VARCHAR", null_handling="special")
+    safe_create_function(connection, "clickhouse_scan_2", clickhouse_scan_2, existing,
+                        return_type="VARCHAR", null_handling="special")
+    safe_create_function(connection, "clickhouse_query_1", clickhouse_query_1, existing,
+                        return_type="VARCHAR", null_handling="special")
+
+    logger.debug("Registered clickhouse_scan UDFs")
+
+
+def attach_lars_system_schema(connection: duckdb.DuckDBPyConnection):
+    """
+    Attach the lars_system schema with views to all LARS infrastructure tables.
+
+    This creates views that query ClickHouse live (no materialization).
+    SQL clients can introspect these views to see the schema.
+
+    Note: This will skip if ClickHouse is not available to avoid blocking startup.
+
+    All tables from ClickHouse's 'lars' database are exposed, organized by category:
+
+    Core Execution:
+        - logs (unified_logs) - Main execution logs
+        - checkpoints - Human-in-the-loop checkpoints
+        - sessions (session_state) - Cascade execution state
+        - cascade_sessions - Cascade definitions per run
+
+    Analytics:
+        - cascade_analytics - Pre-computed cascade-level analytics
+        - cell_analytics - Pre-computed cell-level analytics
+        - cell_context_breakdown - Per-message context cost attribution
+        - prompt_lineage - Prompt evolution tracking
+
+    Cost & Caching:
+        - cache (semantic_sql_cache) - Semantic SQL result cache
+        - sql_log (sql_query_log) - SQL Trail analytics
+        - sql_cascade_executions - Cascade invocations from SQL UDFs
+        - caller_context - Active caller contexts
+        - deref_log - @cascade() expression evaluations
+
+    Training & Evaluation:
+        - training_preferences - DPO/RLHF training data
+        - training_annotations - Human annotations
+        - evaluations - Hot-or-not ratings
+
+    Context Management:
+        - context_cards - Auto-context summaries
+        - context_shadow_assessments - Inter-cell context analysis
+        - intra_context_shadow_assessments - Intra-cell context analysis
+
+    RAG:
+        - rag_chunks - Vector storage
+        - rag_manifests - Document metadata
+
+    Embeddings & Vectors:
+        - embeddings (lars_embeddings) - General-purpose embeddings
+        - tool_manifest_vectors - Tool discovery
+        - cascade_template_vectors - Cascade discovery
+
+    Signals & Watches:
+        - signals - Cross-cascade communication
+        - watches - Scheduled SQL watch definitions
+        - watch_executions - Watch execution history
+
+    Research:
+        - research_sessions - Frozen research snapshots
+
+    Models & Catalog:
+        - openrouter_models - Model verification & caching
+        - hf_spaces - HuggingFace Spaces cache
+
+    UI & Artifacts:
+        - ui_sql_log - Query performance tracking
+        - tag_definitions - Tag metadata
+        - output_tags - Output tagging cross-walk
+        - artifacts - Rich UI outputs from cascades
+        - hyper_sql_files - Saved SQL queries
+
+    State & Misc:
+        - cascade_state - Key-value state storage
+        - test_events - Test event logging
+
+    BI Intent:
+        - bi_understandings - Investigation results
+        - bi_understanding_usage - Understanding usage tracking
+        - promoted_metrics - Promoted metric definitions
+        - bi_metric_modes - Discovered polymorphic modes
+
+    Args:
+        connection: DuckDB connection to attach schema to
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    # All LARS system tables to expose as views
+    # Format: (view_name, clickhouse_table_name)
+    # view_name can be simplified/aliased for convenience
+    system_tables = [
+        # === Core Execution ===
+        ("logs", "unified_logs"),
+        ("checkpoints", "checkpoints"),
+        ("sessions", "session_state"),  # Fixed: was incorrectly "session_log"
+        ("cascade_sessions", "cascade_sessions"),
+
+        # === Analytics ===
+        ("cascade_analytics", "cascade_analytics"),
+        ("cell_analytics", "cell_analytics"),
+        ("cell_context_breakdown", "cell_context_breakdown"),
+        ("prompt_lineage", "prompt_lineage"),
+
+        # === Cost & Caching ===
+        ("cache", "semantic_sql_cache"),
+        ("sql_log", "sql_query_log"),
+        ("sql_cascade_executions", "sql_cascade_executions"),
+        ("caller_context", "caller_context_active"),
+        ("deref_log", "deref_log"),
+
+        # === Training & Evaluation ===
+        ("training_preferences", "training_preferences"),
+        ("training_annotations", "training_annotations"),
+        ("evaluations", "evaluations"),
+
+        # === Context Management ===
+        ("context_cards", "context_cards"),
+        ("context_shadow_assessments", "context_shadow_assessments"),
+        ("intra_context_shadow_assessments", "intra_context_shadow_assessments"),
+
+        # === RAG ===
+        ("rag_chunks", "rag_chunks"),
+        ("rag_manifests", "rag_manifests"),
+
+        # === Embeddings & Vectors ===
+        ("embeddings", "lars_embeddings"),
+        ("tool_manifest_vectors", "tool_manifest_vectors"),
+        ("cascade_template_vectors", "cascade_template_vectors"),
+
+        # === Signals & Watches ===
+        ("signals", "signals"),
+        ("watches", "watches"),
+        ("watch_executions", "watch_executions"),
+
+        # === Research ===
+        ("research_sessions", "research_sessions"),
+
+        # === Models & Catalog ===
+        ("openrouter_models", "openrouter_models"),
+        ("hf_spaces", "hf_spaces"),
+
+        # === UI & Artifacts ===
+        ("ui_sql_log", "ui_sql_log"),
+        ("tag_definitions", "tag_definitions"),
+        ("output_tags", "output_tags"),
+        ("artifacts", "artifacts"),
+        ("hyper_sql_files", "hyper_sql_files"),
+
+        # === State & Misc ===
+        ("cascade_state", "cascade_state"),
+        ("test_events", "test_events"),
+
+        # === BI Intent ===
+        ("bi_understandings", "bi_understandings"),
+        ("bi_understanding_usage", "bi_understanding_usage"),
+        ("promoted_metrics", "promoted_metrics"),
+        ("bi_metric_modes", "bi_metric_modes"),
+    ]
+
+    try:
+        # Quick connectivity check with timeout to avoid blocking startup
+        # if ClickHouse is unreachable
+        from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+        from ..db_adapter import get_db
+
+        def check_clickhouse():
+            db = get_db()
+            db.query("SELECT 1")
+            return True
+
+        try:
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(check_clickhouse)
+                future.result(timeout=3.0)  # 3 second timeout for connectivity check
+        except FuturesTimeoutError:
+            logger.warning("[lars_system] ClickHouse connection timed out, skipping lars_system schema")
+            return
+        except Exception as e:
+            logger.warning(f"[lars_system] ClickHouse not available ({e}), skipping lars_system schema")
+            return
+
+        # Create schema
+        connection.execute("CREATE SCHEMA IF NOT EXISTS lars_system;")
+
+        created_count = 0
+        failed_count = 0
+
+        for view_name, table_name in system_tables:
+            try:
+                # Create view that wraps clickhouse_scan
+                # Use a reasonable default limit that can handle most introspection
+                connection.execute(f"""
+                    CREATE OR REPLACE VIEW lars_system.{view_name} AS
+                    SELECT * FROM read_json_auto(clickhouse_scan_1('{table_name}'))
+                """)
+                created_count += 1
+            except Exception as e:
+                failed_count += 1
+                logger.debug(f"[lars_system] Could not create view {view_name}: {e}")
+
+        logger.info(f"[lars_system] Attached lars_system schema with {created_count} live ClickHouse views")
+        if failed_count > 0:
+            logger.debug(f"[lars_system] {failed_count} views could not be created (tables may not exist yet)")
+
+    except Exception as e:
+        logger.warning(f"[lars_system] Could not attach lars_system schema: {e}")

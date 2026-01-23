@@ -1,0 +1,117 @@
+cascade_id: pipeline_to_plotly
+internal: true
+description: |
+  PIPELINE cascade for generating Plotly chart SQL with structural caching.
+
+  Uses table_sql_execute mode - the LLM generates SQL that:
+  - Reads from _input_table (the pipeline input)
+  - Adds 'format' and 'config' columns for chart rendering
+  - Can include aggregations, filters, or transformations
+  - Is cached by schema fingerprint (same columns = reuse SQL)
+
+  Usage:
+    SELECT month, revenue, category FROM sales
+    THEN TO_PLOTLY 'bar chart of revenue by month, colored by category'
+
+  Returns data with format/config columns that the UI renders as a chart.
+
+inputs_schema:
+  prompt: Natural language description of the desired chart
+  _table_schema: Schema of input table (column names and types)
+  _table_columns: List of column names
+  _table_row_count: Number of rows
+
+sql_function:
+  name: TO_PLOTLY
+  description: Generate a Plotly chart from data using LLM
+  args:
+    - name: prompt
+      type: VARCHAR
+    - name: _table
+      type: TABLE
+  returns: TABLE
+  shape: PIPELINE
+  output_mode: table_sql_execute
+  operators:
+    - 'THEN TO_PLOTLY {{ prompt }}'
+    - 'THEN TO_PLOTLY({{ prompt }})'
+  cache: true
+
+cells:
+  - name: generate_sql
+    instructions: |
+      Generate a SQL query that produces chart-ready data for Plotly.
+
+      USER REQUEST: {{ input.prompt }}
+
+      INPUT TABLE SCHEMA:
+      {% for col in input._table_schema %}
+      - {{ col.column }} ({{ col.type }})
+      {% endfor %}
+
+      COLUMNS: {{ input._table_columns | join(', ') }}
+      ROW COUNT: {{ input._table_row_count }}
+      {% if input._sample_distinct_values %}
+      SAMPLE VALUES FOR CATEGORICAL COLUMNS:
+      {% for col, values in input._sample_distinct_values.items() %}
+      - {{ col }}: {{ values[:10] | join(', ') }}{% if values | length > 10 %}...{% endif %}
+      {% endfor %}
+      {% endif %}
+
+      YOUR TASK:
+      Generate a SQL query that reads from `_input_table` and produces output with:
+      1. A 'format' column set to 'plotly'
+      2. A 'config' column containing a JSON object describing the chart
+      3. The data columns needed for the chart
+
+      THE CONFIG OBJECT should use this shorthand notation:
+      - "type": Chart type ("bar", "line", "scatter", "pie", "heatmap", "box", "histogram", "area")
+      - "x": Column name for X axis
+      - "y": Column name for Y axis
+      - "color": Column name for color/series grouping (optional)
+      - "values"/"labels": For pie charts
+      - "title": Chart title (optional)
+      - "mode": For scatter/line - "markers", "lines", "lines+markers" (optional)
+
+      IMPORTANT RULES:
+      - Read from `_input_table` (this is the pipeline input data)
+      - You MAY add GROUP BY, ORDER BY, aggregations, filters if needed
+      - The config JSON must reference column names that exist in YOUR output
+      - Use '...'::JSON syntax for the config column
+      - Escape single quotes in JSON by doubling them ('')
+      - Return ONLY the SQL query, no explanation
+
+      {% if input._last_sql_error %}
+      PREVIOUS ERROR (fix this):
+      {{ input._last_sql_error }}
+      {% endif %}
+
+      EXAMPLES:
+
+      Simple bar chart:
+      SELECT
+        'plotly' as format,
+        '{"type":"bar","x":"month","y":"revenue","title":"Monthly Revenue"}'::JSON as config,
+        month, revenue
+      FROM _input_table
+
+      With aggregation:
+      SELECT
+        'plotly' as format,
+        '{"type":"pie","values":"total","labels":"category","title":"By Category"}'::JSON as config,
+        category, SUM(revenue) as total
+      FROM _input_table
+      GROUP BY category
+
+      Grouped bar chart:
+      SELECT
+        'plotly' as format,
+        '{"type":"bar","x":"month","y":"revenue","color":"region"}'::JSON as config,
+        month, region, revenue
+      FROM _input_table
+      ORDER BY month
+
+      Return ONLY the SQL query.
+
+    rules:
+      max_turns: 1

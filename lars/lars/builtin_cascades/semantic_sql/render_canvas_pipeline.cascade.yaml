@@ -64,6 +64,7 @@ cells:
     tool: python:lars.pipeline_tools.render_canvas
     inputs:
       _table: "{{ input._table }}"
+      _table_path: "{{ input._table_path | default('') }}"
       layout_type: "{{ input.layout_type | default('grid') }}"
       dim1: "{{ input.dim1 | default(2) }}"
       dim2: "{{ input.dim2 | default(2) }}"

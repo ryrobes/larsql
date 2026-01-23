@@ -1457,6 +1457,8 @@ class Agent:
             return {
                 "role": "assistant",
                 "content": f"Generated {len(saved_paths)} image(s) with {model}",
+                "format": "image",
+                "src": saved_paths[0] if saved_paths else None,
                 "images": saved_paths,
                 "model": model,
                 "request_id": request_id,

@@ -103,19 +103,20 @@ export function updatePanelPositions(sql, layout) {
   });
 
   // Pattern to match and replace panel definitions
-  // Captures: prefix, name, optional position, rest of line
-  const panelPattern = /^(---\s*PANEL\s+['"])([^'"]+)(['"])(?:\s*\(\d+\s*,\s*\d+(?:\s*,\s*\d+\s*,\s*\d+)?\))?(.*)$/;
+  // Captures: leading whitespace, prefix, name, optional position, rest of line
+  // Note: Allow optional leading whitespace with ^(\s*)
+  const panelPattern = /^(\s*)(---\s*PANEL\s+['"])([^'"]+)(['"])(?:\s*\(\d+\s*,\s*\d+(?:\s*,\s*\d+\s*,\s*\d+)?\))?(.*)$/;
 
   const updatedLines = lines.map(line => {
     const match = line.match(panelPattern);
     if (match) {
-      const [, prefix, name, quote, rest] = match;
+      const [, leadingWhitespace, prefix, name, quote, rest] = match;
       const newPos = positionMap[name];
 
       if (newPos) {
         // Always include all 4 values for consistency
         const posStr = `(${newPos.col}, ${newPos.row}, ${newPos.colspan}, ${newPos.rowspan})`;
-        return `${prefix}${name}${quote} ${posStr}${rest}`;
+        return `${leadingWhitespace}${prefix}${name}${quote} ${posStr}${rest}`;
       }
     }
     return line;

@@ -37,7 +37,7 @@ const VegaLitePanel = ({ content, onClick, interactive, selectedValue, selectFie
   const [loading, setLoading] = useState(true);
 
   // Debug: log props on render
-  console.log('[VegaLitePanel] Render props:', { interactive, selectedValue, selectField });
+  //console.log('[VegaLitePanel] Render props:', { interactive, selectedValue, selectField });
 
   // Extract and parse the Vega-Lite spec
   const spec = useMemo(() => {

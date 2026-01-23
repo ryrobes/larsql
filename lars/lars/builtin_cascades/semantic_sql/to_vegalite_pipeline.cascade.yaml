@@ -1,0 +1,125 @@
+cascade_id: pipeline_to_vegalite
+internal: true
+description: |
+  PIPELINE cascade for generating Vega-Lite chart SQL with structural caching.
+
+  Uses table_sql_execute mode - the LLM generates SQL that:
+  - Reads from _input_table (the pipeline input)
+  - Adds 'format' and 'config' columns for chart rendering
+  - Can include aggregations, filters, or transformations
+  - Is cached by schema fingerprint (same columns = reuse SQL)
+
+  Usage:
+    SELECT month, revenue FROM sales
+    THEN TO_VEGALITE 'line chart with points showing revenue trend'
+
+  Returns data with format/config columns that the UI renders as a chart.
+
+inputs_schema:
+  prompt: Natural language description of the desired chart
+  _table_schema: Schema of input table (column names and types)
+  _table_columns: List of column names
+  _table_row_count: Number of rows
+
+sql_function:
+  name: TO_VEGALITE
+  description: Generate a Vega-Lite chart from data using LLM
+  args:
+    - name: prompt
+      type: VARCHAR
+    - name: _table
+      type: TABLE
+  returns: TABLE
+  shape: PIPELINE
+  output_mode: table_sql_execute
+  operators:
+    - 'THEN TO_VEGALITE {{ prompt }}'
+    - 'THEN TO_VEGALITE({{ prompt }})'
+  cache: true
+
+cells:
+  - name: generate_sql
+    model: anthropic/claude-sonnet-4
+    instructions: |
+      Generate a SQL query that produces chart-ready data for Vega-Lite.
+
+      USER REQUEST: {{ input.prompt }}
+
+      INPUT TABLE SCHEMA:
+      {% for col in input._table_schema %}
+      - {{ col.column }} ({{ col.type }})
+      {% endfor %}
+
+      COLUMNS: {{ input._table_columns | join(', ') }}
+      ROW COUNT: {{ input._table_row_count }}
+      {% if input._sample_distinct_values %}
+      SAMPLE VALUES FOR CATEGORICAL COLUMNS:
+      {% for col, values in input._sample_distinct_values.items() %}
+      - {{ col }}: {{ values[:10] | join(', ') }}{% if values | length > 10 %}...{% endif %}
+      {% endfor %}
+      {% endif %}
+
+      YOUR TASK:
+      Generate a SQL query that reads from `_input_table` and produces output with:
+      1. A 'format' column set to 'vega-lite'
+      2. A 'config' column containing a JSON object describing the chart
+      3. The data columns needed for the chart
+
+      THE CONFIG OBJECT can use SHORTHAND or FULL SPEC format:
+
+      === SHORTHAND (recommended for simple charts) ===
+      - "mark": Mark type ("bar", "line", "point", "area", "arc", "rect")
+      - "x": Column name for X encoding
+      - "y": Column name for Y encoding
+      - "color": Column name for color encoding (optional)
+      - "size": Column name for size encoding (optional)
+      - "theta": For pie/arc charts - column name for angle
+      - "title": Chart title (optional)
+
+      === FULL SPEC (for advanced customization) ===
+      Include "encoding" object with full Vega-Lite definitions:
+      {"mark":"bar","encoding":{"x":{"field":"month","type":"ordinal"},"y":{"field":"revenue","type":"quantitative"}}}
+
+      IMPORTANT RULES:
+      - Read from `_input_table` (this is the pipeline input data)
+      - You MAY add GROUP BY, ORDER BY, aggregations, filters if needed
+      - The config JSON must reference column names that exist in YOUR output
+      - Use '...'::JSON syntax for the config column
+      - Escape single quotes in JSON by doubling them ('')
+      - Return ONLY the SQL query, no explanation
+
+      {% if input._last_sql_error %}
+      PREVIOUS ERROR (fix this):
+      {{ input._last_sql_error }}
+      {% endif %}
+
+      EXAMPLES:
+
+      Simple line chart:
+      SELECT
+        'vega-lite' as format,
+        '{"mark":"line","x":"date","y":"value","title":"Trend"}'::JSON as config,
+        date, value
+      FROM _input_table
+      ORDER BY date
+
+      Bar chart with aggregation:
+      SELECT
+        'vega-lite' as format,
+        '{"mark":"bar","x":"category","y":"total"}'::JSON as config,
+        category, SUM(amount) as total
+      FROM _input_table
+      GROUP BY category
+      ORDER BY total DESC
+
+      Scatter plot:
+      SELECT
+        'vega-lite' as format,
+        '{"mark":"point","x":"x_val","y":"y_val","color":"group"}'::JSON as config,
+        x_val, y_val, group
+      FROM _input_table
+
+      Return ONLY the SQL query.
+
+    rules:
+      max_turns: 1

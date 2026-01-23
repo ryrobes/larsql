@@ -1,0 +1,49 @@
+cascade_id: single_image_gen
+
+inputs_schema:
+  prompt: Prompt text for prompt
+  neg_prompt: Negative prompt text for prompt
+
+sql_function:
+  name: single_image_gen
+  description: Generate an image with this prompt
+  args:
+    - name: prompt
+      type: VARCHAR
+      description: Positive Prompt
+    - name: neg_prompt
+      type: VARCHAR
+      optional: true
+      default: " "
+      description: Negative Image
+  returns: VARCHAR
+  shape: SCALAR
+  #cache: true
+
+cells:
+- instructions: 'Please rewrite and enhance this image prompt, be vivid with lots
+    of rich details, but staying true to the original intent. Please return ONLY the
+    enriched prompt.
+
+    Image Prompt:
+
+    {{ input.prompt }}
+    
+    Negative Prompt:
+    
+    {{ input.neg_prompt }}'
+  model: x-ai/grok-4.1-fast
+  name: llm_phase
+  rules:
+    max_turns: 1
+
+- name: image1
+  # image_config:
+  #   height: 1024
+  #   width: 1024
+  instructions: '{{ outputs.llm_phase }}'
+  #model: google/gemini-2.5-flash-image
+  #model: black-forest-labs/flux.2-klein-4b
+  model: bytedance-seed/seedream-4.5
+
+

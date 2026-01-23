@@ -57,6 +57,7 @@ cells:
     tool: python:lars.pipeline_tools.mermaid_triples
     inputs:
       _table: "{{ input._table }}"
+      _table_path: "{{ input._table_path | default('') }}"
       subject_col: "{{ input.subject_col | default('subject') }}"
       predicate_col: "{{ input.predicate_col | default('predicate') }}"
       object_col: "{{ input.object_col | default('object') }}"

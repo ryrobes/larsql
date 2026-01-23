@@ -18,6 +18,7 @@ import tempfile
 import duckdb
 from typing import Dict, List, Set, Any, Tuple
 from threading import Lock
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 import logging
 
 log = logging.getLogger(__name__)
@@ -35,6 +36,9 @@ _snapshot_paths: Dict[str, str] = {}  # db_key -> snapshot_path
 
 # Directory for snapshot copies
 _SNAPSHOT_DIR = os.path.join(tempfile.gettempdir(), "lars_db_snapshots")
+
+# Track which extensions have been installed (to avoid redundant installs)
+_installed_extensions: Set[str] = set()
 
 
 def list_databases() -> List[Dict[str, Any]]:
@@ -302,12 +306,55 @@ def _initialize_database(
     log.info(f"[database_manager] Database {db_key} initialization complete")
 
 
+def _install_community_extensions(conn: duckdb.DuckDBPyConnection) -> None:
+    """
+    Install and load community extensions needed for LARS features.
+
+    Currently installs:
+    - duckpgq: SQL/PGQ graph queries for property graphs (used by TO_PROPERTY_GRAPH)
+
+    Note: Installation is done with a timeout to prevent blocking on network issues.
+    """
+    global _installed_extensions
+
+    # DuckPGQ - Property Graph Queries (SQL:2023 standard)
+    # Used by RICH_TRIPLES -> TO_PROPERTY_GRAPH pipeline
+    if 'duckpgq' not in _installed_extensions:
+        def install_extension():
+            conn.execute("INSTALL duckpgq FROM community;")
+
+        try:
+            # Use ThreadPoolExecutor with timeout to prevent blocking on network issues
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(install_extension)
+                future.result(timeout=5.0)  # 5 second timeout for network install
+            _installed_extensions.add('duckpgq')
+            log.debug("[database_manager] Installed duckpgq extension")
+        except FuturesTimeoutError:
+            log.warning("[database_manager] duckpgq install timed out (network issue?), skipping")
+        except Exception as e:
+            # Extension might already be installed globally
+            if "already installed" not in str(e).lower():
+                log.debug(f"[database_manager] duckpgq install note: {e}")
+
+    # Load duckpgq for this connection (only if installed)
+    if 'duckpgq' in _installed_extensions:
+        try:
+            conn.execute("LOAD duckpgq;")
+            log.debug("[database_manager] Loaded duckpgq extension")
+        except Exception as e:
+            log.warning(f"[database_manager] Failed to load duckpgq: {e}")
+
+
 def _setup_minimal(conn: duckdb.DuckDBPyConnection) -> None:
     """
     Minimal setup - register UDFs and basic config.
 
     This is the fast path that must complete before responding to clients.
     """
+    # Install community extensions for graph queries
+    _install_community_extensions(conn)
+
     # Register LARS UDFs
     try:
         from .udf import register_lars_udf

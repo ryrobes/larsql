@@ -46,6 +46,7 @@ cells:
     tool: python:lars.pipeline_tools.mermaid_timeline
     inputs:
       _table: "{{ input._table }}"
+      _table_path: "{{ input._table_path | default('') }}"
       timestamp_col: "{{ input.timestamp_col | default('timestamp') }}"
       event_col: "{{ input.event_col | default('event') }}"
       _table_columns: "{{ input._table_columns }}"

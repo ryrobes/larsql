@@ -1083,7 +1083,14 @@ class DatabaseConnector:
 
     def _attach_clickhouse(self, config: SqlConnectionConfig, alias: str):
         """
-        Attach ClickHouse database by materializing tables into DuckDB.
+        Attach ClickHouse database by creating views that query live via clickhouse_scan UDFs.
+
+        Instead of materializing data (which doesn't scale), we create views that
+        wrap clickhouse_scan_2() for live queries. This means:
+        - No data copied at session start
+        - Fresh data on every query
+        - SQL clients can introspect schema via views
+        - Scales to any table size
 
         Requires:
         - host: ClickHouse server hostname
@@ -1093,14 +1100,11 @@ class DatabaseConnector:
         - password_env: Optional password environment variable
 
         Query syntax: SELECT * FROM {alias}.{table_name}
-
-        Note: This materializes data into DuckDB (not live connection).
         """
         try:
             import clickhouse_connect
-            import pandas as pd
         except ImportError:
-            print(f"    [WARN]  ClickHouse connector requires: pip install clickhouse-connect pandas")
+            print(f"    [WARN]  ClickHouse connector requires: pip install clickhouse-connect")
             return
 
         if not config.host:
@@ -1134,39 +1138,30 @@ class DatabaseConnector:
                 if not row[0].startswith('.inner')
             ]
 
-            table_count = 0
-            total_rows = 0
+            view_count = 0
+            # Default limit for views - can be overridden in queries
+            default_limit = config.sample_row_limit or 100000
 
             for table_name in table_names:
-                limit = config.sample_row_limit or 1000
-
                 try:
-                    # Get sample data
-                    df = client.query_df(f"SELECT * FROM {database}.{table_name} LIMIT {limit}")
-
-                    if df.empty:
-                        continue
-
                     # Sanitize table name for DuckDB
                     safe_table_name = table_name.replace("-", "_").replace(" ", "_")
-                    temp_name = f'_ch_{safe_table_name}'
 
-                    self.conn.register(temp_name, df)
+                    # Create view that wraps clickhouse_scan for live queries
+                    full_table_name = f"{database}.{table_name}"
+
                     self.conn.execute(f"""
-                        CREATE OR REPLACE TABLE {alias}.{safe_table_name} AS
-                        SELECT * FROM {temp_name}
+                        CREATE OR REPLACE VIEW {alias}.{safe_table_name} AS
+                        SELECT * FROM read_json_auto(clickhouse_scan_2('{full_table_name}', {default_limit}))
                     """)
-                    self.conn.unregister(temp_name)
 
-                    table_count += 1
-                    total_rows += len(df)
-                    print(f"    [OK] Materialized table: {table_name} → {alias}.{safe_table_name} ({len(df)} rows)")
+                    view_count += 1
 
                 except Exception as e:
-                    print(f"    [WARN]  Failed to materialize {table_name}: {str(e)[:60]}")
+                    print(f"    [WARN]  Failed to create view for {table_name}: {str(e)[:60]}")
 
             client.close()
-            print(f"  └─ Materialized ClickHouse: {database} ({table_count} tables, {total_rows:,} rows)")
+            print(f"  └─ Attached ClickHouse: {database} ({view_count} views, live queries via clickhouse_scan)")
 
         except Exception as e:
             print(f"    [WARN]  Failed to connect to ClickHouse: {str(e)[:80]}")

@@ -1,0 +1,84 @@
+cascade_id: pipeline_to_property_graph
+internal: true
+description: |
+  PIPELINE cascade for converting triples to DuckPGQ property graph.
+
+  Creates vertex and edge tables from triples data, then registers them
+  as a DuckDB property graph for SQL/PGQ graph queries.
+
+  Uses pure SQL - no LLM calls.
+
+  Prerequisites:
+    - DuckPGQ extension (auto-installed by LARS)
+
+  Usage:
+      -- From rich_triples extraction
+      SELECT * FROM docs, LATERAL rich_triples_rows(content) t
+      THEN TO_PROPERTY_GRAPH('my_knowledge_graph')
+
+      -- From regular triples
+      SELECT subject, predicate, object FROM my_edges
+      THEN TO_PROPERTY_GRAPH('network', 'subject', 'predicate', 'object')
+
+      -- Then query with SQL/PGQ
+      SELECT * FROM GRAPH_TABLE(my_knowledge_graph
+        MATCH (a)-[r]->(b)
+        WHERE a.id = 'Mike'
+        COLUMNS (a.id as source, r.predicate as rel, b.id as target)
+      )
+
+inputs_schema:
+  graph_name: "Name for the property graph (creates {name}_nodes and {name}_edges tables)"
+  subject_col: "Column name for subject (default: subject)"
+  predicate_col: "Column name for predicate (default: predicate)"
+  object_col: "Column name for object (default: object)"
+  evidence_col: "Column name for evidence (optional, default: evidence)"
+  _table: "Query results as JSON records"
+  _table_columns: "List of column names"
+
+sql_function:
+  name: TO_PROPERTY_GRAPH
+  description: Convert triples to DuckPGQ property graph with nodes and edges tables
+  args:
+    - name: graph_name
+      type: VARCHAR
+      description: "Name for the property graph"
+    - name: subject_col
+      type: VARCHAR
+      optional: true
+      default: "subject"
+    - name: predicate_col
+      type: VARCHAR
+      optional: true
+      default: "predicate"
+    - name: object_col
+      type: VARCHAR
+      optional: true
+      default: "object"
+    - name: evidence_col
+      type: VARCHAR
+      optional: true
+      default: "evidence"
+    - name: _table
+      type: TABLE
+  returns: TABLE
+  shape: PIPELINE
+  operators:
+    - 'THEN TO_PROPERTY_GRAPH({{ graph_name }})'
+    - 'THEN TO_PROPERTY_GRAPH({{ graph_name }}, {{ subject_col }}, {{ predicate_col }}, {{ object_col }})'
+    - 'THEN TO_PROPERTY_GRAPH({{ graph_name }}, {{ subject_col }}, {{ predicate_col }}, {{ object_col }}, {{ evidence_col }})'
+  cache: false
+
+cells:
+  - name: build_property_graph
+    deterministic: true
+    tool: python:lars.pipeline_tools.to_property_graph
+    inputs:
+      _table: "{{ input._table }}"
+      _table_path: "{{ input._table_path | default('') }}"
+      graph_name: "{{ input.graph_name }}"
+      subject_col: "{{ input.subject_col | default('subject') }}"
+      predicate_col: "{{ input.predicate_col | default('predicate') }}"
+      object_col: "{{ input.object_col | default('object') }}"
+      evidence_col: "{{ input.evidence_col | default('evidence') }}"
+      _table_columns: "{{ input._table_columns }}"

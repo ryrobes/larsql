@@ -38,5 +38,6 @@ cells:
     tool: python:lars.pipeline_tools.deduplicate
     inputs:
       _table: "{{ input._table }}"
+      _table_path: "{{ input._table_path | default('') }}"
       columns: "{{ input.columns | default('') }}"
       _table_columns: "{{ input._table_columns }}"

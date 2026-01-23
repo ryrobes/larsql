@@ -11,6 +11,7 @@ import DropdownPanel from './DropdownPanel';
 import DateRangePanel from './DateRangePanel';
 import TogglePanel from './TogglePanel';
 import SparklinePanel from './SparklinePanel';
+import ImagePanel from './ImagePanel';
 import TextPanel from './TextPanel';
 import './PanelRenderer.css';
 
@@ -57,6 +58,8 @@ const PanelRenderer = ({ panel, style, onInteraction }) => {
         return 'mdi:chart-timeline-variant';
       case 'markdown':
         return 'mdi:language-markdown';
+      case 'image':
+        return 'mdi:image';
       default:
         return 'mdi:text';
     }
@@ -172,6 +175,9 @@ const PanelRenderer = ({ panel, style, onInteraction }) => {
 
       case 'markdown':
         return <MarkdownPanel content={content} />;
+
+      case 'image':
+        return <ImagePanel content={content} />;
 
       case 'text':
       default:

@@ -43,6 +43,7 @@ cells:
     tool: python:lars.pipeline_tools.group_aggregate
     inputs:
       _table: "{{ input._table }}"
+      _table_path: "{{ input._table_path | default('') }}"
       group_by: "{{ input.group_by }}"
       agg_column: "{{ input.agg_column }}"
       agg_func: "{{ input.agg_func | default('sum') }}"

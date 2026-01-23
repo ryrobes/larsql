@@ -1,0 +1,55 @@
+cascade_id: pipeline_add_styles
+internal: true
+description: |
+  PIPELINE cascade for applying theme styling to chart specifications.
+
+  Takes a chart spec and applies a theme (colors, fonts, backgrounds).
+  Pure deterministic transformation - no LLM calls.
+
+  Usage:
+    SELECT * FROM data
+    THEN TO_PLOTLY 'bar chart'
+    THEN ADD_STYLES              -- uses auto/default theme
+    THEN ADD_STYLES('dark')      -- explicit theme
+    THEN ADD_STYLES('custom', '{"plotly": {"paper_bgcolor": "#000"}}')
+
+  Available themes: auto, dark, light, midnight, paper
+
+inputs_schema:
+  theme: "Theme name: auto, dark, light, midnight, paper (default: auto)"
+  custom: "Optional JSON string with custom theme overrides"
+  _table: "Chart spec from previous stage"
+  _table_columns: "Column names"
+
+sql_function:
+  name: ADD_STYLES
+  description: Apply theme styling to a chart specification
+  args:
+    - name: theme
+      type: VARCHAR
+      optional: true
+      default: "'auto'"
+    - name: custom
+      type: VARCHAR
+      optional: true
+      default: "NULL"
+    - name: _table
+      type: TABLE
+  returns: TABLE
+  shape: PIPELINE
+  operators:
+    - 'THEN ADD_STYLES'
+    - 'THEN ADD_STYLES({{ theme }})'
+    - 'THEN ADD_STYLES({{ theme }}, {{ custom }})'
+  cache: false
+
+cells:
+  - name: apply_styles
+    deterministic: true
+    tool: python:lars.chart_tools.apply_chart_styles
+    inputs:
+      # Pass _table directly - function handles both legacy (spec) and data-driven (config) formats
+      _table: "{{ input._table }}"
+      _table_columns: "{{ input._table_columns }}"
+      theme: "{{ input.theme | default('auto') }}"
+      custom: "{{ input.custom | default(none) }}"

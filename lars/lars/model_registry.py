@@ -637,6 +637,11 @@ class ModelRegistry:
             if model_lower.startswith(prefix.lower()):
                 return True
 
+        # Pattern match for models with "-image" suffix (common for Gemini, etc.)
+        # e.g., "google/gemini-2.5-flash-image", "google/gemini-3-pro-image-preview"
+        if "-image" in model_lower:
+            return True
+
         return False
 
     @classmethod

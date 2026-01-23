@@ -57,13 +57,26 @@ def _sanitize_for_json(data: list[dict]) -> list[dict]:
 
     Converts:
     - NaN and Infinity to None (null in JSON)
+    - pandas NaT (Not a Time) to None
     - numpy arrays to Python lists
     - numpy scalars to Python scalars
+    - datetime objects to ISO format strings
     """
     import math
     import numpy as np
+    import pandas as pd
+    from datetime import datetime, date, time
 
     def sanitize_value(v):
+        # Handle pandas NaT (Not a Time) - must check before other types
+        if pd.isna(v):
+            # pd.isna handles NaT, NaN, None, etc.
+            # But we need to distinguish actual None from NaN/NaT
+            if v is None:
+                return None
+            if isinstance(v, float) and not math.isnan(v):
+                return v
+            return None
         # Handle numpy arrays
         if isinstance(v, np.ndarray):
             return v.tolist()
@@ -74,6 +87,16 @@ def _sanitize_for_json(data: list[dict]) -> list[dict]:
         if isinstance(v, float):
             if math.isnan(v) or math.isinf(v):
                 return None
+        # Handle datetime objects (convert to ISO string)
+        if isinstance(v, datetime):
+            return v.isoformat()
+        if isinstance(v, date):
+            return v.isoformat()
+        if isinstance(v, time):
+            return v.isoformat()
+        # Handle pandas Timestamp
+        if isinstance(v, pd.Timestamp):
+            return v.isoformat()
         return v
 
     return [

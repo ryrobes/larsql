@@ -750,10 +750,27 @@ async def execute_sql_function(
     from .executor import _extract_cascade_output
     output = _extract_cascade_output(result)
 
+    # Detect errors - don't cache error results (they should be retried)
+    is_error = False
+    if result.get("has_errors"):
+        is_error = True
+        log.debug(f"[sql_fn] Skipping cache for {name}: cascade has_errors=True")
+    elif isinstance(output, dict) and "error" in output:
+        is_error = True
+        log.debug(f"[sql_fn] Skipping cache for {name}: output contains error key")
+    elif output is None or output == "":
+        is_error = True
+        log.debug(f"[sql_fn] Skipping cache for {name}: output is empty")
+    elif isinstance(output, str):
+        output_upper = output.strip().upper()
+        if output_upper.startswith("ERROR:") or output_upper.startswith("ERROR "):
+            is_error = True
+            log.debug(f"[sql_fn] Skipping cache for {name}: output starts with ERROR")
+
     # Handle output based on mode
     if output_mode == "sql_raw":
         # Return SQL fragment as-is (for debugging/composition)
-        if not takes_config and fn.cache_enabled:
+        if not takes_config and fn.cache_enabled and not is_error:
             set_cached_result(cache_name, cleaned_args, output)
         return output
 
@@ -764,7 +781,7 @@ async def execute_sql_function(
 
         # Cache the SQL fragment (not the executed result)
         # This enables structure-based caching - same structure, different values
-        if not takes_config and fn.cache_enabled:
+        if not takes_config and fn.cache_enabled and not is_error:
             # Use appropriate cache key strategy
             if use_fingerprint_cache:
                 # Store with fingerprint-based key
@@ -800,7 +817,7 @@ async def execute_sql_function(
         log.debug(f"[sql_fn] Generated SQL statement: {sql_statement[:200]}...")
 
         # Cache the SQL statement (exact match caching)
-        if not takes_config and fn.cache_enabled:
+        if not takes_config and fn.cache_enabled and not is_error:
             # For sql_statement, cache key is based on the question/input
             # Since user already has sql_search tool, caching is by exact question match
             from ..sql_tools.cache_adapter import get_cache
@@ -882,8 +899,8 @@ async def execute_sql_function(
             except json.JSONDecodeError:
                 pass
 
-    # Cache result (but not takes runs - they're for fresh sampling)
-    if not takes_config and fn.cache_enabled:
+    # Cache result (but not takes runs - they're for fresh sampling, and not errors)
+    if not takes_config and fn.cache_enabled and not is_error:
         # Use appropriate cache key strategy
         if use_fingerprint_cache:
             # Store with fingerprint-based key

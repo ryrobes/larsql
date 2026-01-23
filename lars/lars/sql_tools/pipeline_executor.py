@@ -28,6 +28,7 @@ import numpy as np
 import pandas as pd
 
 from .pipeline_parser import PipelineStage, ChooseStage, ChooseBranch
+from ..session_naming import generate_woodland_id
 
 log = logging.getLogger(__name__)
 
@@ -594,11 +595,20 @@ def _deserialize_result(
 
     # Handle dict results
     if isinstance(result, dict):
+        # Special case: Image generation output (format: "image", images: [...])
+        # Convert to pipeline-compatible format with image column
+        if result.get("format") == "image" and "images" in result:
+            images = result.get("images", [])
+            log.info(f"[pipeline] Converting image generation output with {len(images)} image(s)")
+            # Convert to rows with image paths
+            result = [{"image": img, "format": "image", "source": "generated"} for img in images]
+
         # Look for data in common keys (priority order)
-        for key in ("data", "rows", "_table", "records", "results", "summary_table", "table", "output"):
-            if key in result and isinstance(result[key], list):
-                result = result[key]
-                break
+        elif any(key in result and isinstance(result[key], list) for key in ("data", "rows", "_table", "records", "results", "summary_table", "table", "output")):
+            for key in ("data", "rows", "_table", "records", "results", "summary_table", "table", "output"):
+                if key in result and isinstance(result[key], list):
+                    result = result[key]
+                    break
         else:
             # Check if all values are scalars (single-row result)
             if all(not isinstance(v, (dict, list)) for v in result.values()):
@@ -863,7 +873,8 @@ def _execute_choose_stage(
             else:
                 serialized[f"arg{i}"] = arg_value
 
-    stage_session_id = f"{session_id}_choose_{context.stage_index}"
+    # Generate a unique woodland ID for each choose cascade run
+    stage_session_id = generate_woodland_id()
     runner = LARSRunner(
         cascade_entry.cascade_path,
         session_id=stage_session_id,
@@ -1021,8 +1032,22 @@ def execute_pipeline_stages(
                     print(f"[pipeline] ❌ PURE CACHE MISS: {stage.name} - will run cascade")
 
             if output is None:
+                # Debug: Show cascade inputs before running
+                print(f"\n[PIPELINE DEBUG] Stage {stage.name} cascade inputs:")
+                print(f"  Input keys: {list(cascade_inputs.keys())}")
+                if '_table' in cascade_inputs:
+                    _t = cascade_inputs['_table']
+                    print(f"  _table type: {type(_t)}, len: {len(_t) if isinstance(_t, list) else 'N/A'}")
+                    if isinstance(_t, list) and _t:
+                        first = _t[0]
+                        print(f"  _table[0] keys: {list(first.keys()) if isinstance(first, dict) else type(first)}")
+                        if isinstance(first, dict) and 'image' in first:
+                            img = first['image']
+                            print(f"  _table[0].image: {img[:80] if isinstance(img, str) else type(img)}...")
+
                 # Cache miss or not pure - run cascade normally
-                stage_session_id = f"{session_id}_stage_{idx}"
+                # Generate a unique woodland ID for each stage cascade run
+                stage_session_id = generate_woodland_id()
                 runner = LARSRunner(
                     cascade_entry.cascade_path,
                     session_id=stage_session_id,
@@ -1034,12 +1059,32 @@ def execute_pipeline_stages(
                 # Extract output from cascade
                 output = _extract_cascade_output(result)
 
+                # Debug: Show extracted output
+                print(f"\n[PIPELINE DEBUG] Stage {stage.name} output extracted:")
+                print(f"  Output type: {type(output)}")
+                if isinstance(output, dict):
+                    print(f"  Output keys: {list(output.keys())}")
+                    if 'data' in output and isinstance(output['data'], list) and output['data']:
+                        first = output['data'][0]
+                        print(f"  First row keys: {list(first.keys()) if isinstance(first, dict) else type(first)}")
+                        if isinstance(first, dict) and 'image' in first:
+                            img = first['image']
+                            print(f"  Image field: {img[:80] if isinstance(img, str) else type(img)}...")
+
                 # Cache result for pure cascades
                 if is_pure:
                     _pure_cascade_cache_set(stage.name, cascade_inputs, output)
 
             # Deserialize back to DataFrame
             current_df = _deserialize_result(output, current_df)
+
+            # Debug: Show deserialized DataFrame
+            print(f"\n[PIPELINE DEBUG] Stage {stage.name} deserialized to DataFrame:")
+            print(f"  Columns: {list(current_df.columns)}")
+            print(f"  Rows: {len(current_df)}")
+            if 'image' in current_df.columns and len(current_df) > 0:
+                img_val = current_df.iloc[0]['image']
+                print(f"  First image value: {img_val[:80] if isinstance(img_val, str) else type(img_val)}...")
 
             log.info(f"[pipeline] Stage {stage.name} completed: {len(current_df)} rows")
 
@@ -1067,6 +1112,76 @@ def _save_to_table(duckdb_conn: Any, df: pd.DataFrame, table_name: str) -> None:
     except Exception as e:
         log.error(f"[pipeline] Failed to create table {table_name}: {e}")
         raise
+
+
+def _execute_pipeline_sql_statements(
+    duckdb_conn: Any,
+    output: Any,
+    input_df: pd.DataFrame,
+) -> Any:
+    """
+    Execute SQL statements returned by a pipeline stage.
+
+    Some pipeline stages (like TO_PROPERTY_GRAPH) need to execute DDL
+    statements to create tables or other database objects. These stages
+    return an '_execute_sql' key with a list of SQL statements.
+
+    The input DataFrame is registered as '_lars_pipeline_input' for use
+    in the SQL statements.
+
+    Args:
+        duckdb_conn: DuckDB connection
+        output: Pipeline stage output (dict with optional '_execute_sql')
+        input_df: Input DataFrame to register for SQL access
+
+    Returns:
+        The output with '_execute_sql' removed (for normal deserialization)
+    """
+    if not isinstance(output, dict) or '_execute_sql' not in output:
+        return output
+
+    if duckdb_conn is None:
+        log.warning("[pipeline] _execute_sql present but no duckdb_conn available")
+        return output
+
+    sql_statements = output.get('_execute_sql', [])
+    if not sql_statements:
+        return output
+
+    log.info(f"[pipeline] Executing {len(sql_statements)} SQL statements from pipeline")
+
+    try:
+        # Register input DataFrame for SQL access
+        duckdb_conn.register("_lars_pipeline_input", input_df)
+
+        for i, sql in enumerate(sql_statements):
+            log.debug(f"[pipeline] Executing SQL {i+1}/{len(sql_statements)}: {sql[:100]}...")
+            try:
+                duckdb_conn.execute(sql)
+                log.info(f"[pipeline] SQL {i+1} executed successfully")
+            except Exception as e:
+                log.error(f"[pipeline] SQL {i+1} failed: {e}")
+                log.error(f"[pipeline] Failed SQL: {sql}")
+                raise
+
+        # Unregister temp table
+        try:
+            duckdb_conn.unregister("_lars_pipeline_input")
+        except Exception:
+            pass
+
+    except Exception as e:
+        log.error(f"[pipeline] Failed to execute SQL statements: {e}")
+        # Clean up on error
+        try:
+            duckdb_conn.unregister("_lars_pipeline_input")
+        except Exception:
+            pass
+        raise
+
+    # Return output without _execute_sql for normal deserialization
+    result = {k: v for k, v in output.items() if k != '_execute_sql'}
+    return result
 
 
 def execute_pipeline_with_into(
@@ -1244,7 +1359,8 @@ def execute_pipeline_with_into(
 
             if output is None:
                 # Cache miss or not pure - run cascade normally
-                stage_session_id = f"{session_id}_stage_{idx}"
+                # Generate a unique woodland ID for each stage cascade run
+                stage_session_id = generate_woodland_id()
                 runner = LARSRunner(
                     cascade_entry.cascade_path,
                     session_id=stage_session_id,
@@ -1259,6 +1375,9 @@ def execute_pipeline_with_into(
                 # Cache result for pure cascades
                 if is_pure:
                     _pure_cascade_cache_set(stage.name, cascade_inputs, output)
+
+            # Execute any SQL statements returned by the pipeline (e.g., TO_PROPERTY_GRAPH)
+            output = _execute_pipeline_sql_statements(duckdb_conn, output, current_df)
 
             # Deserialize back to DataFrame
             current_df = _deserialize_result(output, current_df)

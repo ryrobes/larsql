@@ -4940,7 +4940,8 @@ Refinement directive: {reforge_config.honing_prompt}
             # Hook: Cell Complete
             # Skip if this was an image generation cell (it already called hooks.on_cell_complete)
             cell_model = cell.model or self.model
-            if not Agent.is_image_generation_model(cell_model):
+            is_image_gen_cell = Agent.is_image_generation_model(cell_model)
+            if not is_image_gen_cell:
                 self.hooks.on_cell_complete(cell.name, self.session_id, {
                     "output": output_or_next_cell,
                     "duration_ms": cell_duration_ms,
@@ -4948,18 +4949,22 @@ Refinement directive: {reforge_config.honing_prompt}
 
             if isinstance(output_or_next_cell, str) and output_or_next_cell in [h.target if isinstance(h, HandoffConfig) else h for h in cell.handoffs]:
                 chosen_next_cell = output_or_next_cell # Dynamic handoff chosen by agent
-                # Don't add lineage here - deterministic cells already added their result to lineage
-                # Adding another entry would overwrite the actual output with a routing message
-                if not cell.is_deterministic():
+                # Don't add lineage here - deterministic cells and image generation cells already
+                # added their result to lineage. Adding another entry would overwrite the actual
+                # output with a routing message.
+                if not cell.is_deterministic() and not is_image_gen_cell:
                     self.echo.add_lineage(cell.name, f"Dynamically routed to: {chosen_next_cell}", trace_id=cell_trace.id)
             else:
-                # Only add lineage if deterministic cell hasn't already
-                if not cell.is_deterministic():
+                # Only add lineage if:
+                # - Cell is not deterministic (deterministic cells already add their own lineage)
+                # - Cell is not image generation (image gen cells already add their own lineage)
+                if not cell.is_deterministic() and not is_image_gen_cell:
                     self.echo.add_lineage(cell.name, output_or_next_cell, trace_id=cell_trace.id)
 
             # Store cell output in state for access by subsequent cells via {{ state.output_<cell_name> }}
             # Note: Deterministic cells already do this in _execute_deterministic_cell
-            if not cell.is_deterministic():
+            # Note: Image generation cells already do this in _execute_image_generation_cell
+            if not cell.is_deterministic() and not is_image_gen_cell:
                 self.echo.state[f"output_{cell.name}"] = output_or_next_cell
 
             self._update_graph() # After cell
@@ -9608,6 +9613,10 @@ Refinement directive: {reforge_config.honing_prompt}
                     modalities=["text", "image"],  # Enable image output
                 )
 
+                # Track input image fingerprints to filter them from response
+                # (Some models like Gemini return input images alongside generated ones)
+                input_image_fingerprints = set()
+
                 # Build input - if we have context images, create multimodal message
                 if context_images:
                     # Build multimodal content: images FIRST, then text prompt
@@ -9618,6 +9627,13 @@ Refinement directive: {reforge_config.honing_prompt}
                             "type": "image_url",
                             "image_url": {"url": img_url}
                         })
+                        # Track fingerprint of input image
+                        if img_url.startswith("data:"):
+                            try:
+                                _, b64_part = img_url.split(",", 1)
+                                input_image_fingerprints.add(b64_part[:200])
+                            except ValueError:
+                                pass
                     # Add text prompt after images - prefix with instruction context
                     edit_prompt = f"Using the image(s) above as reference, {prompt}"
                     multimodal_content.append({"type": "text", "text": edit_prompt})
@@ -9626,8 +9642,27 @@ Refinement directive: {reforge_config.honing_prompt}
                     context_messages = [{"role": "user", "content": multimodal_content}]
                     response = agent.run(context_messages=context_messages)
                 else:
-                    # Simple text-to-image
-                    response = agent.run(input_message=prompt)
+                    # Check if prompt contains embedded images (e.g., from {{ input._table[0].image }})
+                    # Convert to multimodal content if images are found
+                    multimodal_prompt = convert_to_multimodal_content(prompt)
+                    if isinstance(multimodal_prompt, list):
+                        # Images found in prompt - use as multimodal message
+                        console.print(f"{indent}  [cyan][SNAP] Extracted embedded image(s) from prompt[/cyan]")
+                        # Track fingerprints of embedded input images
+                        for block in multimodal_prompt:
+                            if isinstance(block, dict) and block.get("type") == "image_url":
+                                img_url = block.get("image_url", {}).get("url", "")
+                                if img_url.startswith("data:"):
+                                    try:
+                                        _, b64_part = img_url.split(",", 1)
+                                        input_image_fingerprints.add(b64_part[:200])
+                                    except ValueError:
+                                        pass
+                        context_messages = [{"role": "user", "content": multimodal_prompt}]
+                        response = agent.run(context_messages=context_messages)
+                    else:
+                        # Simple text-to-image (no embedded images)
+                        response = agent.run(input_message=prompt)
 
                 # Success! Break out of retry loop
                 break
@@ -9671,6 +9706,10 @@ Refinement directive: {reforge_config.honing_prompt}
             raw_images = response.get("images", [])
             seen_fingerprints = set()  # Track unique images by content fingerprint
 
+            # For image-to-image (when we have input images), limit to 1 output
+            # since models like Gemini may return input echo + multiple variations
+            max_images = 1 if input_image_fingerprints else None
+
             if raw_images:
                 config = get_config()
                 image_dir = os.path.join(config.image_dir, self.session_id, cell.name)
@@ -9696,6 +9735,14 @@ Refinement directive: {reforge_config.honing_prompt}
                                     continue
                                 seen_fingerprints.add(fingerprint)
 
+                                # Skip input images that were echoed back in the response
+                                # (common with Gemini and some other image-to-image models)
+                                # Note: This only works if the model returns the same format/encoding
+                                # Gemini often converts PNG->JPEG so fingerprints won't match
+                                if fingerprint in input_image_fingerprints:
+                                    console.print(f"{indent}    [dim]{S.SKIP}  Skipping echoed input image[/dim]")
+                                    continue
+
                                 # Determine extension from mime type
                                 ext = ".png"
                                 if "jpeg" in header or "jpg" in header:
@@ -9717,13 +9764,23 @@ Refinement directive: {reforge_config.honing_prompt}
                                 saved_paths.append(relative_path)
 
                                 console.print(f"{indent}    [SNAP] Saved: {relative_path}")
+
+                                # For image-to-image, stop after first generated image
+                                if max_images and len(saved_paths) >= max_images:
+                                    if len(raw_images) > max_images:
+                                        console.print(f"{indent}    [dim]{S.SKIP}  Limiting to {max_images} image(s) for image-to-image[/dim]")
+                                    break
                             except Exception as e:
                                 console.print(f"{indent}    [yellow]{S.WARN} Failed to save image: {e}[/yellow]")
 
-            # Build result in standard multimodal format
+            # Build result in image-panel compatible format for Hyper UI
+            # NOTE: Do NOT include a "content" field - it causes extraction logic to
+            # return the text string instead of the image data
             result = {
-                "content": response.get("content", f"Generated {len(saved_paths)} image(s)"),
+                "format": "image",
+                "src": saved_paths[0] if saved_paths else None,
                 "images": saved_paths,
+                "caption": f"Generated with {cell_model}",
                 "model": cell_model,
                 "request_id": response.get("id"),
             }

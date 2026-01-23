@@ -46,6 +46,7 @@ cells:
     tool: python:lars.pipeline_tools.top_n
     inputs:
       _table: "{{ input._table }}"
+      _table_path: "{{ input._table_path | default('') }}"
       column: "{{ input.column }}"
       n: "{{ input.n | default('10') }}"
       ascending: "{{ input.order | default('desc') == 'asc' }}"

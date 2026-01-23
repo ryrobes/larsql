@@ -1,0 +1,82 @@
+# Test Image Output - Returns a base64 image for testing ImagePanel
+#
+# Usage from SQL (simple):
+#   --- PANEL 'Test Image'
+#   SELECT semantic_test_image('blue', 'Hello World') as image;
+#
+# Usage from SQL (via lars_cascade_udf):
+#   SELECT * FROM lars_cascade_udf('cascades/test_image_output.cascade.yaml', '{"color": "blue"}')
+
+cascade_id: test_image_output
+description: Generate a simple test image with text and color
+
+inputs_schema:
+  color: Background color (e.g., 'blue', 'red', '#ff5500')
+  text: Text to display on the image (optional, default 'Test Image')
+
+sql_function:
+  name: semantic_test_image
+  description: Generate a test image with specified color and text
+  args:
+    - name: color
+      type: VARCHAR
+      description: Background color (name or hex)
+    - name: text
+      type: VARCHAR
+      optional: true
+      default: "Test Image"
+      description: Text to display on image
+  returns: VARCHAR
+  shape: SCALAR
+  cache: true
+
+cells:
+  - name: generate_image
+    deterministic: true
+    tool: python_data
+    inputs:
+      code: |
+        import base64
+        import io
+
+        # Get inputs
+        color = "{{ input.color | default('blue') }}"
+        text = "{{ input.text | default('Test Image') }}"
+
+        try:
+            from PIL import Image, ImageDraw, ImageFont
+
+            # Create image
+            width, height = 400, 300
+            img = Image.new('RGB', (width, height), color=color)
+            draw = ImageDraw.Draw(img)
+
+            # Add text
+            try:
+                font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 32)
+            except:
+                font = ImageFont.load_default()
+
+            # Center text
+            bbox = draw.textbbox((0, 0), text, font=font)
+            text_width = bbox[2] - bbox[0]
+            text_height = bbox[3] - bbox[1]
+            x = (width - text_width) // 2
+            y = (height - text_height) // 2
+
+            # Draw with contrast color
+            draw.text((x, y), text, fill='white', font=font)
+
+            # Convert to base64
+            buffer = io.BytesIO()
+            img.save(buffer, format='PNG')
+            buffer.seek(0)
+            img_base64 = base64.b64encode(buffer.read()).decode('utf-8')
+
+            # Return the base64 data URL directly for SQL compatibility
+            result = f"data:image/png;base64,{img_base64}"
+        except ImportError:
+            # Fallback: return a tiny 1x1 colored pixel PNG
+            result = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+
+        result

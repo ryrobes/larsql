@@ -16,6 +16,53 @@ import './CanvasRenderer.css';
  * @param {function} onInteraction - Callback for panel interactions (clicks, etc.)
  */
 const CanvasRenderer = ({ data, columns, isCanvas, canvasData, isMultiPanel, multiPanelData, onInteraction }) => {
+  // Helper: Try to parse JSON strings from cascade UDF results
+  // When a cascade returns {"format": "image", "images": [...]}, SQL returns it as a string
+  // This function parses that string back to an object
+  // Handles multiple columns: SELECT generate_image('cat') as src, 'My Cat' as caption
+  function tryParseJsonFromCell(panelData) {
+    if (!Array.isArray(panelData) || panelData.length === 0) return panelData;
+
+    // Process each row to find and parse JSON strings
+    return panelData.map(row => {
+      if (!row || typeof row !== 'object') return row;
+
+      const keys = Object.keys(row);
+      let parsedImageData = null;
+      const otherFields = {};
+
+      // Look through all columns for JSON image data
+      for (const key of keys) {
+        const value = row[key];
+        if (typeof value === 'string') {
+          const trimmed = value.trim();
+          if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+            try {
+              const parsed = JSON.parse(trimmed);
+              // Check if this is image data (has format: "image" or images array)
+              if (parsed.format === 'image' || (Array.isArray(parsed.images) && parsed.images.length > 0)) {
+                parsedImageData = parsed;
+                continue; // Don't add to otherFields
+              }
+            } catch (e) {
+              // Not valid JSON, treat as regular field
+            }
+          }
+        }
+        // Keep non-JSON fields (like caption, title, etc.)
+        otherFields[key] = value;
+      }
+
+      // If we found image data, merge with other fields
+      if (parsedImageData) {
+        return { ...parsedImageData, ...otherFields };
+      }
+
+      // No image JSON found, return original row
+      return row;
+    });
+  }
+
   // Multi-panel format: auto-generated grid from --- PANEL syntax
   if (isMultiPanel && multiPanelData && multiPanelData.length > 0) {
     // Check if any panels have position hints
@@ -48,7 +95,8 @@ const CanvasRenderer = ({ data, columns, isCanvas, canvasData, isMultiPanel, mul
     // Convert multi-panel data to panel format for PanelRenderer
     // Detect panel type based on content structure
     const panels = multiPanelData.map((panel, index) => {
-      const panelData = panel.data;
+      // Try to parse JSON from cascade UDF results (e.g., image generation)
+      const panelData = tryParseJsonFromCell(panel.data);
 
       // Detect mermaid content: single-row array with 'mermaid' key
       const isMermaid = Array.isArray(panelData) &&
@@ -90,23 +138,77 @@ const CanvasRenderer = ({ data, columns, isCanvas, canvasData, isMultiPanel, mul
         panelData.length === 1 &&
         panelData[0]?.format === 'markdown';
 
+      // Detect explicit image: array with format: "image"
+      const isExplicitImage = Array.isArray(panelData) &&
+        panelData.length > 0 &&
+        panelData[0]?.format === 'image';
+
+      // Detect auto-image: data containing image paths, URLs, or base64
+      const isAutoImage = !isExplicitImage && Array.isArray(panelData) &&
+        panelData.length > 0 &&
+        panelData.some(row => {
+          if (!row || typeof row !== 'object') return false;
+
+          // Check for 'images' array (from cascade image generation)
+          if (Array.isArray(row.images) && row.images.length > 0) {
+            return row.images.some(img => typeof img === 'string' && isImageValue(img, true));
+          }
+
+          const values = Object.entries(row);
+          return values.some(([key, val]) => {
+            if (typeof val !== 'string') return false;
+            // Check column name hints
+            const imageColNames = ['image', 'img', 'src', 'photo', 'thumbnail', 'picture', 'avatar'];
+            const keyLower = key.toLowerCase();
+            if (imageColNames.some(name => keyLower.includes(name))) {
+              // Column name suggests image - be lenient with URL validation
+              return isImageValue(val, true);
+            }
+            // Check value patterns (more strict when column name doesn't hint)
+            return val.startsWith('data:image/') ||
+                   (val.match(/\.(png|jpg|jpeg|gif|webp|svg|bmp)$/i) && val.length < 500);
+          });
+        });
+
+      // Helper to detect image values
+      // When columnHint is true, we're more lenient (column name suggests image)
+      function isImageValue(val, columnHint = false) {
+        if (!val || typeof val !== 'string') return false;
+        // Base64 data URL
+        if (val.startsWith('data:image/')) return true;
+        // File extensions
+        if (val.match(/\.(png|jpg|jpeg|gif|webp|svg|bmp)$/i)) return true;
+        // HTTP URLs with image extensions
+        if (val.match(/^https?:\/\/.*\.(png|jpg|jpeg|gif|webp|svg|bmp)/i)) return true;
+        // API image paths (from cascade image generation)
+        if (val.startsWith('/api/images/')) return true;
+        // If column name hints at image, trust HTTP URLs even without extension
+        // (e.g., picsum.photos, imgur, cloudinary dynamic URLs)
+        if (columnHint && val.match(/^https?:\/\//)) return true;
+        return false;
+      }
+
       // Detect data-driven chart: multiple rows with format, config, and data columns
       // e.g., SELECT 'vega-lite' as format, {mark: 'bar', x: 'month', y: 'value'} as config, month, value FROM data
       const dataDrivenChart = isDataDrivenChart(panelData) ? processDataDrivenChart(panelData) : null;
 
       // Detect Plotly chart: single-row array with format: "plotly" (legacy spec format)
+      // Also check for 'spec' field to distinguish from data-driven format
       const isPlotly = !dataDrivenChart && Array.isArray(panelData) &&
         panelData.length === 1 &&
-        panelData[0]?.format === 'plotly';
+        panelData[0]?.format === 'plotly' &&
+        panelData[0]?.spec !== undefined;
 
       // Detect Vega-Lite chart: single-row array with format: "vega-lite" (legacy spec format)
+      // Also check for 'spec' field to distinguish from data-driven format
       const isVegaLite = !dataDrivenChart && Array.isArray(panelData) &&
         panelData.length === 1 &&
-        panelData[0]?.format === 'vega-lite';
+        panelData[0]?.format === 'vega-lite' &&
+        panelData[0]?.spec !== undefined;
 
       // Detect auto-metric: single row with single value column
       // (excluding 'format' key if present)
-      const isAutoMetric = !isMermaid && !isExplicitMetric && !isSlider && !isDropdown && !isDateRange && !isToggle && !isSparkline && !isMarkdown && !isPlotly && !isVegaLite && !dataDrivenChart &&
+      const isAutoMetric = !isMermaid && !isExplicitMetric && !isSlider && !isDropdown && !isDateRange && !isToggle && !isSparkline && !isMarkdown && !isExplicitImage && !isAutoImage && !isPlotly && !isVegaLite && !dataDrivenChart &&
         Array.isArray(panelData) &&
         panelData.length === 1 &&
         (() => {
@@ -137,6 +239,8 @@ const CanvasRenderer = ({ data, columns, isCanvas, canvasData, isMultiPanel, mul
         panelType = 'sparkline';
       } else if (isMarkdown) {
         panelType = 'markdown';
+      } else if (isExplicitImage || isAutoImage) {
+        panelType = 'image';
       } else if (isAutoMetric) {
         panelType = 'metric';
         isAutoMetricFlag = true;
@@ -234,18 +338,13 @@ const CanvasRenderer = ({ data, columns, isCanvas, canvasData, isMultiPanel, mul
 
     // Process panels to detect data-driven charts (same logic as multi-panel)
     const panels = rawPanels.map(panel => {
-      const panelData = panel.content;
-
-      // Debug: log panel processing
-      console.log('[CanvasRenderer] Processing panel:', panel.name, 'content type:', typeof panelData);
-      console.log('[CanvasRenderer] isDataDrivenChart:', isDataDrivenChart(panelData));
+      // Try to parse JSON from cascade UDF results (e.g., image generation)
+      const panelData = tryParseJsonFromCell(panel.content);
 
       // Check for data-driven chart format
       const dataDrivenChart = isDataDrivenChart(panelData) ? processDataDrivenChart(panelData) : null;
 
       if (dataDrivenChart) {
-        console.log('[CanvasRenderer] Processed chart:', dataDrivenChart.format);
-        console.log('[CanvasRenderer] Spec customdata:', dataDrivenChart.spec?.data?.[0]?.customdata);
         // Transform to chart panel
         return {
           ...panel,

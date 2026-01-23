@@ -27,6 +27,7 @@ import uuid
 import traceback
 from threading import Lock
 from typing import Optional
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 
 from ..console_style import S, styled_print
 
@@ -200,6 +201,28 @@ class ClientConnection:
 
             # Configure DuckDB
             self.duckdb_conn.execute("SET threads TO 4")
+
+            # Install and load community extensions for graph queries
+            # Use timeout to prevent blocking on network issues
+            duckpgq_installed = False
+            def install_duckpgq():
+                self.duckdb_conn.execute("INSTALL duckpgq FROM community;")
+
+            try:
+                with ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(install_duckpgq)
+                    future.result(timeout=5.0)  # 5 second timeout
+                duckpgq_installed = True
+            except FuturesTimeoutError:
+                print(f"[{self.session_id}]   ⚠ duckpgq install timed out (network issue?), skipping")
+            except Exception:
+                duckpgq_installed = True  # Already installed
+
+            if duckpgq_installed:
+                try:
+                    self.duckdb_conn.execute("LOAD duckpgq;")
+                except Exception as e:
+                    print(f"[{self.session_id}]   ⚠ Could not load duckpgq: {e}")
 
             # Reset our transaction status to idle
             self.transaction_status = 'I'

@@ -1,22 +1,32 @@
 cascade_id: pipeline_stats
 internal: true
 description: |
-  PIPELINE cascade for computing descriptive statistics.
+  PIPELINE cascade for comprehensive column profiling.
 
-  Uses pure Python/pandas - no LLM calls.
+  Analyzes ALL columns (not just numeric) to help with chart planning
+  and data exploration. Uses pure Python/pandas - no LLM calls.
+
+  Returns for each column:
+    - dtype: Data type (numeric, string, datetime, boolean)
+    - role: Suggested role (dimension vs measure) based on type/cardinality
+    - non_null, null_count: Count statistics
+    - distinct: Cardinality (unique value count)
+    - top_values: Most common values with counts
+    - sample_values: Example values showing data format
+    - min, max, mean, std, p25, p50, p75: Numeric stats (for numeric columns)
 
   Usage:
       SELECT * FROM sales THEN STATS
       SELECT * FROM sales THEN STATS('revenue, quantity')
 
 inputs_schema:
-  columns: Optional comma-separated list of columns to analyze
+  columns: "Optional comma-separated list of columns to analyze (default: all)"
   _table: Query results as JSON records
   _table_columns: List of column names
 
 sql_function:
   name: STATS
-  description: Compute descriptive statistics for numeric columns
+  description: Compute comprehensive column profiles for chart planning
   args:
     - name: columns
       type: VARCHAR
@@ -37,5 +47,6 @@ cells:
     tool: python:lars.pipeline_tools.compute_stats
     inputs:
       _table: "{{ input._table }}"
+      _table_path: "{{ input._table_path | default('') }}"
       columns: "{{ input.columns | default('') }}"
       _table_columns: "{{ input._table_columns }}"

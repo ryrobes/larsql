@@ -1,0 +1,164 @@
+cascade_id: semantic_rich_triples
+internal: true
+description: |
+  Extract knowledge graph triples with supporting evidence from text.
+
+  Like TRIPLES, but each triple includes the source text snippet that
+  supports it - perfect for tooltips, audit trails, and explainability.
+
+  Output is DuckPGQ-compatible: can be transformed into a property graph
+  using the TO_PROPERTY_GRAPH pipeline.
+
+  Perfect for:
+  - Knowledge graphs with provenance
+  - Explainable AI pipelines
+  - Network visualizations with tooltips
+  - Audit trails for extracted facts
+
+inputs_schema:
+  text: The text to extract triples from
+  focus: Optional focus for extraction (e.g., 'people', 'decisions', 'events')
+
+sql_function:
+  name: rich_triples
+  description: Extract (subject, predicate, object, evidence) knowledge graph triples with source context
+  args:
+    - name: text
+      type: VARCHAR
+    - name: focus
+      type: VARCHAR
+      optional: true
+      description: "Focus area: 'people', 'organizations', 'decisions', 'events', 'all'"
+  returns: JSON
+  shape: SCALAR
+  # Column definitions for auto-generated _rows macro (rich_triples_rows)
+  # Enables: SELECT file, t.* FROM emails, LATERAL rich_triples_rows(message) t
+  returns_columns:
+    - name: subject
+      type: VARCHAR
+    - name: predicate
+      type: VARCHAR
+    - name: object
+      type: VARCHAR
+    - name: evidence
+      type: VARCHAR
+  operators:
+    - 'RICH_TRIPLES({{ text }})'
+    - 'RICH_TRIPLES({{ text }}, ''{{ focus }}'')'
+    - '{{ text }} RICH_TRIPLES'
+  cache: true
+  test_cases:
+    - sql: SELECT rich_triples('John Smith works at Acme Corp as a software engineer. He reports to Jane Doe.')
+      expect:
+        type: contains
+        value: evidence
+      description: "Extracts triples with supporting evidence"
+    - sql: SELECT rich_triples('The Q3 budget of $500K was approved by Mike on Tuesday.')
+      expect:
+        type: contains
+        value: approved
+      description: "Extracts decisions with context"
+
+cells:
+  - name: extract_rich_triples
+    instructions: |
+      Extract knowledge graph triples from this text, WITH supporting evidence.
+
+      TEXT:
+      {{ input.text }}
+
+      {% if input.focus %}
+      FOCUS ON: {{ input.focus }} relationships
+      {% endif %}
+
+      A rich triple has FOUR parts:
+      - **subject**: An entity (person, organization, document, event, concept)
+      - **predicate**: A relationship or property (verb-like, snake_case)
+      - **object**: Another entity or a value
+      - **evidence**: The exact quote or close paraphrase from the text that supports this triple
+
+      Predicate Conventions (use these standard forms):
+
+      **People & Organizations**
+      - works_at, employed_by, member_of
+      - reports_to, manages, supervised_by
+      - founded, owns, leads, ceo_of
+      - colleague_of, collaborates_with
+
+      **Communication**
+      - sent_email_to, received_email_from
+      - mentioned, discussed, asked_about
+      - requested, approved, rejected
+      - informed, notified, copied_on
+
+      **Events & Time**
+      - scheduled_for, occurred_on, cancelled_on
+      - deadline_is, due_date_is
+      - started_on, ended_on, postponed_to
+
+      **Decisions & Actions**
+      - decided_to, agreed_to, committed_to
+      - proposed, recommended, suggested
+      - approved, rejected, pending
+      - assigned_to, delegated_to
+
+      **Documents & Data**
+      - authored, created, modified
+      - contains, references, attached_to
+      - version_of, supersedes
+
+      **Locations & Attributes**
+      - located_in, based_in, traveled_to
+      - has_role, has_title, has_status
+      - valued_at, costs, priced_at
+
+      Rules:
+      - Normalize entity names (e.g., "Phil" and "Phillip Allen" → "Phillip Allen")
+      - Use snake_case for predicates
+      - Extract 3-10 triples depending on text richness
+      - The evidence should be a SHORT quote (under 100 chars) that directly supports the triple
+      - Include both explicit facts AND reasonable inferences
+      - For inferences, paraphrase the supporting context as evidence
+
+      Example:
+
+      Text: "Hi John, Per our call yesterday, I've approved the Q3 budget of $500K.
+             Please coordinate with Sarah in Finance to set up the accounts.
+             The deadline is October 15th. - Mike"
+
+      Triples:
+      [
+        {"subject": "Mike", "predicate": "sent_email_to", "object": "John", "evidence": "Hi John... - Mike"},
+        {"subject": "Mike", "predicate": "approved", "object": "Q3 budget", "evidence": "I've approved the Q3 budget"},
+        {"subject": "Q3 budget", "predicate": "valued_at", "object": "$500K", "evidence": "Q3 budget of $500K"},
+        {"subject": "John", "predicate": "should_coordinate_with", "object": "Sarah", "evidence": "Please coordinate with Sarah"},
+        {"subject": "Sarah", "predicate": "works_in", "object": "Finance", "evidence": "Sarah in Finance"},
+        {"subject": "account setup", "predicate": "deadline_is", "object": "October 15th", "evidence": "The deadline is October 15th"},
+        {"subject": "Mike", "predicate": "had_call_with", "object": "John", "evidence": "Per our call yesterday"}
+      ]
+
+      Return a JSON array of rich triple objects. EXACTLY this format:
+      [{"subject": "X", "predicate": "Y", "object": "Z", "evidence": "supporting text"}]
+
+      CRITICAL RULES:
+      - Each object MUST have exactly 4 keys: "subject", "predicate", "object", "evidence"
+      - NO other keys allowed
+      - Keep evidence SHORT (under 100 characters)
+      - Keep it to 5-10 triples maximum
+      - Return ONLY valid JSON array, no explanation, no markdown
+      - Do NOT truncate - complete the JSON array properly with ]
+
+    rules:
+      max_turns: 2
+      max_attempts: 3
+      loop_until: valid_json_array
+      retry_instructions: |
+        Your previous output was not valid JSON. The error was: {{ validation_error }}
+
+        Remember: Return ONLY a valid JSON array with this EXACT format:
+        [{"subject": "X", "predicate": "Y", "object": "Z", "evidence": "supporting quote"}, ...]
+
+        - No markdown code fences
+        - No explanation text
+        - Complete the array properly (don't truncate)
+        - Each object has exactly 4 keys: subject, predicate, object, evidence

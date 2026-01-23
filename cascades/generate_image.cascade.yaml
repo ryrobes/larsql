@@ -1,0 +1,48 @@
+# Generate Image - Simple image generation cascade for SQL
+#
+# Usage from SQL:
+#   SELECT * FROM generate_image('a beautiful sunset over mountains')
+#   SELECT semantic_generate_image('cyberpunk cityscape at night') as image
+
+cascade_id: generate_image
+description: Generate an image from a text prompt using AI
+
+inputs_schema:
+  prompt: Text description of the image to generate
+
+sql_function:
+  name: semantic_generate_image
+  description: Generate an image from a text description
+  args:
+    - name: prompt
+      type: VARCHAR
+      description: Text description of the image to generate
+  returns: VARCHAR
+  shape: SCALAR
+  operators:
+    - "GENERATE_IMAGE('{{ prompt }}')"
+  cache: true
+
+cells:
+  # First enhance the prompt for better image generation
+  - name: enhance_prompt
+    #model: google/gemini-2.5-flash-image
+    instructions: |
+      Enhance this image generation prompt with vivid details while staying true to the original intent.
+      Return ONLY the enhanced prompt, nothing else.
+
+      Original prompt: {{ input.prompt }}
+    rules:
+      max_turns: 1
+
+  # Generate the image
+  - name: generate
+    model: bytedance-seed/seedream-4.5
+    instructions: "{{ outputs.enhance_prompt }}"
+    image_config:
+      width: 1024
+      height: 1024
+    # context:
+    #   from:
+    #     - cell: enhance_prompt
+    #       include: [output]

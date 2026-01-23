@@ -1385,12 +1385,20 @@ class LazyAttachManager:
         cluster.shutdown()
 
     def _attach_clickhouse(self, cfg: SqlConnectionConfig) -> None:
-        """Attach ClickHouse by materializing tables into DuckDB."""
+        """
+        Attach ClickHouse by creating views that query live via clickhouse_scan UDFs.
+
+        Instead of materializing data (which doesn't scale), we create views that
+        wrap clickhouse_scan_2() for live queries. This means:
+        - No data copied at session start
+        - Fresh data on every query
+        - SQL clients can introspect schema via views
+        - Scales to any table size
+        """
         try:
             import clickhouse_connect
-            import pandas as pd
         except ImportError:
-            log.warning("[lazy_attach] ClickHouse connector requires clickhouse-connect and pandas: pip install clickhouse-connect")
+            log.warning("[lazy_attach] ClickHouse connector requires clickhouse-connect: pip install clickhouse-connect")
             return
 
         if not cfg.host:
@@ -1428,37 +1436,39 @@ class LazyAttachManager:
             client.close()
             return
 
-        materialized_count = 0
-        total_rows = 0
+        # Filter out internal ClickHouse tables (materialized view backing tables, etc.)
+        # These have names like ".inner_id.UUID" or ".inner.tablename"
+        table_names = [
+            t for t in table_names
+            if not t.startswith('.inner') and not t.startswith('_')
+        ]
+
+        view_count = 0
+        # Default limit for views - can be overridden in queries
+        default_limit = cfg.sample_row_limit or 100000
 
         for table_name in table_names:
-            limit = cfg.sample_row_limit or 1000
-
             try:
-                # Get sample data
-                df = client.query_df(f"SELECT * FROM {database}.{table_name} LIMIT {limit}")
-
-                if df.empty:
-                    continue
-
                 # Sanitize table name for DuckDB
                 safe_table_name = table_name.replace("-", "_").replace(" ", "_")
-                temp_name = f'_ch_{safe_table_name}'
 
-                self._conn.register(temp_name, df)
-                self._conn.execute(f"CREATE TABLE {alias}.{_quote_ident(safe_table_name)} AS SELECT * FROM {temp_name}")
-                self._conn.unregister(temp_name)
+                # Create view that wraps clickhouse_scan for live queries
+                # The full table name includes database for multi-database setups
+                full_table_name = f"{database}.{table_name}"
 
-                materialized_count += 1
-                total_rows += len(df)
-                print(f"    [OK] Materialized ClickHouse table: {table_name} → {cfg.connection_name}.{safe_table_name} ({len(df)} rows)")
+                self._conn.execute(f"""
+                    CREATE OR REPLACE VIEW {alias}.{_quote_ident(safe_table_name)} AS
+                    SELECT * FROM read_json_auto(clickhouse_scan_2('{full_table_name}', {default_limit}))
+                """)
+
+                view_count += 1
+                log.debug(f"[lazy_attach] Created ClickHouse view: {cfg.connection_name}.{safe_table_name}")
 
             except Exception as e:
-                log.debug("[lazy_attach] Failed materializing ClickHouse table %s: %s", table_name, e)
-                print(f"    [WARN]  Failed to materialize {table_name}: {str(e)[:60]}")
+                log.debug("[lazy_attach] Failed creating ClickHouse view %s: %s", table_name, e)
 
         client.close()
-        print(f"  └─ Materialized ClickHouse: {database} ({materialized_count} tables, {total_rows} rows)")
+        print(f"  └─ Attached ClickHouse: {database} ({view_count} views, live queries via clickhouse_scan)")
 
     def _attach_duckdb_file_if_present(self, db_name: str) -> bool:
         # Avoid reserved/system catalogs

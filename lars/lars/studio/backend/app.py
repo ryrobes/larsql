@@ -213,8 +213,25 @@ def sanitize_for_json(obj):
     """Recursively sanitize an object for JSON serialization.
 
     Converts NaN/Infinity to None, which becomes null in JSON.
+    Converts pandas NaT (Not a Time) to None.
     Converts bytes to placeholder string (for binary/image data).
+    Converts datetime objects to ISO format strings.
     """
+    import pandas as pd
+    from datetime import date, time
+
+    # Handle pandas NaT and other NA values first
+    try:
+        if pd.isna(obj):
+            if obj is None:
+                return None
+            if isinstance(obj, float) and not math.isnan(obj):
+                return obj
+            return None
+    except (TypeError, ValueError):
+        # pd.isna can fail on some types, continue with other checks
+        pass
+
     if isinstance(obj, float):
         if math.isnan(obj) or math.isinf(obj):
             return None
@@ -222,6 +239,14 @@ def sanitize_for_json(obj):
     elif isinstance(obj, bytes):
         # Binary data (e.g., images) can't be JSON serialized
         return f"<binary data: {len(obj)} bytes>"
+    elif isinstance(obj, datetime):
+        return obj.isoformat()
+    elif isinstance(obj, date):
+        return obj.isoformat()
+    elif isinstance(obj, time):
+        return obj.isoformat()
+    elif isinstance(obj, pd.Timestamp):
+        return obj.isoformat()
     elif isinstance(obj, dict):
         return {k: sanitize_for_json(v) for k, v in obj.items()}
     elif isinstance(obj, list):
@@ -4745,6 +4770,81 @@ def serve_audio(filename):
 
         # Send file with proper MIME type
         return send_file(full_path, mimetype='audio/mpeg')
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/file-image', methods=['GET'])
+def serve_file_image():
+    """Serve image files from arbitrary filesystem paths.
+
+    This endpoint serves images for the Hyper hypermedia SQL client's ImagePanel.
+    It supports absolute and relative file paths.
+
+    Security model (Open Access - trusts SQL authors):
+    - Only serves files with image extensions (.png, .jpg, .jpeg, .gif, .webp, .svg, .bmp)
+    - Validates file exists before serving
+    - Basic path normalization (resolves ../ segments)
+
+    Query params:
+    - path: The absolute or relative file path to the image
+
+    Usage:
+    - SELECT 'image' as format, '/path/to/image.png' as src FROM ...
+    - The frontend will request: /api/file-image?path=/path/to/image.png
+    """
+    try:
+        file_path = request.args.get('path')
+
+        if not file_path:
+            return jsonify({'error': 'Missing path parameter'}), 400
+
+        # Allowed image extensions
+        allowed_extensions = {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp'}
+
+        # Normalize path (resolve ../ segments)
+        normalized_path = os.path.normpath(file_path)
+
+        # Check extension
+        _, ext = os.path.splitext(normalized_path.lower())
+        if ext not in allowed_extensions:
+            return jsonify({'error': f'Invalid file type: {ext}. Only image files are allowed.'}), 400
+
+        # Resolve relative paths to absolute
+        if not os.path.isabs(normalized_path):
+            # Try relative to LARS_ROOT first
+            lars_root = os.environ.get('LARS_ROOT', os.getcwd())
+            abs_path = os.path.join(lars_root, normalized_path)
+            if not os.path.exists(abs_path):
+                # Fall back to current working directory
+                abs_path = os.path.abspath(normalized_path)
+        else:
+            abs_path = normalized_path
+
+        # Validate file exists
+        if not os.path.exists(abs_path):
+            return jsonify({'error': f'Image file not found: {file_path}'}), 404
+
+        if not os.path.isfile(abs_path):
+            return jsonify({'error': 'Path is not a file'}), 400
+
+        # MIME type mapping
+        mime_types = {
+            '.png': 'image/png',
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.gif': 'image/gif',
+            '.webp': 'image/webp',
+            '.svg': 'image/svg+xml',
+            '.bmp': 'image/bmp'
+        }
+
+        mimetype = mime_types.get(ext, 'application/octet-stream')
+
+        return send_file(abs_path, mimetype=mimetype)
 
     except Exception as e:
         import traceback

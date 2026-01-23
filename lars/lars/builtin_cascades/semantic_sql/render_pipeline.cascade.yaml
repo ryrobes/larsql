@@ -1,0 +1,70 @@
+cascade_id: pipeline_render
+internal: true
+description: |
+  PIPELINE cascade for rendering chart specifications to PNG images.
+
+  Takes a chart spec (Vega-Lite, Plotly, or matplotlib code) and renders
+  it to a base64-encoded PNG image. Auto-detects library from spec structure.
+
+  Pure deterministic transformation - no LLM calls.
+
+  Usage:
+    SELECT * FROM data
+    THEN TO_PLOTLY 'bar chart'
+    THEN RENDER                    -- default 800x600
+    THEN RENDER(1200, 800)         -- custom dimensions
+
+inputs_schema:
+  width: "Image width in pixels (default: 800)"
+  height: "Image height in pixels (default: 600)"
+  scale: "Resolution multiplier for retina (default: 2)"
+  _table: "Chart spec from previous stage"
+  _table_columns: "Column names"
+
+sql_function:
+  name: RENDER
+  description: Render a chart specification to PNG image
+  args:
+    - name: width
+      type: INTEGER
+      optional: true
+      default: 800
+    - name: height
+      type: INTEGER
+      optional: true
+      default: 600
+    - name: scale
+      type: INTEGER
+      optional: true
+      default: 2
+    - name: _table
+      type: TABLE
+  returns: TABLE
+  shape: PIPELINE
+  operators:
+    - 'THEN RENDER'
+    - 'THEN RENDER({{ width }}, {{ height }})'
+    - 'THEN RENDER({{ width }}, {{ height }}, {{ scale }})'
+  cache: true
+
+cells:
+  - name: debug_input
+    deterministic: true
+    tool: python:lars.chart_tools.debug_pipeline_input
+    inputs:
+      _table: "{{ input._table }}"
+      _table_columns: "{{ input._table_columns }}"
+      stage_name: "RENDER"
+    handoffs:
+      - render
+
+  - name: render
+    deterministic: true
+    tool: python:lars.chart_tools.render_spec_to_image
+    inputs:
+      # Pass _table directly - function handles both legacy (spec) and data-driven (config) formats
+      _table: "{{ input._table }}"
+      _table_columns: "{{ input._table_columns }}"
+      width: "{{ input.width | default(800) }}"
+      height: "{{ input.height | default(600) }}"
+      scale: "{{ input.scale | default(2) }}"

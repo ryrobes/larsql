@@ -78,11 +78,6 @@ const PlotlyPanel = ({ content, onClick, interactive, selectedValue, selectField
 
     const point = event.points[0];
 
-    // Debug: log what we receive from Plotly
-    console.log('[PlotlyPanel] Click event point:', point);
-    console.log('[PlotlyPanel] point.customdata:', point.customdata);
-    console.log('[PlotlyPanel] point.data.customdata:', point.data?.customdata);
-
     // Build data object from clicked point
     // Start with original row data from customdata (preserves SQL column names)
     // Then overlay Plotly's standard fields
@@ -152,10 +147,6 @@ const PlotlyPanel = ({ content, onClick, interactive, selectedValue, selectField
       </div>
     );
   }
-
-  // Debug: log the spec to verify customdata is set
-  console.log('[PlotlyPanel] Rendering spec:', spec);
-  console.log('[PlotlyPanel] First trace customdata:', spec.data?.[0]?.customdata);
 
   return (
     <div className={`plotly-panel ${interactive ? 'plotly-interactive' : ''}`}>

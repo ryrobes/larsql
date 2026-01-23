@@ -1,0 +1,112 @@
+cascade_id: pipeline_stylize
+internal: true
+description: |
+  PIPELINE cascade for artistic stylization of chart images.
+
+  Takes a rendered chart image and uses an image-capable LLM to repaint it
+  with artistic style while preserving the data representation.
+
+  The input image acts as grounding - spatial layout and data proportions
+  are preserved, only the rendering style changes.
+
+  Usage:
+    SELECT * FROM data
+    THEN TO_PLOTLY 'bar chart'
+    THEN RENDER
+    THEN STYLIZE 'watercolor painting style'
+    THEN STYLIZE('futuristic neon glow', 0.9)  -- with fidelity
+
+  Fidelity (0.0-1.0):
+    1.0 = exact structure preservation
+    0.5 = moderate artistic interpretation
+    0.0 = loose creative interpretation
+
+inputs_schema:
+  prompt: "Style description for the artistic repainting"
+  fidelity: "Structure preservation level 0.0-1.0 (default: 0.8)"
+  _table: "Rendered image from previous stage"
+  _table_columns: "Column names"
+
+sql_function:
+  name: STYLIZE
+  description: Artistically stylize a chart image while preserving data
+  args:
+    - name: prompt
+      type: VARCHAR
+    - name: fidelity
+      type: FLOAT
+      optional: true
+      default: 0.8
+    - name: _table
+      type: TABLE
+  returns: TABLE
+  shape: PIPELINE
+  operators:
+    - 'THEN STYLIZE {{ prompt }}'
+    - 'THEN STYLIZE({{ prompt }})'
+    - 'THEN STYLIZE({{ prompt }}, {{ fidelity }})'
+  cache: true
+
+cells:
+  - name: debug_input
+    deterministic: true
+    tool: python:lars.chart_tools.debug_pipeline_input
+    inputs:
+      _table: "{{ input._table }}"
+      _table_columns: "{{ input._table_columns }}"
+      stage_name: "STYLIZE"
+    handoffs:
+      - stylize
+
+  - name: stylize
+    model: google/gemini-3-pro-image-preview
+    instructions: |
+      You are an artist who repaints data visualizations in different artistic styles.
+
+      STYLE REQUEST: {{ input.prompt }}
+
+      FIDELITY LEVEL: {{ input.fidelity | default(0.8) }}
+
+      Here is the chart image to stylize:
+      {{ input._table[0].image if input._table else '[No image provided]' }}
+
+      Your task is to repaint this data visualization chart with the requested artistic style.
+
+      {% set fidelity = input.fidelity | default(0.8) | float %}
+
+      {% if fidelity > 0.7 %}
+      HIGH FIDELITY MODE - Strict Requirements:
+      - EXACTLY preserve positions of all data elements (bars, lines, points, axes)
+      - EXACTLY preserve proportions and relative sizes - this represents real data
+      - Keep all text labels clearly readable
+      - Only modify colors, textures, and artistic rendering style
+      - The data story must remain identical
+      {% elif fidelity > 0.4 %}
+      MEDIUM FIDELITY MODE - Balanced Requirements:
+      - Preserve general layout and data relationships
+      - Minor artistic interpretation of exact positions is acceptable
+      - Keep labels readable but artistic fonts are okay
+      - Maintain the overall data narrative
+      {% else %}
+      LOW FIDELITY MODE - Creative Freedom:
+      - Artistic interpretation encouraged
+      - Capture the essence and story of the data
+      - Creative liberties with structure are acceptable
+      - Focus on aesthetic impact while maintaining data themes
+      {% endif %}
+
+      Generate the stylized version of this chart image.
+
+    handoffs:
+      - wrap_output
+    rules:
+      max_turns: 1
+
+  - name: wrap_output
+    deterministic: true
+    tool: python:lars.chart_tools.wrap_generated_image
+    inputs:
+      # The stylize cell output is in outputs.stylize (format: "image", images: [...])
+      _table: "{{ [outputs.stylize] if outputs.stylize else [] }}"
+      style_prompt: "{{ input.prompt }}"
+      fidelity: "{{ input.fidelity | default(0.8) }}"

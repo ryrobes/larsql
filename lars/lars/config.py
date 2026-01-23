@@ -294,8 +294,9 @@ class Config(BaseModel):
     # Default: Voxtral (Mistral's audio model via OpenRouter)
     stt_model: str = Field(
         default_factory=lambda: os.getenv(
-            "LARS_STT_MODEL", "google/gemini-2.5-flash-preview-09-2025"
+            "LARS_STT_MODEL", "openai/gpt-audio"
         )
+    ## "LARS_STT_MODEL", "google/gemini-2.5-flash-preview-09-2025"
     )
     # Alternative audio models:
     # - "google/gemini-2.5-flash-preview-09-2025" - Gemini with audio support

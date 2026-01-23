@@ -36,4 +36,5 @@ cells:
     tool: python:lars.pipeline_tools.passthrough
     inputs:
       _table: "{{ input._table }}"
+      _table_path: "{{ input._table_path | default('') }}"
       _table_columns: "{{ input._table_columns }}"

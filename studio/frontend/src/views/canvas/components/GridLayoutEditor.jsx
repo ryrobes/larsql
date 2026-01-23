@@ -15,12 +15,66 @@ import 'react-grid-layout/css/styles.css';
 import './GridLayoutEditor.css';
 
 /**
+ * Try to parse JSON strings from cascade UDF results
+ * When a cascade returns {"format": "image", "images": [...]}, SQL returns it as a string
+ */
+function tryParseJsonFromCell(panelData) {
+  if (!Array.isArray(panelData) || panelData.length === 0) return panelData;
+
+  return panelData.map(row => {
+    if (!row || typeof row !== 'object') return row;
+
+    const keys = Object.keys(row);
+    let parsedImageData = null;
+    const otherFields = {};
+
+    for (const key of keys) {
+      const value = row[key];
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+          try {
+            const parsed = JSON.parse(trimmed);
+            if (parsed.format === 'image' || (Array.isArray(parsed.images) && parsed.images.length > 0)) {
+              parsedImageData = parsed;
+              continue;
+            }
+          } catch (e) {
+            // Not valid JSON
+          }
+        }
+      }
+      otherFields[key] = value;
+    }
+
+    if (parsedImageData) {
+      return { ...parsedImageData, ...otherFields };
+    }
+    return row;
+  });
+}
+
+/**
+ * Helper to detect image values
+ */
+function isImageValue(val, columnHint = false) {
+  if (!val || typeof val !== 'string') return false;
+  if (val.startsWith('data:image/')) return true;
+  if (val.match(/\.(png|jpg|jpeg|gif|webp|svg|bmp)$/i)) return true;
+  if (val.match(/^https?:\/\/.*\.(png|jpg|jpeg|gif|webp|svg|bmp)/i)) return true;
+  if (val.startsWith('/api/images/')) return true;
+  if (columnHint && val.match(/^https?:\/\//)) return true;
+  return false;
+}
+
+/**
  * Convert API panel format to PanelRenderer format
  * API gives: { name, data, on_select, ... }
  * PanelRenderer expects: { name, content, type, ... }
  */
 function convertPanelForRenderer(apiPanel) {
-  const panelData = apiPanel.data;
+  // Try to parse JSON from cascade UDF results (e.g., image generation)
+  const panelData = tryParseJsonFromCell(apiPanel.data);
 
   // Detect panel type based on content
   const isMermaid = Array.isArray(panelData) && panelData.length === 1 && panelData[0]?.mermaid;
@@ -32,14 +86,40 @@ function convertPanelForRenderer(apiPanel) {
   const isSparkline = Array.isArray(panelData) && panelData.length > 0 && panelData[0]?.format === 'sparkline';
   const isMarkdown = Array.isArray(panelData) && panelData.length === 1 && panelData[0]?.format === 'markdown';
 
+  // Detect explicit image: array with format: "image"
+  const isExplicitImage = Array.isArray(panelData) &&
+    panelData.length > 0 &&
+    panelData[0]?.format === 'image';
+
+  // Detect auto-image: data containing image paths, URLs, or base64
+  const isAutoImage = !isExplicitImage && Array.isArray(panelData) &&
+    panelData.length > 0 &&
+    panelData.some(row => {
+      if (!row || typeof row !== 'object') return false;
+      if (Array.isArray(row.images) && row.images.length > 0) {
+        return row.images.some(img => typeof img === 'string' && isImageValue(img, true));
+      }
+      const values = Object.entries(row);
+      return values.some(([key, val]) => {
+        if (typeof val !== 'string') return false;
+        const imageColNames = ['image', 'img', 'src', 'photo', 'thumbnail', 'picture', 'avatar'];
+        const keyLower = key.toLowerCase();
+        if (imageColNames.some(name => keyLower.includes(name))) {
+          return isImageValue(val, true);
+        }
+        return val.startsWith('data:image/') ||
+               (val.match(/\.(png|jpg|jpeg|gif|webp|svg|bmp)$/i) && val.length < 500);
+      });
+    });
+
   // Check for data-driven chart
   const dataDrivenChart = isDataDrivenChart(panelData) ? processDataDrivenChart(panelData) : null;
 
   const isPlotly = !dataDrivenChart && Array.isArray(panelData) && panelData.length === 1 && panelData[0]?.format === 'plotly';
   const isVegaLite = !dataDrivenChart && Array.isArray(panelData) && panelData.length === 1 && panelData[0]?.format === 'vega-lite';
 
-  // Auto-metric detection
-  const isAutoMetric = !isMermaid && !isExplicitMetric && !isSlider && !isDropdown && !isDateRange && !isToggle && !isSparkline && !isPlotly && !isVegaLite && !dataDrivenChart &&
+  // Auto-metric detection (exclude images)
+  const isAutoMetric = !isMermaid && !isExplicitMetric && !isSlider && !isDropdown && !isDateRange && !isToggle && !isSparkline && !isPlotly && !isVegaLite && !dataDrivenChart && !isExplicitImage && !isAutoImage &&
     Array.isArray(panelData) && panelData.length === 1 && (() => {
       const row = panelData[0];
       if (!row || typeof row !== 'object') return false;
@@ -58,6 +138,7 @@ function convertPanelForRenderer(apiPanel) {
   else if (isToggle) panelType = 'toggle';
   else if (isSparkline) panelType = 'sparkline';
   else if (isMarkdown) panelType = 'markdown';
+  else if (isExplicitImage || isAutoImage) panelType = 'image';
   else if (isAutoMetric) panelType = 'metric';
   else if (dataDrivenChart) {
     panelType = dataDrivenChart.format;

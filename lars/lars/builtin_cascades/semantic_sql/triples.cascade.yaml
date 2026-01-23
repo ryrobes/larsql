@@ -171,14 +171,16 @@ cells:
     #   mutation_mode: rewrite
 
     rules:
-      max_turns: 2
-      max_attempts: 3
+      max_turns: 1
+      max_attempts: 4
       loop_until: valid_json
       retry_instructions: |
         Your previous output was not valid JSON. The error was: {{ validation_error }}
 
         Remember: Return ONLY a valid JSON array with this EXACT format:
         [{"subject": "X", "predicate": "Y", "object": "Z"}, ...]
+
+        IMPORTANT: It there is NO OUTPUT at all, just return an empty JSON array.
 
         - No markdown code fences
         - No explanation text

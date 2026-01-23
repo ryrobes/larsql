@@ -412,10 +412,11 @@ def _extract_cascade_output(result: Dict[str, Any]) -> Any:
 
     The runner returns a complex structure with lineage, history, etc.
     This extracts the final cell output in priority order:
-    1. lineage[-1]["output"] - most reliable for all cell types
-    2. history (last assistant message content) - fallback for LLM cells
-    3. result["result"] or result["output"] - direct keys
-    4. result itself - last resort
+    1. Image generation output (format: "image") - check all lineage entries
+    2. lineage[-1]["output"] - most reliable for all cell types
+    3. history (last assistant message content) - fallback for LLM cells
+    4. result["result"] or result["output"] - direct keys
+    5. result itself - last resort
 
     Also strips markdown code fences from string outputs.
     """
@@ -424,8 +425,22 @@ def _extract_cascade_output(result: Dict[str, Any]) -> Any:
 
     output = None
 
-    # Strategy 1: Get from lineage (most reliable)
+    # Strategy 0: Check for image generation outputs anywhere in lineage
+    # Image generation cells have format: "image" and images array
     lineage = result.get("lineage")
+    if lineage:
+        for entry in reversed(lineage):
+            if isinstance(entry, dict):
+                entry_output = entry.get("output")
+                # Check if this is an image generation output
+                if isinstance(entry_output, dict):
+                    if entry_output.get("format") == "image" and entry_output.get("images"):
+                        return entry_output
+                    # Also check for images array directly (backwards compat)
+                    if entry_output.get("images") and isinstance(entry_output.get("images"), list):
+                        return entry_output
+
+    # Strategy 1: Get from lineage (most reliable)
     if lineage and len(lineage) > 0:
         last_entry = lineage[-1]
         if isinstance(last_entry, dict) and "output" in last_entry:
@@ -656,6 +671,23 @@ def execute_cascade_udf(
         # Extract the output using proper cascade result parsing
         output = _extract_cascade_output(result)
 
+        # Detect errors - don't cache error results (they should be retried)
+        is_error = False
+        if result.get("has_errors"):
+            is_error = True
+            log.debug(f"[cascade_udf] Skipping cache for {cascade_id}: cascade has_errors=True")
+        elif isinstance(output, dict) and "error" in output:
+            is_error = True
+            log.debug(f"[cascade_udf] Skipping cache for {cascade_id}: output contains error key")
+        elif output is None or output == "":
+            is_error = True
+            log.debug(f"[cascade_udf] Skipping cache for {cascade_id}: output is empty")
+        elif isinstance(output, str):
+            output_upper = output.strip().upper()
+            if output_upper.startswith("ERROR:") or output_upper.startswith("ERROR "):
+                is_error = True
+                log.debug(f"[cascade_udf] Skipping cache for {cascade_id}: output starts with ERROR")
+
         # Handle output_mode: sql_statement returns full SQL to execute
         if fn.output_mode == 'sql_statement':
             from .sql_macro import bind_sql_parameters, execute_sql_statement
@@ -677,8 +709,8 @@ def execute_cascade_udf(
 
             log.debug(f"[cascade_udf] Wrote {len(results)} rows to {temp_path}")
 
-            # Cache the SQL statement (not the results file)
-            if use_cache and not takes_config:
+            # Cache the SQL statement (not the results file) - skip if error
+            if use_cache and not takes_config and not is_error:
                 if use_fingerprint_cache and fingerprint_cache_key:
                     cache = get_cache()
                     cache.set(cache_name, {"__fingerprint_key__": fingerprint_cache_key}, sql_statement)
@@ -694,8 +726,8 @@ def execute_cascade_udf(
             sql_fragment = str(output).strip()
             log.debug(f"[cascade_udf] sql_execute mode - executing: {sql_fragment[:100]}...")
 
-            # Cache the SQL fragment
-            if use_cache and not takes_config:
+            # Cache the SQL fragment - skip if error
+            if use_cache and not takes_config and not is_error:
                 if use_fingerprint_cache and fingerprint_cache_key:
                     cache = get_cache()
                     cache.set(cache_name, {"__fingerprint_key__": fingerprint_cache_key}, sql_fragment)
@@ -710,7 +742,8 @@ def execute_cascade_udf(
         # Handle output_mode: sql_raw returns SQL as-is
         if fn.output_mode == 'sql_raw':
             sql_raw = str(output).strip()
-            if use_cache and not takes_config:
+            # Cache SQL - skip if error
+            if use_cache and not takes_config and not is_error:
                 if use_fingerprint_cache and fingerprint_cache_key:
                     cache = get_cache()
                     cache.set(cache_name, {"__fingerprint_key__": fingerprint_cache_key}, sql_raw)
@@ -736,8 +769,8 @@ def execute_cascade_udf(
                 except ValueError:
                     output = 0
 
-        # Cache result (but not takes runs - they're for fresh sampling)
-        if use_cache and not takes_config:
+        # Cache result (but not takes runs - they're for fresh sampling, and not errors)
+        if use_cache and not takes_config and not is_error:
             if use_fingerprint_cache and fingerprint_cache_key:
                 cache = get_cache()
                 cache.set(cache_name, {"__fingerprint_key__": fingerprint_cache_key}, output)

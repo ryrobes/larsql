@@ -70,11 +70,36 @@ PLAYGROUND_SCRATCHPAD_DIR = os.path.abspath(os.path.join(os.path.dirname(__file_
 # ============================================================================
 
 def sanitize_for_json(obj):
-    """Recursively sanitize an object for JSON serialization."""
+    """Recursively sanitize an object for JSON serialization.
+
+    Handles NaN, Infinity, pandas NaT, and datetime objects.
+    """
+    import pandas as pd
+    from datetime import datetime, date, time
+
+    # Handle pandas NaT and other NA values first
+    try:
+        if pd.isna(obj):
+            if obj is None:
+                return None
+            if isinstance(obj, float) and not math.isnan(obj):
+                return obj
+            return None
+    except (TypeError, ValueError):
+        pass
+
     if isinstance(obj, float):
         if math.isnan(obj) or math.isinf(obj):
             return None
         return obj
+    elif isinstance(obj, datetime):
+        return obj.isoformat()
+    elif isinstance(obj, date):
+        return obj.isoformat()
+    elif isinstance(obj, time):
+        return obj.isoformat()
+    elif isinstance(obj, pd.Timestamp):
+        return obj.isoformat()
     elif isinstance(obj, dict):
         return {k: sanitize_for_json(v) for k, v in obj.items()}
     elif isinstance(obj, list):
