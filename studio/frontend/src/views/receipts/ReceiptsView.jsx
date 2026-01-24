@@ -295,7 +295,7 @@ const ReceiptsView = () => {
           className={`receipts-tab ${activeView === 'breakdown' ? 'active' : ''}`}
           onClick={() => setActiveView('breakdown')}
         >
-          <Icon icon="mdi:file-tree" width={14} />
+          <Icon icon="si:flow-cascade-line" width={14} />
           <span>Context Breakdown</span>
           {breakdownData.length > 0 && (
             <span className="receipts-tab-badge">{breakdownData.length}</span>

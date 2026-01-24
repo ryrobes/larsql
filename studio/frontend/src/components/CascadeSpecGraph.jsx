@@ -269,6 +269,8 @@ EdgesSVG.displayName = 'EdgesSVG';
  * @param {string} cascadeId - Cascade identifier for display
  * @param {Object} cellStatus - Map of cell name to status: { cellName: 'completed' | 'running' | 'waiting' | 'error' | 'pending' }
  * @param {number} maxHeight - Maximum height constraint (optional)
+ * @param {number} viewYamlVersion - Version number to view YAML for (triggers modal open)
+ * @param {Function} onYamlModalClose - Callback when YAML modal closes
  */
 // Height threshold for switching between linear and graph mode
 const LINEAR_MODE_THRESHOLD = 180;
@@ -276,7 +278,7 @@ const DEFAULT_HEIGHT = 140;
 const MIN_HEIGHT = 140; // Same as default - perfect for single row of nodes
 const MAX_HEIGHT = 500;
 
-const CascadeSpecGraph = ({ cells, inputsSchema, cascadeId, cellStatus = {} }) => {
+const CascadeSpecGraph = ({ cells, inputsSchema, cascadeId, cellStatus = {}, viewYamlVersion = null, onYamlModalClose = null }) => {
   const containerRef = useRef(null);
   const [isGrabbing, setIsGrabbing] = useState(false);
   const grabStartRef = useRef({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
@@ -290,40 +292,65 @@ const CascadeSpecGraph = ({ cells, inputsSchema, cascadeId, cellStatus = {} }) =
   const [showYamlModal, setShowYamlModal] = useState(false);
   const [yamlContent, setYamlContent] = useState('');
   const [yamlLoading, setYamlLoading] = useState(false);
+  const [currentYamlVersion, setCurrentYamlVersion] = useState(null);
 
-  // Fetch cascade YAML when modal opens
-  const handleOpenYaml = useCallback(async () => {
+  // Fetch cascade YAML from artifact registry
+  const handleOpenYaml = useCallback(async (version = null) => {
     if (!cascadeId) return;
 
     setShowYamlModal(true);
     setYamlLoading(true);
+    setCurrentYamlVersion(version);
 
     try {
-      const res = await fetch(`${API_BASE_URL}/api/playground/load/${cascadeId}`);
-      if (!res.ok) throw new Error('Failed to load cascade');
+      // Use new versioned endpoint - if no version specified, backend returns current
+      const endpoint = version
+        ? `${API_BASE_URL}/api/cascade-version/${cascadeId}/${version}?format=yaml`
+        : `${API_BASE_URL}/api/cascade-version/${cascadeId}/current?format=yaml`;
 
-      const config = await res.json();
+      const res = await fetch(endpoint);
+      if (!res.ok) {
+        throw new Error(`Failed to load cascade YAML (${res.status})`);
+      }
 
-      // Remove internal fields that aren't part of the spec
-      const cleanConfig = { ...config };
-      delete cleanConfig._playground;
-
-      // Convert to YAML
-      const yamlStr = yaml.dump(cleanConfig, {
-        indent: 2,
-        lineWidth: 120,
-        noRefs: true,
-        sortKeys: false,
-      });
-
+      // Response is already YAML from the database - no conversion needed!
+      const yamlStr = await res.text();
       setYamlContent(yamlStr);
     } catch (err) {
       console.error('Failed to load cascade YAML:', err);
-      setYamlContent(`# Error loading cascade: ${err.message}`);
+      setYamlContent(`# Error loading cascade: ${err.message}\n# Cascade: ${cascadeId}\n# Version: ${version || 'current'}`);
     } finally {
       setYamlLoading(false);
     }
   }, [cascadeId]);
+
+  // Auto-open YAML modal when viewYamlVersion prop changes
+  useEffect(() => {
+    if (viewYamlVersion !== null) {
+      handleOpenYaml(viewYamlVersion);
+    }
+  }, [viewYamlVersion, handleOpenYaml]);
+
+  // Handle modal close
+  const handleCloseYamlModal = useCallback(() => {
+    setShowYamlModal(false);
+    setCurrentYamlVersion(null);
+    if (onYamlModalClose) {
+      onYamlModalClose();
+    }
+  }, [onYamlModalClose]);
+
+  // ESC key support for YAML modal
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && showYamlModal) {
+        handleCloseYamlModal();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showYamlModal, handleCloseYamlModal]);
 
   // Monaco editor options for read-only YAML
   const monacoOptions = useMemo(() => ({
@@ -454,7 +481,7 @@ const CascadeSpecGraph = ({ cells, inputsSchema, cascadeId, cellStatus = {} }) =
   if (!cells || cells.length === 0) {
     return (
       <div className="spec-graph-empty">
-        <Icon icon="mdi:file-tree-outline" width="32" />
+        <Icon icon="si:flow-cascade-line-outline" width="32" />
         <span>No cells defined</span>
       </div>
     );
@@ -476,7 +503,7 @@ const CascadeSpecGraph = ({ cells, inputsSchema, cascadeId, cellStatus = {} }) =
         <div className="spec-graph-actions">
           <button
             className="spec-graph-yaml-btn"
-            onClick={handleOpenYaml}
+            onClick={() => handleOpenYaml()}
             title="View cascade YAML"
           >
             <Icon icon="mdi:code-braces" width="14" />
@@ -603,17 +630,20 @@ const CascadeSpecGraph = ({ cells, inputsSchema, cascadeId, cellStatus = {} }) =
 
       {/* YAML Modal */}
       {showYamlModal && (
-        <div className="spec-yaml-modal-overlay" onClick={() => setShowYamlModal(false)}>
+        <div className="spec-yaml-modal-overlay" onClick={handleCloseYamlModal}>
           <div className="spec-yaml-modal" onClick={(e) => e.stopPropagation()}>
             <div className="spec-yaml-modal-header">
               <div className="spec-yaml-modal-title">
                 <Icon icon="mdi:code-braces" width="18" />
                 <span>{cascadeId}</span>
+                {currentYamlVersion && (
+                  <span className="spec-yaml-version-badge">v{currentYamlVersion}</span>
+                )}
               </div>
               <button
                 className="spec-yaml-modal-close"
-                onClick={() => setShowYamlModal(false)}
-                title="Close"
+                onClick={handleCloseYamlModal}
+                title="Close (Esc)"
               >
                 <Icon icon="mdi:close" width="18" />
               </button>

@@ -1,0 +1,39 @@
+cascade_id: dynamic_cascade_caller
+description: |
+  Generic cascade caller for SQL. Enables calling any cascade from SQL with
+  parallel execution support via prewarm sidecar.
+
+  This is an escape hatch for cascades without sql_function config.
+  For production use, prefer adding sql_function config to cascades directly.
+
+sql_function:
+  name: cascade
+  shape: SCALAR
+  args:
+    - name: cascade_path
+      type: VARCHAR
+      description: Relative path to cascade file (e.g., 'skills/analyze.yaml')
+    - name: inputs_json
+      type: VARCHAR
+      description: JSON string of cascade inputs (use json_object() in SQL)
+  returns: VARCHAR
+  cache: true  # Enable caching to avoid redundant calls
+  description: |
+    Call any cascade dynamically from SQL with parallel execution support.
+
+    Example:
+      -- @ parallel: 8
+      SELECT cascade('skills/analyze.yaml', json_object('text', description))
+      FROM products;
+
+inputs_schema:
+  cascade_path: Path to cascade file
+  inputs_json: JSON string of inputs
+
+cells:
+  - name: invoke
+    # Deterministic cell - no model needed, just calls the skill directly
+    tool: call_cascade_dynamic
+    inputs:
+      cascade_path: '{{ input.cascade_path }}'
+      inputs_json: '{{ input.inputs_json }}'

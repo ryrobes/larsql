@@ -36,7 +36,7 @@ export const views = {
 
   studio: {
     component: lazy(() => import('../studio/StudioPage').then(m => ({ default: m.default }))),
-    icon: 'mdi:database-search',
+    icon: 'hugeicons:flow-square',
     label: 'Studio',
     position: 'top',
     enabled: true,
@@ -52,7 +52,7 @@ export const views = {
 
   receipts: {
     component: lazy(() => import('./receipts/ReceiptsView')),
-    icon: 'mdi:receipt-text',
+    icon: 'lucide:receipt',
     label: 'Receipts',
     position: 'top',
     enabled: true,
@@ -68,7 +68,7 @@ export const views = {
 
   sqltrail: {
     component: lazy(() => import('./sql-trail/SqlTrailView')),
-    icon: 'mdi:database-search',
+    icon: 'oui:vis-query-sql',
     label: 'SQL Trail',
     position: 'top',
     enabled: true,
@@ -92,7 +92,7 @@ export const views = {
 
   evolution: {
     component: lazy(() => import('./evolution')),
-    icon: 'mdi:family-tree',
+    icon: 'solar:dna-bold-duotone',
     label: 'Evolution',
     position: 'top',
     enabled: true,
@@ -124,7 +124,7 @@ export const views = {
 
   catalog: {
     component: lazy(() => import('./catalog/CatalogView')),
-    icon: 'mdi:package-variant-closed',
+    icon: 'ix:product-catalog',
     label: 'Catalog',
     position: 'top',
     enabled: true,
@@ -132,7 +132,7 @@ export const views = {
 
   watchers: {
     component: lazy(() => import('./watchers/WatchersView')),
-    icon: 'mdi:eye-circle',
+    icon: 'stash:radar-duotone',
     label: 'Watchers',
     position: 'top',
     enabled: true,
@@ -148,7 +148,7 @@ export const views = {
 
   hyper: {
     component: lazy(() => import('./canvas/CanvasView')),
-    icon: 'mdi:view-dashboard-variant',
+    icon: 'ic:twotone-dashboard',
     label: 'Hyper',
     position: 'top',
     enabled: true,
@@ -156,7 +156,7 @@ export const views = {
 
   interrupts: {
     component: lazy(() => import('./interrupts/InterruptsView')),
-    icon: 'mdi:hand-back-right',
+    icon: 'material-symbols-light:breaking-news-outline-sharp',
     label: 'Interrupts',
     position: 'bottom',
     enabled: true,

@@ -32,6 +32,8 @@ class Echo:
         self.invocation_metadata = invocation_metadata
         # Hash tracking (CASCADE-LEVEL: genus_hash for all logs in this session)
         self.genus_hash: Optional[str] = None
+        # Cascade version tracking (for audit trail)
+        self.cascade_version: Optional[int] = None
 
     def set_cascade_context(self, cascade_id: str):
         """Set the current cascade context for metadata enrichment."""

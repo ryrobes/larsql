@@ -9,6 +9,7 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  position: relative; /* For z-index stacking */
 }
 
 /* ============================================
@@ -23,6 +24,8 @@
   border-bottom: 1px solid var(--color-border-dim);
   background: var(--color-bg-primary);
   flex-shrink: 0;
+  position: relative;
+  z-index: 1; /* Monaco tooltips should be 10000, so they'll appear above */
 }
 
 .canvas-header-left {
@@ -45,13 +48,19 @@
   font-size: var(--font-size-xs);
   color: var(--color-text-dim);
   padding: 2px 8px;
-  background: rgba(0, 229, 255, 0.1);
+  background: rgba(0, 229, 255, 0.01);
   border-radius: var(--radius-sm);
 }
 
 .canvas-head-title {
+  margin-top: -8px;
   font-family: 'Outrun future';
-  font-size: 22px;
+  color: var(--color-text-primary);
+  text-shadow:
+    0 0 8px rgba(74, 74, 252, 0.86),
+    0 3px 0 rgba(51, 153, 255, 0.55);
+  filter: blur(0.15px);
+  font-size: 30px;
 }
 
 .canvas-header-right {
@@ -254,6 +263,8 @@
   flex-direction: column;
   border-right: 1px solid var(--color-border-dim);
   background: var(--color-bg-secondary);
+  position: relative;
+  z-index: 1; /* Ensure tooltips appear above result pane */
 }
 
 .canvas-editor-header {
@@ -265,6 +276,8 @@
   font-size: var(--font-size-xs);
   color: var(--color-text-muted);
   background: var(--color-bg-tertiary);
+  position: relative;
+  z-index: 1; /* Monaco tooltips should be 10000, so they'll appear above */
 }
 
 .canvas-hint {
@@ -327,7 +340,8 @@
 
 .canvas-editor-wrapper {
   flex: 1;
-  overflow: hidden;
+  overflow: hidden; /* Keep scrolling working */
+  position: relative;
 }
 
 /* ============================================
@@ -463,4 +477,411 @@
 
 .spinning {
   animation: spin 1s linear infinite;
+}
+
+/* ============================================
+   QUERY COST DECORATIONS
+   ============================================ */
+
+/* Gutter icons - Using Unicode symbols since CSS can't easily render iconify */
+.query-cost-gutter::before {
+  content: '';
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  margin-left: 1px;
+  
+}
+
+/* Gutter cost text - appears before the line */
+.query-cost-gutter-text {
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  font-weight: 700;
+  margin-right: 8px;
+   
+  opacity: 0.9;
+  letter-spacing: 0.3px;
+}
+
+.query-cost-text-free {
+  color: #4ade80 !important;
+}
+
+.query-cost-text-green {
+  color: #4ade80 !important;
+}
+
+.query-cost-text-yellow {
+  color: #fbbf24 !important;
+}
+
+.query-cost-text-orange {
+  color: #fb923c !important;
+}
+
+.query-cost-text-red {
+  color: #f87171 !important;
+  text-shadow: 0 0 4px rgba(248, 113, 113, 0.5);
+}
+
+/* Zero tier - plain SQL, no LLM calls */
+.query-cost-zero::before {
+  content: '○';
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 10px;
+  text-align: center;
+  line-height: 12px;
+  
+  opacity: 0.6;
+}
+
+/* Free tier - very cheap */
+.query-cost-free::before {
+  content: '✓';
+  background: rgba(74, 222, 128, 0.15);
+  border: 1px solid #4ade80;
+  color: #4ade80;
+  font-size: 10px;
+  text-align: center;
+  line-height: 12px;
+  opacity: 0.8;
+}
+
+/* Green tier - dollar sign */
+.query-cost-green::before {
+  content: '$';
+  background: rgba(74, 222, 128, 0.2);
+  border: 1px solid #4ade80;
+  color: #4ade80;
+  font-size: 11px;
+  font-weight: bold;
+  text-align: center;
+  line-height: 13px;
+}
+
+/* Yellow tier - dollar signs */
+.query-cost-yellow::before {
+  content: '$$';
+  background: rgba(251, 191, 36, 0.2);
+  border: 1px solid #fbbf24;
+  color: #fbbf24;
+  font-size: 9px;
+  font-weight: bold;
+  text-align: center;
+  line-height: 13px;
+}
+
+/* Orange tier - warning */
+.query-cost-orange::before {
+  content: '⚠';
+  background: rgba(251, 146, 60, 0.2);
+  border: 1px solid #fb923c;
+  color: #fb923c;
+  font-size: 11px;
+  text-align: center;
+  line-height: 12px;
+}
+
+/* Red tier - fire/alert */
+.query-cost-red::before {
+  content: '🔥';
+  background: rgba(248, 113, 113, 0.2);
+  border: 1px solid #f87171;
+  font-size: 10px;
+  text-align: center;
+  line-height: 12px;
+  animation: pulse-red 2s ease-in-out infinite;
+}
+
+/* Error tier - EXPLAIN failed */
+.query-cost-error::before {
+  content: '⚠';
+  background: rgba(251, 146, 60, 0.2);
+  border: 1px dashed #fb923c;
+  color: #fb923c;
+  font-size: 11px;
+  text-align: center;
+  line-height: 12px;
+  opacity: 0.7;
+}
+
+@keyframes pulse-red {
+  0%, 100% { opacity: 0.8; }
+  50% { opacity: 1; }
+}
+
+/* Inline ghost text (after query) */
+.query-cost-ghost-text {
+  opacity: 0.5;
+  font-style: italic;
+  color: var(--color-text-dim) !important;
+  font-size: 0.9em;
+  margin-left: 8px;
+}
+
+/* Inline error text (after query) */
+.query-cost-error-text {
+  opacity: 0.7;
+  font-style: italic;
+  color: #fb923c !important;
+  font-size: 0.85em;
+  margin-left: 8px;
+}
+
+/* Query block highlighting - subtle visual separation */
+.query-block-highlight {
+  background: rgba(255, 255, 255, 0.02) !important;
+  border-left: 2px solid rgba(255, 255, 255, 0.1) !important;
+  padding-left: 4px !important;
+  margin-left: -6px !important;
+}
+
+/* Left edge indicator in gutter showing query block and cost tier */
+.query-block-edge {
+  width: 3px !important;
+  margin-left: 2px !important;
+  border-radius: 2px !important;
+}
+
+.query-block-edge-zero {
+  background: rgba(255, 255, 255, 0.1) !important;
+}
+
+.query-block-edge-free {
+  background: rgba(74, 222, 128, 0.3) !important;
+}
+
+.query-block-edge-green {
+  background: rgba(74, 222, 128, 0.5) !important;
+}
+
+.query-block-edge-yellow {
+  background: rgba(251, 191, 36, 0.5) !important;
+}
+
+.query-block-edge-orange {
+  background: rgba(251, 146, 60, 0.6) !important;
+}
+
+.query-block-edge-red {
+  background: rgba(248, 113, 113, 0.7) !important;
+  box-shadow: 0 0 4px rgba(248, 113, 113, 0.5) !important;
+}
+
+.query-block-edge-error {
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(251, 146, 60, 0.3),
+    rgba(251, 146, 60, 0.3) 2px,
+    transparent 2px,
+    transparent 4px
+  ) !important;
+  border-left: 1px dashed #fb923c !important;
+}
+
+/* Inline cost badge (before query line) */
+.query-cost-inline-badge {
+  opacity: 0.85;
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.3px;
+  font-family: 'Courier New', monospace;
+  padding: 1px 4px;
+  border-radius: 3px;
+  margin-right: 4px;
+}
+
+.query-cost-badge-free {
+  color: #4ade80;
+  background: rgba(74, 222, 128, 0.1);
+}
+
+.query-cost-badge-green {
+  color: #4ade80;
+  background: rgba(74, 222, 128, 0.15);
+}
+
+.query-cost-badge-yellow {
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.15);
+}
+
+.query-cost-badge-orange {
+  color: #fb923c;
+  background: rgba(251, 146, 60, 0.15);
+}
+
+.query-cost-badge-red {
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.15);
+  font-weight: 700;
+}
+
+/* Cost stats in header */
+.canvas-cost-stats {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-dim);
+  border-left: 1px solid var(--color-border-dim);
+  padding-left: 12px;
+}
+
+.canvas-cost-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.canvas-cost-value {
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-secondary);
+}
+
+.canvas-cost-value.cost-expensive {
+  color: var(--color-accent-orange);
+}
+
+.canvas-cost-value.cost-very-expensive {
+  color: var(--color-accent-red);
+}
+
+/* Operator-level cost decorations (underlines) */
+.operator-cost-underline {
+  border-bottom: 2px dotted !important;
+  cursor: help !important;
+  text-decoration: none !important;
+  /* Also add a subtle background for visibility testing */
+  background-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+.operator-cost-free {
+  border-bottom-color: rgba(74, 222, 128, 0.4) !important;
+}
+
+.operator-cost-low {
+  border-bottom-color: rgba(74, 222, 128, 0.7) !important;
+}
+
+.operator-cost-medium {
+  border-bottom-color: rgba(251, 191, 36, 0.7) !important;
+}
+
+.operator-cost-high {
+  border-bottom-color: rgba(251, 146, 60, 0.8) !important;
+}
+
+.operator-cost-very-high {
+  border-bottom-color: rgba(248, 113, 113, 0.9) !important;
+  border-bottom-style: solid !important;
+  animation: pulse-underline 2s ease-in-out infinite;
+}
+
+@keyframes pulse-underline {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; }
+}
+
+/* Pipeline stage decorations (THEN operators) */
+.pipeline-stage-underline {
+  border-bottom: 2px solid !important;
+  cursor: help !important;
+  font-weight: 600 !important;
+}
+
+.pipeline-stage-free {
+  border-bottom-color: rgba(74, 222, 128, 0.6) !important;
+  color: #4ade80 !important;
+}
+
+.pipeline-stage-low {
+  border-bottom-color: rgba(74, 222, 128, 0.8) !important;
+  color: #4ade80 !important;
+}
+
+.pipeline-stage-medium {
+  border-bottom-color: rgba(251, 191, 36, 0.8) !important;
+  color: #fbbf24 !important;
+}
+
+.pipeline-stage-high {
+  border-bottom-color: rgba(251, 146, 60, 0.9) !important;
+  color: #fb923c !important;
+}
+
+.pipeline-stage-very-high {
+  border-bottom-color: rgba(248, 113, 113, 1) !important;
+  color: #f87171 !important;
+  animation: pulse-underline 2s ease-in-out infinite;
+}
+
+/* ============================================
+   MONACO TOOLTIP RENDERING
+   ============================================ */
+
+/* Only set z-index to render above header - don't touch positioning */
+.monaco-hover {
+  z-index: 99999 !important;
+}
+
+.monaco-hover-content {
+  max-width: 600px !important;
+}
+
+.monaco-editor .overflowingContentWidgets {
+  z-index: 99999 !important;
+}
+
+/* ============================================
+   MONACO CODELENS STYLING
+   ============================================ */
+
+/* CodeLens links - clickable "Run" actions above queries */
+.monaco-editor .codelens-decoration {
+  font-size: 11px !important;
+  color: var(--color-accent-cyan) !important;
+  opacity: 0.8;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+.monaco-editor .codelens-decoration:hover {
+  opacity: 1;
+  text-decoration: underline;
+  cursor: pointer !important;
+}
+
+.monaco-editor .codelensWidget {
+  cursor: pointer !important;
+}
+
+.monaco-editor .codelensWidget span {
+  cursor: pointer !important;
+  user-select: none;
+  padding: 2px 4px;
+  border-radius: 3px;
+  transition: all 0.15s ease;
+}
+
+.monaco-editor .codelensWidget span:hover {
+  color: rgba(0, 229, 255, 1) !important;
+  background: rgba(0, 229, 255, 0.1);
+}
+
+.monaco-editor .codelensWidget a {
+  color: var(--color-accent-cyan) !important;
+  text-decoration: none;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+.monaco-editor .codelensWidget a:hover {
+  color: rgba(0, 229, 255, 1) !important;
+  text-decoration: underline;
 }

@@ -1045,6 +1045,76 @@ def get_cascade_definitions():
 
         conn.close()
 
+        # Enrich with version metadata from artifact_registry
+        try:
+            db = get_db()
+
+            # Get version info for all cascades in one query
+            cascade_ids = list(all_cascades.keys())
+            if cascade_ids:
+                # Build IN clause directly (ClickHouse supports tuple literals)
+                # Escape single quotes in cascade IDs
+                escaped_ids = [cid.replace("'", "\\'") for cid in cascade_ids]
+                ids_list = "(" + ",".join([f"'{cid}'" for cid in escaped_ids]) + ")"
+
+                version_query = f"""
+                WITH latest_versions AS (
+                    SELECT
+                        artifact_id,
+                        max(version) as max_version,
+                        argMax(created_at, version) as last_modified,
+                        argMax(is_deleted, version) as is_deleted
+                    FROM artifact_registry
+                    WHERE artifact_type = 'cascade'
+                      AND artifact_id IN {ids_list}
+                    GROUP BY artifact_id
+                ),
+                version_counts AS (
+                    SELECT
+                        artifact_id,
+                        count() as total_versions
+                    FROM artifact_registry
+                    WHERE artifact_type = 'cascade'
+                      AND artifact_id IN {ids_list}
+                    GROUP BY artifact_id
+                )
+                SELECT
+                    lv.artifact_id,
+                    lv.max_version as version,
+                    lv.last_modified,
+                    lv.is_deleted,
+                    vc.total_versions
+                FROM latest_versions lv
+                LEFT JOIN version_counts vc ON lv.artifact_id = vc.artifact_id
+                """
+
+                # No parameters needed - IDs are in the query
+                version_results = db.query(version_query)
+
+                # Create version lookup map
+                version_map = {
+                    v['artifact_id']: v
+                    for v in version_results
+                }
+
+                # Enrich each cascade with version metadata
+                for cascade_id, cascade_data in all_cascades.items():
+                    if cascade_id in version_map:
+                        v = version_map[cascade_id]
+                        cascade_data['version'] = v['version']
+                        cascade_data['total_versions'] = v['total_versions']
+                        cascade_data['last_modified'] = v['last_modified'].isoformat() if v['last_modified'] else None
+                        cascade_data['is_deleted'] = v['is_deleted']
+                    else:
+                        # No version info (file-based cascade not yet in registry)
+                        cascade_data['version'] = None
+                        cascade_data['total_versions'] = 0
+                        cascade_data['last_modified'] = None
+                        cascade_data['is_deleted'] = False
+        except Exception as e:
+            print(f"[WARN] Could not enrich with version metadata: {e}")
+            # Continue without version metadata if artifact_registry not available
+
         # Sort by run_count descending, then by name
         cascades_list = sorted(
             all_cascades.values(),
@@ -1922,6 +1992,385 @@ def get_cascade_instances(cascade_id):
         conn.close()
         # Sanitize to handle NaN/Infinity values that aren't valid JSON
         return jsonify(sanitize_for_json(parents))
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================================================
+# CASCADE VERSIONING ENDPOINTS
+# ============================================================================
+
+@app.route('/api/cascade-versions/<cascade_id>', methods=['GET'])
+def get_cascade_versions(cascade_id):
+    """
+    Get version history for a cascade from artifact_registry.
+
+    Returns all versions of a cascade with metadata, ordered newest first.
+    """
+    try:
+        db = get_db()
+
+        # Escape cascade_id for SQL safety
+        escaped_cascade_id = cascade_id.replace("'", "\\'")
+
+        # Query all versions for this cascade
+        query = f"""
+        SELECT
+            version,
+            created_at,
+            created_by,
+            source_instance,
+            change_type,
+            change_comment,
+            content_hash,
+            file_mtime,
+            is_active,
+            is_deleted,
+            source_file,
+            folder_path,
+            tags
+        FROM artifact_registry
+        WHERE artifact_id = '{escaped_cascade_id}'
+          AND artifact_type = 'cascade'
+        ORDER BY version DESC
+        """
+
+        versions = db.query(query)
+
+        if not versions:
+            return jsonify({'error': f'Cascade not found: {cascade_id}'}), 404
+
+        # Find current version (highest version number that's active)
+        current_version = None
+        for v in versions:
+            if v['is_active'] and not v['is_deleted']:
+                current_version = v['version']
+                break
+
+        # Format response
+        response = {
+            'cascade_id': cascade_id,
+            'current_version': current_version,
+            'total_versions': len(versions),
+            'versions': [
+                {
+                    'version': v['version'],
+                    'created_at': v['created_at'].isoformat() if v['created_at'] else None,
+                    'created_by': v['created_by'],
+                    'source_instance': v['source_instance'],
+                    'change_type': v['change_type'],
+                    'change_comment': v['change_comment'],
+                    'content_hash': v['content_hash'],
+                    'file_mtime': v['file_mtime'].isoformat() if v['file_mtime'] else None,
+                    'is_active': v['is_active'],
+                    'is_deleted': v['is_deleted'],
+                    'source_file': v['source_file'],
+                    'folder_path': v['folder_path'],
+                    'tags': v['tags']
+                }
+                for v in versions
+            ]
+        }
+
+        return jsonify(response)
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/cascade-version/<cascade_id>/<version>', methods=['GET'])
+def get_cascade_version_content(cascade_id, version):
+    """
+    Get YAML content for a specific cascade version.
+
+    Query params:
+        format: 'yaml' (default) or 'json'
+
+    Version can be:
+        - A specific version number (e.g., "3")
+        - "current" to get the latest active version
+    """
+    try:
+        db = get_db()
+        output_format = request.args.get('format', 'yaml').lower()
+
+        # Escape cascade_id for SQL safety
+        escaped_cascade_id = cascade_id.replace("'", "\\'")
+
+        # Handle "current" version keyword
+        if version == 'current':
+            # Get latest active, non-deleted version
+            query = f"""
+            SELECT
+                version,
+                content_yaml,
+                content_parsed,
+                created_at,
+                created_by,
+                change_type,
+                source_file,
+                is_active,
+                is_deleted
+            FROM artifact_registry
+            WHERE artifact_id = '{escaped_cascade_id}'
+              AND artifact_type = 'cascade'
+              AND is_active = true
+              AND is_deleted = false
+            ORDER BY version DESC
+            LIMIT 1
+            """
+            results = db.query(query)
+        else:
+            # Query specific version number
+            try:
+                version_num = int(version)
+            except ValueError:
+                return jsonify({'error': f'Invalid version: {version}. Must be a number or "current"'}), 400
+
+            query = f"""
+            SELECT
+                version,
+                content_yaml,
+                content_parsed,
+                created_at,
+                created_by,
+                change_type,
+                source_file,
+                is_active,
+                is_deleted
+            FROM artifact_registry
+            WHERE artifact_id = '{escaped_cascade_id}'
+              AND artifact_type = 'cascade'
+              AND version = {version_num}
+            LIMIT 1
+            """
+            results = db.query(query)
+
+        if not results:
+            return jsonify({'error': f'Version {version} not found for cascade {cascade_id}'}), 404
+
+        result = results[0]
+
+        if output_format == 'yaml':
+            # Return raw YAML content
+            return Response(
+                result['content_yaml'],
+                mimetype='text/yaml',
+                headers={
+                    'X-Cascade-Version': str(result['version']),
+                    'X-Cascade-ID': cascade_id,
+                }
+            )
+        else:
+            # Return JSON with metadata
+            return jsonify({
+                'version': result['version'],
+                'content_yaml': result['content_yaml'],
+                'content_parsed': result['content_parsed'],
+                'metadata': {
+                    'created_at': result['created_at'].isoformat() if result['created_at'] else None,
+                    'created_by': result['created_by'],
+                    'change_type': result['change_type'],
+                    'source_file': result['source_file'],
+                    'is_active': result['is_active'],
+                    'is_deleted': result['is_deleted']
+                }
+            })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/cascade-disable/<cascade_id>', methods=['POST'])
+def disable_cascade(cascade_id):
+    """
+    Soft-delete a cascade by creating a new version with is_deleted=true.
+
+    Request body:
+        {
+            "reason": "Optional reason for disabling"
+        }
+    """
+    try:
+        db = get_db()
+        data = request.get_json() or {}
+        reason = data.get('reason', 'Disabled via UI')
+
+        # Escape cascade_id for SQL safety
+        escaped_cascade_id = cascade_id.replace("'", "\\'")
+
+        # Get current version to increment
+        query = f"""
+        SELECT MAX(version) as max_version
+        FROM artifact_registry
+        WHERE artifact_id = '{escaped_cascade_id}'
+          AND artifact_type = 'cascade'
+        """
+
+        result = db.query(query)
+        if not result:
+            return jsonify({'error': f'Cascade not found: {cascade_id}'}), 404
+
+        max_version = result[0]['max_version']
+        new_version = max_version + 1
+
+        # Get latest content to preserve it
+        content_query = f"""
+        SELECT
+            content_yaml,
+            content_parsed,
+            content_hash,
+            source_file,
+            file_mtime,
+            folder_path,
+            tags
+        FROM artifact_registry
+        WHERE artifact_id = '{escaped_cascade_id}'
+          AND artifact_type = 'cascade'
+          AND version = {max_version}
+        LIMIT 1
+        """
+
+        content_result = db.query(content_query)
+        if not content_result:
+            return jsonify({'error': 'Could not retrieve cascade content'}), 500
+
+        content = content_result[0]
+
+        # Insert new version with is_deleted=true
+        import socket
+        instance_id = f"{socket.gethostname()}:{os.getpid()}"
+
+        db.insert_rows('artifact_registry', [{
+            'artifact_id': cascade_id,
+            'artifact_type': 'cascade',
+            'version': new_version,
+            'content_yaml': content['content_yaml'],
+            'content_parsed': content['content_parsed'],
+            'content_hash': content['content_hash'],
+            'python_module': None,
+            'python_function': None,
+            'python_source': None,
+            'source_file': content['source_file'],
+            'file_mtime': content['file_mtime'],
+            'folder_path': content['folder_path'],
+            'tags': content['tags'],
+            'created_at': datetime.now(),
+            'created_by': 'ui_backend',
+            'source_instance': instance_id,
+            'is_active': True,
+            'is_deleted': True,  # Mark as deleted
+            'change_type': 'delete',
+            'change_comment': reason,
+            'has_conflict': False,
+            'conflict_resolved_at': None,
+        }])
+
+        return jsonify({
+            'success': True,
+            'cascade_id': cascade_id,
+            'version': new_version,
+            'is_deleted': True,
+            'reason': reason
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/cascade-enable/<cascade_id>', methods=['POST'])
+def enable_cascade(cascade_id):
+    """
+    Re-enable a disabled cascade by creating a new version with is_deleted=false.
+    """
+    try:
+        db = get_db()
+
+        # Escape cascade_id for SQL safety
+        escaped_cascade_id = cascade_id.replace("'", "\\'")
+
+        # Get current version to increment
+        query = f"""
+        SELECT MAX(version) as max_version
+        FROM artifact_registry
+        WHERE artifact_id = '{escaped_cascade_id}'
+          AND artifact_type = 'cascade'
+        """
+
+        result = db.query(query)
+        if not result:
+            return jsonify({'error': f'Cascade not found: {cascade_id}'}), 404
+
+        max_version = result[0]['max_version']
+        new_version = max_version + 1
+
+        # Get latest content to preserve it
+        content_query = f"""
+        SELECT
+            content_yaml,
+            content_parsed,
+            content_hash,
+            source_file,
+            file_mtime,
+            folder_path,
+            tags
+        FROM artifact_registry
+        WHERE artifact_id = '{escaped_cascade_id}'
+          AND artifact_type = 'cascade'
+          AND version = {max_version}
+        LIMIT 1
+        """
+
+        content_result = db.query(content_query)
+        if not content_result:
+            return jsonify({'error': 'Could not retrieve cascade content'}), 500
+
+        content = content_result[0]
+
+        # Insert new version with is_deleted=false
+        import socket
+        instance_id = f"{socket.gethostname()}:{os.getpid()}"
+
+        db.insert_rows('artifact_registry', [{
+            'artifact_id': cascade_id,
+            'artifact_type': 'cascade',
+            'version': new_version,
+            'content_yaml': content['content_yaml'],
+            'content_parsed': content['content_parsed'],
+            'content_hash': content['content_hash'],
+            'python_module': None,
+            'python_function': None,
+            'python_source': None,
+            'source_file': content['source_file'],
+            'file_mtime': content['file_mtime'],
+            'folder_path': content['folder_path'],
+            'tags': content['tags'],
+            'created_at': datetime.now(),
+            'created_by': 'ui_backend',
+            'source_instance': instance_id,
+            'is_active': True,
+            'is_deleted': False,  # Re-enable
+            'change_type': 'restore',
+            'change_comment': 'Re-enabled via UI',
+            'has_conflict': False,
+            'conflict_resolved_at': None,
+        }])
+
+        return jsonify({
+            'success': True,
+            'cascade_id': cascade_id,
+            'version': new_version,
+            'is_deleted': False
+        })
 
     except Exception as e:
         import traceback

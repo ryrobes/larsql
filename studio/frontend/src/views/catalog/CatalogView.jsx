@@ -48,7 +48,7 @@ const CATEGORIES = {
   harbor: { label: 'Harbor', icon: 'mdi:sail-boat', color: '#fbbf24' },
   mcp: { label: 'MCP', icon: 'mdi:connection', color: '#22d3ee' },
   memory: { label: 'Memory', icon: 'mdi:memory', color: '#60a5fa' },
-  cascades: { label: 'Cascades', icon: 'mdi:file-tree', color: '#f472b6' },
+  cascades: { label: 'Cascades', icon: 'si:flow-cascade-line', color: '#f472b6' },
   signals: { label: 'Signals', icon: 'mdi:broadcast', color: '#818cf8' },
   sessions: { label: 'Sessions', icon: 'mdi:history', color: '#94a3b8' },
 };

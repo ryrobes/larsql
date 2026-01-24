@@ -3,6 +3,7 @@ import sys
 import json
 from typing import Dict, Any, Optional, List, Union, Callable, Tuple
 from contextvars import ContextVar
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import logging
 
 # NOTE: litellm is NOT imported here - it's only needed in agent.py
@@ -15,6 +16,9 @@ from rich.panel import Panel
 from rich.markdown import Markdown
 from rich.spinner import Spinner
 import threading
+
+# Performance logging
+from .perf_logger import perf_timer, force_flush
 
 
 class _OutputWrapper:
@@ -326,6 +330,21 @@ class LARSRunner:
         self.echo = get_echo(session_id, parent_session_id=parent_session_id,
                             caller_id=caller_id, invocation_metadata=invocation_metadata)
 
+        # Get cascade version from artifact registry for audit trail
+        self.cascade_version = None
+        try:
+            from .artifact_registry import get_artifact_registry
+            registry = get_artifact_registry()
+            # Check if this cascade is in registry
+            if hasattr(self.config, 'cascade_id'):
+                key = ('cascade', self.config.cascade_id)
+                self.cascade_version = registry._versions.get(key)
+                # Store in Echo for auto-extraction in all logs
+                self.echo.cascade_version = self.cascade_version
+        except Exception:
+            # Registry not available or not initialized
+            pass
+
         # Store caller tracking for propagation
         self.caller_id = caller_id
         self.invocation_metadata = invocation_metadata
@@ -406,11 +425,12 @@ class LARSRunner:
         self._heartbeat_interval = 30  # seconds
 
     def _log(self, **kwargs):
-        """Helper to log with automatic caller tracking fields."""
+        """Helper to log with automatic caller tracking fields and cascade version."""
         from .unified_logs import log_unified
         log_unified(
             caller_id=self.caller_id,
             invocation_metadata=self.invocation_metadata,
+            cascade_version=self.cascade_version,  # Track which version was executed
             **kwargs
         )
 
@@ -5008,6 +5028,9 @@ Refinement directive: {reforge_config.honing_prompt}
                    node_type=f"cascade_{final_status}", parent_session_id=self.parent_session_id,
                    genus_hash=getattr(self, 'genus_hash', None))
 
+        # PERF: Flush all buffered performance metrics before returning
+        force_flush()
+
         return result
 
     def run(self, input_data: dict | None = None) -> dict:
@@ -5032,16 +5055,21 @@ Refinement directive: {reforge_config.honing_prompt}
             if self.depth > 0:
                 execution_source = "sub_cascade"
 
-            create_session_state(
-                session_id=self.session_id,
-                cascade_id=self.config.cascade_id,
-                parent_session_id=self.parent_session_id,
-                depth=self.depth,
-                metadata={
-                    "config_path": str(self.config_path) if isinstance(self.config_path, str) else "inline",
-                    "execution_source": execution_source
-                }
-            )
+            # PERF: Time database write for session state creation
+            with perf_timer("db_session_create",
+                            session_id=self.session_id,
+                            cascade_id=self.config.cascade_id,
+                            metadata={"depth": self.depth}):
+                create_session_state(
+                    session_id=self.session_id,
+                    cascade_id=self.config.cascade_id,
+                    parent_session_id=self.parent_session_id,
+                    depth=self.depth,
+                    metadata={
+                        "config_path": str(self.config_path) if isinstance(self.config_path, str) else "inline",
+                        "execution_source": execution_source
+                    }
+                )
         except Exception as e:
             # Don't fail cascade if session state creation fails (backward compat)
             logger = logging.getLogger(__name__)
@@ -10868,7 +10896,13 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
             console.print(f"{indent}[dim]Injecting UI scaffolding and state management patterns...[/dim]")
             cell_instructions = inject_research_scaffolding(cell.instructions, cell, render_context)
 
-        rendered_instructions = render_instruction(cell_instructions, render_context)
+        # PERF: Time Jinja2 template rendering
+        with perf_timer("template_render",
+                        session_id=self.session_id,
+                        cascade_id=self.config.cascade_id,
+                        cell_name=cell.name,
+                        metadata={"template_size": len(cell_instructions)}):
+            rendered_instructions = render_instruction(cell_instructions, render_context)
 
         # ========== UNIVERSAL TRAINING SYSTEM: Inject examples if enabled ==========
         if cell.use_training:
@@ -10943,7 +10977,13 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                     ward_index=ward_idx + 1,
                     total_wards=total_pre_wards
                 )
-                ward_result = self._run_ward(ward_config, input_content, trace, ward_type="pre")
+                # PERF: Time validator/ward execution
+                with perf_timer("ward_validation",
+                                session_id=self.session_id,
+                                cascade_id=self.config.cascade_id,
+                                cell_name=cell.name,
+                                metadata={"validator": str(ward_config.validator), "type": "pre", "mode": ward_config.mode}):
+                    ward_result = self._run_ward(ward_config, input_content, trace, ward_type="pre")
 
                 if not ward_result["valid"]:
                     # Handle based on mode
@@ -11679,7 +11719,13 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
 
                             # TOKEN BUDGET ENFORCEMENT: Check and enforce budget before agent call
                             if self.token_manager:
-                                budget_status = self.token_manager.check_budget(self.context_messages)
+                                # PERF: Time token counting (should be fast with local tiktoken)
+                                with perf_timer("token_counting",
+                                                session_id=self.session_id,
+                                                cascade_id=self.config.cascade_id,
+                                                cell_name=cell.name,
+                                                metadata={"message_count": len(self.context_messages)}):
+                                    budget_status = self.token_manager.check_budget(self.context_messages)
 
                                 if budget_status["warning"]:
                                     percentage = budget_status["percentage"] * 100
@@ -11720,11 +11766,17 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                             )
 
                             # Build turn context (may be compressed if auto-context enabled)
-                            turn_context, context_stats = self._build_turn_context(
-                                cell,
-                                turn_number=i,
-                                is_loop_retry=is_loop_retry
-                            )
+                            # PERF: Time context building (compression, selection, etc.)
+                            with perf_timer("context_build",
+                                            session_id=self.session_id,
+                                            cascade_id=self.config.cascade_id,
+                                            cell_name=cell.name,
+                                            metadata={"turn": i, "is_retry": is_loop_retry}):
+                                turn_context, context_stats = self._build_turn_context(
+                                    cell,
+                                    turn_number=i,
+                                    is_loop_retry=is_loop_retry
+                                )
 
                             # Log context selection if auto-context did something
                             if context_stats.selection_type != "disabled":
@@ -11734,11 +11786,23 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
 
                             if self.depth == 0 and is_main_thread:
                                 with console.status(f"{indent}[bold green]Agent thinking...[/bold green] ", spinner="dots") as status:
-                                    response_dict = agent.run(current_input, context_messages=turn_context)
+                                    # PERF: Time agent LLM call
+                                    with perf_timer("agent_call",
+                                                    session_id=self.session_id,
+                                                    cascade_id=self.config.cascade_id,
+                                                    cell_name=cell.name,
+                                                    metadata={"model": agent.model, "turn": i, "depth": self.depth}):
+                                        response_dict = agent.run(current_input, context_messages=turn_context)
                             else:
                                 # For sub-cascades, no spinner to avoid Rich Live conflicts
                                 console.print(f"{indent}[dim]Agent thinking (depth {self.depth})...[/dim]")
-                                response_dict = agent.run(current_input, context_messages=turn_context)
+                                # PERF: Time agent LLM call
+                                with perf_timer("agent_call",
+                                                session_id=self.session_id,
+                                                cascade_id=self.config.cascade_id,
+                                                cell_name=cell.name,
+                                                metadata={"model": agent.model, "turn": i, "depth": self.depth}):
+                                    response_dict = agent.run(current_input, context_messages=turn_context)
 
                             content = response_dict.get("content")
                             tool_calls = response_dict.get("tool_calls")
@@ -11972,7 +12036,13 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                     json_parse_error = None
                     if not use_native and not tool_calls:
                         # Try to extract JSON tool calls from the response content
-                        parsed_tool_calls, parse_error = self._parse_prompt_tool_calls(content)
+                        # PERF: Time the complex parsing operation (24+ formats, 99+ regex ops)
+                        with perf_timer("tool_call_parsing",
+                                        session_id=self.session_id,
+                                        cascade_id=self.config.cascade_id,
+                                        cell_name=cell.name,
+                                        metadata={"content_length": len(content)}):
+                            parsed_tool_calls, parse_error = self._parse_prompt_tool_calls(content)
 
                         if parse_error:
                             # JSON parsing failed - this is a validation error that should trigger attempt retry
@@ -12026,7 +12096,72 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                     # Skip if there was a JSON parse error
                     if tool_calls and not json_parse_error:
                         console.print(f"{indent}  [bold yellow]Executing Tools...[/bold yellow]")
-                        for tc in tool_calls:
+
+                        # PARALLEL TOOL EXECUTION: Pre-execute tool functions if enabled
+                        # Strategy: Execute tools in parallel, then process results sequentially
+                        # This maintains state consistency while parallelizing the slow I/O
+
+                        # Auto-detect: Disable parallel if set_state is in skills (ordering matters)
+                        # User can override with explicit parallel_tools: true/false
+                        if cell.parallel_tools is None:
+                            # Auto-detect based on skills
+                            skill_list = cell.skills if isinstance(cell.skills, list) else []
+                            has_set_state = 'set_state' in skill_list
+                            parallel_enabled = not has_set_state and len(tool_calls) > 1
+                            if not parallel_enabled and has_set_state and len(tool_calls) > 1:
+                                console.print(f"{indent}  [dim yellow]⚠ Parallel disabled (set_state detected in skills)[/dim yellow]")
+                        else:
+                            # Explicit override
+                            parallel_enabled = cell.parallel_tools and len(tool_calls) > 1
+
+                        tool_execution_results = {}  # Maps tool_call_index -> result
+
+                        if parallel_enabled:
+                            console.print(f"{indent}  [dim cyan]⚡ Parallel execution enabled ({len(tool_calls)} tools)[/dim cyan]")
+
+                            def execute_single_tool(idx, tc):
+                                """Execute a single tool and return (index, result)."""
+                                func_name = tc["function"]["name"]
+                                try:
+                                    args = json.loads(tc["function"]["arguments"])
+                                except:
+                                    args = {}
+
+                                # Find tool function
+                                tool_func = tool_map.get(func_name)
+                                if not tool_func:
+                                    tool_func = get_skill(func_name)
+
+                                if not tool_func:
+                                    return (idx, "Tool not found.")
+
+                                # Check cache (thread-safe read)
+                                if self.tool_cache:
+                                    cached = self.tool_cache.get(func_name, args)
+                                    if cached is not None:
+                                        return (idx, cached)
+
+                                # Execute tool
+                                try:
+                                    with perf_timer("tool_execution",
+                                                    session_id=self.session_id,
+                                                    cascade_id=self.config.cascade_id,
+                                                    cell_name=cell.name,
+                                                    metadata={"tool": func_name, "parallel": True}):
+                                        result = tool_func(**args)
+                                    return (idx, result)
+                                except Exception as e:
+                                    return (idx, f"Error: {str(e)}")
+
+                            # Execute all tools in parallel
+                            with ThreadPoolExecutor(max_workers=min(len(tool_calls), 5)) as executor:
+                                futures = [executor.submit(execute_single_tool, i, tc) for i, tc in enumerate(tool_calls)]
+                                for future in as_completed(futures):
+                                    idx, result = future.result()
+                                    tool_execution_results[idx] = result
+
+                        # Process tool calls sequentially (maintains state consistency)
+                        for tc_index, tc in enumerate(tool_calls):
                             # Trace Tool
                             func_name = tc["function"]["name"]
                             tool_trace = turn_trace.create_child("tool", func_name)
@@ -12066,39 +12201,58 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                                 console.print(f"{indent}  {S.RUN} [bold magenta]Dynamic Handoff Triggered:[/bold magenta] {chosen_next_cell}")
                         
                             if tool_func:
-                                 # TOOL CACHING: Check cache before execution
-                                 cached_result = None
-                                 if self.tool_cache:
-                                     cached_result = self.tool_cache.get(func_name, args)
-                                     if cached_result is not None:
-                                         # Cache hit!
-                                         policy = self.tool_cache.config.tools.get(func_name)
-                                         hit_msg = policy.hit_message if policy and policy.hit_message else f"{S.FAST} Cache hit ({func_name})"
-                                         console.print(f"{indent}    [dim green]{hit_msg}[/dim green]")
-                                         result = cached_result
+                                 # Check if we have a pre-executed result from parallel execution
+                                 if tc_index in tool_execution_results:
+                                     result = tool_execution_results[tc_index]
+                                     console.print(f"{indent}    [dim green]⚡ Used parallel result[/dim green]")
 
-                                         # Hook: Tool Result (cached)
-                                         self.hooks.on_tool_result(func_name, cell.name, self.session_id, cached_result)
+                                     # Hook: Tool Result (parallel execution)
+                                     self.hooks.on_tool_result(func_name, cell.name, self.session_id, result)
 
-                                 if cached_result is None:
-                                     # Cache miss or caching disabled - execute normally
-                                     # Set context for tool (e.g. spawn_cascade)
-                                     set_current_trace(tool_trace)
-                                     try:
-                                         # Hook: Tool Call
-                                         self.hooks.on_tool_call(func_name, cell.name, self.session_id, args)
+                                     # Store in cache if not already there
+                                     if self.tool_cache and not isinstance(result, str) or not result.startswith("Error"):
+                                         self.tool_cache.set(func_name, args, result)
+                                 else:
+                                     # Sequential execution (fallback or parallel disabled)
+                                     # TOOL CACHING: Check cache before execution
+                                     cached_result = None
+                                     if self.tool_cache:
+                                         cached_result = self.tool_cache.get(func_name, args)
+                                         if cached_result is not None:
+                                             # Cache hit!
+                                             policy = self.tool_cache.config.tools.get(func_name)
+                                             hit_msg = policy.hit_message if policy and policy.hit_message else f"{S.FAST} Cache hit ({func_name})"
+                                             console.print(f"{indent}    [dim green]{hit_msg}[/dim green]")
+                                             result = cached_result
 
-                                         result = tool_func(**args)
+                                             # Hook: Tool Result (cached)
+                                             self.hooks.on_tool_result(func_name, cell.name, self.session_id, cached_result)
 
-                                         # Hook: Tool Result
-                                         self.hooks.on_tool_result(func_name, cell.name, self.session_id, result)
+                                     if cached_result is None:
+                                         # Cache miss or caching disabled - execute normally
+                                         # Set context for tool (e.g. spawn_cascade)
+                                         set_current_trace(tool_trace)
+                                         try:
+                                             # Hook: Tool Call
+                                             self.hooks.on_tool_call(func_name, cell.name, self.session_id, args)
 
-                                         # TOOL CACHING: Store result after successful execution
-                                         if self.tool_cache:
-                                             self.tool_cache.set(func_name, args, result)
+                                             # PERF: Time tool execution
+                                             with perf_timer("tool_execution",
+                                                             session_id=self.session_id,
+                                                             cascade_id=self.config.cascade_id,
+                                                             cell_name=cell.name,
+                                                             metadata={"tool": func_name, "parallel": False}):
+                                                 result = tool_func(**args)
 
-                                     except Exception as e:
-                                         result = f"Error: {str(e)}"
+                                             # Hook: Tool Result
+                                             self.hooks.on_tool_result(func_name, cell.name, self.session_id, result)
+
+                                             # TOOL CACHING: Store result after successful execution
+                                             if self.tool_cache:
+                                                 self.tool_cache.set(func_name, args, result)
+
+                                         except Exception as e:
+                                             result = f"Error: {str(e)}"
 
                                  console.print(f"{indent}    [green]✔ {func_name}[/green] -> {str(result)[:100]}...")
 

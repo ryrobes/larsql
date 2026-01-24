@@ -668,7 +668,8 @@ def execute_sql():
                 "panel_count": len(panel_results),
                 "total_rows": total_rows,
                 "database": database,
-                "execution_time_ms": execution_time_ms
+                "execution_time_ms": execution_time_ms,
+                "caller_id": caller_id  # For tracking actual costs in unified_logs
             })
 
         # Single query mode (existing behavior)
@@ -698,7 +699,8 @@ def execute_sql():
                 "data": data,
                 "row_count": len(result_df),
                 "database": database,
-                "execution_time_ms": execution_time_ms
+                "execution_time_ms": execution_time_ms,
+                "caller_id": caller_id  # For tracking actual costs in unified_logs
             })
 
         else:  # records (default)
@@ -729,7 +731,8 @@ def execute_sql():
                 "data": data,
                 "row_count": len(result_df),
                 "database": database,
-                "execution_time_ms": execution_time_ms
+                "execution_time_ms": execution_time_ms,
+                "caller_id": caller_id  # For tracking actual costs in unified_logs
             })
 
     except Exception as e:

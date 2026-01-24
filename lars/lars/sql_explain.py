@@ -31,6 +31,9 @@ log = logging.getLogger(__name__)
 # Cache for model pricing (avoid repeated DB queries)
 _model_pricing_cache: Dict[str, Dict[str, float]] = {}
 
+# Cache for model class token profiles (avoid repeated DB queries)
+_token_profile_cache: Dict[str, Dict[str, float]] = {}
+
 
 def _get_default_model() -> str:
     """Get the system default model from config."""
@@ -423,9 +426,35 @@ def explain_semantic_query(
     # Extract LIMIT clause for row estimation (if present)
     estimated_rows = _extract_limit_from_query(query)
 
-    # Analyze for prewarm opportunities (scalar semantic function calls)
+    # Detect LLM aggregate functions BEFORE rewriting
+    # (rewriter changes function names, making detection harder)
+    aggregate_specs = _detect_llm_aggregates(query)
+
+    # Analyze for prewarm opportunities on ORIGINAL query BEFORE rewriting
+    # This allows prewarm_analyzer to generate proper distinct queries with correct table context
     from lars.sql_tools.prewarm_analyzer import analyze_query_for_prewarm
-    prewarm_specs = analyze_query_for_prewarm(query)
+    prewarm_specs_original = analyze_query_for_prewarm(query)
+
+    # Rewrite query to convert infix operators to function calls
+    # This ensures fallback detection can find infix operators that prewarm_analyzer might miss
+    try:
+        from lars.sql_tools.unified_operator_rewriter import rewrite_all_operators
+        query_for_analysis = rewrite_all_operators(query)
+        log.debug(f"[explain] Rewrote query for analysis (infix → function calls)")
+    except Exception as e:
+        log.warning(f"[explain] Query rewriting failed, using original: {e}")
+        query_for_analysis = query
+
+    # Also analyze prewarm on rewritten query (catches what original analysis missed due to infix)
+    prewarm_specs_rewritten = analyze_query_for_prewarm(query_for_analysis)
+
+    # Merge both sets of prewarm specs, preferring original (has better context)
+    prewarm_specs = prewarm_specs_original.copy()
+    # Add rewritten specs that aren't in original (by function name)
+    original_funcs = {spec['function'] for spec in prewarm_specs_original}
+    for spec in prewarm_specs_rewritten:
+        if spec['function'] not in original_funcs:
+            prewarm_specs.append(spec)
 
     # Analyze each scalar semantic operation
     for spec in prewarm_specs:
@@ -441,11 +470,13 @@ def explain_semantic_query(
 
     # Fallback: Detect scalar semantic functions via regex (catches what sqlglot misses)
     try:
-        scalar_funcs = _detect_scalar_semantic_functions_fallback(query)
+        scalar_funcs = _detect_scalar_semantic_functions_fallback(query_for_analysis)
         existing_funcs = {op.function.lower() for op in result.operations}
         for scalar_spec in scalar_funcs:
             if scalar_spec['function'].lower() not in existing_funcs:
-                operation = _create_scalar_operation_fallback(scalar_spec)
+                # Enhance fallback spec with query context for distinct query generation
+                scalar_spec['full_query'] = query_for_analysis
+                operation = _create_scalar_operation_fallback(scalar_spec, duckdb_conn, execute_distinct)
                 # Adjust LLM calls based on LIMIT if available
                 if estimated_rows:
                     operation = _adjust_operation_row_count(operation, estimated_rows)
@@ -453,12 +484,11 @@ def explain_semantic_query(
     except Exception as e:
         log.debug(f"[explain] Failed to detect scalar functions (fallback): {e}")
 
-    # Analyze LLM aggregate functions (SUMMARIZE, TOPICS, SENTIMENT_AGG, etc.)
-    aggregate_specs = _detect_llm_aggregates(query)
+    # Analyze LLM aggregate functions (already detected above before rewriting)
     for agg_spec in aggregate_specs:
         agg_operation = _analyze_aggregate_operation(
             spec=agg_spec,
-            query=query,
+            query=query_for_analysis,
             duckdb_conn=duckdb_conn,
         )
         result.aggregates.append(agg_operation)
@@ -642,10 +672,29 @@ def explain_pipeline_query(
     # Extract LIMIT clause for row estimation (from base SQL)
     estimated_rows = _extract_limit_from_query(pipeline.base_sql)
 
+    # Detect LLM aggregate functions BEFORE rewriting
+    # (rewriter changes function names, making detection harder)
+    try:
+        aggregate_specs_pipeline = _detect_llm_aggregates(pipeline.base_sql)
+    except Exception as e:
+        log.debug(f"[explain] Failed to detect aggregates: {e}")
+        aggregate_specs_pipeline = []
+
+    # Rewrite base SQL to convert infix operators to function calls
+    # This ensures detection functions can find all semantic operations
+    # (e.g., "observed CONSENSUS" → "lars_cascade_udf('semantic_consensus', observed)")
+    try:
+        from lars.sql_tools.unified_operator_rewriter import rewrite_all_operators
+        base_sql_for_analysis = rewrite_all_operators(pipeline.base_sql)
+        log.debug(f"[explain] Rewrote pipeline base SQL for analysis (infix → function calls)")
+    except Exception as e:
+        log.warning(f"[explain] Base SQL rewriting failed, using original: {e}")
+        base_sql_for_analysis = pipeline.base_sql
+
     # 1. Analyze base SQL for semantic operations (scalar functions)
     try:
         from lars.sql_tools.prewarm_analyzer import analyze_query_for_prewarm
-        prewarm_specs = analyze_query_for_prewarm(pipeline.base_sql)
+        prewarm_specs = analyze_query_for_prewarm(base_sql_for_analysis)
 
         for spec in prewarm_specs:
             operation = _analyze_semantic_operation(spec, duckdb_conn, execute_distinct)
@@ -658,7 +707,7 @@ def explain_pipeline_query(
 
     # 1b. Detect LATERAL semantic table functions (e.g., LATERAL triples_rows(...))
     try:
-        lateral_funcs = _detect_lateral_semantic_functions(pipeline.base_sql)
+        lateral_funcs = _detect_lateral_semantic_functions(base_sql_for_analysis)
         for lateral_spec in lateral_funcs:
             operation = _create_lateral_operation(lateral_spec)
             # Adjust LLM calls based on LIMIT if available
@@ -670,12 +719,14 @@ def explain_pipeline_query(
 
     # 1c. Fallback: Detect scalar semantic functions via regex (catches what sqlglot misses)
     try:
-        scalar_funcs = _detect_scalar_semantic_functions_fallback(pipeline.base_sql)
+        scalar_funcs = _detect_scalar_semantic_functions_fallback(base_sql_for_analysis)
         # Only add functions not already detected
         existing_funcs = {op.function.lower().replace('lateral ', '') for op in result.operations}
         for scalar_spec in scalar_funcs:
             if scalar_spec['function'].lower() not in existing_funcs:
-                operation = _create_scalar_operation_fallback(scalar_spec)
+                # Enhance spec with query context
+                scalar_spec['full_query'] = base_sql_for_analysis
+                operation = _create_scalar_operation_fallback(scalar_spec, duckdb_conn, execute_distinct)
                 # Adjust LLM calls based on LIMIT if available
                 if estimated_rows:
                     operation = _adjust_operation_row_count(operation, estimated_rows)
@@ -683,14 +734,13 @@ def explain_pipeline_query(
     except Exception as e:
         log.debug(f"[explain] Failed to detect scalar functions (fallback): {e}")
 
-    # 2. Detect aggregates in base SQL
-    try:
-        aggregate_specs = _detect_llm_aggregates(pipeline.base_sql)
-        for agg_spec in aggregate_specs:
+    # 2. Analyze aggregates (already detected above before rewriting)
+    for agg_spec in aggregate_specs_pipeline:
+        try:
             agg_operation = _analyze_aggregate_operation(agg_spec, pipeline.base_sql, duckdb_conn)
             result.aggregates.append(agg_operation)
-    except Exception as e:
-        log.debug(f"[explain] Failed to detect aggregates: {e}")
+        except Exception as e:
+            log.debug(f"[explain] Failed to analyze aggregate {agg_spec.get('function', 'unknown')}: {e}")
 
     # 3. Analyze each pipeline stage
     for idx, stage in enumerate(pipeline.stages):
@@ -1104,12 +1154,79 @@ def _detect_scalar_semantic_functions_fallback(sql: str) -> List[Dict[str, Any]]
     return results
 
 
-def _create_scalar_operation_fallback(spec: Dict[str, Any]) -> SemanticOperation:
+def _strip_semantic_filters_from_query(query: str) -> str:
+    """
+    Strip WHERE/HAVING clauses that contain semantic functions from a query.
+
+    This is critical for EXPLAIN - we need to count distinct values WITHOUT
+    executing expensive cascade operations.
+
+    Example:
+        SELECT DISTINCT col FROM t WHERE semantic_matches(col, 'x') LIMIT 500
+        → SELECT DISTINCT col FROM t LIMIT 500
+
+    Args:
+        query: SQL query possibly containing semantic functions in WHERE
+
+    Returns:
+        Query with semantic filters removed
+    """
+    import re
+
+    # Check if query has WHERE clause with semantic functions
+    if not re.search(r'\bWHERE\b', query, re.IGNORECASE):
+        return query
+
+    # Get list of semantic function names that would trigger cascade execution
+    semantic_patterns = [
+        r'\bsemantic_\w+\s*\(',
+        r'\blars_cascade_udf\s*\(',
+        r'\bllm_\w+\s*\(',
+    ]
+
+    # Check if WHERE clause contains any semantic functions
+    where_match = re.search(r'\bWHERE\s+(.+?)(?:\s+LIMIT|\s+ORDER|\s+GROUP|\s*$)', query, re.IGNORECASE | re.DOTALL)
+
+    if where_match:
+        where_clause = where_match.group(1)
+
+        # Check if WHERE contains semantic functions
+        has_semantic = any(re.search(pattern, where_clause, re.IGNORECASE) for pattern in semantic_patterns)
+
+        if has_semantic:
+            # Remove the entire WHERE clause to avoid cascade execution
+            # Keep everything before WHERE and everything after (LIMIT, ORDER BY, etc.)
+            before_where = query[:where_match.start()]
+            after_where_match = re.search(r'\b(LIMIT|ORDER\s+BY|GROUP\s+BY)\b', query[where_match.end():], re.IGNORECASE)
+
+            if after_where_match:
+                # Preserve LIMIT/ORDER/GROUP after WHERE
+                after_clause = query[where_match.end() + after_where_match.start():]
+                stripped = before_where + ' ' + after_clause
+            else:
+                # Just remove WHERE entirely
+                stripped = before_where
+
+            log.debug(f"[explain] Stripped semantic WHERE clause to avoid cascade execution during EXPLAIN")
+            return stripped.strip()
+
+    return query
+
+
+def _create_scalar_operation_fallback(
+    spec: Dict[str, Any],
+    duckdb_conn=None,
+    execute_distinct: bool = True
+) -> SemanticOperation:
     """
     Create a SemanticOperation for a scalar function detected via fallback.
 
+    Now enhanced to actually analyze the function properly with cache checking!
+
     Args:
         spec: Dict from _detect_scalar_semantic_functions_fallback
+        duckdb_conn: DuckDB connection for executing distinct queries
+        execute_distinct: Whether to execute distinct queries
 
     Returns:
         SemanticOperation describing the scalar function
@@ -1117,10 +1234,59 @@ def _create_scalar_operation_fallback(spec: Dict[str, Any]) -> SemanticOperation
     function_name = spec['function']
     cascade_path = spec['cascade_path']
     args_str = spec.get('args_str', '')
+    full_query = spec.get('full_query', '')
 
     # Load cascade info
     cascade_info = _load_cascade_info(cascade_path)
 
+    # Try to generate a proper distinct query by extracting table context from full query
+    distinct_query = ""
+    arg_sql = ""
+
+    if args_str and full_query:
+        # Extract the first argument (usually the column)
+        first_arg = args_str.split(',')[0].strip()
+
+        # Try to extract table name from FROM clause (including aliases)
+        import re
+        # Pattern: FROM table_name [AS] alias
+        from_match = re.search(r'\bFROM\s+([\w.]+)(?:\s+(?:AS\s+)?(\w+))?', full_query, re.IGNORECASE)
+
+        if from_match and first_arg:
+            table_name = from_match.group(1)
+            table_alias = from_match.group(2)  # May be None
+
+            # Strip table alias prefix from column name if present
+            # e.g., "d.markdown_body" -> "markdown_body"
+            column_name = first_arg
+            if table_alias and column_name.startswith(f"{table_alias}."):
+                column_name = column_name[len(table_alias)+1:]  # Remove "d."
+
+            # Build a proper distinct query (use table name, not alias)
+            distinct_query = f"SELECT DISTINCT {column_name} FROM {table_name}"
+
+            # Check for LIMIT in original query
+            limit_match = re.search(r'\bLIMIT\s+(\d+)', full_query, re.IGNORECASE)
+            if limit_match:
+                distinct_query += f" LIMIT {limit_match.group(1)}"
+            else:
+                distinct_query += " LIMIT 500"  # Default limit
+
+            arg_sql = column_name  # Use column without alias prefix
+
+    # If we have a valid distinct query, analyze it properly!
+    if distinct_query and arg_sql and duckdb_conn:
+        # Build a proper spec for full analysis
+        analysis_spec = {
+            'function': function_name,
+            'cascade': cascade_path,
+            'distinct_query': distinct_query,
+            'arg_sql': arg_sql,
+        }
+        # Use the full analysis path
+        return _analyze_semantic_operation(analysis_spec, duckdb_conn, execute_distinct)
+
+    # Fallback if we couldn't build a good distinct query
     return SemanticOperation(
         function=function_name,
         cascade_path=cascade_path,
@@ -1128,16 +1294,16 @@ def _create_scalar_operation_fallback(spec: Dict[str, Any]) -> SemanticOperation
         cells=cascade_info['cells'],
         takes=cascade_info['takes'],
         arg_expression=args_str,
-        distinct_query="",  # Unknown in fallback mode
-        distinct_count=0,  # Unknown
+        distinct_query=distinct_query,
+        distinct_count=0,
         cache_hits=0,
         cache_total=0,
         cache_hit_rate=0.0,
         historical_cost_per_call=0.0,
         historical_cost_stddev=0.0,
         historical_runs=0,
-        estimated_llm_calls=1,  # At least 1 call
-        estimated_cost=0.0,  # Unknown without more context
+        estimated_llm_calls=1,
+        estimated_cost=0.0,
         prewarm_eligible=False,
         prewarm_reason="Detected via fallback (limited analysis)",
     )
@@ -1168,23 +1334,67 @@ def _analyze_semantic_operation(
     cascade_info = _load_cascade_info(cascade_path)
 
     # Execute distinct query to get actual count
+    # IMPORTANT: Strip semantic functions from distinct query to avoid executing cascades during EXPLAIN!
     distinct_count = 0
-    if execute_distinct and duckdb_conn:
+    if execute_distinct and duckdb_conn and distinct_query:
         try:
+            # Strip WHERE clauses that contain semantic functions
+            # This prevents cascade execution during EXPLAIN
+            distinct_query_safe = _strip_semantic_filters_from_query(distinct_query)
+
             # Wrap in COUNT to get just the number
-            count_query = f"SELECT COUNT(*) FROM ({distinct_query}) AS _distinct_vals"
+            count_query = f"SELECT COUNT(*) FROM ({distinct_query_safe}) AS _distinct_vals"
             distinct_count = duckdb_conn.execute(count_query).fetchone()[0]
         except Exception as e:
             log.warning(f"[explain] Could not execute distinct query for {function_name}: {e}")
             distinct_count = 100  # Conservative estimate
 
     # Check cache for this function
-    cache_hits, cache_total = _check_cache_for_function(
-        function_name=function_name,
-        distinct_query=distinct_query,
-        duckdb_conn=duckdb_conn,
-        sample_size=min(distinct_count, 100)  # Sample up to 100 values
+    # IMPORTANT: Extract function args BEFORE stripping WHERE clause!
+    # We need the full args (column + criterion) to match cache entries
+    cache_sample_size = min(max(distinct_count, 10), 100) if distinct_count > 0 else 10
+
+    # Extract static args (like criterion) from the original distinct query
+    function_args_template = _extract_function_args_from_query(distinct_query, function_name) if distinct_query else {}
+
+    # Check if this function has complex/nested args that can't be predicted without execution
+    # CASCADE(), JSON_OBJECT(), nested functions, computed expressions, etc.
+    # IMPORTANT: Ignore LARS rewriting artifacts (__LARS_SOURCE__, ROW_NUMBER injection)
+    is_lars_rewriting_artifact = '__LARS_SOURCE:' in arg_sql and 'ROW_NUMBER()' in arg_sql.upper()
+
+    if is_lars_rewriting_artifact:
+        # This is just our rewriting artifact for row tracking - underlying query is simple
+        # Extract the actual arg before the '__LARS_SOURCE:' injection
+        first_arg = arg_sql.split(',')[0].strip() if ',' in arg_sql else arg_sql
+        check_arg = first_arg  # Check complexity on the actual column arg
+    else:
+        check_arg = arg_sql
+
+    has_complex_args = (
+        'CASCADE(' in check_arg.upper() or
+        'JSON_OBJECT(' in check_arg.upper() or
+        'JSON_ARRAY(' in check_arg.upper() or
+        '||' in check_arg or  # String concatenation (but not in LARS injection)
+        'SELECT' in check_arg.upper() or  # Subquery
+        check_arg.count('(') > 1  # Nested function calls
     )
+
+    # Now strip WHERE to get safe query for sampling
+    distinct_query_for_cache = _strip_semantic_filters_from_query(distinct_query) if distinct_query else ""
+
+    # Only check cache for simple arg patterns
+    # Complex/nested args require execution to predict, which defeats the purpose of EXPLAIN
+    if has_complex_args:
+        log.debug(f"[explain] Skipping cache check for {function_name} - complex args: {arg_sql[:100]}")
+        cache_hits, cache_total = 0, 0  # Will show "Cache not checked"
+    else:
+        cache_hits, cache_total = _check_cache_for_function(
+            function_name=function_name,
+            distinct_query=distinct_query_for_cache,
+            duckdb_conn=duckdb_conn,
+            sample_size=cache_sample_size,
+            function_args_template=function_args_template  # Pass the extracted args!
+        )
 
     cache_hit_rate = cache_hits / cache_total if cache_total > 0 else 0.0
 
@@ -1698,13 +1908,45 @@ def _estimate_aggregate_cost(model: str, avg_group_size: int) -> float:
 
     Aggregates process all rows in a group, so cost scales with group size.
     Uses actual pricing from openrouter_models table.
+
+    Token estimation strategy (waterfall):
+    1. Try to use actual token averages from historical executions
+    2. Fall back to model-class defaults if insufficient data
     """
     pricing = _get_model_pricing(model)
 
     # Estimate tokens: prompt overhead + ~50 tokens per row in group + output
     prompt_overhead = 200
     tokens_per_row = 50
-    output_tokens = 500  # Aggregates produce longer outputs
+
+    # TIER 1: Try to get actual token averages from historical data
+    historical_profile = _get_model_class_token_profile(model)
+
+    if historical_profile:
+        # Use actual average output tokens from past executions!
+        output_tokens = int(historical_profile['avg_output'])
+        log.debug(f"[cost] Using historical aggregate profile: {output_tokens} output tokens "
+                  f"(from {historical_profile['sample_size']} samples)")
+
+    else:
+        # TIER 2: Fall back to model-class defaults
+        model_lower = model.lower()
+
+        # IMAGE GENERATION aggregates - very high output
+        if any(keyword in model_lower for keyword in [
+            'dall-e', 'dalle', 'imagen', 'flux', 'stable-diffusion', 'midjourney'
+        ]):
+            output_tokens = 2000  # Image generation in aggregates
+
+        # VISION aggregates - moderate output
+        elif any(keyword in model_lower for keyword in [
+            'vision', 'gpt-4o', 'claude-3', 'gemini-pro-vision'
+        ]):
+            output_tokens = 600
+
+        # TEXT aggregates - default (summaries, themes, etc.)
+        else:
+            output_tokens = 500  # Aggregates produce longer outputs
 
     input_tokens = prompt_overhead + (tokens_per_row * min(avg_group_size, 100))  # Cap at 100 rows sampled
     cost = _estimate_cost_from_pricing(pricing, input_tokens, output_tokens)
@@ -1712,25 +1954,127 @@ def _estimate_aggregate_cost(model: str, avg_group_size: int) -> float:
     return cost
 
 
+def _extract_function_args_from_query(query: str, function_name: str) -> Dict[str, Any]:
+    """
+    Extract the static arguments from a function call in a query.
+
+    Example:
+        Query: SELECT DISTINCT col FROM t WHERE semantic_matches(col, 'common name')
+        Function: semantic_matches
+        Returns: {'criterion': 'common name'}
+
+    This helps build complete args dicts for cache checking.
+    """
+    import re
+
+    # Find function call pattern: function_name(arg1, arg2, ...)
+    pattern = rf'\b{re.escape(function_name)}\s*\((.*?)\)'
+    match = re.search(pattern, query, re.IGNORECASE)
+
+    if not match:
+        return {}
+
+    # Extract arguments string
+    args_str = match.group(1)
+
+    # Parse arguments (simple approach: split by comma, extract string literals)
+    args = {}
+
+    # Split by comma (naive - doesn't handle nested parens perfectly but good enough)
+    parts = args_str.split(',')
+
+    if len(parts) >= 2:
+        # Second argument is typically the criterion for semantic functions
+        criterion_part = parts[1].strip()
+
+        # Extract string literal value
+        if criterion_part.startswith("'") or criterion_part.startswith('"'):
+            quote = criterion_part[0]
+            # Find closing quote
+            end = criterion_part.find(quote, 1)
+            if end > 0:
+                criterion_value = criterion_part[1:end]
+                # Strip any __LARS_SOURCE__ prefixes
+                criterion_value = re.sub(r'__LARS_[A-Z_]+:\{.*?\}__\s*', '', criterion_value)
+                args['criterion'] = criterion_value
+
+    return args
+
+
+def _strip_cache_key_prefixes(args: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Strip __LARS_SOURCE__, __LARS_TAKES__, and other prefixes from cache key args.
+
+    This allows matching cache entries that have execution context with
+    plain values from EXPLAIN analysis.
+
+    Args:
+        args: Argument dict possibly containing prefixed strings
+
+    Returns:
+        Args dict with prefixes stripped
+    """
+    import re
+
+    stripped = {}
+    prefix_pattern = r'__LARS_[A-Z_]+:\{.*?\}__\s*'
+
+    for key, value in args.items():
+        if isinstance(value, str):
+            # Strip all __LARS_*:...__ prefixes
+            cleaned = re.sub(prefix_pattern, '', value)
+            stripped[key] = cleaned
+        else:
+            stripped[key] = value
+
+    return stripped
+
+
+def _args_match_ignoring_order(args1: Dict[str, Any], args2: Dict[str, Any]) -> bool:
+    """
+    Check if two argument dicts match, ignoring key order.
+
+    Both dicts should already have prefixes stripped.
+    """
+    if set(args1.keys()) != set(args2.keys()):
+        return False
+
+    for key in args1.keys():
+        val1 = str(args1[key]).strip()
+        val2 = str(args2[key]).strip()
+        if val1 != val2:
+            return False
+
+    return True
+
+
 def _check_cache_for_function(
     function_name: str,
     distinct_query: str,
     duckdb_conn,
-    sample_size: int = 100
+    sample_size: int = 100,
+    function_args_template: Optional[Dict[str, Any]] = None
 ) -> Tuple[int, int]:
     """
     Check cache hit rate for a function by sampling distinct values.
 
+    This queries the semantic_sql_cache table directly and strips __LARS_SOURCE__
+    and other prefixes to match execution cache keys.
+
     Args:
         function_name: The semantic function name
-        distinct_query: Query to get distinct values
+        distinct_query: Query to get distinct values (with WHERE stripped)
         duckdb_conn: DuckDB connection
         sample_size: How many values to sample
+        function_args_template: Static args extracted from function call (e.g., criterion)
 
     Returns:
         Tuple of (hits, total_checked)
     """
+    if function_args_template is None:
+        function_args_template = {}
     if sample_size <= 0:
+        log.debug(f"[explain] Cache check skipped for {function_name}: sample_size={sample_size}")
         return 0, 0
 
     try:
@@ -1739,27 +2083,77 @@ def _check_cache_for_function(
         sample_df = duckdb_conn.execute(sample_query).fetchdf()
 
         if len(sample_df) == 0:
+            log.debug(f"[explain] Cache check for {function_name}: distinct query returned 0 rows")
             return 0, 0
 
-        # Check cache for each value
-        from lars.sql_tools.cache_adapter import get_cache
-        cache = get_cache()
+        # Query the cache table directly for this function
+        # This is more reliable than using cache.get() with prefix mismatches
+        from lars.db_adapter import get_db
+        db = get_db()
 
+        # Get all cached args for this function
+        cached_entries = db.query("""
+            SELECT args_json, args_preview
+            FROM semantic_sql_cache
+            WHERE function_name = %(function_name)s
+            LIMIT 1000
+        """, {'function_name': function_name})
+
+        if not cached_entries:
+            log.debug(f"[explain] No cache entries found for {function_name}")
+            return 0, len(sample_df)
+
+        log.debug(f"[explain] Found {len(cached_entries)} cache entries for {function_name}")
+
+        # Parse cached args and strip prefixes for matching
+        import json
+        cached_values_stripped = []
+        for entry in cached_entries:
+            try:
+                args = json.loads(entry['args_json'])
+                # Strip __LARS_SOURCE__, __LARS_TAKES__, etc. from all string values
+                stripped_args = _strip_cache_key_prefixes(args)
+                cached_values_stripped.append(stripped_args)
+            except Exception:
+                continue
+
+        # Use the function args template passed in (extracted before WHERE was stripped)
+        # This contains static args like criterion that don't vary per row
+
+        # Check each sampled value against cache
         hits = 0
         total = len(sample_df)
 
-        for _, row in sample_df.iterrows():
-            # Build args dict from row (first column is typically the value)
-            if len(row) == 1:
-                args = {'text': str(row.iloc[0])}
+        log.debug(f"[explain] Checking {total} sampled values against {len(cached_values_stripped)} cached entries")
+        log.debug(f"[explain] Function args template: {function_args_template}")
+
+        for idx, row in enumerate(sample_df.iterrows()):
+            _, row_data = row
+            # Build complete args dict including both column value and other arguments
+            if len(row_data) == 1:
+                column_value = str(row_data.iloc[0])
+                # Combine column value with template args
+                sample_args = {'text': column_value}
+                # Add other args from the function call (e.g., criterion)
+                if function_args_template:
+                    sample_args.update(function_args_template)
             else:
-                args = row.to_dict()
+                sample_args = {k: str(v) for k, v in row_data.to_dict().items()}
 
-            # Check cache (don't track hit)
-            found, _, _ = cache.get(function_name, args, track_hit=False)
-            if found:
-                hits += 1
+            # Check if this value is in cached entries (ignoring prefixes)
+            matched = False
+            for cached in cached_values_stripped:
+                if _args_match_ignoring_order(sample_args, cached):
+                    hits += 1
+                    matched = True
+                    break
 
+            if idx < 3:  # Log first 3 for debugging
+                status = "HIT" if matched else "MISS"
+                log.debug(f"[explain]   Sample {idx+1}: {status} - {sample_args}")
+
+        hit_rate = (hits/total*100) if total > 0 else 0
+        log.info(f"[explain] Cache check for {function_name}: {hits}/{total} hits ({hit_rate:.0f}%)")
         return hits, total
 
     except Exception as e:
@@ -1964,17 +2358,171 @@ def _load_cascade_info(cascade_path: str) -> Dict[str, Any]:
     }
 
 
+def _get_model_class_token_profile(model: str) -> Optional[Dict[str, float]]:
+    """
+    Get actual average token usage for this model class from historical data.
+
+    Queries unified_logs to find real token averages from past executions.
+    Results are cached to avoid repeated queries.
+
+    Returns:
+        Dict with avg_input, avg_output, sample_size or None if insufficient data
+    """
+    global _token_profile_cache
+
+    # Determine model class first for cache key
+    model_lower = model.lower()
+
+    # Determine model class
+    if any(keyword in model_lower for keyword in [
+        'dall-e', 'dalle', 'imagen', 'flux', 'stable-diffusion', 'midjourney', 'firefly', 'recraft'
+    ]):
+        model_class = 'IMAGE_GEN'
+        # Match any image generation model (escape % for SQL LIKE)
+        patterns = ['dall-e', 'dalle', 'imagen', 'flux', 'stable-diffusion', 'midjourney', 'firefly', 'recraft']
+
+    elif any(keyword in model_lower for keyword in [
+        'vision', 'gpt-4o', 'gpt-4-turbo', 'claude-3', 'gemini-pro-vision', 'gemini-1.5', 'gemini-2.0'
+    ]):
+        model_class = 'VISION'
+        patterns = ['vision', 'gpt-4o', 'gpt-4-turbo', 'claude-3', 'gemini-pro-vision', 'gemini-1.5', 'gemini-2.0']
+
+    elif any(keyword in model_lower for keyword in [
+        'tts', 'whisper', 'elevenlabs', 'audio', 'speech'
+    ]):
+        model_class = 'AUDIO_GEN'
+        patterns = ['tts', 'whisper', 'elevenlabs', 'audio', 'speech']
+
+    else:
+        # TEXT - use empty patterns (will query all non-specialized)
+        model_class = 'TEXT'
+        patterns = []
+
+    # Check cache first
+    if model_class in _token_profile_cache:
+        return _token_profile_cache[model_class]
+
+    try:
+        from lars.db_adapter import get_db
+        db = get_db()
+
+        # Build WHERE clause based on patterns
+        if patterns:
+            # Build OR conditions for pattern matching
+            conditions = " OR ".join([f"positionCaseInsensitive(model, '{p}') > 0" for p in patterns])
+            where_clause = f"({conditions})"
+        else:
+            # TEXT class - exclude specialized models
+            exclusions = ['dall-e', 'dalle', 'imagen', 'flux', 'stable-diffusion',
+                         'vision', 'gpt-4o', 'whisper', 'tts', 'elevenlabs']
+            conditions = " AND ".join([f"positionCaseInsensitive(model, '{ex}') = 0" for ex in exclusions])
+            where_clause = conditions
+
+        # Query actual token averages from unified_logs
+        # Note: Using positionCaseInsensitive instead of LIKE to avoid % character issues
+        query = f"""
+            SELECT
+                AVG(tokens_in) as avg_input,
+                AVG(tokens_out) as avg_output,
+                stddevPop(tokens_out) as stddev_output,
+                COUNT(*) as sample_size
+            FROM unified_logs
+            WHERE {where_clause}
+              AND tokens_in IS NOT NULL
+              AND tokens_out IS NOT NULL
+              AND tokens_in > 0
+              AND tokens_out > 0
+              AND cost > 0
+            HAVING sample_size >= 10
+        """
+
+        rows = db.query(query)
+
+        if rows and len(rows) > 0:
+            row = rows[0]
+            sample_size = row.get('sample_size', 0)
+            if sample_size >= 10:
+                profile = {
+                    'avg_input': float(row['avg_input'] or 0),
+                    'avg_output': float(row['avg_output'] or 0),
+                    'stddev_output': float(row['stddev_output'] or 0),
+                    'sample_size': int(sample_size),
+                    'model_class': model_class,
+                }
+                # Cache the result
+                _token_profile_cache[model_class] = profile
+                log.info(f"[cost] Loaded token profile for {model_class} from {sample_size} historical executions: "
+                         f"avg_in={profile['avg_input']:.0f}, avg_out={profile['avg_output']:.0f}")
+                return profile
+
+        log.debug(f"[cost] Insufficient historical data for {model_class} (need ≥10 samples)")
+        return None
+
+    except Exception as e:
+        log.debug(f"[cost] Could not load token profile for {model}: {e}")
+        return None
+
+
 def _estimate_cost_per_row(model: str, cells: List[str], takes: int) -> float:
     """
     Estimate cost per row based on model pricing from openrouter_models table.
 
     Uses _get_model_pricing() which queries ClickHouse and caches results.
+
+    Token estimation strategy (waterfall):
+    1. Try to use actual token averages from historical executions (unified_logs)
+    2. Fall back to model-class defaults if insufficient historical data
+
+    This learns from YOUR actual usage patterns!
     """
     pricing = _get_model_pricing(model)
 
-    # Rough estimate: 500 prompt tokens, 200 completion tokens per cell
-    prompt_tokens = 500
-    completion_tokens = 200
+    # TIER 1: Try to get actual token averages from historical data
+    historical_profile = _get_model_class_token_profile(model)
+
+    if historical_profile:
+        # Use ACTUAL averages from past executions! 🎯
+        prompt_tokens = int(historical_profile['avg_input'])
+        completion_tokens = int(historical_profile['avg_output'])
+        log.info(f"[cost] Using historical token profile for {model}: "
+                 f"{prompt_tokens} in, {completion_tokens} out "
+                 f"(from {historical_profile['sample_size']} executions)")
+
+    else:
+        # TIER 2: Fall back to model-class defaults
+        model_lower = model.lower()
+
+        # IMAGE GENERATION - Very high output tokens (images encoded as tokens)
+        if any(keyword in model_lower for keyword in [
+            'dall-e', 'dalle', 'imagen', 'stable-diffusion', 'flux',
+            'midjourney', 'firefly', 'imagen', 'recraft'
+        ]):
+            prompt_tokens = 600       # Prompt + API overhead
+            completion_tokens = 2000  # Images use ~1500-3000 tokens!
+            log.debug(f"[cost] Using IMAGE_GEN fallback profile for {model}")
+
+        # VISION MODELS - Higher input (process images), moderate output
+        elif any(keyword in model_lower for keyword in [
+            'vision', 'gpt-4o', 'gpt-4-turbo', 'claude-3', 'claude-3.5',
+            'gemini-pro-vision', 'gemini-1.5', 'gemini-2.0'
+        ]):
+            prompt_tokens = 800   # Often includes image tokens in input
+            completion_tokens = 300
+            log.debug(f"[cost] Using VISION fallback profile for {model}")
+
+        # AUDIO GENERATION - Very high output tokens
+        elif any(keyword in model_lower for keyword in [
+            'tts', 'whisper', 'elevenlabs', 'audio', 'speech'
+        ]):
+            prompt_tokens = 400
+            completion_tokens = 2500  # Audio tokens
+            log.debug(f"[cost] Using AUDIO_GEN fallback profile for {model}")
+
+        # TEXT MODELS - Generic estimate (works well for most cases)
+        else:
+            prompt_tokens = 500
+            completion_tokens = 200
+            log.debug(f"[cost] Using TEXT fallback profile for {model}")
 
     cost_per_cell = _estimate_cost_from_pricing(pricing, prompt_tokens, completion_tokens)
     return cost_per_cell * len(cells) * takes
@@ -2013,6 +2561,14 @@ def _estimate_map_cache_hit_rate(
 def _generate_optimization_hints(result: ExplainResult) -> List[str]:
     """Generate optimization hints based on analysis."""
     hints = []
+
+    # Add cache estimation caveat if any operations have cache data
+    has_cache_data = any(op.cache_hit_rate > 0 for op in result.operations)
+    if has_cache_data:
+        hints.append(
+            "[INFO] Cache hit estimates are conservative - actual execution may have higher "
+            "hit rates due to row-level cache keys and dynamic context"
+        )
 
     # Check for prewarm opportunities
     prewarm_takes = [op for op in result.operations if op.prewarm_eligible]
@@ -2091,7 +2647,23 @@ def format_explain_result(result: ExplainResult) -> str:
             lines.append(f"{inner_prefix}├─ Model: {op.model}")
             lines.append(f"{inner_prefix}├─ Cells: {len(op.cells)} ({', '.join(op.cells[:3])}{'...' if len(op.cells) > 3 else ''})")
             lines.append(f"{inner_prefix}├─ Distinct Values: {op.distinct_count:,}")
-            lines.append(f"{inner_prefix}├─ Cache Status: {op.cache_hits:,}/{op.cache_total:,} = {op.cache_hit_rate:.0%} hit rate")
+
+            # Show cache status with caveat about estimation accuracy
+            if op.cache_total > 0:
+                cache_note = " (estimated - may be higher in execution)" if op.cache_hit_rate > 0 else ""
+                # Check if this looks like a complex arg pattern (nested functions, etc.)
+                is_complex = (
+                    'CASCADE(' in op.arg_expression.upper() or
+                    'JSON_OBJECT(' in op.arg_expression.upper() or
+                    '||' in op.arg_expression
+                )
+                if is_complex and op.cache_hit_rate == 0:
+                    cache_note = " (complex args - actual hit rate likely higher at execution)"
+                lines.append(f"{inner_prefix}├─ Cache Status: {op.cache_hits:,}/{op.cache_total:,} = {op.cache_hit_rate:.0%} hit rate{cache_note}")
+            elif op.distinct_count == 0:
+                lines.append(f"{inner_prefix}├─ Cache Status: Not checked (distinct values unknown)")
+            else:
+                lines.append(f"{inner_prefix}├─ Cache Status: Not checked")
 
             if op.historical_runs > 0:
                 lines.append(f"{inner_prefix}├─ Historical Cost: ${op.historical_cost_per_call:.6f}/call (±${op.historical_cost_stddev:.6f}, n={op.historical_runs})")

@@ -528,6 +528,20 @@
   color: #a78bfa;
 }
 
+.spec-yaml-version-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  margin-left: 8px;
+  background: rgba(0, 229, 255, 0.15);
+  border: 1px solid #00e5ff;
+  border-radius: 3px;
+  color: #00e5ff;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: 'Google Sans Code', monospace;
+  letter-spacing: 0.5px;
+}
+
 .spec-yaml-modal-close {
   display: flex;
   align-items: center;

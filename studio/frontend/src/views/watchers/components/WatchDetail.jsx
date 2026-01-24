@@ -327,7 +327,7 @@ const WatchDetail = ({
                         )}
                         {exec.cascade_session_id && !cascadeId && (
                           <span className="watch-detail-execution-detail">
-                            <Icon icon="mdi:file-tree" width={12} />
+                            <Icon icon="si:flow-cascade-line" width={12} />
                             {exec.cascade_session_id.substring(0, 8)}...
                           </span>
                         )}

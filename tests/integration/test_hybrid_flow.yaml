@@ -38,6 +38,7 @@ cells:
       - "analysis_done" = "true"
 
       Then respond with: "Analysis complete for {{ input.category }}."
+    parallel_tools: false
     skills:
       - set_state
     rules:
@@ -71,6 +72,7 @@ cells:
       Use set_state to set "flow_complete" to "true".
 
       Then respond: "Hybrid flow complete."
+    parallel_tools: false
     skills:
       - set_state
     rules:

@@ -1,5 +1,7 @@
 import os
 import json
+import hashlib
+from functools import lru_cache
 from jinja2 import Environment, FileSystemLoader, BaseLoader
 from typing import Any, Dict
 
@@ -232,12 +234,18 @@ class PromptEngine:
         self.env.filters['totoon'] = _to_toon   # Alias for convenience
         self.env.filters['structure'] = _structure  # JSON structure extraction for sql_execute mode
         self.env.filters['fingerprint'] = _fingerprint  # String format fingerprinting for structural caching
+
+        # PERF: Template compilation cache (LRU with max 512 templates)
+        # Key: hash of template string, Value: compiled Jinja2 Template object
+        self._template_cache = {}
         
     def render(self, template_str_or_path: str, context: Dict[str, Any]) -> str:
         """
-        Renders a prompt. 
+        Renders a prompt.
         If string starts with '@', treats it as a file path.
         Otherwise treats it as an inline template string.
+
+        PERF: Templates are compiled once and cached by content hash.
         """
         if template_str_or_path.startswith("@"):
             # Load from file
@@ -247,7 +255,7 @@ class PromptEngine:
             if os.path.exists(path):
                 with open(path, 'r') as f:
                     content = f.read()
-                template = self.env.from_string(content)
+                template = self._get_cached_template(content)
                 return template.render(**context)
             else:
                 # Try loader
@@ -258,9 +266,36 @@ class PromptEngine:
                     # Fallback or error
                     return f"Error: Template not found {path}"
         else:
-            # Inline
-            template = self.env.from_string(template_str_or_path)
+            # Inline - use cache
+            template = self._get_cached_template(template_str_or_path)
             return template.render(**context)
+
+    def _get_cached_template(self, template_string: str):
+        """
+        Get a compiled template from cache, or compile and cache it.
+
+        Cache key is MD5 hash of template string to avoid large memory usage.
+        LRU eviction happens automatically when cache exceeds 512 entries.
+        """
+        # Create cache key from template content hash
+        cache_key = hashlib.md5(template_string.encode('utf-8')).hexdigest()
+
+        # Check cache
+        if cache_key in self._template_cache:
+            return self._template_cache[cache_key]
+
+        # Cache miss - compile template
+        template = self.env.from_string(template_string)
+
+        # Store in cache (with simple size limit)
+        if len(self._template_cache) >= 512:
+            # Simple FIFO eviction - remove oldest entry
+            # Could upgrade to LRU if needed, but FIFO is simpler and probably fine
+            first_key = next(iter(self._template_cache))
+            del self._template_cache[first_key]
+
+        self._template_cache[cache_key] = template
+        return template
 
 _engine = PromptEngine()
 

@@ -129,7 +129,7 @@ class UnifiedLogger:
         self.pending_cost_buffer = []
         self.pending_lock = threading.Lock()
         self.cost_fetch_delay = 3.0  # Wait 3 seconds before fetching cost
-        self.cost_max_wait = 15.0  # Max wait time for cost data
+        self.cost_max_wait = 30.0  # Max wait time for cost data (increased for OpenRouter indexing delay)
         self.cost_batch_interval = 5.0  # Batch cost updates every 5 seconds
 
         # Background cost worker (still needed - OpenRouter delays cost 3-5s)
@@ -207,8 +207,9 @@ class UnifiedLogger:
         headers = {"Authorization": f"Bearer {api_key}"}
         url = f"https://openrouter.ai/api/v1/generation?id={request_id}"
 
-        # Retry schedule: immediate, then 1s, 2s, 3s delays
-        wait_times = [0, 1, 2, 3]
+        # Retry schedule: immediate, then 1s, 2s, 3s, 5s, 10s delays
+        # OpenRouter can take 10-15s to index generation data
+        wait_times = [0, 1, 2, 3, 5, 10]
 
         last_was_404 = False
 
@@ -266,7 +267,7 @@ class UnifiedLogger:
         # If we consistently got 404, this is likely a cached/free response
         # Set cost=0 instead of None so it shows as $0.00 in the UI
         if last_was_404:
-            print(f"[Unified Log] Cost fetch 404 for {request_id[:20]}... - likely cached/free response, setting cost=0")
+            print(f"[Unified Log] Cost fetch 404 for {request_id} - likely cached/free response, setting cost=0")
             return {"cost": 0.0, "tokens_in": 0, "tokens_out": 0, "tokens_reasoning": None, "provider": "cached", "model": None}
 
         return {"cost": None, "tokens_in": 0, "tokens_out": 0, "tokens_reasoning": None, "provider": "unknown", "model": None}
@@ -306,6 +307,7 @@ class UnifiedLogger:
 
         # Cascade context
         cascade_id: str | None = None,
+        cascade_version: int | None = None,
         cascade_file: str | None = None,
         cascade_config: dict | None = None,
         cell_name: str | None = None,
@@ -481,6 +483,7 @@ class UnifiedLogger:
 
             # Cascade context
             "cascade_id": cascade_id,
+            "cascade_version": cascade_version,
             "cascade_file": cascade_file,
             "cascade_json": safe_json(cascade_config),
             "cell_name": cell_name,
@@ -683,6 +686,7 @@ def log_unified(
     mutation_type: str | None = None,
     mutation_template: str | None = None,
     cascade_id: str | None = None,
+    cascade_version: int | None = None,
     cascade_file: str | None = None,
     cascade_config: dict | None = None,
     cell_name: str | None = None,
@@ -743,15 +747,18 @@ def log_unified(
                      automatic classification. Useful for render entries
                      (e.g., 'render:request_decision') where the type is known.
     """
+    # ========================================================================
+    # STEP 1: Extract missing context from Echo (BEFORE building row dict)
+    # ========================================================================
     # Extract cascade context from metadata if not passed directly
     # This ensures backward compatibility with callers who put cascade_id in metadata
     if metadata and isinstance(metadata, dict):
         cascade_id = cascade_id or metadata.get("cascade_id")
         cell_name = cell_name or metadata.get("cell_name") or metadata.get("cell")
 
-    # If caller tracking, genus_hash, or cascade_id not provided, look it up from Echo automatically
+    # If caller tracking, genus_hash, cascade_id, or cascade_version not provided, look it up from Echo automatically
     # This ensures ALL log calls (including direct log_unified() calls) get tracking!
-    if caller_id is None or invocation_metadata is None or genus_hash is None or cascade_id is None:
+    if caller_id is None or invocation_metadata is None or genus_hash is None or cascade_id is None or cascade_version is None:
         try:
             from .echo import _session_manager
             if session_id in _session_manager.sessions:
@@ -760,6 +767,12 @@ def log_unified(
                     caller_id = caller_id or echo.caller_id
                 if echo.invocation_metadata:
                     invocation_metadata = invocation_metadata or echo.invocation_metadata
+                if hasattr(echo, 'cascade_version') and echo.cascade_version is not None:
+                    if cascade_version is None:
+                        cascade_version = echo.cascade_version
+                        # DEBUG
+                        if session_id and 'test' in session_id.lower():
+                            print(f"[DEBUG] Auto-extracted cascade_version={cascade_version} from Echo")
                 if echo.genus_hash:
                     genus_hash = genus_hash or echo.genus_hash
                 # Also get cascade_id from Echo's current context
@@ -792,6 +805,9 @@ def log_unified(
             if extracted_source_table is None:
                 extracted_source_table = source_data.get('table')
 
+    # ========================================================================
+    # STEP 2: Call log() with enriched parameters
+    # ========================================================================
     _get_logger().log(
         session_id=session_id,
         trace_id=trace_id,
@@ -815,6 +831,7 @@ def log_unified(
         mutation_type=mutation_type,
         mutation_template=mutation_template,
         cascade_id=cascade_id,
+        cascade_version=cascade_version,
         cascade_file=cascade_file,
         cascade_config=cascade_config,
         cell_name=cell_name,
@@ -1067,3 +1084,120 @@ def mark_take_winner(session_id: str, cell_name: str, winning_index: int):
     from .db_adapter import get_db
     db = get_db()
     db.mark_take_winner('unified_logs', session_id, cell_name, winning_index)
+
+
+def backfill_missing_costs(
+    limit: int = 1000,
+    min_age_seconds: int = 30,
+    dry_run: bool = False,
+    verbose: bool = False
+) -> dict:
+    """
+    Backfill missing costs from OpenRouter for gen-* request IDs.
+
+    This is useful when OpenRouter has an outage or when cost fetching failed
+    during initial logging. Uses the same retry logic as the live background worker.
+
+    Args:
+        limit: Maximum number of records to process
+        min_age_seconds: Only process records older than this (avoid racing with live worker)
+        dry_run: If True, don't actually update the database
+        verbose: Print detailed progress
+
+    Returns:
+        Dict with stats: {checked, updated, errors, total_cost}
+    """
+    from .db_adapter import get_db
+    from .config import get_config
+    import time
+
+    db = get_db()
+    config = get_config()
+    logger = _get_logger()
+
+    if verbose:
+        print(f"[Cost Backfill] Querying for missing costs...")
+
+    # Query for records with gen-* request_ids that need costs
+    # Note: Use %% to escape the % in LIKE 'gen-%' for ClickHouse driver
+    query = f"""
+        SELECT
+            trace_id,
+            request_id,
+            provider,
+            model,
+            timestamp
+        FROM unified_logs
+        WHERE request_id LIKE 'gen-%%'
+          AND (cost IS NULL OR cost = 0)
+          AND timestamp < now() - INTERVAL {min_age_seconds} SECOND
+        ORDER BY timestamp DESC
+        LIMIT {limit}
+    """
+
+    try:
+        # Use query() for SELECT, returns list of tuples by default
+        rows = db.query(query, output_format="raw")
+    except Exception as e:
+        print(f"[Cost Backfill] Query failed: {e}")
+        return {"checked": 0, "updated": 0, "errors": 1, "total_cost": 0.0}
+
+    if not rows:
+        if verbose:
+            print("[Cost Backfill] No records found needing cost updates")
+        return {"checked": 0, "updated": 0, "errors": 0, "total_cost": 0.0}
+
+    if verbose:
+        print(f"[Cost Backfill] Found {len(rows)} records to process")
+
+    # Fetch costs using the same retry logic
+    updates = []
+    errors = 0
+    total_cost = 0.0
+
+    for i, row in enumerate(rows):
+        trace_id = row[0]
+        request_id = row[1]
+        provider = row[2]
+        model = row[3]
+        timestamp = row[4]
+
+        if verbose and (i % 10 == 0 or i == len(rows) - 1):
+            print(f"[Cost Backfill] Processing {i+1}/{len(rows)}: {request_id[:20]}...")
+
+        # Use the same fetch logic as the background worker
+        cost_data = logger._fetch_cost_with_retry(
+            request_id,
+            config.provider_api_key
+        )
+
+        if cost_data.get('cost') is not None or cost_data.get('tokens_in', 0) > 0:
+            updates.append({
+                'trace_id': trace_id,
+                **cost_data
+            })
+            total_cost += cost_data.get('cost', 0.0)
+
+            if verbose:
+                print(f"  ✓ {request_id[:20]}... -> ${cost_data.get('cost', 0.0):.6f}")
+        else:
+            errors += 1
+            if verbose:
+                print(f"  ✗ {request_id[:20]}... -> No cost data available")
+
+    # Batch update
+    if updates and not dry_run:
+        try:
+            db.batch_update_costs('unified_logs', updates)
+            if verbose:
+                print(f"\n[Cost Backfill] Updated {len(updates)} records in database")
+        except Exception as e:
+            print(f"[Cost Backfill] Update failed: {e}")
+            errors += 1
+
+    return {
+        "checked": len(rows),
+        "updated": len(updates),
+        "errors": errors,
+        "total_cost": total_cost
+    }

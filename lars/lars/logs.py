@@ -85,6 +85,7 @@ def log_message(session_id: str | None, role: str, content: str, metadata: dict 
         turn_number=turn_number,
         attempt_number=attempt_number,
         cascade_id=cascade_id,
+        cascade_version=None,  # Will be auto-extracted from Echo
         cascade_file=cascade_file,
         cell_name=cell_name,
         species_hash=species_hash,

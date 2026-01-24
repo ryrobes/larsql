@@ -1276,6 +1276,7 @@ class CellConfig(BaseModel):
     model: Optional[str] = None  # Override default model for this cell
     image_config: Optional[ImageConfig] = None  # Config for image generation models (FLUX, SDXL, etc.)
     use_native_tools: bool = False  # Use provider native tool calling (False = prompt-based, more compatible)
+    parallel_tools: Optional[bool] = None  # Run tools in parallel: None (auto-detect), True (force enable), False (force disable). Auto-disables if set_state in skills.
     rules: RuleConfig = Field(default_factory=RuleConfig)
     takes: Optional[TakesConfig] = None
     output_schema: Optional[Dict[str, Any]] = None
@@ -1796,7 +1797,32 @@ def load_cascade_config(path_or_dict: Union[str, Dict, "CascadeConfig"]) -> Casc
     # If already a CascadeConfig, return as-is
     if isinstance(path_or_dict, CascadeConfig):
         return path_or_dict
+
+    # If string, could be cascade_id OR file path
     if isinstance(path_or_dict, str):
+        # Try registry first (fast path - supports both ID and path)
+        try:
+            from .artifact_registry import get_artifact_registry
+            registry = get_artifact_registry()
+
+            # Strategy 1: Try direct cascade_id lookup (fastest!)
+            # Works for: 'semantic_matches', 'my_app', etc.
+            cached = registry.get_cascade(path_or_dict)
+            if cached:
+                return cached
+
+            # Strategy 2: Extract cascade_id from path and try again
+            # Works for: 'semantic_sql/matches.yaml', 'cascades/my_app.yaml', etc.
+            cascade_id = _extract_cascade_id_from_path(path_or_dict)
+            if cascade_id and cascade_id != path_or_dict:
+                cached = registry.get_cascade(cascade_id)
+                if cached:
+                    return cached
+        except Exception:
+            # Registry not available (e.g., DB not initialized), fall back to file
+            pass
+
+        # Fall back to file load (slower path - used for initial seed and CLI runs)
         from .loaders import load_config_file
         data = load_config_file(path_or_dict)
     else:
@@ -1806,3 +1832,23 @@ def load_cascade_config(path_or_dict: Union[str, Dict, "CascadeConfig"]) -> Casc
     data = _migrate_legacy_terminology(data)
 
     return CascadeConfig(**data)
+
+
+def _extract_cascade_id_from_path(path: str) -> Optional[str]:
+    """
+    Extract cascade_id from file path.
+
+    Examples:
+        'my_cascade.yaml' → 'my_cascade'
+        'cascades/apps/crm.yaml' → 'crm'
+        'semantic_sql/matches.cascade.yaml' → 'matches'
+    """
+    from pathlib import Path
+    p = Path(path)
+    stem = p.stem
+
+    # Remove .cascade suffix if present
+    if stem.endswith('.cascade'):
+        stem = stem[:-9]  # len('.cascade') = 9
+
+    return stem

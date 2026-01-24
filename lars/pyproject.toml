@@ -24,34 +24,48 @@ classifiers = [
 ]
 
 dependencies = [
-    "litellm",
-    "chdb",
-    "pypdf",
-    "duckdb",
-    "pandas",
-    "pyarrow",
-    "python-dotenv",
-    "pydantic",
-    "rich",
-    "jinja2",
-    "altair",
-    "vl-convert-python",
-    "plotly",
-    "kaleido",
-    "miniaudio",
-    "pillow",
-    "gunicorn[gevent]",
-    "jsonschema",
-    "openpyxl",
-    "readchar",
-    "requests",
-    "ruamel.yaml",
-    "sqlglot",
-    "clickhouse-driver",
-    "clickhouse-connect",
-    "pandas",
-    "flask",
-    "flask-cors",
+    # ========================================================================
+    # HIGH RISK - Tight version constraints (breaking changes common)
+    # These libs change frequently or break in minor versions
+    # ========================================================================
+    "litellm>=1.80,<1.90",           # Rapid development, weekly releases with breaking changes
+    "duckdb>=1.4,<1.5",              # Known for breaking changes in minor versions
+    "pydantic>=2.10,<3.0",           # v2 is stable, v3 will be breaking rewrite
+
+    # ========================================================================
+    # MEDIUM RISK - Major version constraints (stable within major version)
+    # Allow minor/patch updates, block major version bumps
+    # ========================================================================
+    "pandas>=2.0,<3.0",              # Stable 2.x series
+    "pyarrow>=14.0,<22.0",           # Compatibility with pandas 2.x and downstream libs (e.g., streamlit)
+    "flask>=3.0,<4.0",               # Current stable major version
+    "flask-cors>=6.0,<7.0",          # Follows flask versioning
+    "altair>=5.0,<6.0",              # Compatible with downstream tools (streamlit requires <6)
+    "plotly>=5.0,<7.0",              # Stable visualization library
+    "sqlglot>=28.0,<29.0",           # Required for compatible Rust tokenizer (fixes EXPLAIN cache detection)
+    "clickhouse-driver>=0.2,<0.3",   # ClickHouse client library
+    "clickhouse-connect>=0.7,<0.8",  # Alternative ClickHouse client
+    "jinja2>=3.0,<4.0",              # Template engine
+    "chdb>=2.0,<3.0",                # ClickHouse embedded
+
+    # ========================================================================
+    # LOW RISK - Minimum version only (very stable APIs)
+    # These rarely introduce breaking changes
+    # ========================================================================
+    "requests>=2.31",                # Extremely stable HTTP library
+    "python-dotenv>=1.0",            # Simple, stable env loader
+    "rich>=13.0",                    # Terminal formatting
+    "pillow>=10.0",                  # Image processing
+    "jsonschema>=4.0",               # JSON validation
+    "watchdog>=4.0",                 # File system monitoring
+    "readchar>=4.0",                 # Keyboard input
+    "pypdf>=4.0",                    # PDF parsing
+    "openpyxl>=3.1",                 # Excel file support
+    "ruamel.yaml>=0.18",             # YAML parsing
+    "miniaudio>=1.59",               # Audio library
+    "kaleido>=0.2",                  # Static image export
+    "vl-convert-python>=1.0",        # Vega-Lite conversion
+    "gunicorn[gevent]>=23.0",        # WSGI server
 ]
 
 [project.urls]
@@ -68,36 +82,36 @@ include = [
 ]
 
 [project.optional-dependencies]
-# Extra dependencies for specific features
+# Extra dependencies for specific features (with version constraints)
 browser = [
     # Pure Python browser automation (replaces Node.js rabbitize)
-    "playwright>=1.40.0",
-    "fastapi>=0.100.0",
-    "uvicorn[standard]>=0.23.0",
-    "httpx>=0.25.0",  # For HTTP client in tools
+    "playwright>=1.40,<2.0",         # Browser automation
+    "fastapi>=0.100,<1.0",           # Web framework for browser service
+    "uvicorn[standard]>=0.23,<1.0",  # ASGI server
+    "httpx>=0.25,<1.0",              # HTTP client for tools
     # Note: numpy is already a transitive dependency
     # Note: pillow is already in main dependencies
     # After install, run: playwright install chromium
 ]
 docker = [
-    "docker",  # For linux_shell and run_code tools
+    "docker>=7.0,<8.0",              # For linux_shell and run_code tools
 ]
 local-models = [
-    "transformers>=4.45.0",
-    "torch>=2.0.0",
-    "accelerate>=0.20.0",
-    "huggingface-hub>=0.34.0,<1.0",  # transformers 4.x requires <1.0
+    "transformers>=4.45,<5.0",       # HuggingFace transformers
+    "torch>=2.0,<3.0",               # PyTorch for local models
+    "accelerate>=0.20,<1.0",         # HuggingFace acceleration
+    "huggingface-hub>=0.34,<1.0",    # transformers 4.x requires <1.0
 ]
 all = [
-    "docker",
-    "transformers>=4.45.0",
-    "torch>=2.0.0",
-    "accelerate>=0.20.0",
-    "huggingface-hub>=0.34.0,<1.0",  # transformers 4.x requires <1.0
-    "playwright>=1.40.0",
-    "fastapi>=0.100.0",
-    "uvicorn[standard]>=0.23.0",
-    "httpx>=0.25.0",
+    "docker>=7.0,<8.0",
+    "transformers>=4.45,<5.0",
+    "torch>=2.0,<3.0",
+    "accelerate>=0.20,<1.0",
+    "huggingface-hub>=0.34,<1.0",
+    "playwright>=1.40,<2.0",
+    "fastapi>=0.100,<1.0",
+    "uvicorn[standard]>=0.23,<1.0",
+    "httpx>=0.25,<1.0",
 ]
 
 [project.scripts]

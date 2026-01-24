@@ -12,6 +12,11 @@ import { configureMonacoTheme, STUDIO_THEME_NAME, handleEditorMount } from '../.
 import { API_BASE_URL } from '../../config/api';
 import { fillCascadeTemplate } from './utils/cascadeTemplate';
 import { injectRenderDimensions } from './utils/sqlPanelLayout';
+import { useQueryExplain } from './hooks/useQueryExplain';
+import { parsePanelMetadata } from './utils/panelParser';
+import { parseQueries } from './utils/querySplitter';
+import { createQueryCodeLensProvider } from './utils/codeLensProvider';
+import PanelSkeleton from './components/PanelSkeleton';
 import './CanvasView.css';
 //import { fontFamily } from 'html2canvas/dist/types/css/property-descriptors/font-family';
 
@@ -108,6 +113,8 @@ const CanvasView = () => {
   const [executionTime, setExecutionTime] = useState(null);
   const [databases, setDatabases] = useState([{ name: 'memory', type: 'memory' }]);
   const [selectedDatabase, setSelectedDatabase] = useState('memory');
+  const [lastExecutionCallerId, setLastExecutionCallerId] = useState(null);
+  const [partialResults, setPartialResults] = useState(new Map()); // Map<queryIndex, resultData>
 
   // Params panel state
   const [paramsCollapsed, setParamsCollapsed] = useState(true);
@@ -133,6 +140,12 @@ const CanvasView = () => {
 
   const editorRef = useRef(null);
   const monacoRef = useRef(null);
+  const codeLensProviderRef = useRef(null);
+  const codeLensCommandRef = useRef(null);
+  const sqlRef = useRef(sql);
+  const queryExplainsRef = useRef(new Map());
+  const executeQueryRef = useRef(null);
+  const executeSingleQueryInPositionRef = useRef(null);
   const resultWrapperRef = useRef(null);
   const canvasViewRef = useRef(null);
   const captureOverlayRef = useRef(null);
@@ -149,6 +162,66 @@ const CanvasView = () => {
 
   // Track previous panel data for smart re-render diffing
   const prevPanelsRef = useRef({});
+
+  // Auto-explain and cost tracking
+  const {
+    queryExplains,
+    totalEstimatedCost,
+    totalActualCost,
+    queryCount,
+  } = useQueryExplain({
+    editorValue: sql,
+    editorRef,
+    monacoRef,
+    database: selectedDatabase,
+    lastExecutionCallerId,
+  });
+
+  // Execute single query and render in position (for panel mode)
+  const executeSingleQueryInPositionHandler = useCallback(async (query, panelIdx, sqlToExecute) => {
+    setLoading(true);
+    setError(null);
+
+    const startTime = Date.now();
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/sql/execute`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: sqlToExecute, database: selectedDatabase })
+      });
+
+      const data = await response.json();
+      setExecutionTime(Date.now() - startTime);
+
+      if (data.caller_id) {
+        setLastExecutionCallerId(data.caller_id);
+      }
+
+      if (!data.success) {
+        setError(data.error || 'Query execution failed');
+        return;
+      }
+
+      // Store this panel's result in partial results
+      setPartialResults(prev => {
+        const updated = new Map(prev);
+        updated.set(panelIdx, {
+          columns: data.columns,
+          data: data.data,
+          rowCount: data.row_count,
+        });
+        return updated;
+      });
+
+      console.log('[codelens] Stored partial result for panel', panelIdx, 'at query lines', query.startLine, '-', query.endLine);
+
+    } catch (err) {
+      setError(err.message || 'Failed to execute query');
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedDatabase]);
 
   // Fetch available databases on mount
   useEffect(() => {
@@ -471,6 +544,11 @@ const CanvasView = () => {
 
       setExecutionTime(Date.now() - startTime);
 
+      // Track caller_id for actual cost lookup
+      if (data.caller_id) {
+        setLastExecutionCallerId(data.caller_id);
+      }
+
       if (!data.success) {
         setError(data.error || 'Query execution failed');
         return;
@@ -585,7 +663,25 @@ const CanvasView = () => {
     // Clear previous results when loading a new file
     setResult(null);
     setError(null);
+    setPartialResults(new Map());
   }, []);
+
+  // Keep refs up to date (AFTER all callbacks are defined)
+  useEffect(() => {
+    sqlRef.current = sql;
+  }, [sql]);
+
+  useEffect(() => {
+    queryExplainsRef.current = queryExplains;
+  }, [queryExplains]);
+
+  useEffect(() => {
+    executeQueryRef.current = executeQuery;
+  }, [executeQuery]);
+
+  useEffect(() => {
+    executeSingleQueryInPositionRef.current = executeSingleQueryInPositionHandler;
+  }, [executeSingleQueryInPositionHandler]);
 
   // Handle editor mount
   const handleEditorDidMount = useCallback((editor, monaco) => {
@@ -603,12 +699,176 @@ const CanvasView = () => {
       tabSize: 2,
       insertSpaces: true,
       detectIndentation: false,
+      codeLens: true, // Enable CodeLens
     });
 
-    // Ctrl+Enter to execute
+    // Register CodeLens provider with inline command handling
+    codeLensProviderRef.current = monaco.languages.registerCodeLensProvider('sql', {
+      provideCodeLenses: function (model) {
+        // Read from refs to get latest state
+        const currentSql = sqlRef.current;
+        const currentExplains = queryExplainsRef.current;
+
+        const queries = parseQueries(currentSql);
+        const lenses = [];
+
+        queries.forEach((query, idx) => {
+          // Get explain data for this query
+          const queryHash = require('./utils/querySplitter').hashQuery(query.text);
+          const explain = currentExplains?.get?.(queryHash);
+
+          // Build CodeLens title with metadata
+          const costText = explain?.estimatedCost > 0
+            ? ` · $${explain.estimatedCost < 0.01 ? explain.estimatedCost.toFixed(4) : explain.estimatedCost.toFixed(3)}`
+            : '';
+
+          const linesText = query.endLine > query.startLine
+            ? ` · Lines ${query.startLine}-${query.endLine}`
+            : ` · Line ${query.startLine}`;
+
+          const errorText = explain?.queryType === 'error' ? ' · ⚠ Error' : '';
+
+          // Single simple CodeLens: Run Solo
+          const title = `▶ Run Solo${linesText}${costText}${errorText}`;
+
+          lenses.push({
+            range: {
+              startLineNumber: query.startLine,
+              startColumn: 1,
+              endLineNumber: query.startLine,
+              endColumn: 1,
+            },
+            id: `run-query-${idx}`,
+            command: null,
+            _queryIndex: idx,
+            _title: title,
+          });
+        });
+
+        return { lenses, dispose: () => {} };
+      },
+
+      resolveCodeLens: function (model, codeLens) {
+        return {
+          ...codeLens,
+          command: {
+            id: '',
+            title: codeLens._title || 'Run',
+          },
+        };
+      },
+    });
+
+    // Add click handler for CodeLens
+    const editorDomNode = editor.getDomNode();
+    const handleCodeLensClick = (e) => {
+      const target = e.target;
+      const text = target.textContent || '';
+
+      // Check if this is a CodeLens click
+      if (text.includes('▶ Run Solo')) {
+        console.log('[codelens] Run Solo clicked:', text);
+
+        // Parse line number from text
+        const match = text.match(/Lines? (\d+)-?(\d+)?/);
+        if (!match) {
+          console.warn('[codelens] Could not parse line number from text:', text);
+          return;
+        }
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        const startLine = parseInt(match[1]);
+        const currentSql = sqlRef.current;
+        const queries = parseQueries(currentSql);
+        const queryIdx = queries.findIndex(q => q.startLine === startLine);
+
+        if (queryIdx >= 0) {
+          const query = queries[queryIdx];
+          console.log(`[codelens] Running query ${queryIdx + 1} (solo mode)`);
+
+          let sqlToExecute = query.text;
+          const metadata = parsePanelMetadata(currentSql);
+
+          if (metadata?.hasSetup) {
+            const lines = currentSql.split('\n');
+            const setupLines = lines.slice(0, metadata.setupLineCount);
+            const setupSql = setupLines.join('\n').trim();
+            if (setupSql) {
+              console.log('[codelens] Including setup SQL');
+              sqlToExecute = `${setupSql}\n\n${query.text}`;
+            }
+          }
+
+          // Solo mode: Clear partial results and execute full canvas
+          console.log('[codelens] Executing solo - clearing skeleton');
+          setPartialResults(new Map()); // Clear skeleton data
+          if (executeQueryRef.current) {
+            executeQueryRef.current(sqlToExecute);
+          }
+        } else {
+          console.warn('[codelens] Could not find query with startLine:', startLine);
+        }
+      }
+    };
+
+    if (editorDomNode) {
+      editorDomNode.addEventListener('click', handleCodeLensClick, true); // Use capture phase
+      console.log('[codelens] Click handler registered on editor DOM');
+    }
+
+    // Ctrl+Enter to execute all queries
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
       executeQuery();
     });
+
+    // Ctrl+Shift+Enter to execute current query only
+    editor.addCommand(
+      monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.Enter,
+      () => {
+        // Get current query block where cursor is
+        const position = editor.getPosition();
+        const currentSql = sqlRef.current;
+        const queries = parseQueries(currentSql);
+        const currentQuery = queries.find(q =>
+          position.lineNumber >= q.startLine &&
+          position.lineNumber <= q.endLine
+        );
+
+        if (currentQuery) {
+          console.log('[keyboard] Running current query at lines', currentQuery.startLine, '-', currentQuery.endLine);
+
+          // Execute with setup SQL
+          let sqlToExecute = currentQuery.text;
+          const metadata = parsePanelMetadata(currentSql);
+
+          if (metadata?.hasSetup) {
+            const lines = currentSql.split('\n');
+            const setupLines = lines.slice(0, metadata.setupLineCount);
+            const setupSql = setupLines.join('\n').trim();
+
+            if (setupSql) {
+              sqlToExecute = `${setupSql}\n\n${currentQuery.text}`;
+              console.log('[execute] Including setup SQL (', metadata.setupLineCount, 'lines)');
+            }
+          }
+
+          executeQuery(sqlToExecute);
+        }
+      }
+    );
+
+    // Cleanup
+    return () => {
+      const domNode = editor.getDomNode();
+      if (domNode && handleCodeLensClick) {
+        domNode.removeEventListener('click', handleCodeLensClick);
+      }
+      if (codeLensProviderRef.current) {
+        codeLensProviderRef.current.dispose();
+      }
+    };
   }, [executeQuery]);
 
   // Editor options
@@ -628,7 +888,12 @@ const CanvasView = () => {
     padding: { top: 12, bottom: 12 },
     smoothScrolling: true,
     cursorBlinking: 'smooth',
+    glyphMargin: true, // Enable glyph margin for cost icons
   };
+
+  // Parse panel metadata from SQL (for skeleton preview)
+  const panelMetadata = parsePanelMetadata(sql);
+  const hasPanelMetadata = panelMetadata?.panels && panelMetadata.panels.length > 0;
 
   // Detect result format: multi-panel, canvas, or error
   const isMultiPanelResult = result?.multi_panel === true;
@@ -675,7 +940,7 @@ const CanvasView = () => {
       {/* Header */}
       <div className="canvas-header">
         <div className="canvas-header-left"  >
-          <Icon icon="mdi:view-dashboard-variant" width="22" />
+          <Icon icon="ic:twotone-dashboard" width="41" />
           <div className="canvas-head-title">Hyper</div>
           <span className="canvas-subtitle">Hypermedia SQL Client</span>
         </div>
@@ -702,6 +967,34 @@ const CanvasView = () => {
               {executionTime}ms
             </span>
           )}
+
+          {/* Cost stats */}
+          {queryCount > 0 && (
+            <div className="canvas-cost-stats">
+              <div className="canvas-cost-item">
+                <Icon icon="mdi:calculator" width="12" />
+                <span>{queryCount} {queryCount === 1 ? 'query' : 'queries'}</span>
+              </div>
+              <div className="canvas-cost-item">
+                <Icon icon="mdi:currency-usd" width="12" />
+                <span className={`canvas-cost-value ${
+                  totalEstimatedCost > 1 ? 'cost-very-expensive' :
+                  totalEstimatedCost > 0.1 ? 'cost-expensive' : ''
+                }`}>
+                  est: ${totalEstimatedCost.toFixed(3)}
+                </span>
+              </div>
+              {totalActualCost > 0 && (
+                <div className="canvas-cost-item">
+                  <Icon icon="mdi:check-circle" width="12" />
+                  <span className="canvas-cost-value">
+                    actual: ${totalActualCost.toFixed(3)}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="canvas-ai-hint" title="Hold spacebar to draw + speak, release to generate">
             <Icon icon="mdi:gesture-tap-hold" width="14" />
             <span>SPACE</span>
@@ -753,7 +1046,8 @@ const CanvasView = () => {
           <div className="canvas-editor-header">
             <Icon icon="mdi:code-tags" width="14" />
             <span>SQL Query</span>
-            <span className="canvas-hint">Ctrl+Enter to run</span>
+            <span className="canvas-hint">Ctrl+Enter to run all</span>
+            <span className="canvas-hint">Ctrl+Shift+Enter for current query</span>
             <button
               className="canvas-editor-toggle"
               onClick={() => setEditorHidden(true)}
@@ -818,7 +1112,18 @@ const CanvasView = () => {
               </div>
             )}
 
-            {!loading && !error && !result && (
+            {!error && !result && hasPanelMetadata && (
+              <PanelSkeleton
+                panels={panelMetadata.panels}
+                hasSetup={panelMetadata.hasSetup}
+                setupLineCount={panelMetadata.setupLineCount}
+                partialResults={partialResults}
+                loading={loading}
+                onRunAll={executeQuery}
+              />
+            )}
+
+            {!loading && !error && !result && !hasPanelMetadata && (
               <div className="canvas-empty canvas-empty-clickable" onClick={executeQuery}>
                 <Icon icon="mdi:play-circle-outline" width="48" />
                 <h3>Run a query to see results</h3>

@@ -26,6 +26,7 @@ from typing import Optional, Dict, Any, Tuple
 import duckdb
 
 from ..console_style import S, styled_print
+from ..perf_logger import perf_timer
 
 
 # Track which connections have UDF registered (to avoid duplicate registration)
@@ -558,13 +559,17 @@ def lars_cascade_udf_impl(
         # Run cascade with caller tracking
         from ..runner import run_cascade
 
-        result = run_cascade(
-            resolved_path,
-            inputs,
-            session_id=session_id,
-            caller_id=caller_id,
-            invocation_metadata=enriched_metadata if enriched_metadata else None
-        )
+        # PERF: Time the full UDF cascade execution (includes config load, agent calls, tools)
+        with perf_timer("udf_cascade_execution",
+                        session_id=session_id,
+                        metadata={"cascade_path": cascade_path, "cached": False}):
+            result = run_cascade(
+                resolved_path,
+                inputs,
+                session_id=session_id,
+                caller_id=caller_id,
+                invocation_metadata=enriched_metadata if enriched_metadata else None
+            )
 
         # Serialize relevant outputs as JSON
         # We want to return something useful for SQL queries

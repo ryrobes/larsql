@@ -729,6 +729,39 @@ def main():
     models_local_export_parser.add_argument('-o', '--output', help='Output file path (default: stdout)')
     models_local_export_parser.add_argument('--name', help='Tool name (default: derived from model_id)')
 
+    # Update command group - Data backfill and updates
+    update_parser = subparsers.add_parser('update', help='Update and backfill data')
+    update_subparsers = update_parser.add_subparsers(dest='update_command', help='Update subcommands')
+
+    # update costs
+    update_costs_parser = update_subparsers.add_parser(
+        'costs',
+        help='Backfill missing costs from OpenRouter for gen-* request IDs'
+    )
+    update_costs_parser.add_argument(
+        '--limit',
+        type=int,
+        default=1000,
+        help='Max number of records to update (default: 1000)'
+    )
+    update_costs_parser.add_argument(
+        '--min-age',
+        type=int,
+        default=30,
+        help='Minimum age in seconds for records to update (default: 30)'
+    )
+    update_costs_parser.add_argument(
+        '--dry-run',
+        action='store_true',
+        help='Show what would be updated without making changes'
+    )
+    update_costs_parser.add_argument(
+        '--verbose',
+        '-v',
+        action='store_true',
+        help='Show detailed progress'
+    )
+
     # Tools command group - Tool registry management
     tools_parser = subparsers.add_parser('tools', help='Tool registry management and analytics')
     tools_subparsers = tools_parser.add_subparsers(dest='tools_command', help='Tools subcommands')
@@ -1483,6 +1516,12 @@ def main():
                 sys.exit(1)
         else:
             models_parser.print_help()
+            sys.exit(1)
+    elif args.command == 'update':
+        if args.update_command == 'costs':
+            cmd_update_costs(args)
+        else:
+            update_parser.print_help()
             sys.exit(1)
     elif args.command == 'tools':
         if args.tools_command in ('sync', 'refresh'):
@@ -5444,6 +5483,64 @@ def cmd_harbor_stats(args):
     from lars.harbor_mgmt import show_stats
 
     show_stats()
+
+
+def cmd_update_costs(args):
+    """Backfill missing costs from OpenRouter for gen-* request IDs."""
+    from rich.console import Console
+    from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
+    from lars.unified_logs import backfill_missing_costs
+
+    console = Console()
+
+    # Show configuration
+    console.print(f"\n{S.CHART} Cost Backfill Configuration")
+    console.print(f"  Max records: {args.limit}")
+    console.print(f"  Min age: {args.min_age}s")
+    console.print(f"  Mode: {'DRY RUN' if args.dry_run else 'LIVE UPDATE'}")
+    if args.dry_run:
+        console.print("  [yellow]Note: Dry run mode - no changes will be made[/yellow]")
+    console.print()
+
+    # Run the backfill
+    try:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+            console=console
+        ) as progress:
+            task = progress.add_task(
+                "Fetching missing costs from OpenRouter...",
+                total=None
+            )
+
+            result = backfill_missing_costs(
+                limit=args.limit,
+                min_age_seconds=args.min_age,
+                dry_run=args.dry_run,
+                verbose=args.verbose
+            )
+
+            progress.update(task, completed=True)
+
+        # Show results
+        console.print(f"\n{S.OK} Backfill Complete!")
+        console.print(f"  Records checked: {result['checked']}")
+        console.print(f"  Costs updated: {result['updated']}")
+        console.print(f"  Errors: {result['errors']}")
+        console.print(f"  Total cost added: ${result['total_cost']:.6f}")
+
+        if args.dry_run:
+            console.print(f"\n[yellow]Dry run complete. Run without --dry-run to apply changes.[/yellow]")
+
+    except Exception as e:
+        console.print(f"\n[red]{S.ERROR} Error during backfill: {e}[/red]")
+        if args.verbose:
+            import traceback
+            console.print(traceback.format_exc())
+        sys.exit(1)
 
 
 def cmd_tools_sync(args):

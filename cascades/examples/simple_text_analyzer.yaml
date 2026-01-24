@@ -1,0 +1,23 @@
+cascade_id: simple_text_analyzer
+description: |
+  Simple text analyzer for testing cascade() SQL operator.
+  Takes a text input and returns sentiment analysis.
+
+inputs_schema:
+  text: Text to analyze for sentiment
+
+cells:
+  - name: analyze
+    model: ollama/qwen2.5:0.5b
+    instructions: |
+      Analyze the sentiment of this text: "{{ input.text }}"
+
+      Respond with ONLY ONE WORD:
+      - positive
+      - negative
+      - neutral
+
+      Do not add any explanation, just the single word.
+
+    output_extract: |
+      {{ output.analyze }}

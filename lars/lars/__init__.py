@@ -64,6 +64,7 @@ def _register_all_skills():
     from .skills.human import ask_human, ask_human_custom, request_decision
     from .skills.display import show_ui
     from .skills.artifacts import create_artifact, list_artifacts, get_artifact
+    from .skills.cascade_caller import call_cascade_dynamic
     from .skills.research_sessions import (
         save_research_session, list_research_sessions, get_research_session
     )
@@ -105,6 +106,7 @@ def _register_all_skills():
     register_skill("create_artifact", create_artifact)
     register_skill("list_artifacts", list_artifacts)
     register_skill("get_artifact", get_artifact)
+    register_skill("call_cascade_dynamic", call_cascade_dynamic)
     register_skill("save_research_session", save_research_session)
     register_skill("list_research_sessions", list_research_sessions)
     register_skill("get_research_session", get_research_session)

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { AgGridReact } from 'ag-grid-react';
 import { ModuleRegistry, AllCommunityModule, themeQuartz } from 'ag-grid-community';
@@ -7,6 +7,8 @@ import { Button, VideoLoader } from '../../components';
 import useStudioCascadeStore from '../../studio/stores/studioCascadeStore';
 import CostTimelineChart from '../../components/CostTimelineChart';
 import CascadeSpecGraph from '../../components/CascadeSpecGraph';
+import VersionHistoryModal from '../../components/VersionHistoryModal';
+import CascadeDiffModal from '../../components/CascadeDiffModal';
 import KPICard from '../receipts/components/KPICard';
 import { useCredits } from '../../hooks/useCredits';
 import { ROUTES } from '../../routes.helpers';
@@ -224,6 +226,14 @@ const CascadesView = () => {
   const containerRef = useRef(null);
   const credits = useCredits({ pollInterval: 60000 });
 
+  // Versioning state
+  const [cascadeVersionInfo, setCascadeVersionInfo] = useState(null);
+  const [showVersionHistory, setShowVersionHistory] = useState(false);
+  const [versionHistory, setVersionHistory] = useState(null);
+  const [loadingVersions, setLoadingVersions] = useState(false);
+  const [selectedVersionForYaml, setSelectedVersionForYaml] = useState(null);
+  const [compareVersions, setCompareVersions] = useState(null);
+
   // Filter state
   const [filters, setFilters] = useState({
     search: '',
@@ -232,6 +242,7 @@ const CascadesView = () => {
     status: new Set(),       // For instances: 'completed', 'error', 'running', etc.
     hasTakes: null,     // null | true | false
     hasSubCascades: null,    // null | true | false
+    showDisabled: false,     // Show disabled cascades
   });
 
   // Handle loading cascade into Studio for first run
@@ -262,7 +273,7 @@ const CascadesView = () => {
   };
 
   // Fetch all cascades
-  const fetchCascades = async () => {
+  const fetchCascades = useCallback(async () => {
     try {
       setLoading(true);
       const res = await fetch(`${API_BASE_URL}/api/cascade-definitions`);
@@ -280,7 +291,110 @@ const CascadesView = () => {
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  // Fetch version info for selected cascade
+  const fetchVersionInfo = useCallback((cascadeId) => {
+    try {
+      const cascade = cascades.find(c => c.cascade_id === cascadeId);
+      if (cascade) {
+        setCascadeVersionInfo({
+          version: cascade.version,
+          total_versions: cascade.total_versions,
+          last_modified: cascade.last_modified,
+          is_deleted: cascade.is_deleted
+        });
+      }
+    } catch (err) {
+      console.error('[CascadesView] Error fetching version info:', err);
+    }
+  }, [cascades]);
+
+  // Fetch version history for modal
+  const fetchVersionHistory = useCallback(async (cascadeId) => {
+    try {
+      setLoadingVersions(true);
+      const res = await fetch(`${API_BASE_URL}/api/cascade-versions/${cascadeId}`);
+      const data = await res.json();
+
+      if (data.error) {
+        console.error('[CascadesView] Version history error:', data.error);
+        return;
+      }
+
+      setVersionHistory(data);
+    } catch (err) {
+      console.error('[CascadesView] Error fetching version history:', err);
+    } finally {
+      setLoadingVersions(false);
+    }
+  }, []);
+
+  // Show version history modal
+  const handleShowVersionHistory = useCallback(async () => {
+    if (!selectedCascade) return;
+    await fetchVersionHistory(selectedCascade);
+    setShowVersionHistory(true);
+  }, [selectedCascade, fetchVersionHistory]);
+
+  // Handle view YAML for specific version
+  const handleViewVersionYaml = (version) => {
+    setSelectedVersionForYaml(version);
+    // CascadeSpecGraph component will handle displaying the YAML
   };
+
+  // Handle compare versions
+  const handleCompareVersions = (v1, v2) => {
+    setCompareVersions({ v1, v2 });
+    setShowVersionHistory(false);
+  };
+
+  // Handle enable/disable cascade
+  const handleToggleEnabled = useCallback(async (cascadeId, shouldDisable) => {
+    try {
+      const endpoint = shouldDisable
+        ? `${API_BASE_URL}/api/cascade-disable/${cascadeId}`
+        : `${API_BASE_URL}/api/cascade-enable/${cascadeId}`;
+
+      const body = shouldDisable ? JSON.stringify({ reason: 'Disabled via UI' }) : null;
+
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: body ? { 'Content-Type': 'application/json' } : {},
+        body
+      });
+
+      const data = await res.json();
+
+      if (data.error) {
+        console.error('[CascadesView] Toggle error:', data.error);
+        alert(`Failed to ${shouldDisable ? 'disable' : 'enable'} cascade: ${data.error}`);
+        return;
+      }
+
+      // Refresh cascades list
+      await fetchCascades();
+
+      console.log(`[CascadesView] Successfully ${shouldDisable ? 'disabled' : 'enabled'} cascade:`, cascadeId);
+    } catch (err) {
+      console.error('[CascadesView] Toggle failed:', err);
+      alert(`Failed to ${shouldDisable ? 'disable' : 'enable'} cascade: ${err.message}`);
+    }
+  }, [fetchCascades]);
+
+  // Handle ESC key to close modals
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        if (showVersionHistory) {
+          setShowVersionHistory(false);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showVersionHistory]);
 
   // Fetch instances for selected cascade
   const fetchInstances = async (cascadeId) => {
@@ -370,12 +484,16 @@ const CascadesView = () => {
     fetchGlobalKpis();
   }, []);
 
-  // Load instances when cascade selected
+  // Load instances and version info when cascade selected
   useEffect(() => {
     if (selectedCascade) {
       fetchInstances(selectedCascade);
+      fetchVersionInfo(selectedCascade);
+    } else {
+      setCascadeVersionInfo(null);
+      setVersionHistory(null);
     }
-  }, [selectedCascade]);
+  }, [selectedCascade, cascades]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Calculate grid height based on viewport
   useEffect(() => {
@@ -535,7 +653,36 @@ const CascadesView = () => {
         return new Date(params.value).toLocaleString();
       },
     },
-  ], []);
+    {
+      field: 'is_deleted',
+      headerName: 'Status',
+      width: 100,
+      cellRenderer: (params) => {
+        const isDisabled = params.value || false;
+        const cascadeId = params.data.cascade_id;
+
+        return (
+          <button
+            className={`cascade-status-toggle ${isDisabled ? 'disabled' : 'enabled'}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (isDisabled) {
+                handleToggleEnabled(cascadeId, false);
+              } else {
+                if (window.confirm(`Disable cascade "${cascadeId}"?`)) {
+                  handleToggleEnabled(cascadeId, true);
+                }
+              }
+            }}
+            title={isDisabled ? 'Click to enable' : 'Click to disable'}
+          >
+            <Icon icon={isDisabled ? 'mdi:toggle-switch-off' : 'mdi:toggle-switch'} width="18" />
+            <span>{isDisabled ? 'Disabled' : 'Enabled'}</span>
+          </button>
+        );
+      },
+    },
+  ], [handleToggleEnabled]);
 
   // Instances grid columns (execution history for selected cascade)
   const instanceColumns = useMemo(() => [
@@ -722,6 +869,12 @@ const CascadesView = () => {
   // Apply filters to cascades
   const filteredCascades = useMemo(() => {
     return cascades.filter(cascade => {
+      // Show disabled filter
+      if (!filters.showDisabled) {
+        const isDisabled = cascade.is_deleted || false;
+        if (isDisabled) return false;
+      }
+
       // Search filter
       if (filters.search) {
         const searchLower = filters.search.toLowerCase();
@@ -807,7 +960,8 @@ const CascadesView = () => {
       filters.costRange.size > 0 ||
       filters.status.size > 0 ||
       filters.hasTakes !== null ||
-      filters.hasSubCascades !== null;
+      filters.hasSubCascades !== null ||
+      filters.showDisabled;
   }, [filters]);
 
   // Compute cascade-specific KPIs from instances (for drill-down view)
@@ -853,6 +1007,7 @@ const CascadesView = () => {
       status: new Set(),
       hasTakes: null,
       hasSubCascades: null,
+      showDisabled: false,
     });
   };
 
@@ -957,8 +1112,31 @@ const CascadesView = () => {
               Back
             </Button>
           )}
-          <Icon icon="mdi:file-tree" width="32" />
-          <h1>{selectedCascade ? selectedCascade : 'Cascades'}</h1>
+          <Icon icon="si:flow-cascade-line" width="32" />
+          <h1>
+            {selectedCascade ? selectedCascade : 'Cascades'}
+            {selectedCascade && cascadeVersionInfo && cascadeVersionInfo.version && (
+              <span
+                className="cascade-version-badge"
+                title={`Version ${cascadeVersionInfo.version}${cascadeVersionInfo.last_modified ? `, modified ${new Date(cascadeVersionInfo.last_modified).toLocaleString()}` : ''}`}
+              >
+                v{cascadeVersionInfo.version}
+              </span>
+            )}
+          </h1>
+          {selectedCascade && cascadeVersionInfo && cascadeVersionInfo.total_versions > 0 && (
+            <button
+              className="cascade-version-history-btn"
+              onClick={handleShowVersionHistory}
+              title="View version history"
+            >
+              <Icon icon="mdi:history" width="14" />
+              {cascadeVersionInfo.total_versions > 1
+                ? `${cascadeVersionInfo.total_versions - 1} older version${cascadeVersionInfo.total_versions > 2 ? 's' : ''}`
+                : 'Version History'
+              }
+            </button>
+          )}
         </div>
         <div className="cascades-subtitle">
           {selectedCascade
@@ -1073,6 +1251,8 @@ const CascadesView = () => {
             cells={selectedCascadeData.cells}
             inputsSchema={selectedCascadeData.inputsSchema}
             cascadeId={selectedCascade}
+            viewYamlVersion={selectedVersionForYaml}
+            onYamlModalClose={() => setSelectedVersionForYaml(null)}
           />
         </div>
       )}
@@ -1202,8 +1382,16 @@ const CascadesView = () => {
                   onClick={() => toggleBooleanFilter('hasSubCascades')}
                   title={filters.hasSubCascades === null ? 'Show all' : filters.hasSubCascades ? 'With sub-cascades' : 'Without sub-cascades'}
                 >
-                  <Icon icon="mdi:file-tree" width="12" />
+                  <Icon icon="si:flow-cascade-line" width="12" />
                   Sub-Cascades
+                </button>
+                <button
+                  className={`filter-toggle ${filters.showDisabled ? 'active' : ''}`}
+                  onClick={() => setFilters(prev => ({ ...prev, showDisabled: !prev.showDisabled }))}
+                  title={filters.showDisabled ? 'Hiding disabled cascades' : 'Showing disabled cascades'}
+                >
+                  <Icon icon="mdi:eye-off" width="12" />
+                  Show Disabled
                 </button>
               </div>
             </div>
@@ -1267,6 +1455,28 @@ const CascadesView = () => {
           </>
         )}
       </div>
+
+      {/* Version History Modal */}
+      {showVersionHistory && (
+        <VersionHistoryModal
+          cascadeId={selectedCascade}
+          versionHistory={versionHistory}
+          loading={loadingVersions}
+          onClose={() => setShowVersionHistory(false)}
+          onViewYaml={handleViewVersionYaml}
+          onCompare={handleCompareVersions}
+        />
+      )}
+
+      {/* Diff Modal */}
+      {compareVersions && (
+        <CascadeDiffModal
+          cascadeId={selectedCascade}
+          version1={compareVersions.v1}
+          version2={compareVersions.v2}
+          onClose={() => setCompareVersions(null)}
+        />
+      )}
     </div>
   );
 };

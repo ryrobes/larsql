@@ -56,10 +56,8 @@ class ErrorBoundary extends React.Component {
       return (
         <div className="error-boundary">
           <div className="error-boundary-content">
-            {/* Icon */}
-            <div className="error-boundary-icon">
-              <Icon icon="mdi:alert-octagon" width="64" />
-            </div>
+
+            <img src="error-skull.webp" width="60%" height="60%"></img>
 
             {/* Title */}
             <h1 className="error-boundary-title">Something went wrong</h1>

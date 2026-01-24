@@ -18,7 +18,7 @@ sql_function:
       description: Negative Image
   returns: VARCHAR
   shape: SCALAR
-  #cache: true
+  cache: true
 
 cells:
 - instructions: 'Please rewrite and enhance this image prompt, be vivid with lots

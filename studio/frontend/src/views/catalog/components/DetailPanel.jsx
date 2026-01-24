@@ -13,7 +13,7 @@ const CATEGORY_CONFIG = {
   harbor: { icon: 'mdi:sail-boat', color: '#fbbf24' },
   mcp: { icon: 'mdi:connection', color: '#22d3ee' },
   memory: { icon: 'mdi:memory', color: '#60a5fa' },
-  cascades: { icon: 'mdi:file-tree', color: '#f472b6' },
+  cascades: { icon: 'si:flow-cascade-line', color: '#f472b6' },
   signals: { icon: 'mdi:broadcast', color: '#818cf8' },
   sessions: { icon: 'mdi:history', color: '#94a3b8' },
 };

@@ -1018,8 +1018,13 @@ def execute_pipeline_stages(
             _register_all_skills()
 
             # Check for pure cascade cache (skips cascade launch entirely on hit)
-            # Note: `is True` check is intentional - MagicMocks in tests return truthy values
-            is_pure = cascade_entry.config.get('pure', False) is True
+            # Auto-enable caching if sql_function.cache is true (same semantic meaning)
+            # Allows explicit override: pure: false disables cache even if sql_function.cache is true
+            pure_flag = cascade_entry.config.get('pure', None)
+            is_pure = (
+                pure_flag is True  # Explicit enable
+                or (pure_flag is None and cascade_entry.config.get('sql_function', {}).get('cache', False) is True)  # Auto-enable
+            )
             output = None
 
             if is_pure:
@@ -1344,8 +1349,13 @@ def execute_pipeline_with_into(
             _register_all_skills()
 
             # Check for pure cascade cache (skips cascade launch entirely on hit)
-            # Note: `is True` check is intentional - MagicMocks in tests return truthy values
-            is_pure = cascade_entry.config.get('pure', False) is True
+            # Auto-enable caching if sql_function.cache is true (same semantic meaning)
+            # Allows explicit override: pure: false disables cache even if sql_function.cache is true
+            pure_flag = cascade_entry.config.get('pure', None)
+            is_pure = (
+                pure_flag is True  # Explicit enable
+                or (pure_flag is None and cascade_entry.config.get('sql_function', {}).get('cache', False) is True)  # Auto-enable
+            )
             output = None
 
             if is_pure:
