@@ -367,6 +367,10 @@
   background: var(--color-bg-tertiary);
 }
 
+.canvas-result-header .canvas-solo-mode-toggle {
+  margin-left: auto; /* Push to right */
+}
+
 .canvas-result-info {
   margin-left: auto;
   font-size: var(--font-size-xxs);
@@ -749,6 +753,45 @@
 
 .canvas-cost-value.cost-very-expensive {
   color: var(--color-accent-red);
+}
+
+/* Solo render mode toggle */
+.canvas-solo-mode-toggle {
+  display: flex;
+  gap: 0;
+  border: 1px solid var(--color-border-dim);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.solo-mode-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: transparent;
+  border: none;
+  border-right: 1px solid var(--color-border-dim);
+  color: var(--color-text-dim);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.solo-mode-btn:last-child {
+  border-right: none;
+}
+
+.solo-mode-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--color-text-secondary);
+}
+
+.solo-mode-btn.active {
+  background: rgba(0, 229, 255, 0.15);
+  color: var(--color-accent-cyan);
+  font-weight: var(--font-weight-semibold);
 }
 
 /* Operator-level cost decorations (underlines) */

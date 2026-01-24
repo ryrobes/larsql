@@ -115,6 +115,9 @@ const CanvasView = () => {
   const [selectedDatabase, setSelectedDatabase] = useState('memory');
   const [lastExecutionCallerId, setLastExecutionCallerId] = useState(null);
   const [partialResults, setPartialResults] = useState(new Map()); // Map<queryIndex, resultData>
+  const [soloRenderMode, setSoloRenderMode] = useState('naked'); // 'naked' or 'rendered'
+  const [lastSoloQuery, setLastSoloQuery] = useState(null); // Track last solo query for re-run
+  const [isSoloResult, setIsSoloResult] = useState(false); // Track if current result is from solo execution
 
   // Params panel state
   const [paramsCollapsed, setParamsCollapsed] = useState(true);
@@ -144,6 +147,7 @@ const CanvasView = () => {
   const codeLensCommandRef = useRef(null);
   const sqlRef = useRef(sql);
   const queryExplainsRef = useRef(new Map());
+  const soloRenderModeRef = useRef(soloRenderMode);
   const executeQueryRef = useRef(null);
   const executeSingleQueryInPositionRef = useRef(null);
   const resultWrapperRef = useRef(null);
@@ -521,6 +525,12 @@ const CanvasView = () => {
     let queryToRun = (typeof overrideSql === 'string') ? overrideSql : sql;
     if (!queryToRun.trim()) return;
 
+    // If running full editor (not solo), clear solo state
+    // But don't clear if we're re-running from toggle (lastSoloQuery exists)
+    if (queryToRun === sql && !lastSoloQuery) {
+      setIsSoloResult(false);
+    }
+
     // Inject RENDER dimensions based on container size
     // This ensures rendered images match the panel's actual pixel dimensions
     const containerWidth = resultWrapperRef.current?.offsetWidth || null;
@@ -683,6 +693,54 @@ const CanvasView = () => {
     executeSingleQueryInPositionRef.current = executeSingleQueryInPositionHandler;
   }, [executeSingleQueryInPositionHandler]);
 
+  useEffect(() => {
+    soloRenderModeRef.current = soloRenderMode;
+  }, [soloRenderMode]);
+
+  // Auto-rerun when solo render mode changes
+  const prevSoloModeRef = useRef(soloRenderMode);
+  useEffect(() => {
+    // Only re-run if mode actually changed (not initial mount)
+    if (prevSoloModeRef.current !== soloRenderMode && lastSoloQuery && isSoloResult) {
+      console.log('[toggle] Solo render mode changed to:', soloRenderMode, '- re-running last query');
+
+      // Re-execute the last solo query with new mode
+      const currentSql = sql;
+      const query = lastSoloQuery;
+
+      // Extract query text and apply mode
+      let queryText = query.queryText;
+      const queryLines = queryText.split('\n');
+
+      if (soloRenderMode === 'naked') {
+        const cleanLines = queryLines.filter(line => !line.trim().startsWith('---'));
+        queryText = cleanLines.join('\n').trim();
+      } else {
+        const cleanLines = queryLines.filter(line => !line.trim().startsWith('---'));
+        const cleanQuery = cleanLines.join('\n').trim();
+        queryText = `--- PANEL 'Preview' (1, 1)\n${cleanQuery}`;
+      }
+
+      // Include setup SQL
+      let sqlToExecute = queryText;
+      const metadata = parsePanelMetadata(currentSql);
+
+      if (metadata?.hasSetup) {
+        const lines = currentSql.split('\n');
+        const setupLines = lines.slice(0, metadata.setupLineCount);
+        const setupSql = setupLines.join('\n').trim();
+
+        if (setupSql) {
+          sqlToExecute = `${setupSql}\n\n${queryText}`;
+        }
+      }
+
+      executeQuery(sqlToExecute);
+    }
+
+    prevSoloModeRef.current = soloRenderMode;
+  }, [soloRenderMode, lastSoloQuery, isSoloResult, sql, executeQuery]);
+
   // Handle editor mount
   const handleEditorDidMount = useCallback((editor, monaco) => {
     editorRef.current = editor;
@@ -717,10 +775,14 @@ const CanvasView = () => {
           const queryHash = require('./utils/querySplitter').hashQuery(query.text);
           const explain = currentExplains?.get?.(queryHash);
 
+          console.log('[codelens] Query', idx, 'hash:', queryHash, 'explain:', explain ? 'found' : 'not found');
+
           // Build CodeLens title with metadata
           const costText = explain?.estimatedCost > 0
             ? ` · $${explain.estimatedCost < 0.01 ? explain.estimatedCost.toFixed(4) : explain.estimatedCost.toFixed(3)}`
             : '';
+
+          console.log('[codelens] Query', idx, 'cost:', explain?.estimatedCost, 'costText:', costText);
 
           const linesText = query.endLine > query.startLine
             ? ` · Lines ${query.startLine}-${query.endLine}`
@@ -788,7 +850,36 @@ const CanvasView = () => {
           const query = queries[queryIdx];
           console.log(`[codelens] Running query ${queryIdx + 1} (solo mode)`);
 
-          let sqlToExecute = query.text;
+          // Extract query SQL and handle panel markers based on render mode
+          let queryText = query.text;
+          const queryLines = queryText.split('\n');
+
+          // Get current solo render mode from ref
+          const currentSoloMode = soloRenderModeRef.current;
+
+          if (currentSoloMode === 'naked') {
+            // Naked mode: Strip --- PANEL markers completely
+            const cleanLines = queryLines.filter(line => {
+              const trimmed = line.trim();
+              return !trimmed.startsWith('---');
+            });
+            queryText = cleanLines.join('\n').trim();
+            console.log('[codelens] Solo mode: naked (no panel wrapper)');
+          } else {
+            // Rendered mode: Wrap query with --- PANEL 'Preview' (1, 1)
+            // This forces full canvas rendering with chart/visual support
+            const cleanLines = queryLines.filter(line => {
+              const trimmed = line.trim();
+              return !trimmed.startsWith('---'); // Remove existing panel markers
+            });
+            const cleanQuery = cleanLines.join('\n').trim();
+
+            queryText = `--- PANEL 'Preview' (1, 1)\n${cleanQuery}`;
+            console.log('[codelens] Solo mode: rendered (wrapped with PANEL (1,1))');
+          }
+
+          // Include setup SQL
+          let sqlToExecute = queryText;
           const metadata = parsePanelMetadata(currentSql);
 
           if (metadata?.hasSetup) {
@@ -797,13 +888,23 @@ const CanvasView = () => {
             const setupSql = setupLines.join('\n').trim();
             if (setupSql) {
               console.log('[codelens] Including setup SQL');
-              sqlToExecute = `${setupSql}\n\n${query.text}`;
+              sqlToExecute = `${setupSql}\n\n${queryText}`;
             }
           }
 
+          console.log('[codelens] Executing solo:', sqlToExecute.substring(0, 100) + '...');
+
           // Solo mode: Clear partial results and execute full canvas
-          console.log('[codelens] Executing solo - clearing skeleton');
           setPartialResults(new Map()); // Clear skeleton data
+          setIsSoloResult(true); // Mark this as a solo execution
+
+          // Store the query for re-execution when toggle changes
+          setLastSoloQuery({
+            query,
+            queryIdx,
+            queryText: query.text,
+          });
+
           if (executeQueryRef.current) {
             executeQueryRef.current(sqlToExecute);
           }
@@ -823,7 +924,7 @@ const CanvasView = () => {
       executeQuery();
     });
 
-    // Ctrl+Shift+Enter to execute current query only
+    // Ctrl+Shift+Enter to execute current query only (solo mode)
     editor.addCommand(
       monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.Enter,
       () => {
@@ -837,10 +938,33 @@ const CanvasView = () => {
         );
 
         if (currentQuery) {
-          console.log('[keyboard] Running current query at lines', currentQuery.startLine, '-', currentQuery.endLine);
+          console.log('[keyboard] Running current query solo at lines', currentQuery.startLine, '-', currentQuery.endLine);
 
-          // Execute with setup SQL
-          let sqlToExecute = currentQuery.text;
+          // Handle panel markers based on solo render mode
+          let queryText = currentQuery.text;
+          const queryLines = queryText.split('\n');
+
+          const currentSoloMode = soloRenderModeRef.current;
+
+          if (currentSoloMode === 'naked') {
+            // Strip --- PANEL markers completely
+            const cleanLines = queryLines.filter(line => {
+              const trimmed = line.trim();
+              return !trimmed.startsWith('---');
+            });
+            queryText = cleanLines.join('\n').trim();
+          } else {
+            // Wrap with --- PANEL 'Preview' (1, 1)
+            const cleanLines = queryLines.filter(line => {
+              const trimmed = line.trim();
+              return !trimmed.startsWith('---');
+            });
+            const cleanQuery = cleanLines.join('\n').trim();
+            queryText = `--- PANEL 'Preview' (1, 1)\n${cleanQuery}`;
+          }
+
+          // Include setup SQL
+          let sqlToExecute = queryText;
           const metadata = parsePanelMetadata(currentSql);
 
           if (metadata?.hasSetup) {
@@ -849,10 +973,20 @@ const CanvasView = () => {
             const setupSql = setupLines.join('\n').trim();
 
             if (setupSql) {
-              sqlToExecute = `${setupSql}\n\n${currentQuery.text}`;
-              console.log('[execute] Including setup SQL (', metadata.setupLineCount, 'lines)');
+              sqlToExecute = `${setupSql}\n\n${queryText}`;
             }
           }
+
+          // Clear skeleton and execute solo
+          setPartialResults(new Map());
+          setIsSoloResult(true);
+
+          // Store for toggle re-run
+          setLastSoloQuery({
+            query: currentQuery,
+            queryIdx: queries.indexOf(currentQuery),
+            queryText: currentQuery.text,
+          });
 
           executeQuery(sqlToExecute);
         }
@@ -1092,6 +1226,28 @@ const CanvasView = () => {
                     : `${result.row_count} rows`
                 }
               </span>
+            )}
+
+            {/* Solo render mode toggle - only show for solo results */}
+            {result && isSoloResult && (
+              <div className="canvas-solo-mode-toggle">
+                <button
+                  className={`solo-mode-btn ${soloRenderMode === 'naked' ? 'active' : ''}`}
+                  onClick={() => setSoloRenderMode('naked')}
+                  title="Show raw data (good for debugging)"
+                >
+                  <Icon icon="mdi:table" width="14" />
+                  Naked
+                </button>
+                <button
+                  className={`solo-mode-btn ${soloRenderMode === 'rendered' ? 'active' : ''}`}
+                  onClick={() => setSoloRenderMode('rendered')}
+                  title="Render charts/visualizations"
+                >
+                  <Icon icon="mdi:chart-box" width="14" />
+                  Rendered
+                </button>
+              </div>
             )}
           </div>
           <div className="canvas-result-wrapper" ref={resultWrapperRef}>
