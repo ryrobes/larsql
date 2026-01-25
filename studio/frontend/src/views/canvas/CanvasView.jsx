@@ -13,9 +13,9 @@ import { API_BASE_URL } from '../../config/api';
 import { fillCascadeTemplate } from './utils/cascadeTemplate';
 import { injectRenderDimensions } from './utils/sqlPanelLayout';
 import { useQueryExplain } from './hooks/useQueryExplain';
+import { useQueryViewZones } from './hooks/useQueryViewZones';
 import { parsePanelMetadata } from './utils/panelParser';
 import { parseQueries } from './utils/querySplitter';
-import { createQueryCodeLensProvider } from './utils/codeLensProvider';
 import PanelSkeleton from './components/PanelSkeleton';
 import './CanvasView.css';
 //import { fontFamily } from 'html2canvas/dist/types/css/property-descriptors/font-family';
@@ -143,8 +143,6 @@ const CanvasView = () => {
 
   const editorRef = useRef(null);
   const monacoRef = useRef(null);
-  const codeLensProviderRef = useRef(null);
-  const codeLensCommandRef = useRef(null);
   const sqlRef = useRef(sql);
   const queryExplainsRef = useRef(new Map());
   const soloRenderModeRef = useRef(soloRenderMode);
@@ -697,6 +695,54 @@ const CanvasView = () => {
     soloRenderModeRef.current = soloRenderMode;
   }, [soloRenderMode]);
 
+  // Handle running solo query
+  const handleRunSolo = useCallback((query, queryIdx) => {
+    // Extract query text and apply solo render mode
+    let queryText = query.text;
+    const queryLines = queryText.split('\n');
+
+    const currentSoloMode = soloRenderModeRef.current;
+
+    if (currentSoloMode === 'naked') {
+      const cleanLines = queryLines.filter(line => !line.trim().startsWith('---'));
+      queryText = cleanLines.join('\n').trim();
+    } else {
+      const cleanLines = queryLines.filter(line => !line.trim().startsWith('---'));
+      const cleanQuery = cleanLines.join('\n').trim();
+      queryText = `--- PANEL 'Preview' (1, 1)\n${cleanQuery}`;
+    }
+
+    // Include setup SQL
+    let sqlToExecute = queryText;
+    const metadata = parsePanelMetadata(sql);
+
+    if (metadata?.hasSetup) {
+      const lines = sql.split('\n');
+      const setupLines = lines.slice(0, metadata.setupLineCount);
+      const setupSql = setupLines.join('\n').trim();
+
+      if (setupSql) {
+        sqlToExecute = `${setupSql}\n\n${queryText}`;
+      }
+    }
+
+    // Execute solo
+    setPartialResults(new Map());
+    setIsSoloResult(true);
+    setLastSoloQuery({ query, queryIdx, queryText: query.text });
+
+    executeQuery(sqlToExecute);
+  }, [sql, executeQuery]);
+
+  // Use View Zones for rich query action bars (AFTER handleRunSolo is defined)
+  useQueryViewZones({
+    editorRef,
+    monacoRef,
+    queries: parseQueries(sql),
+    queryExplains,
+    onRunSoloQuery: handleRunSolo,
+  });
+
   // Auto-rerun when solo render mode changes
   const prevSoloModeRef = useRef(soloRenderMode);
   useEffect(() => {
@@ -757,167 +803,8 @@ const CanvasView = () => {
       tabSize: 2,
       insertSpaces: true,
       detectIndentation: false,
-      codeLens: true, // Enable CodeLens
+      codeLens: false, // Disable CodeLens - we use View Zones instead
     });
-
-    // Register CodeLens provider with inline command handling
-    codeLensProviderRef.current = monaco.languages.registerCodeLensProvider('sql', {
-      provideCodeLenses: function (model) {
-        // Read from refs to get latest state
-        const currentSql = sqlRef.current;
-        const currentExplains = queryExplainsRef.current;
-
-        const queries = parseQueries(currentSql);
-        const lenses = [];
-
-        queries.forEach((query, idx) => {
-          // Get explain data for this query
-          const queryHash = require('./utils/querySplitter').hashQuery(query.text);
-          const explain = currentExplains?.get?.(queryHash);
-
-          console.log('[codelens] Query', idx, 'hash:', queryHash, 'explain:', explain ? 'found' : 'not found');
-
-          // Build CodeLens title with metadata
-          const costText = explain?.estimatedCost > 0
-            ? ` · $${explain.estimatedCost < 0.01 ? explain.estimatedCost.toFixed(4) : explain.estimatedCost.toFixed(3)}`
-            : '';
-
-          console.log('[codelens] Query', idx, 'cost:', explain?.estimatedCost, 'costText:', costText);
-
-          const linesText = query.endLine > query.startLine
-            ? ` · Lines ${query.startLine}-${query.endLine}`
-            : ` · Line ${query.startLine}`;
-
-          const errorText = explain?.queryType === 'error' ? ' · ⚠ Error' : '';
-
-          // Single simple CodeLens: Run Solo
-          const title = `▶ Run Solo${linesText}${costText}${errorText}`;
-
-          lenses.push({
-            range: {
-              startLineNumber: query.startLine,
-              startColumn: 1,
-              endLineNumber: query.startLine,
-              endColumn: 1,
-            },
-            id: `run-query-${idx}`,
-            command: null,
-            _queryIndex: idx,
-            _title: title,
-          });
-        });
-
-        return { lenses, dispose: () => {} };
-      },
-
-      resolveCodeLens: function (model, codeLens) {
-        return {
-          ...codeLens,
-          command: {
-            id: '',
-            title: codeLens._title || 'Run',
-          },
-        };
-      },
-    });
-
-    // Add click handler for CodeLens
-    const editorDomNode = editor.getDomNode();
-    const handleCodeLensClick = (e) => {
-      const target = e.target;
-      const text = target.textContent || '';
-
-      // Check if this is a CodeLens click
-      if (text.includes('▶ Run Solo')) {
-        console.log('[codelens] Run Solo clicked:', text);
-
-        // Parse line number from text
-        const match = text.match(/Lines? (\d+)-?(\d+)?/);
-        if (!match) {
-          console.warn('[codelens] Could not parse line number from text:', text);
-          return;
-        }
-
-        e.preventDefault();
-        e.stopPropagation();
-
-        const startLine = parseInt(match[1]);
-        const currentSql = sqlRef.current;
-        const queries = parseQueries(currentSql);
-        const queryIdx = queries.findIndex(q => q.startLine === startLine);
-
-        if (queryIdx >= 0) {
-          const query = queries[queryIdx];
-          console.log(`[codelens] Running query ${queryIdx + 1} (solo mode)`);
-
-          // Extract query SQL and handle panel markers based on render mode
-          let queryText = query.text;
-          const queryLines = queryText.split('\n');
-
-          // Get current solo render mode from ref
-          const currentSoloMode = soloRenderModeRef.current;
-
-          if (currentSoloMode === 'naked') {
-            // Naked mode: Strip --- PANEL markers completely
-            const cleanLines = queryLines.filter(line => {
-              const trimmed = line.trim();
-              return !trimmed.startsWith('---');
-            });
-            queryText = cleanLines.join('\n').trim();
-            console.log('[codelens] Solo mode: naked (no panel wrapper)');
-          } else {
-            // Rendered mode: Wrap query with --- PANEL 'Preview' (1, 1)
-            // This forces full canvas rendering with chart/visual support
-            const cleanLines = queryLines.filter(line => {
-              const trimmed = line.trim();
-              return !trimmed.startsWith('---'); // Remove existing panel markers
-            });
-            const cleanQuery = cleanLines.join('\n').trim();
-
-            queryText = `--- PANEL 'Preview' (1, 1)\n${cleanQuery}`;
-            console.log('[codelens] Solo mode: rendered (wrapped with PANEL (1,1))');
-          }
-
-          // Include setup SQL
-          let sqlToExecute = queryText;
-          const metadata = parsePanelMetadata(currentSql);
-
-          if (metadata?.hasSetup) {
-            const lines = currentSql.split('\n');
-            const setupLines = lines.slice(0, metadata.setupLineCount);
-            const setupSql = setupLines.join('\n').trim();
-            if (setupSql) {
-              console.log('[codelens] Including setup SQL');
-              sqlToExecute = `${setupSql}\n\n${queryText}`;
-            }
-          }
-
-          console.log('[codelens] Executing solo:', sqlToExecute.substring(0, 100) + '...');
-
-          // Solo mode: Clear partial results and execute full canvas
-          setPartialResults(new Map()); // Clear skeleton data
-          setIsSoloResult(true); // Mark this as a solo execution
-
-          // Store the query for re-execution when toggle changes
-          setLastSoloQuery({
-            query,
-            queryIdx,
-            queryText: query.text,
-          });
-
-          if (executeQueryRef.current) {
-            executeQueryRef.current(sqlToExecute);
-          }
-        } else {
-          console.warn('[codelens] Could not find query with startLine:', startLine);
-        }
-      }
-    };
-
-    if (editorDomNode) {
-      editorDomNode.addEventListener('click', handleCodeLensClick, true); // Use capture phase
-      console.log('[codelens] Click handler registered on editor DOM');
-    }
 
     // Ctrl+Enter to execute all queries
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
@@ -938,72 +825,12 @@ const CanvasView = () => {
         );
 
         if (currentQuery) {
-          console.log('[keyboard] Running current query solo at lines', currentQuery.startLine, '-', currentQuery.endLine);
-
-          // Handle panel markers based on solo render mode
-          let queryText = currentQuery.text;
-          const queryLines = queryText.split('\n');
-
-          const currentSoloMode = soloRenderModeRef.current;
-
-          if (currentSoloMode === 'naked') {
-            // Strip --- PANEL markers completely
-            const cleanLines = queryLines.filter(line => {
-              const trimmed = line.trim();
-              return !trimmed.startsWith('---');
-            });
-            queryText = cleanLines.join('\n').trim();
-          } else {
-            // Wrap with --- PANEL 'Preview' (1, 1)
-            const cleanLines = queryLines.filter(line => {
-              const trimmed = line.trim();
-              return !trimmed.startsWith('---');
-            });
-            const cleanQuery = cleanLines.join('\n').trim();
-            queryText = `--- PANEL 'Preview' (1, 1)\n${cleanQuery}`;
-          }
-
-          // Include setup SQL
-          let sqlToExecute = queryText;
-          const metadata = parsePanelMetadata(currentSql);
-
-          if (metadata?.hasSetup) {
-            const lines = currentSql.split('\n');
-            const setupLines = lines.slice(0, metadata.setupLineCount);
-            const setupSql = setupLines.join('\n').trim();
-
-            if (setupSql) {
-              sqlToExecute = `${setupSql}\n\n${queryText}`;
-            }
-          }
-
-          // Clear skeleton and execute solo
-          setPartialResults(new Map());
-          setIsSoloResult(true);
-
-          // Store for toggle re-run
-          setLastSoloQuery({
-            query: currentQuery,
-            queryIdx: queries.indexOf(currentQuery),
-            queryText: currentQuery.text,
-          });
-
-          executeQuery(sqlToExecute);
+          const queryIdx = queries.indexOf(currentQuery);
+          handleRunSolo(currentQuery, queryIdx);
         }
       }
     );
-
-    // Cleanup
-    return () => {
-      const domNode = editor.getDomNode();
-      if (domNode && handleCodeLensClick) {
-        domNode.removeEventListener('click', handleCodeLensClick);
-      }
-      if (codeLensProviderRef.current) {
-        codeLensProviderRef.current.dispose();
-      }
-    };
-  }, [executeQuery]);
+  }, [executeQuery, handleRunSolo]);
 
   // Editor options
   const editorOptions = {

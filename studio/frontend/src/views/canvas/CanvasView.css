@@ -188,7 +188,7 @@
   gap: 5px;
   padding: 4px 10px;
   background: rgba(255, 51, 102, 0.1);
-  border: 1px solid rgba(255, 51, 102, 0.3);
+  border: 0px solid rgba(255, 51, 102, 0.3);
   border-radius: var(--radius-sm);
   color: #ff3366;
   font-size: 10px;
@@ -491,9 +491,12 @@
 .query-cost-gutter::before {
   content: '';
   display: inline-block;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+  border-radius: 0px 10px 10px 0px;
+  border: none; 
+  outline: none;
+  
   margin-left: 1px;
   
 }
@@ -504,7 +507,9 @@
   font-size: 10px;
   font-weight: 700;
   margin-right: 8px;
-   
+  padding-top: 2px;
+  outline: none;
+   border: none; 
   opacity: 0.9;
   letter-spacing: 0.3px;
 }
@@ -534,7 +539,7 @@
 .query-cost-zero::before {
   content: '○';
   background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 0px solid rgba(255, 255, 255, 0.2);
   color: rgba(255, 255, 255, 0.3);
   font-size: 10px;
   text-align: center;
@@ -546,9 +551,9 @@
 /* Free tier - very cheap */
 .query-cost-free::before {
   content: '✓';
-  background: rgba(74, 222, 128, 0.15);
-  border: 1px solid #4ade80;
-  color: #4ade80;
+  background: rgba(0, 229, 255, 0.15);
+  border: 0px solid #00e5ff;
+  color: #00e5ff;
   font-size: 10px;
   text-align: center;
   line-height: 12px;
@@ -558,43 +563,44 @@
 /* Green tier - dollar sign */
 .query-cost-green::before {
   content: '$';
-  background: rgba(74, 222, 128, 0.2);
-  border: 1px solid #4ade80;
-  color: #4ade80;
+  background: rgba(0, 229, 255, 0.2);
+  border: 0px solid #00e5ff;
+  color: #00e5ff;
   font-size: 11px;
   font-weight: bold;
   text-align: center;
   line-height: 13px;
 }
 
-/* Yellow tier - dollar signs */
+/* Yellow tier - dollar signs (purple) */
 .query-cost-yellow::before {
   content: '$$';
-  background: rgba(251, 191, 36, 0.2);
-  border: 1px solid #fbbf24;
-  color: #fbbf24;
+  background: rgba(167, 139, 250, 0.2);
+  border: 0px solid #a78bfa;
+  color: #a78bfa;
   font-size: 9px;
   font-weight: bold;
   text-align: center;
   line-height: 13px;
 }
 
-/* Orange tier - warning */
+/* Orange tier - warning (pink) */
 .query-cost-orange::before {
   content: '⚠';
-  background: rgba(251, 146, 60, 0.2);
-  border: 1px solid #fb923c;
-  color: #fb923c;
+  background: rgba(236, 72, 153, 0.2);
+  border: 0px solid #ec4899;
+  color: #ec4899;
   font-size: 11px;
   text-align: center;
   line-height: 12px;
 }
 
-/* Red tier - fire/alert */
+/* Red tier - fire/alert (shocking pink) */
 .query-cost-red::before {
   content: '🔥';
-  background: rgba(248, 113, 113, 0.2);
-  border: 1px solid #f87171;
+  background: rgba(255, 51, 102, 0.2);
+  border: 0px solid #ff3366;
+  color: #ff3366;
   font-size: 10px;
   text-align: center;
   line-height: 12px;
@@ -656,24 +662,24 @@
 }
 
 .query-block-edge-free {
-  background: rgba(74, 222, 128, 0.3) !important;
+  background: rgba(0, 229, 255, 0.3) !important;
 }
 
 .query-block-edge-green {
-  background: rgba(74, 222, 128, 0.5) !important;
+  background: rgba(0, 229, 255, 0.5) !important;
 }
 
 .query-block-edge-yellow {
-  background: rgba(251, 191, 36, 0.5) !important;
+  background: rgba(167, 139, 250, 0.5) !important;
 }
 
 .query-block-edge-orange {
-  background: rgba(251, 146, 60, 0.6) !important;
+  background: rgba(236, 72, 153, 0.6) !important;
 }
 
 .query-block-edge-red {
-  background: rgba(248, 113, 113, 0.7) !important;
-  box-shadow: 0 0 4px rgba(248, 113, 113, 0.5) !important;
+  background: rgba(255, 51, 102, 0.7) !important;
+  box-shadow: 0 0 4px rgba(255, 51, 102, 0.5) !important;
 }
 
 .query-block-edge-error {
@@ -916,6 +922,10 @@
   background: rgba(0, 229, 255, 0.1);
 }
 
+/* Style different parts of CodeLens text via substring matching */
+/* Monaco doesn't support HTML in CodeLens, but we can use CSS to style the whole thing */
+/* We'll add a subtle difference via opacity/weight for cost portion */
+
 .monaco-editor .codelensWidget a {
   color: var(--color-accent-cyan) !important;
   text-decoration: none;
@@ -927,4 +937,39 @@
 .monaco-editor .codelensWidget a:hover {
   color: rgba(0, 229, 255, 1) !important;
   text-decoration: underline;
+}
+
+/* ============================================
+   MONACO VIEW ZONES - Query Action Bars
+   ============================================ */
+
+/* View zone container - injected by Monaco */
+.query-viewzone-container {
+  width: 100% !important;
+  box-sizing: border-box;
+  overflow: visible;
+  pointer-events: auto !important;
+  z-index: 100 !important;
+  /* Don't set position - let Monaco handle it */
+}
+
+/* Ensure view zones can receive clicks */
+.monaco-editor .view-zones {
+  pointer-events: auto !important;
+  z-index: 100 !important;
+}
+
+.monaco-editor .view-zone {
+  pointer-events: auto !important;
+  z-index: 100 !important;
+}
+
+/* Make sure editor overlays don't block view zones */
+.monaco-editor .overlayWidgets {
+  pointer-events: none !important;
+}
+
+/* Allow specific interactive elements in overlays */
+.monaco-editor .overlayWidgets .widget {
+  pointer-events: auto;
 }
