@@ -59,16 +59,21 @@ function getLineColFromOffset(text, offset) {
   };
 }
 
-export function useQueryExplain({ editorValue, editorRef, monacoRef, database, lastExecutionCallerId }) {
+export function useQueryExplain({ editorValue, editorRef, monacoRef, database, lastExecutionCallerId, editorReady }) {
   const [queryExplains, setQueryExplains] = useState(new Map());
   const [actualCosts, setActualCosts] = useState(new Map()); // Map<callerId, cost>
+  const [operatorCosts, setOperatorCosts] = useState(new Map()); // Map<callerId, operator[]> for future viz
   const [totalEstimatedCost, setTotalEstimatedCost] = useState(0);
   const [totalActualCost, setTotalActualCost] = useState(0);
+  const [costPollingStatus, setCostPollingStatus] = useState('idle'); // 'idle' | 'polling' | 'complete' | 'timeout'
 
   const debounceTimerRef = useRef(null);
   const decorationsRef = useRef([]);
+  const pollingTimerRef = useRef(null);
+  const pollingStartRef = useRef(null);
 
   // Auto-explain on editor value change (debounced)
+  // Also triggers when editorReady changes (for initial load)
   useEffect(() => {
     if (!editorValue?.trim() || !monacoRef.current || !editorRef.current) return;
 
@@ -81,78 +86,59 @@ export function useQueryExplain({ editorValue, editorRef, monacoRef, database, l
     debounceTimerRef.current = setTimeout(async () => {
       const queries = parseQueries(editorValue);
 
-      // Fetch explains for each query
-      const newExplains = new Map();
-
       console.log(`[explain] Parsed ${queries.length} queries from editor`);
 
-      for (const query of queries) {
+      // Process queries with limited concurrency (matches panel execution)
+      // This prevents overwhelming the server with EXPLAIN requests
+      const MAX_CONCURRENT = 4;
+
+      // Helper to process a single query and update state progressively
+      const processQuery = async (query) => {
         // Skip empty or comment-only queries
         const trimmed = query.text.trim();
 
         // Check if it's comment-only (all lines are comments)
         const nonCommentLines = trimmed.split('\n').filter(line => {
           const lineTrimmed = line.trim();
-          // Skip empty lines
           if (!lineTrimmed) return false;
-          // Skip -- comments (including --- PANEL markers)
           if (lineTrimmed.startsWith('--')) return false;
-          // Skip /* */ comments
           if (lineTrimmed.startsWith('/*') || lineTrimmed === '*/') return false;
-          // This is actual SQL
           return true;
         });
 
         if (nonCommentLines.length === 0) {
-          console.log(`[explain] Skipping comment-only query at line ${query.startLine}: "${trimmed.substring(0, 60)}..."`);
-          continue;
+          console.log(`[explain] Skipping comment-only query at line ${query.startLine}`);
+          return null;
         }
 
         const queryHash = hashQuery(query.text);
 
-        console.log(`[explain] Processing query at line ${query.startLine} (${nonCommentLines.length} non-comment lines): ${trimmed.substring(0, 50)}...`);
+        console.log(`[explain] Processing query at line ${query.startLine}: ${trimmed.substring(0, 50)}...`);
 
-        // Skip if we already have explain for this query
+        // Skip if we already have explain for this query (return cached)
         if (queryExplains.has(queryHash)) {
-          newExplains.set(queryHash, {
-            ...queryExplains.get(queryHash),
-            position: query,
-          });
-          continue;
+          const cached = { ...queryExplains.get(queryHash), position: query };
+          return { queryHash, explainData: cached };
         }
 
         try {
-          // Use EXPLAIN (FORMAT JSON) through the normal execute endpoint
-          // This goes through the full SQL pipeline (rewriting, semantic operators, etc.)
-
-          // Clean the query text:
-          // Remove ALL comments before sending to EXPLAIN
-          // This prevents EXPLAIN from trying to parse comment syntax
+          // Clean query: remove comments before sending to EXPLAIN
           let inBlockComment = false;
           let cleanQuery = query.text
             .split('\n')
             .map(line => {
-              const trimmed = line.trim();
-
-              // Handle block comments
-              if (trimmed.includes('/*')) inBlockComment = true;
-              if (trimmed.includes('*/')) {
+              const lineTrimmed = line.trim();
+              if (lineTrimmed.includes('/*')) inBlockComment = true;
+              if (lineTrimmed.includes('*/')) {
                 inBlockComment = false;
-                return ''; // Remove this line
+                return '';
               }
               if (inBlockComment) return '';
-
-              // Remove line comments (everything after --)
               const commentIdx = line.indexOf('--');
-              if (commentIdx >= 0) {
-                // Keep SQL before the comment
-                return line.substring(0, commentIdx);
-              }
-
-              // Keep the line as-is
+              if (commentIdx >= 0) return line.substring(0, commentIdx);
               return line;
             })
-            .filter(line => line.trim()) // Remove empty lines
+            .filter(line => line.trim())
             .join('\n')
             .trim();
 
@@ -160,15 +146,13 @@ export function useQueryExplain({ editorValue, editorRef, monacoRef, database, l
             cleanQuery = cleanQuery.slice(0, -1).trim();
           }
 
-          // Final check - if after cleaning we have no SQL, skip
           if (!cleanQuery) {
             console.log('[explain] After cleaning, query is empty - skipping');
-            continue;
+            return null;
           }
 
           const explainQuery = `EXPLAIN (FORMAT JSON) ${cleanQuery}`;
-
-          console.log(`[explain] Sending to backend: "${explainQuery.substring(0, 100)}..."`);
+          console.log(`[explain] Sending: "${explainQuery.substring(0, 80)}..."`);
 
           const response = await fetch(`${API_BASE_URL}/api/sql/execute`, {
             method: 'POST',
@@ -184,9 +168,7 @@ export function useQueryExplain({ editorValue, editorRef, monacoRef, database, l
           if (data.success && data.data && data.data.length > 0) {
             const firstRow = data.data[0];
 
-            // Check if this is a semantic EXPLAIN (has query_plan column)
             if (firstRow.query_plan) {
-              // Parse the JSON plan
               const plan = typeof firstRow.query_plan === 'string'
                 ? JSON.parse(firstRow.query_plan)
                 : firstRow.query_plan;
@@ -205,48 +187,39 @@ export function useQueryExplain({ editorValue, editorRef, monacoRef, database, l
                 hints: plan.optimization_hints || [],
               };
 
-              // Debug: log all cost sources
               if (explainData.operations.length > 0) {
-                console.log('[explain] Operations found:', explainData.operations.map(op => op.function));
-              }
-              if (explainData.aggregates.length > 0) {
-                console.log('[explain] Aggregates found:', explainData.aggregates.map(agg => agg.function));
-              }
-              if (explainData.pipelineStages.length > 0) {
-                console.log('[explain] Pipeline stages found:', explainData.pipelineStages.map(s => s.stage_name));
+                console.log('[explain] Operations:', explainData.operations.map(op => op.function));
               }
 
-              newExplains.set(queryHash, explainData);
+              return { queryHash, explainData };
             } else if (firstRow.explain_key) {
-              // Regular DuckDB EXPLAIN (no semantic operations)
-              // Show it with $0 cost since there are no LLM calls
-              newExplains.set(queryHash, {
-                query: query.text,
-                position: query,
-                estimatedCost: 0,
-                estimatedCalls: 0,
-                estimatedDuration: 0,
-                operations: [],
-                aggregates: [],
-                pipelineStages: [],
-                queryType: 'sql_query',
-                explainPlan: firstRow.explain_value,
-                hints: [],
-              });
+              return {
+                queryHash,
+                explainData: {
+                  query: query.text,
+                  position: query,
+                  estimatedCost: 0,
+                  estimatedCalls: 0,
+                  estimatedDuration: 0,
+                  operations: [],
+                  aggregates: [],
+                  pipelineStages: [],
+                  queryType: 'sql_query',
+                  explainPlan: firstRow.explain_value,
+                  hints: [],
+                },
+              };
             }
           } else {
-            // Explain failed - show error indicator
-            // This helps identify queries that depend on missing tables, syntax errors, etc.
             const errorMessage = data.error || 'Explain failed';
-
-            // Skip parser errors (incomplete queries while typing)
             if (errorMessage.includes('Parser Error')) {
-              console.debug('[explain] Skipping parser error (incomplete query)');
-            } else {
-              // Show error indicator for real issues
-              console.log('[explain] EXPLAIN error:', errorMessage);
-
-              newExplains.set(queryHash, {
+              console.debug('[explain] Skipping parser error');
+              return null;
+            }
+            console.log('[explain] EXPLAIN error:', errorMessage);
+            return {
+              queryHash,
+              explainData: {
                 query: query.text,
                 position: query,
                 estimatedCost: 0,
@@ -259,25 +232,52 @@ export function useQueryExplain({ editorValue, editorRef, monacoRef, database, l
                 error: errorMessage,
                 explainPlan: null,
                 hints: [`Error: ${errorMessage}`],
-              });
-            }
+              },
+            };
           }
         } catch (err) {
-          // Network or JSON parsing errors - log these
-          if (!err.message.includes('JSON')) {
+          if (!err.message?.includes('JSON')) {
             console.debug('[explain] Error:', err.message);
           }
+          return null;
         }
+      };
+
+      // Execute with concurrency limit using worker pool pattern
+      let nextIndex = 0;
+
+      const runNext = async () => {
+        while (nextIndex < queries.length) {
+          const idx = nextIndex++;
+          const result = await processQuery(queries[idx]);
+
+          // Update state progressively as each explain completes
+          if (result) {
+            setQueryExplains(prev => {
+              const updated = new Map(prev);
+              updated.set(result.queryHash, result.explainData);
+              return updated;
+            });
+
+            // Update total estimated cost progressively
+            setTotalEstimatedCost(prev => prev + (result.explainData.estimatedCost || 0));
+          }
+        }
+      };
+
+      // Reset state before starting new explain cycle
+      // This clears stale explains from previous SQL content
+      setQueryExplains(new Map());
+      setTotalEstimatedCost(0);
+
+      // Start up to MAX_CONCURRENT workers
+      const workers = [];
+      for (let i = 0; i < Math.min(MAX_CONCURRENT, queries.length); i++) {
+        workers.push(runNext());
       }
+      await Promise.all(workers);
 
-      setQueryExplains(newExplains);
-
-      // Calculate totals
-      let totalEst = 0;
-      newExplains.forEach(exp => {
-        totalEst += exp.estimatedCost || 0;
-      });
-      setTotalEstimatedCost(totalEst);
+      console.log('[explain] All explains complete');
 
     }, 300); // 300ms debounce
 
@@ -286,32 +286,88 @@ export function useQueryExplain({ editorValue, editorRef, monacoRef, database, l
         clearTimeout(debounceTimerRef.current);
       }
     };
-  }, [editorValue, database]); // Intentionally not including queryExplains to avoid loops
+  }, [editorValue, database, editorReady]); // Intentionally not including queryExplains to avoid loops
 
   // Fetch actual costs from unified_logs when execution completes
   useEffect(() => {
     if (!lastExecutionCallerId) return;
 
-    // Poll unified_logs for cost data (may take a few seconds to arrive)
+    // Clear any existing polling
+    if (pollingTimerRef.current) {
+      clearInterval(pollingTimerRef.current);
+      pollingTimerRef.current = null;
+    }
+
+    // Reset state for new execution
+    setCostPollingStatus('polling');
+    pollingStartRef.current = Date.now();
+
+    const POLL_INTERVAL_MS = 2000;
+    const POLL_TIMEOUT_MS = 30000;
+
     const fetchActualCost = async () => {
       try {
-        // TODO: Create /api/sql/actual-cost endpoint that queries unified_logs
-        // For now, we'll stub this out
-        console.log('[explain] Would fetch actual cost for caller_id:', lastExecutionCallerId);
+        const response = await fetch(`/api/sql/actual-cost/${lastExecutionCallerId}`);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
 
-        // Stub: simulate actual cost being slightly different from estimated
-        // In real implementation, query unified_logs.cost_usd WHERE caller_id = ?
-        const stubActualCost = totalEstimatedCost * (0.95 + Math.random() * 0.1);
-        setActualCosts(prev => new Map(prev).set(lastExecutionCallerId, stubActualCost));
-        setTotalActualCost(stubActualCost);
+        const data = await response.json();
+        console.log('[explain] Actual cost response:', data);
+
+        // Update costs
+        const totalCost = data.total_cost || 0;
+        setActualCosts(prev => new Map(prev).set(lastExecutionCallerId, totalCost));
+        setTotalActualCost(totalCost);
+
+        // Store per-operator costs for future visualization
+        if (data.operators && data.operators.length > 0) {
+          setOperatorCosts(prev => new Map(prev).set(lastExecutionCallerId, data.operators));
+        }
+
+        // Check if we should stop polling
+        const elapsed = Date.now() - pollingStartRef.current;
+        const isComplete = data.status === 'complete' || data.status === 'error';
+        const isTimedOut = elapsed >= POLL_TIMEOUT_MS;
+
+        if (isComplete || isTimedOut) {
+          // Stop polling
+          if (pollingTimerRef.current) {
+            clearInterval(pollingTimerRef.current);
+            pollingTimerRef.current = null;
+          }
+          setCostPollingStatus(isTimedOut ? 'timeout' : 'complete');
+          console.log(`[explain] Cost polling ${isTimedOut ? 'timed out' : 'complete'} after ${elapsed}ms`);
+        }
+
       } catch (err) {
         console.error('[explain] Failed to fetch actual cost:', err);
+        // Don't stop polling on transient errors, but respect timeout
+        const elapsed = Date.now() - pollingStartRef.current;
+        if (elapsed >= POLL_TIMEOUT_MS) {
+          if (pollingTimerRef.current) {
+            clearInterval(pollingTimerRef.current);
+            pollingTimerRef.current = null;
+          }
+          setCostPollingStatus('timeout');
+        }
       }
     };
 
-    // Poll after a delay (logs take time to write)
-    const timer = setTimeout(fetchActualCost, 2000);
-    return () => clearTimeout(timer);
+    // Initial fetch after short delay (let logs start writing)
+    const initialTimer = setTimeout(() => {
+      fetchActualCost();
+      // Then poll every 2 seconds
+      pollingTimerRef.current = setInterval(fetchActualCost, POLL_INTERVAL_MS);
+    }, 1000);
+
+    return () => {
+      clearTimeout(initialTimer);
+      if (pollingTimerRef.current) {
+        clearInterval(pollingTimerRef.current);
+        pollingTimerRef.current = null;
+      }
+    };
   }, [lastExecutionCallerId]);
 
   // Update Monaco decorations whenever explains, actual costs, OR editor value changes
@@ -533,6 +589,8 @@ export function useQueryExplain({ editorValue, editorRef, monacoRef, database, l
     totalEstimatedCost,
     totalActualCost,
     queryCount: queryExplains.size,
+    costPollingStatus,  // 'idle' | 'polling' | 'complete' | 'timeout'
+    operatorCosts,      // Map<callerId, operator[]> for future per-operator viz
   };
 }
 

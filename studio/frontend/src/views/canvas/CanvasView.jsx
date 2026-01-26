@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { Icon } from '@iconify/react';
 import Editor from '@monaco-editor/react';
 import html2canvas from 'html2canvas';
@@ -8,24 +8,28 @@ import ParamsPanel from './components/ParamsPanel';
 import SqlFileModal from './components/SqlFileModal';
 import CaptureOverlay from './components/CaptureOverlay';
 import IntentReviewModal from './components/IntentReviewModal';
+import TabBar from './components/TabBar';
+import CostBadges from './components/CostBadges';
+import CostAnalysisDashboard from './components/CostAnalysisDashboard';
+import { useTabs, parseTabNameFromSql } from './hooks/useTabs';
 import { configureMonacoTheme, STUDIO_THEME_NAME, handleEditorMount } from '../../studio/utils/monacoTheme';
 import { API_BASE_URL } from '../../config/api';
 import { fillCascadeTemplate } from './utils/cascadeTemplate';
 import { injectRenderDimensions } from './utils/sqlPanelLayout';
 import { useQueryExplain } from './hooks/useQueryExplain';
 import { useQueryViewZones } from './hooks/useQueryViewZones';
-import { parsePanelMetadata } from './utils/panelParser';
-import { parseQueries } from './utils/querySplitter';
-import PanelSkeleton from './components/PanelSkeleton';
+import { parsePanelMetadata, generateGridLayout } from './utils/panelParser';
+import { parseQueries, hashQuery } from './utils/querySplitter';
+// import PanelSkeleton from './components/PanelSkeleton'; // Kept for future use
 import './CanvasView.css';
 //import { fontFamily } from 'html2canvas/dist/types/css/property-descriptors/font-family';
 
 // Default example query demonstrating SQL-native chart specs
-const DEFAULT_QUERY = `-- SQL-Native Charts Demo with Interactive Filters
+const DEFAULT_QUERY = `--- HYPER 'Sales Dashboard'
+-- SQL-Native Charts Demo with Interactive Filters
 -- ON_SELECT[] = multi-select (checkboxes), ON_SELECT = single-select (click row)
 -- Charts use format + config columns - data comes from the query itself
 
-CREATE OR REPLACE TABLE sales AS
 SELECT * FROM (VALUES
   ('Jan', 'Electronics', 12400, 89),
   ('Jan', 'Clothing', 8200, 156),
@@ -39,28 +43,29 @@ SELECT * FROM (VALUES
   ('Apr', 'Electronics', 13900, 95),
   ('Apr', 'Clothing', 12400, 223),
   ('Apr', 'Food', 18200, 489)
-) AS t(month, category, revenue, units);
+) AS t(month, category, revenue, units)
+ THEN PASS INTO shared_sales;
 
 --- PANEL 'Click a Slice' (1, 1, 1, 1) ON_SELECT @param_set('cat', label) HIDE_TITLE
 SELECT
   'plotly' as format,
   {type: 'pie', values: 'total', labels: 'category', title: 'By Category'} as config,
   category, SUM(revenue) as total
-FROM sales GROUP BY category;
+FROM into_shared_sales GROUP BY category;
 
 --- PANEL 'Click a Bar' (2, 1, 1, 1) ON_SELECT @param_set('month', month) HIDE_TITLE
 SELECT
   'vega-lite' as format,
   {mark: 'bar', x: 'month', y: 'total', title: 'By Month'} as config,
   month, SUM(revenue) as total
-FROM sales GROUP BY month;
+FROM into_shared_sales GROUP BY month;
 
 --- PANEL 'Monthly Trend' (1, 2, 1, 1)
 SELECT
   'vega-lite' as format,
   {mark: 'line', x: 'month', y: 'total_revenue', title: 'Monthly Revenue'} as config,
   month, SUM(revenue) as total_revenue
-FROM sales
+FROM into_shared_sales
 WHERE (CASE WHEN @param_get('cat') IS NULL THEN true ELSE category = @param_get('cat') END)
   AND (CASE WHEN @param_get('month') IS NULL THEN true ELSE month = @param_get('month') END)
 GROUP BY month;
@@ -77,7 +82,7 @@ SELECT
     }
   } as config,
   category, SUM(revenue) as revenue
-FROM sales
+FROM into_shared_sales
 WHERE (CASE WHEN @param_get('cat') IS NULL THEN true ELSE category = @param_get('cat') END)
   AND (CASE WHEN @param_get('month') IS NULL THEN true ELSE month = @param_get('month') END)
 GROUP BY category;
@@ -95,7 +100,7 @@ SELECT
     title: 'Revenue Over Time'
   } as config,
   month, category, revenue
-FROM sales
+FROM into_shared_sales
 WHERE (CASE WHEN @param_get('cat') IS NULL THEN true ELSE category = @param_get('cat') END)
   AND (CASE WHEN @param_get('month') IS NULL THEN true ELSE month = @param_get('month') END);`;
 
@@ -106,18 +111,101 @@ WHERE (CASE WHEN @param_get('cat') IS NULL THEN true ELSE category = @param_get(
  * The UI interprets the response format and renders accordingly.
  */
 const CanvasView = () => {
-  const [sql, setSql] = useState(DEFAULT_QUERY);
+  // Tab management
+  const {
+    tabs,
+    activeTab,
+    activeTabId,
+    updateActiveTab,
+    switchTab,
+    addTab,
+    closeTab,
+    renameTab,
+    openCostAnalysisTab,
+    openFileAsTab,
+    markDirty,
+  } = useTabs(DEFAULT_QUERY);
+
+  // Core state - now derived from/synced with active tab
+  const [sql, setSqlState] = useState(activeTab.sql);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [executionTime, setExecutionTime] = useState(null);
-  const [databases, setDatabases] = useState([{ name: 'memory', type: 'memory' }]);
+  const [databases, setDatabases] = useState([
+    { name: 'memory', type: 'memory' },
+    { name: 'workspace', type: 'persistent' },
+  ]);
   const [selectedDatabase, setSelectedDatabase] = useState('memory');
   const [lastExecutionCallerId, setLastExecutionCallerId] = useState(null);
-  const [partialResults, setPartialResults] = useState(new Map()); // Map<queryIndex, resultData>
+  const [_partialResults, setPartialResults] = useState(new Map()); // Map<queryIndex, resultData> - setter used for clearing
   const [soloRenderMode, setSoloRenderMode] = useState('naked'); // 'naked' or 'rendered'
+
+  // Panel-based execution state (for parallel execution)
+  const [panelLayout, setPanelLayout] = useState(null); // Parsed panel layout from SQL
+  const [panelResults, setPanelResults] = useState(new Map()); // Map<panelIndex, {data, columns, status, error}>
+  const [panelExecutionState, setPanelExecutionState] = useState('idle'); // 'idle' | 'setup' | 'executing' | 'complete'
   const [lastSoloQuery, setLastSoloQuery] = useState(null); // Track last solo query for re-run
   const [isSoloResult, setIsSoloResult] = useState(false); // Track if current result is from solo execution
+
+  // Track if we're in the middle of loading a tab to avoid circular saves
+  const isLoadingTabRef = useRef(false);
+
+  // Wrapper for setSql that also updates the active tab and name
+  const setSql = useCallback((newSql) => {
+    const sqlValue = typeof newSql === 'function' ? newSql(sql) : newSql;
+    setSqlState(sqlValue);
+    if (!isLoadingTabRef.current && !activeTab.isSystem) {
+      // Check if tab name should be updated from HYPER comment
+      const parsedName = parseTabNameFromSql(sqlValue);
+      const updates = { sql: sqlValue, isDirty: true };
+
+      // Update name if it changed and we don't have a file-based name
+      if (parsedName && parsedName !== activeTab.name && !activeTab.fileName) {
+        updates.name = parsedName;
+      }
+
+      updateActiveTab(updates);
+    }
+  }, [sql, updateActiveTab, activeTab.isSystem, activeTab.name, activeTab.fileName]);
+
+  // Sync state when tab changes
+  const prevTabIdRef = useRef(activeTabId);
+  useEffect(() => {
+    if (prevTabIdRef.current !== activeTabId) {
+      // Tab changed - load the new tab's state
+      isLoadingTabRef.current = true;
+      setSqlState(activeTab.sql);
+      setResult(activeTab.result || null);
+      setError(activeTab.error || null);
+      setPanelLayout(activeTab.panelLayout || null);
+      setPanelResults(activeTab.panelResults || new Map());
+      setLastExecutionCallerId(activeTab.lastExecutionCallerId || null);
+      setSelectedDatabase(activeTab.database || 'memory');
+      prevTabIdRef.current = activeTabId;
+      // Reset loading flag after a tick
+      requestAnimationFrame(() => {
+        isLoadingTabRef.current = false;
+      });
+    }
+  }, [activeTabId, activeTab]);
+
+  // Save state back to tab when it changes (skip during tab loading)
+  const updateActiveTabRef = useRef(updateActiveTab);
+  updateActiveTabRef.current = updateActiveTab;
+
+  useEffect(() => {
+    if (!activeTab.isSystem && !isLoadingTabRef.current) {
+      updateActiveTabRef.current({
+        result,
+        error,
+        panelLayout,
+        panelResults,
+        lastExecutionCallerId,
+        database: selectedDatabase,
+      });
+    }
+  }, [result, error, panelLayout, panelResults, lastExecutionCallerId, selectedDatabase, activeTab.isSystem]);
 
   // Params panel state
   const [paramsCollapsed, setParamsCollapsed] = useState(true);
@@ -128,6 +216,9 @@ const CanvasView = () => {
 
   // Layout edit mode
   const [layoutEditMode, setLayoutEditMode] = useState(false);
+
+  // Editor ready state - triggers initial explain on mount
+  const [editorReady, setEditorReady] = useState(false);
 
   // SQL Files modal
   const [showFileModal, setShowFileModal] = useState(false);
@@ -171,12 +262,15 @@ const CanvasView = () => {
     totalEstimatedCost,
     totalActualCost,
     queryCount,
+    costPollingStatus,
+    operatorCosts,
   } = useQueryExplain({
     editorValue: sql,
     editorRef,
     monacoRef,
     database: selectedDatabase,
     lastExecutionCallerId,
+    editorReady,
   });
 
   // Execute single query and render in position (for panel mode)
@@ -517,6 +611,185 @@ const CanvasView = () => {
     }
   }, [sql]);
 
+  // Debounced panel layout parsing - updates grid layout as user types
+  const panelLayoutTimerRef = useRef(null);
+  useEffect(() => {
+    if (panelLayoutTimerRef.current) {
+      clearTimeout(panelLayoutTimerRef.current);
+    }
+
+    panelLayoutTimerRef.current = setTimeout(() => {
+      const parsed = parsePanelMetadata(sql);
+      if (parsed.panels.length > 0) {
+        const layout = generateGridLayout(parsed.panels);
+        setPanelLayout({
+          ...layout,
+          hasSetup: parsed.hasSetup,
+          setupLineCount: parsed.setupLineCount,
+          setupSql: parsed.setupSql,
+        });
+      } else {
+        setPanelLayout(null);
+      }
+    }, 150); // 150ms debounce for responsive feel
+
+    return () => {
+      if (panelLayoutTimerRef.current) {
+        clearTimeout(panelLayoutTimerRef.current);
+      }
+    };
+  }, [sql]);
+
+  // Parallel panel execution
+  const executeParallel = useCallback(async () => {
+    if (!panelLayout || panelLayout.panels.length === 0) {
+      // No panels, fall back to regular execution
+      return false;
+    }
+
+    setLoading(true);
+    setError(null);
+    setPanelExecutionState('setup');
+
+    // Reset panel results with pending status
+    const initialResults = new Map();
+    panelLayout.panels.forEach((panel, idx) => {
+      initialResults.set(idx, { status: 'pending' });
+    });
+    setPanelResults(initialResults);
+
+    const startTime = Date.now();
+
+    try {
+      // Step 1: Execute setup SQL if present
+      if (panelLayout.hasSetup && panelLayout.setupSql) {
+        console.log('[parallel] Executing setup SQL...');
+        const setupResponse = await fetch(`${API_BASE_URL}/api/sql/execute`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query: panelLayout.setupSql,
+            database: selectedDatabase,
+          }),
+        });
+        const setupData = await setupResponse.json();
+        if (!setupData.success) {
+          setError(`Setup SQL failed: ${setupData.error}`);
+          setLoading(false);
+          setPanelExecutionState('complete');
+          return true;
+        }
+        console.log('[parallel] Setup SQL complete');
+      }
+
+      // Step 2: Execute panels with limited concurrency
+      // This prevents overwhelming the server when running expensive semantic queries
+      // (Flask dev server shares a single DuckDB connection lock across threads)
+      const MAX_CONCURRENT = 1;
+      setPanelExecutionState('executing');
+      console.log(`[parallel] Executing ${panelLayout.panels.length} panels (max ${MAX_CONCURRENT} concurrent)...`);
+
+      // Helper to execute a single panel
+      const executePanel = async (panel, idx) => {
+        // Mark panel as loading
+        setPanelResults(prev => {
+          const updated = new Map(prev);
+          updated.set(idx, { status: 'loading', name: panel.name });
+          return updated;
+        });
+
+        try {
+          const response = await fetch(`${API_BASE_URL}/api/sql/execute`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              query: panel.query,
+              database: selectedDatabase,
+            }),
+          });
+
+          const data = await response.json();
+
+          if (data.caller_id) {
+            setLastExecutionCallerId(data.caller_id);
+          }
+
+          if (data.success) {
+            // Update this panel with result
+            setPanelResults(prev => {
+              const updated = new Map(prev);
+              updated.set(idx, {
+                status: 'complete',
+                name: panel.name,
+                columns: data.columns,
+                data: data.data,
+                row_count: data.row_count,
+              });
+              return updated;
+            });
+            console.log(`[parallel] Panel "${panel.name}" complete (${data.row_count} rows)`);
+          } else {
+            setPanelResults(prev => {
+              const updated = new Map(prev);
+              updated.set(idx, {
+                status: 'error',
+                name: panel.name,
+                error: data.error,
+              });
+              return updated;
+            });
+            console.error(`[parallel] Panel "${panel.name}" failed:`, data.error);
+          }
+
+          return { idx, success: data.success, data };
+        } catch (err) {
+          setPanelResults(prev => {
+            const updated = new Map(prev);
+            updated.set(idx, {
+              status: 'error',
+              name: panel.name,
+              error: err.message,
+            });
+            return updated;
+          });
+          console.error(`[parallel] Panel "${panel.name}" error:`, err);
+          return { idx, success: false, error: err };
+        }
+      };
+
+      // Execute with concurrency limit using a worker pool pattern
+      const panels = panelLayout.panels;
+      const results = new Array(panels.length);
+      let nextIndex = 0;
+
+      const runNext = async () => {
+        while (nextIndex < panels.length) {
+          const idx = nextIndex++;
+          results[idx] = await executePanel(panels[idx], idx);
+        }
+      };
+
+      // Start up to MAX_CONCURRENT workers
+      const workers = [];
+      for (let i = 0; i < Math.min(MAX_CONCURRENT, panels.length); i++) {
+        workers.push(runNext());
+      }
+      await Promise.all(workers);
+
+      setExecutionTime(Date.now() - startTime);
+      setPanelExecutionState('complete');
+      setParamsRefreshTrigger(t => t + 1);
+
+    } catch (err) {
+      setError(err.message || 'Failed to execute query');
+      setExecutionTime(Date.now() - startTime);
+    } finally {
+      setLoading(false);
+    }
+
+    return true; // Indicate parallel execution was used
+  }, [panelLayout, selectedDatabase]);
+
   // Execute query (optionally with provided SQL to avoid state timing issues)
   const executeQuery = useCallback(async (overrideSql) => {
     // Handle case where overrideSql is an event object from onClick
@@ -529,6 +802,15 @@ const CanvasView = () => {
       setIsSoloResult(false);
     }
 
+    // Try parallel execution if we have a panel layout and running full SQL
+    if (queryToRun === sql && panelLayout && panelLayout.panels.length > 0) {
+      console.log('[execute] Using parallel panel execution');
+      setResult(null); // Clear old single-result mode
+      const usedParallel = await executeParallel();
+      if (usedParallel) return;
+    }
+
+    // Fall back to single-request execution (for non-panel queries or solo mode)
     // Inject RENDER dimensions based on container size
     // This ensures rendered images match the panel's actual pixel dimensions
     const containerWidth = resultWrapperRef.current?.offsetWidth || null;
@@ -538,6 +820,7 @@ const CanvasView = () => {
     setLoading(true);
     setError(null);
     setResult(null);
+    setPanelResults(new Map()); // Clear panel-mode results
 
     const startTime = Date.now();
 
@@ -581,7 +864,7 @@ const CanvasView = () => {
     } finally {
       setLoading(false);
     }
-  }, [sql, selectedDatabase]);
+  }, [sql, selectedDatabase, panelLayout, executeParallel, lastSoloQuery]);
 
   // Handle panel interactions (clicks, etc.)
   // Executes the cascade and re-runs the dashboard
@@ -665,14 +948,19 @@ const CanvasView = () => {
     }
   }, [sql, selectedDatabase]);
 
-  // Handle loading a file from the modal
-  const handleLoadFile = useCallback((loadedSql) => {
-    setSql(loadedSql);
-    // Clear previous results when loading a new file
-    setResult(null);
-    setError(null);
-    setPartialResults(new Map());
-  }, []);
+  // Handle loading a file from the modal - opens in a new tab
+  const handleLoadFile = useCallback((loadedSql, fileName, filePath) => {
+    if (fileName && filePath) {
+      // Open file in a new tab
+      openFileAsTab(loadedSql, fileName, filePath);
+    } else {
+      // Legacy: just update current tab's SQL
+      setSql(loadedSql);
+      setResult(null);
+      setError(null);
+      setPartialResults(new Map());
+    }
+  }, [openFileAsTab, setSql]);
 
   // Keep refs up to date (AFTER all callbacks are defined)
   useEffect(() => {
@@ -741,6 +1029,9 @@ const CanvasView = () => {
     queries: parseQueries(sql),
     queryExplains,
     onRunSoloQuery: handleRunSolo,
+    isExecuting: loading,
+    costPollingStatus,
+    actualCost: totalActualCost,
   });
 
   // Auto-rerun when solo render mode changes
@@ -791,6 +1082,9 @@ const CanvasView = () => {
   const handleEditorDidMount = useCallback((editor, monaco) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
+
+    // Signal that editor is ready - triggers initial explain
+    setEditorReady(true);
 
     // Expose to window for Playwright automation (verify_hyper tool)
     window.monacoEditor = editor;
@@ -855,6 +1149,46 @@ const CanvasView = () => {
   // Parse panel metadata from SQL (for skeleton preview)
   const panelMetadata = parsePanelMetadata(sql);
   const hasPanelMetadata = panelMetadata?.panels && panelMetadata.panels.length > 0;
+
+  // Build unified panel data from panelLayout + panelResults for parallel execution mode
+  const unifiedPanelData = useMemo(() => {
+    if (!panelLayout) return null;
+
+    return panelLayout.panels.map((panel, idx) => {
+      const panelResult = panelResults.get(idx);
+      const status = panelResult?.status || 'pending';
+
+      // Look up explain data for this panel's query
+      // Must include the --- PANEL marker line to match how parseQueries hashes queries
+      let panelExplain = null;
+      if (panel.query) {
+        const fullQueryText = panel.panelMarkerLine
+          ? `${panel.panelMarkerLine}\n${panel.query}`
+          : panel.query;
+        const queryHash = hashQuery(fullQueryText);
+        panelExplain = queryExplains.get(queryHash);
+      }
+
+      // Build panel object compatible with CanvasRenderer
+      return {
+        name: panel.name,
+        position: panel.position,
+        hide_border: panel.hide_border,
+        hide_title: panel.hide_title,
+        opacity: panel.opacity,
+        blur: panel.blur,
+        object_fit: panel.object_fit,
+        // Status and data from results
+        status,
+        error: panelResult?.error,
+        columns: panelResult?.columns || [],
+        data: panelResult?.data || [],
+        row_count: panelResult?.row_count || 0,
+        // Explain data for skeleton preview
+        explain: panelExplain,
+      };
+    });
+  }, [panelLayout, panelResults, queryExplains]);
 
   // Detect result format: multi-panel, canvas, or error
   const isMultiPanelResult = result?.multi_panel === true;
@@ -929,32 +1263,17 @@ const CanvasView = () => {
             </span>
           )}
 
-          {/* Cost stats */}
-          {queryCount > 0 && (
-            <div className="canvas-cost-stats">
-              <div className="canvas-cost-item">
-                <Icon icon="mdi:calculator" width="12" />
-                <span>{queryCount} {queryCount === 1 ? 'query' : 'queries'}</span>
-              </div>
-              <div className="canvas-cost-item">
-                <Icon icon="mdi:currency-usd" width="12" />
-                <span className={`canvas-cost-value ${
-                  totalEstimatedCost > 1 ? 'cost-very-expensive' :
-                  totalEstimatedCost > 0.1 ? 'cost-expensive' : ''
-                }`}>
-                  est: ${totalEstimatedCost.toFixed(3)}
-                </span>
-              </div>
-              {totalActualCost > 0 && (
-                <div className="canvas-cost-item">
-                  <Icon icon="mdi:check-circle" width="12" />
-                  <span className="canvas-cost-value">
-                    actual: ${totalActualCost.toFixed(3)}
-                  </span>
-                </div>
-              )}
-            </div>
-          )}
+          {/* Cost badges - glanceable cost indicators */}
+          <CostBadges
+            queryExplains={queryExplains}
+            totalEstimatedCost={totalEstimatedCost}
+            totalActualCost={totalActualCost}
+            costPollingStatus={costPollingStatus}
+            onOpenCostAnalysis={() => {
+              // Open cost analysis tab with current explain data
+              openCostAnalysisTab(queryExplains, { total_cost: totalActualCost }, lastExecutionCallerId);
+            }}
+          />
 
           <div className="canvas-ai-hint" title="Hold spacebar to draw + speak, release to generate">
             <Icon icon="mdi:gesture-tap-hold" width="14" />
@@ -991,7 +1310,30 @@ const CanvasView = () => {
         </div>
       </div>
 
-      {/* Main layout */}
+      {/* Tab Bar */}
+      <TabBar
+        tabs={tabs}
+        activeTabId={activeTabId}
+        onTabClick={switchTab}
+        onTabClose={closeTab}
+        onTabAdd={() => addTab()}
+        onTabRename={renameTab}
+      />
+
+      {/* System Tab: Cost Analysis Dashboard */}
+      {activeTab.isSystem && activeTab.systemType === 'cost-analysis' && (
+        <div className="canvas-system-tab-content">
+          <CostAnalysisDashboard
+            explainData={activeTab.explainData}
+            actualCostData={activeTab.actualCostData}
+            callerId={activeTab.callerId}
+            sourceTabName={tabs.find(t => t.id === activeTab.sourceTabId)?.name}
+          />
+        </div>
+      )}
+
+      {/* Main layout - only show for query tabs */}
+      {!activeTab.isSystem && (
       <div className={`canvas-layout ${editorHidden ? 'canvas-editor-hidden' : ''}`}>
         {/* Collapsed editor bar - shows when editor is hidden */}
         {editorHidden && (
@@ -1078,7 +1420,8 @@ const CanvasView = () => {
             )}
           </div>
           <div className="canvas-result-wrapper" ref={resultWrapperRef}>
-            {loading && (
+            {/* Only show center spinner for single-query mode (no panel layout) */}
+            {loading && !panelLayout && (
               <div className="canvas-loading">
                 <Icon icon="mdi:loading" width="32" className="spinning" />
                 <span>Executing query...</span>
@@ -1095,18 +1438,20 @@ const CanvasView = () => {
               </div>
             )}
 
-            {!error && !result && hasPanelMetadata && (
-              <PanelSkeleton
-                panels={panelMetadata.panels}
-                hasSetup={panelMetadata.hasSetup}
-                setupLineCount={panelMetadata.setupLineCount}
-                partialResults={partialResults}
-                loading={loading}
-                onRunAll={executeQuery}
+            {/* Panel layout preview / parallel execution results */}
+            {!error && !layoutEditMode && panelLayout && unifiedPanelData && (
+              <CanvasRenderer
+                data={[]}
+                columns={[]}
+                isCanvas={false}
+                canvasData={null}
+                isMultiPanel={true}
+                multiPanelData={unifiedPanelData}
+                onInteraction={handleInteraction}
               />
             )}
 
-            {!loading && !error && !result && !hasPanelMetadata && (
+            {!loading && !error && !result && !panelLayout && (
               <div className="canvas-empty canvas-empty-clickable" onClick={executeQuery}>
                 <Icon icon="mdi:play-circle-outline" width="48" />
                 <h3>Run a query to see results</h3>
@@ -1124,7 +1469,8 @@ const CanvasView = () => {
               </div>
             )}
 
-            {!loading && !error && result && !isErrorResult && !layoutEditMode && (
+            {/* Single-request result (non-panel mode) */}
+            {!loading && !error && result && !isErrorResult && !layoutEditMode && !panelLayout && (
               <CanvasRenderer
                 data={result.data}
                 columns={result.columns}
@@ -1149,14 +1495,15 @@ const CanvasView = () => {
                     setSql(updatedSql);
                   }
                   setLayoutEditMode(false);
-                  // Re-run query with the updated SQL directly
-                  executeQuery(updatedSql);
+                  // Don't auto-run - skeleton layout will show the preview
+                  // User can manually run when ready
                 }}
               />
             )}
           </div>
         </div>
       </div>
+      )}
 
       {/* SQL Files Modal */}
       <SqlFileModal

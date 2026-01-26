@@ -1,0 +1,197 @@
+/**
+ * CostBadges styles - Glanceable cost indicators
+ */
+
+.cost-badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+}
+
+.cost-badge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.8);
+  transition: all 0.15s ease;
+}
+
+.cost-badge:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.cost-badge-value {
+  font-family: 'Google Sans Code', 'Menlo', monospace;
+  font-weight: 600;
+}
+
+.cost-badge-label {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+/* Cost tier colors */
+.cost-badge-zero {
+  background: rgba(100, 100, 100, 0.1);
+  border-color: rgba(100, 100, 100, 0.3);
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.cost-badge-free {
+  background: rgba(34, 197, 94, 0.1);
+  border-color: rgba(34, 197, 94, 0.3);
+  color: #22c55e;
+}
+
+.cost-badge-cheap {
+  background: rgba(34, 197, 94, 0.1);
+  border-color: rgba(34, 197, 94, 0.3);
+  color: #22c55e;
+}
+
+.cost-badge-moderate {
+  background: rgba(234, 179, 8, 0.1);
+  border-color: rgba(234, 179, 8, 0.3);
+  color: #eab308;
+}
+
+.cost-badge-expensive {
+  background: rgba(249, 115, 22, 0.1);
+  border-color: rgba(249, 115, 22, 0.3);
+  color: #f97316;
+}
+
+.cost-badge-very-expensive {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+}
+
+/* Polling state */
+.cost-badge-polling {
+  background: rgba(99, 102, 241, 0.1);
+  border-color: rgba(99, 102, 241, 0.3);
+  color: #6366f1;
+}
+
+.cost-badge-polling .spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Calls badge */
+.cost-badge-calls {
+  background: rgba(139, 92, 246, 0.1);
+  border-color: rgba(139, 92, 246, 0.3);
+  color: #8b5cf6;
+}
+
+/* Cache badge */
+.cost-badge-cache {
+  background: rgba(59, 130, 246, 0.1);
+  border-color: rgba(59, 130, 246, 0.3);
+  color: #3b82f6;
+}
+
+.cost-badge-cache.high {
+  background: rgba(34, 197, 94, 0.1);
+  border-color: rgba(34, 197, 94, 0.3);
+  color: #22c55e;
+}
+
+/* Delta indicators */
+.cost-badge-delta {
+  font-size: 10px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  margin-left: 2px;
+}
+
+.delta-neutral {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.delta-under {
+  background: rgba(34, 197, 94, 0.2);
+  color: #22c55e;
+}
+
+.delta-over {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+}
+
+/* Operator dots */
+.cost-badge-operators {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 4px 6px;
+}
+
+.operator-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+  cursor: help;
+  transition: transform 0.15s ease;
+}
+
+.operator-dot:hover {
+  transform: scale(1.3);
+}
+
+.operator-dot-zero {
+  background: rgba(100, 100, 100, 0.5);
+}
+
+.operator-dot-free,
+.operator-dot-cheap {
+  background: #22c55e;
+}
+
+.operator-dot-moderate {
+  background: #eab308;
+}
+
+.operator-dot-expensive {
+  background: #f97316;
+}
+
+.operator-dot-very-expensive {
+  background: #ef4444;
+}
+
+.operator-dot-more {
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.5);
+  margin-left: 2px;
+}
+
+/* Analyze button */
+.cost-badge-analyze {
+  cursor: pointer;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.15));
+  border-color: rgba(99, 102, 241, 0.3);
+  color: #a5b4fc;
+}
+
+.cost-badge-analyze:hover {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(139, 92, 246, 0.25));
+  border-color: rgba(99, 102, 241, 0.5);
+  color: #c7d2fe;
+}

@@ -1058,24 +1058,12 @@ def _rewrite_function_calls_with_source_context(sql: str) -> Tuple[str, bool, Li
                         # Use alias if found, otherwise fall back to function name
                         target_column = output_alias if output_alias else fn_name
 
-                        # Check if we're in a WHERE clause - skip ROW_NUMBER injection
-                        # WHERE clauses don't allow window functions
-                        in_where = _is_in_where_clause(i)
-
-                        if in_where:
-                            # Simple source context without row tracking (WHERE-safe)
-                            source_prefix = f'__LARS_SOURCE:{{"column": "{target_column}"}}__'
-                            row_expr = None
-                        else:
-                            # Build source context with dynamic row index injection
-                            # Uses SQL string concatenation to embed ROW_NUMBER() at runtime
-                            # Result: '__LARS_SOURCE:{"column":"fear","row":' || CAST(ROW_NUMBER() - 1 AS VARCHAR) || '}__ criterion'
-                            # Note: ROW_NUMBER() is 1-based, subtract 1 for 0-based index
-                            row_expr = "CAST((ROW_NUMBER() OVER () - 1) AS VARCHAR)"
-                            source_prefix = None
-
-                        source_json_start = f'{{"column": "{target_column}", "row": '
-                        source_json_end = "}"
+                        # SIMPLIFIED: Always use column-only source tracking (no ROW_NUMBER).
+                        # The ROW_NUMBER() injection created complex SQL concatenation that broke
+                        # subsequent rewriters (llm_agg_rewriter, etc.) causing garbled output.
+                        # Column tracking is still useful for debugging; row tracking can be done
+                        # at execution time via DuckDB's built-in row numbering if needed.
+                        source_prefix = f'__LARS_SOURCE:{{"column": "{target_column}"}}__'
 
                         # Now inject source context into string arguments
                         new_args = []
@@ -1089,25 +1077,13 @@ def _rewrite_function_calls_with_source_context(sql: str) -> Tuple[str, bool, Li
                                 quote = arg_stripped[0]
                                 inner = arg_stripped[1:-1]
 
-                                if in_where:
-                                    # WHERE clause: simple prefix injection (no window function)
-                                    if quote == "'":
-                                        inner_escaped = inner.replace("'", "''")
-                                    else:
-                                        inner_escaped = inner.replace('"', '""')
-                                    new_arg = f"{quote}{source_prefix}{inner_escaped}{quote}"
-                                    _log.debug(f"[semantic_rewriter_v2] Injected WHERE-safe source into {fn_name} arg {idx}: {target_column}")
+                                # Simple prefix injection (always WHERE-safe, no window function)
+                                if quote == "'":
+                                    inner_escaped = inner.replace("'", "''")
                                 else:
-                                    # Non-WHERE: inject with dynamic row number
-                                    # Build: '__LARS_SOURCE:{"column":"x","row":' || ROW_NUMBER() || '}__ ' || 'original'
-                                    if quote == "'":
-                                        inner_escaped = inner.replace("'", "''")
-                                    else:
-                                        inner_escaped = inner.replace('"', '""')
-                                    new_arg = (
-                                        f"'__LARS_SOURCE:{source_json_start}' || {row_expr} || '{source_json_end}__ {inner_escaped}'"
-                                    )
-                                    _log.debug(f"[semantic_rewriter_v2] Injected source with row into {fn_name} arg {idx}: {target_column}")
+                                    inner_escaped = inner.replace('"', '""')
+                                new_arg = f"{quote}{source_prefix}{inner_escaped}{quote}"
+                                _log.debug(f"[semantic_rewriter_v2] Injected source into {fn_name} arg {idx}: {target_column}")
 
                                 new_args.append(new_arg)
                                 injected = True
@@ -1116,16 +1092,8 @@ def _rewrite_function_calls_with_source_context(sql: str) -> Tuple[str, bool, Li
 
                         # For single-arg functions (no string arg), add synthetic source arg
                         if not injected and len(args) == 1:
-                            if in_where:
-                                # WHERE clause: simple source arg
-                                new_arg = f"'{source_prefix}'"
-                                _log.debug(f"[semantic_rewriter_v2] Injected WHERE-safe synthetic source arg for {fn_name}: {target_column}")
-                            else:
-                                # Non-WHERE: add source context with dynamic row
-                                new_arg = (
-                                    f"'__LARS_SOURCE:{source_json_start}' || {row_expr} || '{source_json_end}__'"
-                                )
-                                _log.debug(f"[semantic_rewriter_v2] Injected synthetic source arg with row for {fn_name}: {target_column}")
+                            new_arg = f"'{source_prefix}'"
+                            _log.debug(f"[semantic_rewriter_v2] Injected synthetic source arg for {fn_name}: {target_column}")
                             new_args.append(new_arg)
                             injected = True
 

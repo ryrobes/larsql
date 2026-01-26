@@ -23,11 +23,13 @@ function getCostTier(cost) {
   return 'very-high';
 }
 
-const QueryActionBar = ({ query, explain, onRunSolo }) => {
+const QueryActionBar = ({ query, explain, onRunSolo, isExecuting, costPollingStatus, actualCost }) => {
   const { estimatedCost, estimatedCalls, operations, aggregates, pipelineStages, queryType, error } = explain || {};
 
   const isError = queryType === 'error';
   const tier = getCostTier(estimatedCost || 0);
+  const isPolling = costPollingStatus === 'polling';
+  const hasActualCost = actualCost != null && actualCost > 0 && !isPolling;
 
   // Collect unique models
   const models = new Set();
@@ -44,8 +46,21 @@ const QueryActionBar = ({ query, explain, onRunSolo }) => {
         {/* Left side: Metadata */}
         <div className="query-action-bar-meta">
           {/* Cost badge */}
-          <div className={`cost-badge cost-${tier}`} title={`Estimated cost: $${(estimatedCost || 0).toFixed(6)}`}>
-            ${(estimatedCost || 0) < 0.01 ? (estimatedCost || 0).toFixed(4) : (estimatedCost || 0).toFixed(3)}
+          <div className={`cost-badge cost-${tier}`} title={`Estimated: $${(estimatedCost || 0).toFixed(6)}${hasActualCost ? ` | Actual: $${actualCost.toFixed(6)}` : ''}`}>
+            {hasActualCost ? (
+              <>
+                <span className="cost-actual">${actualCost < 0.01 ? actualCost.toFixed(4) : actualCost.toFixed(3)}</span>
+                <span className="cost-separator">/</span>
+                <span className="cost-estimated">${(estimatedCost || 0) < 0.01 ? (estimatedCost || 0).toFixed(4) : (estimatedCost || 0).toFixed(3)}</span>
+              </>
+            ) : isPolling ? (
+              <>
+                <Icon icon="mdi:loading" width="10" className="spin" />
+                <span className="cost-estimated">${(estimatedCost || 0) < 0.01 ? (estimatedCost || 0).toFixed(4) : (estimatedCost || 0).toFixed(3)}</span>
+              </>
+            ) : (
+              <>${(estimatedCost || 0) < 0.01 ? (estimatedCost || 0).toFixed(4) : (estimatedCost || 0).toFixed(3)}</>
+            )}
           </div>
 
           {/* Operation count */}
@@ -87,10 +102,16 @@ const QueryActionBar = ({ query, explain, onRunSolo }) => {
           )}
         </div>
 
-        {/* Right side: Play button */}
-        <button className="action-btn-play" onClick={onRunSolo} title="Run query solo (Ctrl+Shift+Enter)">
-          <Icon icon="mdi:play" width="14" />
-        </button>
+        {/* Right side: Play button or spinner */}
+        {isExecuting ? (
+          <div className="action-btn-executing" title="Executing...">
+            <Icon icon="mdi:loading" width="14" className="spin" />
+          </div>
+        ) : (
+          <button className="action-btn-play" onClick={onRunSolo} title="Run query solo (Ctrl+Shift+Enter)">
+            <Icon icon="mdi:play" width="14" />
+          </button>
+        )}
       </div>
     </div>
   );

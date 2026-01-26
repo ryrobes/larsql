@@ -433,6 +433,10 @@ class DataRow:
                     value_str = str(value)
                 elif isinstance(value, bytes):
                     value_str = value.decode('utf-8', errors='replace')
+                elif isinstance(value, dict):
+                    # Convert Python dict (DuckDB STRUCT) to JSON
+                    import json
+                    value_str = json.dumps(value)
                 elif isinstance(value, (list, tuple)):
                     # Convert Python list/tuple to PostgreSQL array format
                     value_str = DataRow._to_pg_array(value)

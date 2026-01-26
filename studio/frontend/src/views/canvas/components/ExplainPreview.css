@@ -1,0 +1,356 @@
+/**
+ * ExplainPreview styles - Detailed explain visualization for skeleton panels
+ *
+ * Simple vertical layout that adapts to any panel size.
+ * Summary row (cost + calls + hints) on top, operations below.
+ */
+
+.explain-preview {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  padding: 10px 12px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.8);
+  overflow: auto;
+  box-sizing: border-box;
+  container-type: size;
+}
+
+/* Empty/waiting state */
+.explain-preview-empty {
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  opacity: 0.5;
+}
+
+.explain-preview-wait-icon {
+  opacity: 0.6;
+  animation: explain-pulse 2s ease-in-out infinite;
+}
+
+.explain-preview-wait-text {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+@keyframes explain-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+
+/* Error state */
+.explain-preview-error {
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: rgba(239, 68, 68, 0.9);
+}
+
+.explain-preview-error-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.explain-preview-error-title {
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.explain-preview-error-text {
+  font-size: 10px;
+  opacity: 0.8;
+  line-height: 1.4;
+  max-width: 300px;
+}
+
+/* Pure SQL state */
+.explain-preview-sql {
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.explain-preview-sql-icon {
+  color: rgba(96, 165, 250, 0.7);
+}
+
+.explain-preview-sql-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.explain-preview-sql-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(96, 165, 250, 0.9);
+}
+
+.explain-preview-sql-hint {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* ============================================
+   DETAILED VIEW - Vertical flow layout
+   ============================================ */
+.explain-preview-detailed {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+}
+
+/* Summary row: cost, calls, hints - all inline with wrapping */
+.explain-preview-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.explain-preview-cost {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 600;
+}
+
+.explain-preview-cost-value {
+  font-size: 14px;
+  letter-spacing: -0.3px;
+}
+
+/* Cost tier colors */
+.explain-preview-cost-zero { color: rgba(156, 163, 175, 0.8); }
+.explain-preview-cost-free { color: rgba(74, 222, 128, 0.9); }
+.explain-preview-cost-green { color: rgba(52, 211, 153, 0.9); }
+.explain-preview-cost-yellow { color: rgba(250, 204, 21, 0.9); }
+.explain-preview-cost-orange { color: rgba(249, 115, 22, 0.9); }
+.explain-preview-cost-red { color: rgba(239, 68, 68, 0.9); }
+
+.explain-preview-calls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.explain-preview-hint {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: rgba(250, 204, 21, 0.7);
+  line-height: 1.3;
+}
+
+/* Operations section */
+.explain-preview-operations {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-height: 0;
+}
+
+.explain-preview-op-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.explain-preview-op-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 4px;
+  border-left: 2px solid transparent;
+}
+
+.explain-preview-op-zero { border-left-color: rgba(156, 163, 175, 0.4); }
+.explain-preview-op-free { border-left-color: rgba(74, 222, 128, 0.5); }
+.explain-preview-op-green { border-left-color: rgba(52, 211, 153, 0.5); }
+.explain-preview-op-yellow { border-left-color: rgba(250, 204, 21, 0.5); }
+.explain-preview-op-orange { border-left-color: rgba(249, 115, 22, 0.5); }
+.explain-preview-op-red { border-left-color: rgba(239, 68, 68, 0.5); }
+
+.explain-preview-op-func {
+  font-weight: 600;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.explain-preview-op-model {
+  font-size: 9px;
+  padding: 2px 5px;
+  background: rgba(139, 92, 246, 0.15);
+  border-radius: 3px;
+  color: rgba(139, 92, 246, 0.9);
+}
+
+.explain-preview-op-stats {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.explain-preview-op-calls {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.explain-preview-op-cache {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.explain-preview-op-cache.high {
+  color: rgba(74, 222, 128, 0.8);
+}
+
+.explain-preview-op-cost {
+  font-weight: 600;
+  font-size: 11px;
+}
+
+.explain-preview-op-cost.cost-zero { color: rgba(156, 163, 175, 0.7); }
+.explain-preview-op-cost.cost-free { color: rgba(74, 222, 128, 0.9); }
+.explain-preview-op-cost.cost-green { color: rgba(52, 211, 153, 0.9); }
+.explain-preview-op-cost.cost-yellow { color: rgba(250, 204, 21, 0.9); }
+.explain-preview-op-cost.cost-orange { color: rgba(249, 115, 22, 0.9); }
+.explain-preview-op-cost.cost-red { color: rgba(239, 68, 68, 0.9); }
+
+/* Pipeline stages */
+.explain-preview-pipeline {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-height: 0;
+}
+
+.explain-preview-stage-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.explain-preview-stage-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  background: rgba(139, 92, 246, 0.05);
+  border-radius: 4px;
+  border-left: 2px solid rgba(139, 92, 246, 0.3);
+}
+
+.explain-preview-stage-name {
+  font-weight: 600;
+  font-size: 11px;
+  color: rgba(139, 92, 246, 0.9);
+}
+
+.explain-preview-stage-desc {
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.explain-preview-stage-model {
+  font-size: 9px;
+  padding: 2px 5px;
+  background: rgba(139, 92, 246, 0.15);
+  border-radius: 3px;
+  color: rgba(139, 92, 246, 0.8);
+  margin-left: auto;
+}
+
+.explain-preview-stage-cost {
+  font-weight: 600;
+  font-size: 11px;
+}
+
+.explain-preview-stage-zero .explain-preview-stage-cost { color: rgba(156, 163, 175, 0.7); }
+.explain-preview-stage-free .explain-preview-stage-cost { color: rgba(74, 222, 128, 0.9); }
+.explain-preview-stage-green .explain-preview-stage-cost { color: rgba(52, 211, 153, 0.9); }
+.explain-preview-stage-yellow .explain-preview-stage-cost { color: rgba(250, 204, 21, 0.9); }
+.explain-preview-stage-orange .explain-preview-stage-cost { color: rgba(249, 115, 22, 0.9); }
+.explain-preview-stage-red .explain-preview-stage-cost { color: rgba(239, 68, 68, 0.9); }
+
+/* ============================================
+   COMPACT MODES - Small containers
+   ============================================ */
+
+/* Short height - hide less important info */
+@container (max-height: 100px) {
+  .explain-preview {
+    padding: 6px 10px;
+  }
+
+  .explain-preview-summary {
+    padding-bottom: 4px;
+  }
+
+  .explain-preview-hint {
+    display: none;
+  }
+
+  .explain-preview-op-row,
+  .explain-preview-stage-row {
+    padding: 3px 6px;
+  }
+
+  .explain-preview-op-cache,
+  .explain-preview-stage-desc {
+    display: none;
+  }
+}
+
+/* Very short - just summary */
+@container (max-height: 60px) {
+  .explain-preview-operations,
+  .explain-preview-pipeline {
+    display: none;
+  }
+
+  .explain-preview-summary {
+    border-bottom: none;
+    padding-bottom: 0;
+  }
+}
+
+/* Narrow width - hide model names */
+@container (max-width: 200px) {
+  .explain-preview-op-model,
+  .explain-preview-stage-model,
+  .explain-preview-stage-desc {
+    display: none;
+  }
+
+  .explain-preview-hint {
+    display: none;
+  }
+}

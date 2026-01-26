@@ -940,6 +940,14 @@ def execute_pipeline_stages(
     for idx, stage in enumerate(stages):
         log.info(f"[pipeline] Executing stage {idx + 1}/{len(stages)}: {stage.name}")
 
+        # Handle PASS - no-op stage that just passes data through
+        # Useful for: SELECT ... THEN PASS INTO my_table (just want to save, no transform)
+        # Note: INTO handling for PASS is done in execute_pipeline_with_into, not here
+        if stage.name.upper() == 'PASS':
+            log.info(f"[pipeline] PASS stage - no transformation")
+            previous_stage = stage.name
+            continue
+
         # Look up the pipeline cascade
         cascade_entry = get_pipeline_cascade(stage.name)
         if not cascade_entry:
@@ -1106,17 +1114,257 @@ def execute_pipeline_stages(
 
 
 def _save_to_table(duckdb_conn: Any, df: pd.DataFrame, table_name: str) -> None:
-    """Save DataFrame to a DuckDB table."""
-    log.info(f"[pipeline] Saving {len(df)} rows to table: {table_name}")
+    """
+    Save DataFrame to ClickHouse and create a view in DuckDB.
+
+    This enables cross-session visibility:
+    - Data persists in ClickHouse (lars_results schema)
+    - Each DuckDB session gets a view pointing to clickhouse_scan()
+    - No locking issues since ClickHouse handles concurrent access
+
+    Args:
+        duckdb_conn: DuckDB connection for creating the view
+        df: DataFrame to save
+        table_name: Name for the table/view (will be prefixed with 'into_' in ClickHouse)
+    """
+    import re
+    import json
+
+    log.info(f"[pipeline] Saving {len(df)} rows to ClickHouse + view: {table_name}")
+
+    if df is None or len(df) == 0:
+        log.warning(f"[pipeline] Skipping save: empty DataFrame")
+        return
+
     try:
-        # Register as a temp table first, then create permanent table
-        duckdb_conn.register("_pipeline_result", df)
-        duckdb_conn.execute(f"CREATE OR REPLACE TABLE {table_name} AS SELECT * FROM _pipeline_result")
-        duckdb_conn.unregister("_pipeline_result")
-        log.info(f"[pipeline] Created table: {table_name}")
+        # Sanitize table name for ClickHouse
+        safe_name = re.sub(r'[^a-zA-Z0-9_]', '_', table_name)
+        ch_table_name = f"into_{safe_name}"
+
+        # === Step 1: Save to ClickHouse ===
+        from ..db_adapter import get_db
+        db = get_db()
+
+        # Build column definitions
+        columns = list(df.columns)
+        sanitized_columns = [_sanitize_column_name_for_ch(c) for c in columns]
+        column_types = [_pandas_dtype_to_clickhouse(df[col].dtype) for col in columns]
+
+        # Create column spec
+        column_defs = []
+        for san_col, ch_type in zip(sanitized_columns, column_types):
+            column_defs.append(f"`{san_col}` Nullable({ch_type})")
+        columns_sql = ",\n    ".join(column_defs)
+
+        # Drop existing table
+        drop_sql = f"DROP TABLE IF EXISTS lars_results.{ch_table_name}"
+        db.execute(drop_sql)
+
+        # Create the table
+        create_sql = f"""
+            CREATE TABLE lars_results.{ch_table_name} (
+                {columns_sql}
+            )
+            ENGINE = MergeTree()
+            ORDER BY tuple()
+        """
+        db.execute(create_sql)
+
+        # Insert data in batches
+        if len(df) > 0:
+            col_names = ", ".join([f"`{c}`" for c in sanitized_columns])
+
+            # Prepare rows
+            rows_to_insert = []
+            for _, row in df.iterrows():
+                row_values = []
+                for val in row:
+                    if val is None or (hasattr(val, '__class__') and val.__class__.__name__ == 'NaT'):
+                        row_values.append(None)
+                    elif hasattr(val, 'isoformat'):
+                        row_values.append(val.isoformat())
+                    elif isinstance(val, bytes):
+                        row_values.append(val.hex())
+                    elif hasattr(val, 'item'):  # numpy types
+                        try:
+                            row_values.append(val.item())
+                        except ValueError:
+                            row_values.append(val.tolist() if hasattr(val, 'tolist') else list(val))
+                    else:
+                        row_values.append(val)
+                rows_to_insert.append(tuple(row_values))
+
+            # Format values for INSERT
+            def format_value(v):
+                if v is None:
+                    return 'NULL'
+                elif isinstance(v, str):
+                    return "'" + v.replace("\\", "\\\\").replace("'", "''").replace("%", "%%") + "'"
+                elif isinstance(v, bool):
+                    return '1' if v else '0'
+                elif isinstance(v, (int, float)):
+                    return str(v)
+                elif isinstance(v, (dict, list)):
+                    return "'" + json.dumps(v).replace("\\", "\\\\").replace("'", "''").replace("%", "%%") + "'"
+                else:
+                    return "'" + str(v).replace("\\", "\\\\").replace("'", "''").replace("%", "%%") + "'"
+
+            # Insert in batches
+            batch_size = 1000
+            for i in range(0, len(rows_to_insert), batch_size):
+                batch = rows_to_insert[i:i + batch_size]
+                values_strs = []
+                for row_tuple in batch:
+                    row_str = "(" + ", ".join(format_value(v) for v in row_tuple) + ")"
+                    values_strs.append(row_str)
+
+                insert_sql = f"INSERT INTO lars_results.{ch_table_name} ({col_names}) VALUES {', '.join(values_strs)}"
+                db.execute(insert_sql)
+
+        log.info(f"[pipeline] Saved {len(df)} rows to ClickHouse: lars_results.{ch_table_name}")
+
+        # === Step 2: Create view in DuckDB session ===
+        if duckdb_conn is not None:
+            # Drop any existing table or view with this name
+            try:
+                duckdb_conn.execute(f"DROP TABLE IF EXISTS {table_name}")
+            except Exception:
+                pass
+            try:
+                duckdb_conn.execute(f"DROP VIEW IF EXISTS {table_name}")
+            except Exception:
+                pass
+
+            # Create view that reads from ClickHouse via clickhouse_scan_1
+            # (clickhouse_scan_1 is the 1-arg version registered in udf.py)
+            view_sql = f"""
+                CREATE VIEW {table_name} AS
+                SELECT * FROM read_json_auto(clickhouse_scan_1('lars_results.{ch_table_name}'))
+            """
+            duckdb_conn.execute(view_sql)
+            log.info(f"[pipeline] Created view: {table_name} -> clickhouse_scan('lars_results.{ch_table_name}')")
+
     except Exception as e:
-        log.error(f"[pipeline] Failed to create table {table_name}: {e}")
+        log.error(f"[pipeline] Failed to save to ClickHouse/create view for {table_name}: {e}")
         raise
+
+
+def _sanitize_column_name_for_ch(name: str) -> str:
+    """Sanitize column name for ClickHouse."""
+    import re
+    # Replace problematic characters
+    sanitized = re.sub(r'[^a-zA-Z0-9_]', '_', str(name))
+    # Ensure doesn't start with number
+    if sanitized and sanitized[0].isdigit():
+        sanitized = '_' + sanitized
+    if not sanitized:
+        sanitized = '_col'
+    return sanitized
+
+
+def _pandas_dtype_to_clickhouse(dtype) -> str:
+    """Convert pandas dtype to ClickHouse type."""
+    dtype_str = str(dtype).lower()
+
+    if 'int64' in dtype_str:
+        return 'Int64'
+    elif 'int32' in dtype_str:
+        return 'Int32'
+    elif 'int16' in dtype_str:
+        return 'Int16'
+    elif 'int8' in dtype_str:
+        return 'Int8'
+    elif 'uint64' in dtype_str:
+        return 'UInt64'
+    elif 'uint32' in dtype_str:
+        return 'UInt32'
+    elif 'uint16' in dtype_str:
+        return 'UInt16'
+    elif 'uint8' in dtype_str:
+        return 'UInt8'
+    elif 'float64' in dtype_str:
+        return 'Float64'
+    elif 'float32' in dtype_str:
+        return 'Float32'
+    elif 'bool' in dtype_str:
+        return 'UInt8'
+    elif 'datetime64' in dtype_str:
+        return 'DateTime64(3)'
+    elif 'date' in dtype_str:
+        return 'Date'
+    else:
+        # Default to String for object/category/unknown
+        return 'String'
+
+
+def sync_into_tables(duckdb_conn: Any) -> int:
+    """
+    Sync INTO tables from ClickHouse as views in the DuckDB session.
+
+    Call this on session start to make all INTO tables visible.
+    Discovers tables in lars_results schema with 'into_' prefix and creates
+    views pointing to clickhouse_scan_1().
+
+    Args:
+        duckdb_conn: DuckDB connection to create views in
+
+    Returns:
+        Number of views created
+    """
+    if duckdb_conn is None:
+        return 0
+
+    try:
+        from ..db_adapter import get_db
+        db = get_db()
+
+        # Query ClickHouse for tables with 'into_' prefix
+        # Note: %% escapes the % for Python string formatting used by ClickHouse driver
+        result = db.execute("""
+            SELECT name
+            FROM system.tables
+            WHERE database = 'lars_results'
+            AND name LIKE 'into_%%'
+        """)
+
+        if result is None:
+            return 0
+
+        count = 0
+        for row in result:
+            ch_table_name = row[0]  # e.g., 'into_my_analysis'
+            view_name = ch_table_name[5:]  # Strip 'into_' prefix -> 'my_analysis'
+
+            try:
+                # Drop existing table/view
+                try:
+                    duckdb_conn.execute(f"DROP TABLE IF EXISTS {view_name}")
+                except Exception:
+                    pass
+                try:
+                    duckdb_conn.execute(f"DROP VIEW IF EXISTS {view_name}")
+                except Exception:
+                    pass
+
+                # Create view
+                view_sql = f"""
+                    CREATE VIEW {view_name} AS
+                    SELECT * FROM read_json_auto(clickhouse_scan_1('lars_results.{ch_table_name}'))
+                """
+                duckdb_conn.execute(view_sql)
+                count += 1
+                log.debug(f"[pipeline] Synced INTO table: {view_name} -> lars_results.{ch_table_name}")
+            except Exception as e:
+                log.warning(f"[pipeline] Failed to sync INTO table {ch_table_name}: {e}")
+
+        if count > 0:
+            log.info(f"[pipeline] Synced {count} INTO table(s) from ClickHouse")
+
+        return count
+
+    except Exception as e:
+        log.debug(f"[pipeline] Could not sync INTO tables: {e}")
+        return 0
 
 
 def _execute_pipeline_sql_statements(
@@ -1268,6 +1516,16 @@ def execute_pipeline_with_into(
                     inner_error=e
                 )
 
+            previous_stage = stage.name
+            continue
+
+        # Handle PASS - no-op stage that just passes data through
+        # Useful for: SELECT ... THEN PASS INTO my_table (just want to save, no transform)
+        if stage.name.upper() == 'PASS':
+            log.info(f"[pipeline] PASS stage - no transformation")
+            # Handle INTO for PASS stage
+            if stage.into_table and duckdb_conn is not None:
+                _save_to_table(duckdb_conn, current_df, stage.into_table)
             previous_stage = stage.name
             continue
 

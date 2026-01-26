@@ -84,7 +84,8 @@ const SqlFileModal = ({ isOpen, onClose, onLoad, currentSql }) => {
         return;
       }
 
-      onLoad(data.sql);
+      // Pass SQL content plus file metadata for tab naming
+      onLoad(data.sql, file.name, `sql-file:${file.id}`);
       onClose();
     } catch (err) {
       setError(err.message);

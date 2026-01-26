@@ -34,21 +34,29 @@ const CanvasRenderer = ({ data, columns, isCanvas, canvasData, isMultiPanel, mul
       // Look through all columns for JSON image data
       for (const key of keys) {
         const value = row[key];
+
+        // Handle both string JSON and already-parsed objects
+        let parsed = null;
         if (typeof value === 'string') {
           const trimmed = value.trim();
           if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
             try {
-              const parsed = JSON.parse(trimmed);
-              // Check if this is image data (has format: "image" or images array)
-              if (parsed.format === 'image' || (Array.isArray(parsed.images) && parsed.images.length > 0)) {
-                parsedImageData = parsed;
-                continue; // Don't add to otherFields
-              }
+              parsed = JSON.parse(trimmed);
             } catch (e) {
               // Not valid JSON, treat as regular field
             }
           }
+        } else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+          // Already an object (from PGwire path where backend parses JSON)
+          parsed = value;
         }
+
+        // Check if this is image data (has format: "image" or images array)
+        if (parsed && (parsed.format === 'image' || (Array.isArray(parsed.images) && parsed.images.length > 0))) {
+          parsedImageData = parsed;
+          continue; // Don't add to otherFields
+        }
+
         // Keep non-JSON fields (like caption, title, etc.)
         otherFields[key] = value;
       }
@@ -103,6 +111,36 @@ const CanvasRenderer = ({ data, columns, isCanvas, canvasData, isMultiPanel, mul
     // Convert multi-panel data to panel format for PanelRenderer
     // Detect panel type based on content structure
     const panels = multiPanelData.map((panel, index) => {
+      // If panel is loading/pending, skip type detection and return early
+      if (panel.status === 'loading' || panel.status === 'pending' || panel.status === 'error') {
+        // Calculate grid position for loading panels
+        let gridStyle = {};
+        if (panel.position) {
+          const { col, row, colspan = 1, rowspan = 1 } = panel.position;
+          gridStyle = {
+            gridColumn: `${col} / span ${colspan}`,
+            gridRow: `${row} / span ${rowspan}`
+          };
+        }
+
+        return {
+          name: panel.name,
+          type: 'loading', // Placeholder type for loading state
+          content: [],
+          gridStyle,
+          status: panel.status,
+          error: panel.error,
+          hide_border: panel.hide_border,
+          hide_title: panel.hide_title,
+          opacity: panel.opacity,
+          blur: panel.blur,
+          objectFit: panel.object_fit,
+          isBackground: panel.position?.col === 0 && panel.position?.row === 0,
+          // Pass through explain data for skeleton preview
+          explain: panel.explain,
+        };
+      }
+
       // Try to parse JSON from cascade UDF results (e.g., image generation)
       const panelData = tryParseJsonFromCell(panel.data);
 
@@ -298,6 +336,11 @@ const CanvasRenderer = ({ data, columns, isCanvas, canvasData, isMultiPanel, mul
         objectFit: panel.object_fit,
         // Track if this is a background panel (position 0,0)
         isBackground: panel.position?.col === 0 && panel.position?.row === 0,
+        // Pass through execution status for loading states
+        status: panel.status || 'complete',
+        error: panel.error,
+        // Pass through explain data
+        explain: panel.explain,
       };
     });
 

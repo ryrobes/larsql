@@ -66,6 +66,7 @@ dependencies = [
     "kaleido>=0.2",                  # Static image export
     "vl-convert-python>=1.0",        # Vega-Lite conversion
     "gunicorn[gevent]>=23.0",        # WSGI server
+    "psycopg[binary]>=3.1",          # PostgreSQL client (PGwire for Studio multi-worker)
 ]
 
 [project.urls]

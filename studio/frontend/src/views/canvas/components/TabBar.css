@@ -1,0 +1,181 @@
+/**
+ * TabBar styles - Tab navigation for Hyper workspaces
+ */
+
+.tab-bar {
+  display: flex;
+  align-items: center;
+  background: rgba(10, 10, 15, 0.8);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 0 8px;
+  height: 36px;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.tab-bar-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 1;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.tab-bar-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.tab-bar-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 6px 6px 0 0;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid transparent;
+  border-bottom: none;
+  cursor: pointer;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+  transition: all 0.15s ease;
+  min-width: 80px;
+  max-width: 180px;
+  position: relative;
+}
+
+.tab-bar-tab:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.tab-bar-tab.active {
+  background: rgba(30, 30, 40, 0.95);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.tab-bar-tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #6366f1, #8b5cf6);
+}
+
+/* System tabs (cost analysis, etc.) */
+.tab-bar-tab.system {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1));
+  border-color: rgba(99, 102, 241, 0.2);
+}
+
+.tab-bar-tab.system.active {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.15));
+  border-color: rgba(99, 102, 241, 0.3);
+}
+
+.tab-bar-tab.system .tab-icon {
+  color: #8b5cf6;
+}
+
+.tab-icon {
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.tab-bar-tab.active .tab-icon {
+  opacity: 1;
+}
+
+.tab-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Dirty indicator (unsaved changes) */
+.tab-dirty-dot {
+  color: #f97316;
+  font-size: 8px;
+  line-height: 1;
+}
+
+.tab-bar-tab.dirty .tab-name {
+  font-style: italic;
+}
+
+/* File-based tabs */
+.tab-bar-tab.file-tab .tab-icon {
+  color: #60a5fa;
+}
+
+.tab-name-input {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(99, 102, 241, 0.5);
+  border-radius: 3px;
+  color: white;
+  font-size: 12px;
+  padding: 2px 6px;
+  width: 100px;
+  outline: none;
+}
+
+.tab-close-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+  border-radius: 3px;
+  padding: 0;
+  opacity: 0;
+  transition: all 0.15s ease;
+}
+
+.tab-bar-tab:hover .tab-close-btn {
+  opacity: 1;
+}
+
+.tab-close-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.tab-system-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #8b5cf6;
+  opacity: 0.7;
+}
+
+.tab-bar-add-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px dashed rgba(255, 255, 255, 0.15);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.tab-bar-add-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: rgba(255, 255, 255, 0.8);
+}

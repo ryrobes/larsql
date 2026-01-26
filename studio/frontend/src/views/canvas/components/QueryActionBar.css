@@ -62,15 +62,54 @@
   transform: scale(1.15);
 }
 
+/* Executing spinner (replaces play button) */
+.action-btn-executing {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #00e5ff;
+  padding: 0;
+  margin: 0 6px 0 0;
+  height: 100%;
+}
+
+.action-btn-executing .spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 /* Cost badge - no box, just colored text (cyan → pink gradient) */
 .cost-badge {
   display: flex;
   align-items: center;
   gap: 3px;
   font-weight: 700;
-  font-family: 'Courier New', monospace;
+  font-family: 'Google Sans Code', monospace;
   font-size: 11px;
   height: 100%;
+}
+
+.cost-badge .spin {
+  animation: spin 1s linear infinite;
+  margin-right: 3px;
+}
+
+.cost-actual {
+  color: #22c55e; /* Green for actual cost */
+}
+
+.cost-separator {
+  color: rgba(255, 255, 255, 0.3);
+  font-weight: 400;
+}
+
+.cost-estimated {
+  opacity: 0.5;
+  font-weight: 400;
 }
 
 .cost-zero {
@@ -131,7 +170,7 @@
   align-items: center;
   gap: 2px;
   color: var(--color-text-dim);
-  font-size: 9px;
+  font-size: 11px;
   height: 100%;
 }
 

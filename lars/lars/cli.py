@@ -974,6 +974,11 @@ def main():
         action='store_true',
         help='Development mode: Flask debug server, no static file serving'
     )
+    serve_studio_parser.add_argument(
+        '--preload',
+        action='store_true',
+        help='Preload app in master before forking workers (reduces per-worker startup)'
+    )
 
     # serve sql - PostgreSQL wire protocol server (same as sql server)
     serve_sql_parser = serve_subparsers.add_parser(
@@ -5918,6 +5923,7 @@ def _run_server_subprocess(cmd, cwd=None, env=None):
 def cmd_serve_studio(args):
     """Start LARS Studio web UI backend."""
     import subprocess
+    import socket
 
     # Studio backend lives in the package at lars/lars/studio/backend/
     # This is the single source of truth - edit there for both dev and prod.
@@ -5952,6 +5958,109 @@ def cmd_serve_studio(args):
     print(f"   Static files: {'yes' if has_built_frontend and not args.dev else 'no'}")
     print()
 
+    # =========================================================================
+    # Housekeeping Tasks (run once, before workers)
+    # =========================================================================
+    # These tasks run once here instead of in each worker's app.py startup.
+
+    # 1. Database housekeeping (schema creation, migrations)
+    styled_print(f"{S.RUN} Running database housekeeping...")
+    try:
+        from lars.db_adapter import ensure_housekeeping
+        ensure_housekeeping()
+        styled_print(f"{S.OK} Database housekeeping complete")
+    except Exception as e:
+        styled_print(f"{S.WARN} Database housekeeping failed: {e}")
+
+    # 2. Tool manifest sync (index available tools/skills)
+    styled_print(f"{S.RUN} Syncing tool manifest...")
+    try:
+        from lars.tools_mgmt import sync_tools_to_db
+        sync_tools_to_db()
+        styled_print(f"{S.OK} Tool manifest synced")
+    except Exception as e:
+        styled_print(f"{S.WARN} Tool manifest sync failed: {e}")
+        print("   Run 'lars tools sync' manually if needed")
+
+    print()
+
+    # =========================================================================
+    # PGwire Server Setup
+    # =========================================================================
+    # When running with multiple workers, we need a single PGwire server to
+    # handle DuckDB connections. Workers connect via psycopg instead of
+    # opening direct DuckDB connections (which causes file locking issues).
+
+    pgwire_process = None
+    pgwire_port = None
+
+    def check_port(port: int, timeout: float = 0.5) -> bool:
+        """Check if a port is listening."""
+        try:
+            with socket.create_connection(('localhost', port), timeout=timeout):
+                return True
+        except (socket.timeout, socket.error, OSError):
+            return False
+
+    # Check if external PGwire is already running on default port
+    DEFAULT_PGWIRE_PORT = 15432
+    INTERNAL_PGWIRE_PORT = 15433
+
+    if check_port(DEFAULT_PGWIRE_PORT):
+        pgwire_port = DEFAULT_PGWIRE_PORT
+        styled_print(f"{S.DB} Using existing PGwire server on port {pgwire_port}")
+    else:
+        # Start internal PGwire server for Studio
+        styled_print(f"{S.RUN} Starting internal PGwire server on port {INTERNAL_PGWIRE_PORT}...")
+
+        pgwire_cmd = [
+            sys.executable, '-m', 'lars.cli',
+            'serve', 'sql',
+            '--port', str(INTERNAL_PGWIRE_PORT),
+            '--host', '127.0.0.1',
+        ]
+
+        pgwire_process = subprocess.Popen(
+            pgwire_cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+
+        # Wait for server to be ready
+        import time
+        start_time = time.time()
+        while time.time() - start_time < 10:
+            if check_port(INTERNAL_PGWIRE_PORT):
+                pgwire_port = INTERNAL_PGWIRE_PORT
+                styled_print(f"{S.OK} Internal PGwire server ready")
+                break
+            if pgwire_process.poll() is not None:
+                styled_print(f"{S.WARN} PGwire server failed to start, falling back to direct DuckDB")
+                pgwire_process = None
+                break
+            time.sleep(0.2)
+        else:
+            styled_print(f"{S.WARN} PGwire server timeout, falling back to direct DuckDB")
+            if pgwire_process:
+                pgwire_process.terminate()
+                pgwire_process = None
+
+    print()
+
+    # Cleanup function for PGwire
+    def cleanup_pgwire():
+        if pgwire_process is not None:
+            styled_print(f"{S.INFO}  Stopping internal PGwire server...")
+            try:
+                pgwire_process.terminate()
+                pgwire_process.wait(timeout=5)
+            except Exception:
+                try:
+                    pgwire_process.kill()
+                except Exception:
+                    pass
+
     if args.dev:
         # Development mode: run Flask directly
         styled_print(f"{S.TIP} Development mode - use 'npm start' in studio/frontend for hot reload")
@@ -5962,13 +6071,18 @@ def cmd_serve_studio(args):
         env['FLASK_ENV'] = 'development'
         env['FLASK_DEBUG'] = '1'
         env['LARS_ROOT'] = workspace_root  # Pass workspace to subprocess
+        if pgwire_port:
+            env['LARS_STUDIO_PGWIRE_PORT'] = str(pgwire_port)
 
-        # Run app.py directly with graceful shutdown handling
-        _run_server_subprocess(
-            [sys.executable, 'app.py'],
-            cwd=studio_backend_dir,
-            env=env
-        )
+        try:
+            # Run app.py directly with graceful shutdown handling
+            _run_server_subprocess(
+                [sys.executable, 'app.py'],
+                cwd=studio_backend_dir,
+                env=env
+            )
+        finally:
+            cleanup_pgwire()
     else:
         # Production mode: use Gunicorn with gevent
         if not has_built_frontend:
@@ -5982,15 +6096,20 @@ def cmd_serve_studio(args):
         except ImportError:
             styled_print(f"{S.ERR} Gunicorn not installed. Install with: pip install gunicorn gevent")
             print("   Or use --dev mode for Flask development server")
+            cleanup_pgwire()
             sys.exit(1)
 
         styled_print(f"{S.RUN} Starting with Gunicorn ({args.workers} workers, gevent)")
         print(f"   URL: http://{args.host}:{args.port}")
+        if pgwire_port:
+            print(f"   PGwire: localhost:{pgwire_port}")
         print()
 
         # Set environment with correct LARS_ROOT
         env = os.environ.copy()
         env['LARS_ROOT'] = workspace_root  # Pass workspace to subprocess
+        if pgwire_port:
+            env['LARS_STUDIO_PGWIRE_PORT'] = str(pgwire_port)
 
         # Build gunicorn command
         cmd = [
@@ -5999,10 +6118,15 @@ def cmd_serve_studio(args):
             '--workers', str(args.workers),
             '--bind', f'{args.host}:{args.port}',
             '--chdir', studio_backend_dir,
-            'app:app'
         ]
+        if args.preload:
+            cmd.append('--preload')
+        cmd.append('app:app')
 
-        _run_server_subprocess(cmd, env=env)
+        try:
+            _run_server_subprocess(cmd, env=env)
+        finally:
+            cleanup_pgwire()
 
 
 def cmd_serve_sql(args):

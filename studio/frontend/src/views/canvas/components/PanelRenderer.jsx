@@ -13,6 +13,7 @@ import TogglePanel from './TogglePanel';
 import SparklinePanel from './SparklinePanel';
 import ImagePanel from './ImagePanel';
 import TextPanel from './TextPanel';
+import ExplainPreview from './ExplainPreview';
 import './PanelRenderer.css';
 
 /**
@@ -29,7 +30,7 @@ import './PanelRenderer.css';
  * @param {function} onInteraction - Callback for panel interactions
  */
 const PanelRenderer = ({ panel, style, onInteraction }) => {
-  const { name, content, type, on_select, multi_select, selected_values, selected_value, select_field, isAutoMetric, hide_border, hide_title } = panel;
+  const { name, content, type, on_select, multi_select, selected_values, selected_value, select_field, isAutoMetric, hide_border, hide_title, status = 'complete', error, explain } = panel;
 
   // Get icon for panel type
   const getIcon = () => {
@@ -60,6 +61,8 @@ const PanelRenderer = ({ panel, style, onInteraction }) => {
         return 'mdi:language-markdown';
       case 'image':
         return 'mdi:image';
+      case 'loading':
+        return 'mdi:loading';
       default:
         return 'mdi:text';
     }
@@ -185,12 +188,51 @@ const PanelRenderer = ({ panel, style, onInteraction }) => {
     }
   };
 
+  // Render loading/pending state
+  const renderLoadingState = () => {
+    if (status === 'error') {
+      return (
+        <div className="panel-loading-state panel-error-state">
+          <Icon icon="mdi:alert-circle" width="32" />
+          <span className="panel-loading-text">{error || 'Error loading panel'}</span>
+        </div>
+      );
+    }
+
+    // For pending state, show explain preview if available
+    if (status === 'pending') {
+      return (
+        <div className="panel-loading-state panel-explain-state">
+          <ExplainPreview explain={explain} />
+        </div>
+      );
+    }
+
+    // Loading state - show spinner with explain context if available
+    return (
+      <div className="panel-loading-state panel-executing-state">
+        <Icon icon="mdi:loading" width="24" className="spin" />
+        <span className="panel-loading-text">Executing...</span>
+        {explain && explain.estimatedCost > 0 && (
+          <span className="panel-loading-cost">
+            ~${explain.estimatedCost < 0.01 ? explain.estimatedCost.toFixed(4) : explain.estimatedCost.toFixed(3)}
+          </span>
+        )}
+      </div>
+    );
+  };
+
   // Build class names based on display options
   const panelClasses = [
     'canvas-panel',
     hide_border && 'canvas-panel-no-border',
     hide_title && 'canvas-panel-no-title',
+    (status === 'loading' || status === 'pending') && 'canvas-panel-loading',
+    status === 'error' && 'canvas-panel-error',
   ].filter(Boolean).join(' ');
+
+  // Determine if we should show loading state
+  const isLoading = status === 'loading' || status === 'pending' || status === 'error';
 
   return (
     <div className={panelClasses} style={style} data-panel-name={name}>
@@ -198,11 +240,14 @@ const PanelRenderer = ({ panel, style, onInteraction }) => {
         <div className="canvas-panel-header">
           <Icon icon={getIcon()} width="14" />
           <span className="canvas-panel-title">{name}</span>
-          <span className="canvas-panel-type">{type}</span>
+          {status === 'loading' && (
+            <Icon icon="mdi:loading" width="12" className="spin panel-header-spinner" />
+          )}
+          <span className="canvas-panel-type">{isLoading ? status : type}</span>
         </div>
       )}
       <div className="canvas-panel-content">
-        {renderContent()}
+        {isLoading ? renderLoadingState() : renderContent()}
       </div>
     </div>
   );

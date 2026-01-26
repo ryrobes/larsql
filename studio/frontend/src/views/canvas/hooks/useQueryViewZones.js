@@ -14,6 +14,9 @@ export function useQueryViewZones({
   queries,
   queryExplains,
   onRunSoloQuery,
+  isExecuting = false,
+  costPollingStatus = 'idle',
+  actualCost = null,
 }) {
   const viewZonesRef = useRef([]);
   const reactRootsRef = useRef([]);
@@ -36,15 +39,18 @@ export function useQueryViewZones({
       viewZonesRef.current = [];
     }
 
-    // Cleanup old React roots
-    reactRootsRef.current.forEach(root => {
-      try {
-        root.unmount();
-      } catch (e) {
-        console.debug('[viewzone] Failed to unmount root:', e);
-      }
-    });
+    // Cleanup old React roots (defer to avoid "unmount while rendering" warning)
+    const oldRoots = reactRootsRef.current;
     reactRootsRef.current = [];
+    setTimeout(() => {
+      oldRoots.forEach(root => {
+        try {
+          root.unmount();
+        } catch (e) {
+          // Ignore - root may already be unmounted
+        }
+      });
+    }, 0);
 
     // Create new view zones for each query
     editor.changeViewZones((changeAccessor) => {
@@ -64,6 +70,9 @@ export function useQueryViewZones({
           <QueryActionBar
             query={query}
             explain={explain}
+            isExecuting={isExecuting}
+            costPollingStatus={costPollingStatus}
+            actualCost={actualCost}
             onRunSolo={() => {
               console.log('[viewzone] Play button clicked for query', idx);
               onRunSoloQuery(query, idx);
@@ -105,13 +114,17 @@ export function useQueryViewZones({
         }
       }
 
-      reactRootsRef.current.forEach(root => {
-        try {
-          root.unmount();
-        } catch (e) {
-          console.debug('[viewzone] Unmount failed:', e);
-        }
-      });
+      // Defer unmount to avoid "unmount while rendering" warning
+      const roots = reactRootsRef.current;
+      setTimeout(() => {
+        roots.forEach(root => {
+          try {
+            root.unmount();
+          } catch (e) {
+            // Ignore - root may already be unmounted
+          }
+        });
+      }, 0);
     };
-  }, [editorRef, monacoRef, queries, queryExplains, onRunSoloQuery]);
+  }, [editorRef, monacoRef, queries, queryExplains, onRunSoloQuery, isExecuting, costPollingStatus, actualCost]);
 }

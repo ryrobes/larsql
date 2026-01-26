@@ -157,7 +157,7 @@ const PlotlyPanel = ({ content, onClick, interactive, selectedValue, selectField
           displayModeBar: true,
           displaylogo: false,
           responsive: true,
-          modeBarButtonsToRemove: ['lasso2d', 'select2d'],
+          modeBarButtonsToRemove: ['lasso2d', 'select2d', 'toImage'],
         }}
         useResizeHandler={true}
         style={{ width: '100%', height: '100%' }}

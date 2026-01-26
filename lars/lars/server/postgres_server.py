@@ -58,6 +58,85 @@ from .postgres_protocol import (
 
 
 # ============================================================================
+# Shared Connection Pool for Persistent Databases
+# ============================================================================
+# DuckDB file locking requires all access to a file go through a SINGLE connection.
+# This pool maintains one connection per database file, shared across all PGwire sessions.
+
+import duckdb
+
+_db_connection_pool: dict[str, 'duckdb.DuckDBPyConnection'] = {}  # db_path -> connection
+_db_connection_locks: dict[str, Lock] = {}  # db_path -> lock for that connection
+_db_connection_refcounts: dict[str, int] = {}  # db_path -> number of sessions using it
+_db_connection_initialized: dict[str, bool] = {}  # db_path -> whether UDFs/extensions are registered
+_pool_lock = Lock()  # Lock for modifying the pool itself
+
+
+def _get_shared_connection(db_path: str) -> tuple['duckdb.DuckDBPyConnection', Lock, bool]:
+    """
+    Get or create a shared DuckDB connection for a persistent database.
+
+    All PGwire sessions connecting to the same database file share ONE connection.
+    Access is serialized via the returned lock.
+
+    Args:
+        db_path: Full path to the DuckDB file
+
+    Returns:
+        (connection, lock, needs_init) tuple
+        - connection: DuckDB connection
+        - lock: Lock for thread-safe access
+        - needs_init: True if this session should initialize UDFs/extensions
+    """
+    with _pool_lock:
+        needs_init = False
+        if db_path not in _db_connection_pool:
+            # Create new connection
+            _db_connection_pool[db_path] = duckdb.connect(db_path)
+            _db_connection_locks[db_path] = Lock()
+            _db_connection_refcounts[db_path] = 0
+            _db_connection_initialized[db_path] = False
+            needs_init = True
+            styled_print(f"   {S.DB} Created shared connection for: {os.path.basename(db_path)}")
+
+        _db_connection_refcounts[db_path] += 1
+
+        # Check if initialization is needed
+        if not _db_connection_initialized[db_path]:
+            needs_init = True
+            _db_connection_initialized[db_path] = True
+
+        return _db_connection_pool[db_path], _db_connection_locks[db_path], needs_init
+
+
+def _release_shared_connection(db_path: str):
+    """
+    Release a reference to a shared connection.
+
+    When refcount hits 0, the connection is kept open (for quick reconnection).
+    Connections are only closed on server shutdown.
+    """
+    with _pool_lock:
+        if db_path in _db_connection_refcounts:
+            _db_connection_refcounts[db_path] -= 1
+            # Don't close - keep connection alive for quick reconnection
+
+
+def _close_all_shared_connections():
+    """Close all shared connections (called on server shutdown)."""
+    with _pool_lock:
+        for db_path, conn in _db_connection_pool.items():
+            try:
+                conn.close()
+                styled_print(f"   {S.DB} Closed shared connection: {os.path.basename(db_path)}")
+            except Exception:
+                pass
+        _db_connection_pool.clear()
+        _db_connection_locks.clear()
+        _db_connection_refcounts.clear()
+
+
+# ============================================================================
 # EXPLAIN Formatting Helper
 # ============================================================================
 
@@ -133,6 +212,7 @@ class ClientConnection:
         self.user_name = 'lars'       # Logical user name from client connection
         self.application_name = 'unknown'
         self.is_persistent_db = False   # True if using persistent DuckDB file
+        self.db_path = None             # Path to DuckDB file (for read-only connections)
         self.duckdb_conn = None
         self.db_lock = None  # Lock for thread-safe DuckDB access
         self.running = True
@@ -151,6 +231,9 @@ class ClientConnection:
         # Cache: last seen attached database set (to refresh views after lazy ATTACH)
         self._last_attached_db_names = set()
 
+        # Connection pool tracking
+        self._is_pooled_connection = False  # True if connection came from pre-warmed pool
+
     def setup_session_minimal(self):
         """
         FAST session setup - just enough to respond to client.
@@ -165,13 +248,35 @@ class ClientConnection:
 
             # Determine if this is a persistent or in-memory database
             if self.database_name.lower() in ('memory', 'default', ':memory:'):
-                # In-memory database - ephemeral, per-client
+                # In-memory database - try pre-warmed pool first (instant)
                 self.is_persistent_db = False
-                self.duckdb_conn = duckdb.connect(':memory:')
                 self.db_lock = Lock()  # Per-connection lock (not shared)
-                print(f"[{self.session_id}]   📦 In-memory database (ephemeral)")
+
+                # Try to get a pre-warmed connection from the pool
+                pooled_conn = None
+                try:
+                    from ..sql_tools.connection_pool import get_pooled_connection
+                    pooled_conn = get_pooled_connection(timeout=0.1)
+                except ImportError:
+                    pass
+                except Exception as e:
+                    print(f"[{self.session_id}]   ⚠ Pool access failed: {e}")
+
+                if pooled_conn:
+                    # Got a pre-warmed connection - already has UDFs, extensions, shared tables
+                    self.duckdb_conn = pooled_conn
+                    self._is_pooled_connection = True
+                    self._needs_shared_init = False  # Skip init - pool already did it
+                    print(f"[{self.session_id}]   ⚡ In-memory database (pooled, pre-warmed)")
+                else:
+                    # No pooled connection available - create fresh
+                    self.duckdb_conn = duckdb.connect(':memory:')
+                    self._is_pooled_connection = False
+                    self._needs_shared_init = True  # Need full init
+                    print(f"[{self.session_id}]   📦 In-memory database (fresh)")
             else:
-                # Persistent database - file-based, shared across connections
+                # Persistent database - file-based, SHARED connection across all sessions
+                # DuckDB file locking requires single connection per file
                 self.is_persistent_db = True
                 config = get_config()
                 db_dir = os.path.join(config.root_dir, 'session_dbs')
@@ -180,18 +285,13 @@ class ClientConnection:
                 # Sanitize database name for filename
                 safe_db_name = self.database_name.replace("/", "_").replace("\\", "_").replace("..", "_")
                 db_path = os.path.join(db_dir, f"{safe_db_name}.duckdb")
+                self.db_path = db_path  # Store for cleanup
 
-                # Each client gets its own connection to the same file
-                # DuckDB handles internal locking for concurrent access
-                self.duckdb_conn = duckdb.connect(db_path)
-                self.db_lock = Lock()  # Per-connection lock for thread safety
+                # Get SHARED connection from pool - all sessions to same file share one connection
+                # This avoids DuckDB file locking issues with concurrent access
+                self.duckdb_conn, self.db_lock, self._needs_shared_init = _get_shared_connection(db_path)
 
-                # Check if this is a new or existing database
-                is_new = not os.path.exists(db_path) or os.path.getsize(db_path) == 0
-                if is_new:
-                    styled_print(f"[{self.session_id}]   {S.SAVE} Created persistent database: {safe_db_name}")
-                else:
-                    styled_print(f"[{self.session_id}]   {S.DB} Opened persistent database: {safe_db_name}")
+                styled_print(f"[{self.session_id}]   {S.DB} Using shared connection: {safe_db_name}")
 
             # Cache DuckDB's internal catalog name (filename base or 'memory')
             try:
@@ -199,53 +299,60 @@ class ClientConnection:
             except Exception:
                 self._duckdb_catalog_name = None
 
-            # Configure DuckDB
-            self.duckdb_conn.execute("SET threads TO 4")
+            # Initialize connection ONLY if this is a new connection or first session using shared connection
+            # For shared connections, only the first session does initialization
+            if self._needs_shared_init:
+                with self.db_lock:
+                    # Configure DuckDB
+                    self.duckdb_conn.execute("SET threads TO 4")
 
-            # Install and load community extensions for graph queries
-            # Use timeout to prevent blocking on network issues
-            duckpgq_installed = False
-            def install_duckpgq():
-                self.duckdb_conn.execute("INSTALL duckpgq FROM community;")
+                    # Install and load community extensions for graph queries
+                    # Use timeout to prevent blocking on network issues
+                    duckpgq_installed = False
+                    def install_duckpgq():
+                        self.duckdb_conn.execute("INSTALL duckpgq FROM community;")
 
-            try:
-                with ThreadPoolExecutor(max_workers=1) as executor:
-                    future = executor.submit(install_duckpgq)
-                    future.result(timeout=5.0)  # 5 second timeout
-                duckpgq_installed = True
-            except FuturesTimeoutError:
-                print(f"[{self.session_id}]   ⚠ duckpgq install timed out (network issue?), skipping")
-            except Exception:
-                duckpgq_installed = True  # Already installed
+                    try:
+                        with ThreadPoolExecutor(max_workers=1) as executor:
+                            future = executor.submit(install_duckpgq)
+                            future.result(timeout=5.0)  # 5 second timeout
+                        duckpgq_installed = True
+                    except FuturesTimeoutError:
+                        print(f"[{self.session_id}]   ⚠ duckpgq install timed out (network issue?), skipping")
+                    except Exception:
+                        duckpgq_installed = True  # Already installed
 
-            if duckpgq_installed:
-                try:
-                    self.duckdb_conn.execute("LOAD duckpgq;")
-                except Exception as e:
-                    print(f"[{self.session_id}]   ⚠ Could not load duckpgq: {e}")
+                    if duckpgq_installed:
+                        try:
+                            self.duckdb_conn.execute("LOAD duckpgq;")
+                        except Exception as e:
+                            print(f"[{self.session_id}]   ⚠ Could not load duckpgq: {e}")
+
+                    # DataGrip/PostgreSQL clients frequently schema-qualify functions as pg_catalog.func(...),
+                    # but DuckDB parses that as a column reference. We register unqualified compat macros
+                    # and later strip the pg_catalog. prefix for function calls at execution time.
+                    try:
+                        self.duckdb_conn.execute("CREATE OR REPLACE MACRO pg_get_userbyid(x) AS 'lars'")
+                        self.duckdb_conn.execute("CREATE OR REPLACE MACRO txid_current() AS (epoch_ms(now())::BIGINT % 4294967296)")
+                        self.duckdb_conn.execute("CREATE OR REPLACE MACRO pg_is_in_recovery() AS false")
+                        self.duckdb_conn.execute("CREATE OR REPLACE MACRO pg_tablespace_location(x) AS NULL")
+                    except Exception:
+                        pass
+
+                    # Register LARS UDFs (lars_udf + lars_cascade_udf + hardcoded aggregates)
+                    register_lars_udf(self.duckdb_conn)
+
+                    # Register dynamic SQL functions from cascade registry (SUMMARIZE_URLS, etc.)
+                    from ..sql_tools.udf import register_dynamic_sql_functions
+                    register_dynamic_sql_functions(self.duckdb_conn)
+
+                    styled_print(f"[{self.session_id}]   {S.OK} Initialized shared connection (UDFs, extensions)")
 
             # Reset our transaction status to idle
             self.transaction_status = 'I'
 
-            # DataGrip/PostgreSQL clients frequently schema-qualify functions as pg_catalog.func(...),
-            # but DuckDB parses that as a column reference. We register unqualified compat macros
-            # and later strip the pg_catalog. prefix for function calls at execution time.
-            try:
-                self.duckdb_conn.execute("CREATE OR REPLACE MACRO pg_get_userbyid(x) AS 'lars'")
-                self.duckdb_conn.execute("CREATE OR REPLACE MACRO txid_current() AS (epoch_ms(now())::BIGINT % 4294967296)")
-                self.duckdb_conn.execute("CREATE OR REPLACE MACRO pg_is_in_recovery() AS false")
-                self.duckdb_conn.execute("CREATE OR REPLACE MACRO pg_tablespace_location(x) AS NULL")
-            except Exception:
-                pass
-
-            # Register LARS UDFs (lars_udf + lars_cascade_udf + hardcoded aggregates)
-            register_lars_udf(self.duckdb_conn)
-
-            # Register dynamic SQL functions from cascade registry (SUMMARIZE_URLS, etc.)
-            from ..sql_tools.udf import register_dynamic_sql_functions
-            register_dynamic_sql_functions(self.duckdb_conn)
-
             # Initialize lazy attach manager (but DON'T auto-attach yet - that's slow)
+            # Each session gets its own lazy attach manager (tracks what's been attached in this session)
             try:
                 from ..sql_tools.config import load_sql_connections
                 from ..sql_tools.lazy_attach import LazyAttachManager
@@ -296,19 +403,35 @@ class ClientConnection:
                 # Non-fatal - BI tables may not exist yet
                 pass
 
-            # Auto-attach all configured connections (can be slow but must complete before client queries)
-            from ..sql_tools.lazy_attach import _auto_attach_all_enabled
-            if self._lazy_attach and _auto_attach_all_enabled():
-                try:
-                    results = self._lazy_attach.attach_all()
-                    attached = [r for r in results if r["status"] == "attached"]
-                    failed = [r for r in results if r["status"] == "failed"]
-                    if attached:
-                        styled_print(f"[{self.session_id}]   {S.DB} Auto-attached {len(attached)} connection(s)")
-                    if failed:
-                        styled_print(f"[{self.session_id}]   {S.WARN}  {len(failed)} connection(s) failed to attach")
-                except Exception as e:
-                    styled_print(f"[{self.session_id}]   {S.WARN}  Auto-attach failed: {e}")
+            # Skip heavy operations for pooled connections - they're already done
+            if self._is_pooled_connection:
+                styled_print(f"[{self.session_id}]   ⚡ Skipping auto-attach (pooled connection)")
+            else:
+                # Auto-attach all configured connections (can be slow but must complete before client queries)
+                from ..sql_tools.lazy_attach import _auto_attach_all_enabled
+                if self._lazy_attach and _auto_attach_all_enabled():
+                    try:
+                        results = self._lazy_attach.attach_all()
+                        attached = [r for r in results if r["status"] == "attached"]
+                        failed = [r for r in results if r["status"] == "failed"]
+                        if attached:
+                            styled_print(f"[{self.session_id}]   {S.DB} Auto-attached {len(attached)} connection(s)")
+                        if failed:
+                            styled_print(f"[{self.session_id}]   {S.WARN}  {len(failed)} connection(s) failed to attach")
+                    except Exception as e:
+                        styled_print(f"[{self.session_id}]   {S.WARN}  Auto-attach failed: {e}")
+
+            # Always sync shared parquet tables (even for pooled connections)
+            # This is fast (directory scan + view creation) and ensures new tables are visible
+            try:
+                from ..sql_tools.shared_parquet import sync_shared_views, is_shared_tables_enabled
+                if is_shared_tables_enabled():
+                    with self.db_lock:
+                        count = sync_shared_views(self.duckdb_conn)
+                        if count > 0:
+                            styled_print(f"[{self.session_id}]   {S.DB} Synced {count} shared table(s)")
+            except Exception as e:
+                styled_print(f"[{self.session_id}]   {S.WARN}  Shared tables sync failed: {e}")
 
             # DuckDB v1.4.2+ has built-in pg_catalog support
             styled_print(f"[{self.session_id}]   {S.INFO}  Using DuckDB's built-in pg_catalog (v1.4.2+)")
@@ -360,6 +483,22 @@ class ClientConnection:
         """
         with self.db_lock:
             return self.duckdb_conn.execute(query)
+
+    def _get_readonly_conn(self):
+        """
+        Get a connection for EXPLAIN queries.
+
+        For file-based databases with multiple workers, DuckDB's locking can
+        cause issues. We use the existing session connection with locking
+        instead of opening new connections.
+
+        Returns:
+            (connection, should_close) tuple
+        """
+        # Always use the existing connection - DuckDB file locking is too strict
+        # for multiple read-only connections when a writer is active.
+        # The session's db_lock will serialize access within this process.
+        return self.duckdb_conn, False
 
     @staticmethod
     def _rewrite_pg_catalog_function_calls(query: str) -> str:
@@ -1182,7 +1321,10 @@ class ClientConnection:
 
         DuckDB's information_schema.* surfaces attached database catalogs, which can confuse
         PostgreSQL clients (DataGrip shows them as FDW/foreign catalogs). Postgres exposes only
-        the connected database, so we filter these queries to the current DuckDB catalog.
+        the connected database, so we filter these queries to:
+        - The current DuckDB catalog (session database)
+
+        We explicitly exclude internal catalogs (those starting with __).
         """
         import re
 
@@ -1224,14 +1366,16 @@ class ClientConnection:
 
             qualifier = f"{alias}.{catalog_col}" if alias else catalog_col
             escaped_catalog = catalog.replace("'", "''")
-            cond = f"{qualifier} = '{escaped_catalog}'"
+            # Include current catalog only, exclude internal catalogs (__ prefix)
+            # Note: Use LIKE with ESCAPE to treat underscores literally
+            cond = f"{qualifier} = '{escaped_catalog}' AND {qualifier} NOT LIKE '!_!_%' ESCAPE '!'"
 
             # Find WHERE after the FROM match (avoid CTE/subquery WHEREs earlier in the SQL)
             after_from = query[from_end:]
             w = re.search(r'(?is)\bwhere\b', after_from)
             if w:
                 insert_at = from_end + w.end()
-                query = query[:insert_at] + f" {cond} AND" + query[insert_at:]
+                query = query[:insert_at] + f" ({cond}) AND" + query[insert_at:]
                 return query
 
             # Insert WHERE before ORDER/GROUP/HAVING/LIMIT/OFFSET/FETCH if present
@@ -2723,6 +2867,132 @@ class ClientConnection:
             # Non-fatal - ATTACH views are nice-to-have
             styled_print(f"[{self.session_id}]   {S.WARN}  Could not create ATTACH'd DB views: {e}")
 
+    def _handle_shared_table_create(self, query: str):
+        """
+        Handle CREATE TABLE shared.* - write to parquet for cross-session visibility.
+
+        Intercepts CREATE [OR REPLACE] TABLE shared.name AS SELECT ... and routes
+        to shared_parquet.write_shared_table() which:
+        1. Executes the SELECT query
+        2. Writes results to a parquet file (atomic via temp+rename)
+        3. Creates a view in the current session pointing to the parquet file
+
+        Supported syntax:
+            CREATE TABLE shared.my_table AS SELECT * FROM source;
+            CREATE OR REPLACE TABLE shared.my_table AS SELECT * FROM source;
+            CREATE TABLE shared.staging.my_table AS SELECT * FROM source;  (explicit subdir)
+            CREATE TABLE shared.results.my_table AS SELECT * FROM source;
+            CREATE TABLE shared.user.my_table AS SELECT * FROM source;
+
+        View naming:
+            shared.name              -> view: shared.name        (file: staging/name.parquet)
+            shared.staging.name      -> view: shared.name        (file: staging/name.parquet)
+            shared.results.name      -> view: shared.results_name (file: results/name.parquet)
+            shared.user.name         -> view: shared.user_name    (file: user/name.parquet)
+
+        Args:
+            query: CREATE TABLE statement targeting shared schema
+        """
+        import re
+
+        styled_print(f"[{self.session_id}]   {S.LINK} Shared table CREATE detected")
+
+        # For multi-panel queries, extract only the first statement (CREATE TABLE)
+        # Split on panel markers to isolate setup SQL
+        if '--- PANEL' in query or '---PANEL' in query:
+            # Multi-panel query: extract just the CREATE TABLE statement
+            parts = re.split(r'\n---\s*PANEL', query, maxsplit=1, flags=re.IGNORECASE)
+            first_statement = parts[0].strip()
+            styled_print(f"[{self.session_id}]      {S.INFO} Multi-panel query: extracted setup statement")
+        else:
+            first_statement = query
+
+        # Parse the CREATE TABLE statement
+        # Pattern: CREATE [OR REPLACE] TABLE shared.[subdir.]name AS SELECT ...
+        # Note: \s* allows leading whitespace/newlines from frontend parsing
+        pattern = r'''
+            ^\s*CREATE\s+
+            (?:OR\s+REPLACE\s+)?
+            TABLE\s+
+            shared\.
+            (?:(\w+)\.)?           # Optional subdir (staging, results, user)
+            (\w+)                  # Table name
+            \s+AS\s+
+            (.+)$                  # SELECT query
+        '''
+        match = re.match(pattern, first_statement, re.IGNORECASE | re.VERBOSE | re.DOTALL)
+
+        if not match:
+            # Try simpler pattern without AS (might be CREATE TABLE shared.x (...))
+            send_error(
+                self.sock,
+                "Shared tables require CREATE TABLE shared.name AS SELECT syntax",
+                transaction_status=self.transaction_status
+            )
+            styled_print(f"[{self.session_id}]   {S.WARN}  Could not parse shared table CREATE")
+            return
+
+        explicit_subdir = match.group(1)  # None if not specified
+        table_name = match.group(2)
+        select_query = match.group(3).rstrip(';').strip()
+
+        # Determine subdir and view name
+        valid_subdirs = ('staging', 'results', 'user')
+        if explicit_subdir:
+            subdir = explicit_subdir.lower()
+            if subdir not in valid_subdirs:
+                send_error(
+                    self.sock,
+                    f"Invalid shared table subdirectory '{subdir}'. Must be one of: {', '.join(valid_subdirs)}",
+                    transaction_status=self.transaction_status
+                )
+                return
+            # Explicit subdir: include prefix in view name (except staging which is default)
+            if subdir == 'staging':
+                view_name = table_name
+            else:
+                view_name = f"{subdir}_{table_name}"
+        else:
+            # No explicit subdir: default to staging, use simple view name
+            subdir = 'staging'
+            view_name = table_name
+
+        styled_print(f"[{self.session_id}]      {S.INFO} Target: shared.{view_name} (file: {subdir}/{table_name}.parquet)")
+        styled_print(f"[{self.session_id}]      {S.INFO} Query: {select_query[:80]}{'...' if len(select_query) > 80 else ''}")
+
+        try:
+            from ..sql_tools.shared_parquet import write_shared_table_with_view_name
+
+            with self.db_lock:
+                parquet_path = write_shared_table_with_view_name(
+                    self.duckdb_conn,
+                    table_name,
+                    view_name,
+                    select_query,
+                    subdir=subdir,
+                    schema='shared'
+                )
+
+            if parquet_path:
+                styled_print(f"[{self.session_id}]      {S.OK} Written to: {parquet_path}")
+                styled_print(f"[{self.session_id}]      {S.OK} View created: shared.{view_name}")
+
+                # Send success response
+                self.sock.sendall(CommandComplete.encode('CREATE TABLE'))
+                self.sock.sendall(ReadyForQuery.encode(self.transaction_status))
+                styled_print(f"[{self.session_id}]   {S.DONE} Shared table created successfully")
+            else:
+                send_error(
+                    self.sock,
+                    "Failed to create shared table - check logs for details",
+                    transaction_status=self.transaction_status
+                )
+
+        except Exception as e:
+            error_msg = str(e)
+            send_error(self.sock, f"Shared table creation failed: {error_msg}", transaction_status=self.transaction_status)
+            styled_print(f"[{self.session_id}]   {S.ERR} Shared table creation failed: {error_msg}")
+
     def _handle_attach(self, query: str):
         """
         Handle ATTACH command - execute and persist to metadata.
@@ -3914,8 +4184,8 @@ class ClientConnection:
             except Exception as e:
                 pass
 
-            if stubs_created:
-                styled_print(f"[{self.session_id}]   {S.DONE} Created PG compat stubs: {', '.join(stubs_created)}")
+            # if stubs_created:
+            #     styled_print(f"[{self.session_id}]   {S.DONE} Created PG compat stubs: {', '.join(stubs_created)}")
 
         except Exception as e:
             styled_print(f"[{self.session_id}]   {S.WARN}  Error creating PG compat stubs: {e}")
@@ -4272,6 +4542,16 @@ class ClientConnection:
                 self._handle_explain_query(query)
                 return
 
+            # Handle CREATE TABLE shared.* AS SELECT - write to parquet for cross-session visibility
+            # Syntax: CREATE [OR REPLACE] TABLE shared.name AS SELECT ...
+            #         CREATE [OR REPLACE] TABLE shared.subdir.name AS SELECT ...
+            # Note: \s* allows leading whitespace/newlines from frontend parsing
+            shared_table_match = re.match(r'^\s*CREATE\s+(OR\s+REPLACE\s+)?TABLE\s+SHARED\.', query_upper)
+            if shared_table_match:
+                styled_print(f"[{self.session_id}]   {S.LINK} Intercepted CREATE TABLE shared.* -> routing to parquet handler")
+                self._handle_shared_table_create(query)
+                return
+
             # Pre-process CANVAS syntax before pipeline check
             # CANVAS() rewrites to SQL with THEN RENDER_CANVAS(...) which needs pipeline handling
             from ..sql_tools.canvas_rewriter import has_canvas_syntax, rewrite_canvas_syntax
@@ -4582,6 +4862,16 @@ class ClientConnection:
                 'caller_id': getattr(self, '_current_caller_id', None),
             }
             query = preprocess_deref_cascades(query, deref_context)
+
+            # Rewrite into_ table references to read from ClickHouse
+            # Tables created with THEN PASS INTO xxx are stored in lars_results.into_xxx
+            try:
+                from ..sql_tools.into_table_rewriter import rewrite_into_tables
+                query, into_changed = rewrite_into_tables(query)
+                if into_changed:
+                    styled_print(f"[{self.session_id}]   {S.LINK} INTO table references rewritten")
+            except Exception as e:
+                styled_print(f"[{self.session_id}]   {S.WARN}  INTO table rewrite skipped: {e}")
 
             # Rewrite LARS MAP/RUN syntax to standard SQL
             # This strips annotations/comments, so prewarm check must happen first
@@ -6464,6 +6754,9 @@ class ClientConnection:
             EXPLAIN (FORMAT JSON) SELECT * FROM t THEN ANALYZE 'trends'
 
         For pipeline queries, explains both the base SQL and each stage.
+
+        Uses read-only connection for file-based databases to avoid lock conflicts
+        when multiple sessions run EXPLAIN concurrently.
         """
         import re
         import pandas as pd
@@ -6471,79 +6764,92 @@ class ClientConnection:
 
         styled_print(f"[{self.session_id}] {S.CLIP} EXPLAIN query")
 
-        # Parse EXPLAIN prefix
-        normalized = query.strip()
-        explain_match = re.match(r'EXPLAIN\s*', normalized, re.IGNORECASE)
-        if not explain_match:
-            # Shouldn't happen, but handle gracefully
-            self._send_error(f"Invalid EXPLAIN syntax: {query[:50]}")
-            return
+        # Get read-only connection to avoid lock conflicts on file-based DBs
+        explain_conn, should_close = self._get_readonly_conn()
 
-        inner_query = normalized[explain_match.end():].strip()
-
-        # Check for EXPLAIN (FORMAT JSON) syntax
-        format_json = False
-        format_match = re.match(r'\(\s*FORMAT\s+JSON\s*\)\s*', inner_query, re.IGNORECASE)
-        if format_match:
-            format_json = True
-            inner_query = inner_query[format_match.end():].strip()
-
-        # Check if the query has pipeline syntax (THEN/INTO)
-        if has_pipeline_syntax(inner_query):
-            # Explain pipeline query
-            pipeline = parse_pipeline_syntax(inner_query)
-            if pipeline and pipeline.stages:
-                try:
-                    from ..sql_explain import explain_pipeline_query, format_explain_result, format_explain_json
-                    result = explain_pipeline_query(
-                        pipeline=pipeline,
-                        original_query=inner_query,
-                        duckdb_conn=self.duckdb_conn
-                    )
-
-                    if format_json:
-                        import json
-                        plan_json = json.dumps(format_explain_json(result), indent=2)
-                        plan_json_escaped = plan_json.replace("'", "''")
-                        explain_sql = f"SELECT '{plan_json_escaped}' AS query_plan"
-                    else:
-                        plan_text = format_explain_result(result)
-                        plan_text_escaped = plan_text.replace("'", "''")
-                        explain_sql = f"SELECT '{plan_text_escaped}' AS query_plan"
-
-                    result_df = self.duckdb_conn.execute(explain_sql).fetchdf()
-                    send_query_results(self.sock, result_df, self.transaction_status)
-                    styled_print(f"[{self.session_id}]   {S.OK} Returned pipeline EXPLAIN plan")
-                    return
-                except Exception as e:
-                    styled_print(f"[{self.session_id}]   {S.WARN} Pipeline EXPLAIN failed: {e}")
-                    # Fall through to regular EXPLAIN handling
-
-        # For non-pipeline queries, use the existing rewriter-based EXPLAIN
-        # (handles LARS MAP/RUN and inline semantic functions)
-        from ..sql_rewriter import rewrite_lars_syntax
-        explain_sql = rewrite_lars_syntax(query, duckdb_conn=self.duckdb_conn)
-
-        # Execute the rewritten explain query
         try:
-            result_df = self.duckdb_conn.execute(explain_sql).fetchdf()
+            # Parse EXPLAIN prefix
+            normalized = query.strip()
+            explain_match = re.match(r'EXPLAIN\s*', normalized, re.IGNORECASE)
+            if not explain_match:
+                # Shouldn't happen, but handle gracefully
+                send_error(self.sock, f"Invalid EXPLAIN syntax: {query[:50]}", transaction_status=self.transaction_status)
+                return
 
-            # Format native DuckDB EXPLAIN results for better readability
-            # DuckDB returns columns ['explain_key', 'explain_value'] where:
-            # - explain_key is 'physical_plan' (or 'logical_plan' for EXPLAIN ANALYZE)
-            # - explain_value is the actual plan tree text
-            result_df = _format_native_explain_df(result_df)
+            inner_query = normalized[explain_match.end():].strip()
 
-            send_query_results(self.sock, result_df, self.transaction_status)
-            styled_print(f"[{self.session_id}]   {S.OK} Returned EXPLAIN plan")
-        except Exception as e:
-            self._send_error(f"EXPLAIN execution failed: {e}")
+            # Check for EXPLAIN (FORMAT JSON) syntax
+            format_json = False
+            format_match = re.match(r'\(\s*FORMAT\s+JSON\s*\)\s*', inner_query, re.IGNORECASE)
+            if format_match:
+                format_json = True
+                inner_query = inner_query[format_match.end():].strip()
+
+            # Check if the query has pipeline syntax (THEN/INTO)
+            if has_pipeline_syntax(inner_query):
+                # Explain pipeline query
+                pipeline = parse_pipeline_syntax(inner_query)
+                if pipeline and pipeline.stages:
+                    try:
+                        from ..sql_explain import explain_pipeline_query, format_explain_result, format_explain_json
+                        result = explain_pipeline_query(
+                            pipeline=pipeline,
+                            original_query=inner_query,
+                            duckdb_conn=explain_conn
+                        )
+
+                        if format_json:
+                            import json
+                            plan_json = json.dumps(format_explain_json(result), indent=2)
+                            plan_json_escaped = plan_json.replace("'", "''")
+                            explain_sql = f"SELECT '{plan_json_escaped}' AS query_plan"
+                        else:
+                            plan_text = format_explain_result(result)
+                            plan_text_escaped = plan_text.replace("'", "''")
+                            explain_sql = f"SELECT '{plan_text_escaped}' AS query_plan"
+
+                        result_df = explain_conn.execute(explain_sql).fetchdf()
+                        send_query_results(self.sock, result_df, self.transaction_status)
+                        styled_print(f"[{self.session_id}]   {S.OK} Returned pipeline EXPLAIN plan")
+                        return
+                    except Exception as e:
+                        styled_print(f"[{self.session_id}]   {S.WARN} Pipeline EXPLAIN failed: {e}")
+                        # Fall through to regular EXPLAIN handling
+
+            # For non-pipeline queries, use the existing rewriter-based EXPLAIN
+            # (handles LARS MAP/RUN and inline semantic functions)
+            from ..sql_rewriter import rewrite_lars_syntax
+            explain_sql = rewrite_lars_syntax(query, duckdb_conn=explain_conn)
+
+            # Execute the rewritten explain query
+            try:
+                result_df = explain_conn.execute(explain_sql).fetchdf()
+
+                # Format native DuckDB EXPLAIN results for better readability
+                # DuckDB returns columns ['explain_key', 'explain_value'] where:
+                # - explain_key is 'physical_plan' (or 'logical_plan' for EXPLAIN ANALYZE)
+                # - explain_value is the actual plan tree text
+                result_df = _format_native_explain_df(result_df)
+
+                send_query_results(self.sock, result_df, self.transaction_status)
+                styled_print(f"[{self.session_id}]   {S.OK} Returned EXPLAIN plan")
+            except Exception as e:
+                send_error(self.sock, f"EXPLAIN execution failed: {e}", transaction_status=self.transaction_status)
+        finally:
+            if should_close and explain_conn:
+                try:
+                    explain_conn.close()
+                except Exception:
+                    pass
 
     def _handle_explain_query_extended(self, query: str, send_row_description: bool = True):
         """
         Handle EXPLAIN queries via Extended Query Protocol.
 
         Same as _handle_explain_query but uses Extended Query Protocol response format.
+
+        Uses read-only connection for file-based databases to avoid lock conflicts
+        when multiple sessions run EXPLAIN concurrently.
         """
         import re
         import pandas as pd
@@ -6551,64 +6857,74 @@ class ClientConnection:
 
         styled_print(f"[{self.session_id}] {S.CLIP} EXPLAIN query (Extended)")
 
-        # Parse EXPLAIN prefix
-        normalized = query.strip()
-        explain_match = re.match(r'EXPLAIN\s*', normalized, re.IGNORECASE)
-        if not explain_match:
-            self.sock.sendall(ErrorResponse.encode('ERROR', f"Invalid EXPLAIN syntax: {query[:50]}"))
-            return
+        # Get read-only connection to avoid lock conflicts on file-based DBs
+        explain_conn, should_close = self._get_readonly_conn()
 
-        inner_query = normalized[explain_match.end():].strip()
-
-        # Check for EXPLAIN (FORMAT JSON) syntax
-        format_json = False
-        format_match = re.match(r'\(\s*FORMAT\s+JSON\s*\)\s*', inner_query, re.IGNORECASE)
-        if format_match:
-            format_json = True
-            inner_query = inner_query[format_match.end():].strip()
-
-        # Check if the query has pipeline syntax (THEN/INTO)
-        if has_pipeline_syntax(inner_query):
-            pipeline = parse_pipeline_syntax(inner_query)
-            if pipeline and pipeline.stages:
-                try:
-                    from ..sql_explain import explain_pipeline_query, format_explain_result, format_explain_json
-                    result = explain_pipeline_query(
-                        pipeline=pipeline,
-                        original_query=inner_query,
-                        duckdb_conn=self.duckdb_conn
-                    )
-
-                    if format_json:
-                        import json
-                        plan_text = json.dumps(format_explain_json(result), indent=2)
-                    else:
-                        plan_text = format_explain_result(result)
-
-                    result_df = pd.DataFrame([{'query_plan': plan_text}])
-                    send_execute_results(self.sock, result_df, send_row_description=send_row_description)
-                    styled_print(f"[{self.session_id}]   {S.OK} Returned pipeline EXPLAIN plan (Extended)")
-                    return
-                except Exception as e:
-                    styled_print(f"[{self.session_id}]   {S.WARN} Pipeline EXPLAIN failed: {e}")
-                    # Fall through to regular EXPLAIN handling
-
-        # For non-pipeline queries (or if pipeline explain failed), use rewriter-based EXPLAIN
         try:
-            from ..sql_rewriter import rewrite_lars_syntax
-            explain_sql = rewrite_lars_syntax(query, duckdb_conn=self.duckdb_conn)
+            # Parse EXPLAIN prefix
+            normalized = query.strip()
+            explain_match = re.match(r'EXPLAIN\s*', normalized, re.IGNORECASE)
+            if not explain_match:
+                self.sock.sendall(ErrorResponse.encode('ERROR', f"Invalid EXPLAIN syntax: {query[:50]}"))
+                return
 
-            # Execute the rewritten explain query
-            result_df = self.duckdb_conn.execute(explain_sql).fetchdf()
+            inner_query = normalized[explain_match.end():].strip()
 
-            # Format native DuckDB EXPLAIN results for better readability
-            result_df = _format_native_explain_df(result_df)
+            # Check for EXPLAIN (FORMAT JSON) syntax
+            format_json = False
+            format_match = re.match(r'\(\s*FORMAT\s+JSON\s*\)\s*', inner_query, re.IGNORECASE)
+            if format_match:
+                format_json = True
+                inner_query = inner_query[format_match.end():].strip()
 
-            send_execute_results(self.sock, result_df, send_row_description=send_row_description)
-            styled_print(f"[{self.session_id}]   {S.OK} Returned EXPLAIN plan (Extended)")
-        except Exception as e:
-            styled_print(f"[{self.session_id}]   {S.WARN} EXPLAIN fallback failed: {e}")
-            self.sock.sendall(ErrorResponse.encode('ERROR', f"EXPLAIN execution failed: {e}"))
+            # Check if the query has pipeline syntax (THEN/INTO)
+            if has_pipeline_syntax(inner_query):
+                pipeline = parse_pipeline_syntax(inner_query)
+                if pipeline and pipeline.stages:
+                    try:
+                        from ..sql_explain import explain_pipeline_query, format_explain_result, format_explain_json
+                        result = explain_pipeline_query(
+                            pipeline=pipeline,
+                            original_query=inner_query,
+                            duckdb_conn=explain_conn
+                        )
+
+                        if format_json:
+                            import json
+                            plan_text = json.dumps(format_explain_json(result), indent=2)
+                        else:
+                            plan_text = format_explain_result(result)
+
+                        result_df = pd.DataFrame([{'query_plan': plan_text}])
+                        send_execute_results(self.sock, result_df, send_row_description=send_row_description)
+                        styled_print(f"[{self.session_id}]   {S.OK} Returned pipeline EXPLAIN plan (Extended)")
+                        return
+                    except Exception as e:
+                        styled_print(f"[{self.session_id}]   {S.WARN} Pipeline EXPLAIN failed: {e}")
+                        # Fall through to regular EXPLAIN handling
+
+            # For non-pipeline queries (or if pipeline explain failed), use rewriter-based EXPLAIN
+            try:
+                from ..sql_rewriter import rewrite_lars_syntax
+                explain_sql = rewrite_lars_syntax(query, duckdb_conn=explain_conn)
+
+                # Execute the rewritten explain query
+                result_df = explain_conn.execute(explain_sql).fetchdf()
+
+                # Format native DuckDB EXPLAIN results for better readability
+                result_df = _format_native_explain_df(result_df)
+
+                send_execute_results(self.sock, result_df, send_row_description=send_row_description)
+                styled_print(f"[{self.session_id}]   {S.OK} Returned EXPLAIN plan (Extended)")
+            except Exception as e:
+                styled_print(f"[{self.session_id}]   {S.WARN} EXPLAIN fallback failed: {e}")
+                self.sock.sendall(ErrorResponse.encode('ERROR', f"EXPLAIN execution failed: {e}"))
+        finally:
+            if should_close and explain_conn:
+                try:
+                    explain_conn.close()
+                except Exception:
+                    pass
 
     def _handle_pipeline_query(self, pipeline, original_query: str, extended_query_mode: bool = False, send_row_description: bool = True):
         """
@@ -9429,6 +9745,24 @@ class ClientConnection:
                     # Unknown error - log but don't force-close (other clients may be using it)
                     styled_print(f"[{self.session_id}]   {S.WARN} Rollback warning: {e}")
 
+        # Release shared connection reference (for persistent databases)
+        if self.is_persistent_db and self.db_path:
+            _release_shared_connection(self.db_path)
+
+        # Return pooled connections to the pool for reuse
+        if self._is_pooled_connection and self.duckdb_conn:
+            try:
+                from ..sql_tools.connection_pool import return_to_pool, refill_pool
+                if return_to_pool(self.duckdb_conn):
+                    styled_print(f"[{self.session_id}]   {S.OK} Connection returned to pool")
+                    self.duckdb_conn = None  # Don't close it - it's back in the pool
+                # Trigger refill if pool is getting low
+                refill_pool()
+            except ImportError:
+                pass
+            except Exception as e:
+                styled_print(f"[{self.session_id}]   {S.WARN} Failed to return connection to pool: {e}")
+
         # 2. Close socket
         try:
             self.sock.close()
@@ -9552,6 +9886,21 @@ class LARSPostgresServer:
         except Exception as e:
             styled_print(f"{S.WARN}  Warning: Could not initialize dynamic operators: {e}")
             print(f"   Semantic SQL operators may not work correctly")
+            print()
+
+        # Pre-warm connection pool for fast session startup
+        try:
+            from ..sql_tools.connection_pool import initialize_pool, pool_status
+            styled_print(f"{S.RETRY} Pre-warming connection pool...")
+            initialize_pool()
+            status = pool_status()
+            styled_print(f"{S.DONE} Connection pool initializing (target: {status['target_size']} connections)")
+            print()
+        except ImportError:
+            styled_print(f"{S.WARN}  Connection pool not available")
+            print()
+        except Exception as e:
+            styled_print(f"{S.WARN}  Connection pool init failed: {e}")
             print()
 
         # Print startup banner

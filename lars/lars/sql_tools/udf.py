@@ -604,6 +604,31 @@ def lars_cascade_udf_impl(
         if use_cache and not has_errors:
             _cache_set(_cascade_udf_cache, cache_key, json_result, ttl=None)
 
+            # Also store with cascade_id and actual args for EXPLAIN cache detection
+            # This enables EXPLAIN to check cache hit rate by looking up actual input values
+            try:
+                from .cache_adapter import get_cache
+                import yaml
+
+                # Extract cascade_id from the cascade file
+                with open(resolved_path, 'r') as f:
+                    cascade_def = yaml.safe_load(f)
+                    cascade_id = cascade_def.get('cascade_id')
+
+                if cascade_id:
+                    semantic_cache = get_cache()
+                    semantic_cache.set(
+                        cascade_id,  # Use actual cascade_id as function_name
+                        inputs,      # Use actual args (not hash)
+                        json_result,
+                        result_type="JSON",
+                        ttl_seconds=None,
+                        session_id=session_id,
+                        caller_id=caller_id or ""
+                    )
+            except Exception:
+                pass  # Non-blocking, primary cache already stored
+
         # Extract specific field if requested
         if return_field:
             result_obj = json.loads(json_result)

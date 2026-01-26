@@ -895,6 +895,35 @@ def _fix_double_where(query: str) -> str:
     return result
 
 
+def _is_inside_string_literal(text: str, pos: int) -> bool:
+    """
+    Check if position is inside a string literal (single or double quoted).
+
+    Simple heuristic: count unescaped quotes before position.
+    Odd count = inside string, even count = outside string.
+    """
+    in_single = False
+    in_double = False
+    i = 0
+    while i < pos and i < len(text):
+        char = text[i]
+        if char == "'" and not in_double:
+            # Check for escaped quote
+            if i > 0 and text[i-1] == '\\':
+                pass  # Escaped, ignore
+            elif i + 1 < len(text) and text[i+1] == "'":
+                i += 1  # SQL-style escaped quote ''
+            else:
+                in_single = not in_single
+        elif char == '"' and not in_single:
+            if i > 0 and text[i-1] == '\\':
+                pass  # Escaped, ignore
+            else:
+                in_double = not in_double
+        i += 1
+    return in_single or in_double
+
+
 def _rewrite_dynamic_infix_operators(
     line: str,
     annotation_prefix: str
@@ -910,6 +939,8 @@ def _rewrite_dynamic_infix_operators(
 
     This replaces per-operator hardcoded expression rewrites with a single
     registry-driven implementation.
+
+    IMPORTANT: This function now protects against matching inside string literals.
 
     Args:
         line: SQL line to rewrite
@@ -971,7 +1002,16 @@ def _rewrite_dynamic_infix_operators(
             #   col !~ other  -> NOT func(col, other)   (if "~" is defined)
             pattern = rf'(\w+(?:\.\w+)?)\s*(?P<bang>!)?\s*{re.escape(operator_keyword)}\s*(\'[^\']*\'|"[^"]*"|\w+(?:\.\w+)?)'
 
-        def replace_operator(match):
+        # Use finditer + manual replacement to check string literal context
+        matches_to_replace = []
+        for match in re.finditer(pattern, result, flags=re.IGNORECASE):
+            # Skip matches inside string literals
+            if _is_inside_string_literal(result, match.start()):
+                continue
+            matches_to_replace.append(match)
+
+        # Replace in reverse order to preserve positions
+        for match in reversed(matches_to_replace):
             col = match.group(1)
             not_kw = (match.group(2) if is_word_operator else None)
             bang = (match.group("bang") if not is_word_operator else None)
@@ -980,7 +1020,7 @@ def _rewrite_dynamic_infix_operators(
             is_negated = bool(not_kw) or bool(bang)
             if is_negated and returns_upper != "BOOLEAN":
                 # Don't attempt to negate non-boolean operators.
-                return match.group(0)
+                continue
 
             # Inject annotation prefix if the value is a quoted string
             if annotation_prefix and value.startswith(("'", '"')):
@@ -991,13 +1031,9 @@ def _rewrite_dynamic_infix_operators(
             # Generate function call with correct argument order
             # First arg is always the text column, second is the criterion/value
             expr = f"{func_name}({col}, {value})"
-            return f"NOT {expr}" if is_negated else expr
+            replacement = f"NOT {expr}" if is_negated else expr
 
-        old_result = result
-        result = re.sub(pattern, replace_operator, result, flags=re.IGNORECASE)
-
-        if result != old_result:
-            log.debug(f"[dynamic_rewrite] {operator_keyword}: {old_result.strip()[:60]}... → {result.strip()[:60]}...")
+            result = result[:match.start()] + replacement + result[match.end():]
 
     return result
 

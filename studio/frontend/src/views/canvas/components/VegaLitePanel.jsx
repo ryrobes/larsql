@@ -141,12 +141,7 @@ const VegaLitePanel = ({ content, onClick, interactive, selectedValue, selectFie
         }
 
         const result = await vegaEmbed(container, fullSpec, {
-          actions: {
-            export: true,
-            source: false,
-            compiled: false,
-            editor: false,
-          },
+          actions: false,
           renderer: 'svg',
         });
 

@@ -79,6 +79,16 @@ def get_session_db(session_id: str) -> duckdb.DuckDBPyConnection:
         # Configure for our use case
         conn.execute("SET threads TO 4")
 
+        # Attach shared parquet tables for cross-session visibility
+        # Tables in 'shared' schema are backed by parquet files (no locking)
+        try:
+            from .shared_parquet import attach_shared_tables, is_shared_tables_enabled
+            if is_shared_tables_enabled():
+                if attach_shared_tables(conn):
+                    styled_print(f"[session_db] {S.DB} Shared tables attached for {session_id}")
+        except Exception as e:
+            styled_print(f"[session_db] {S.WARN}  Shared tables failed: {e}")
+
         _session_dbs[session_id] = conn
 
         # Also create a lock for this session if it doesn't exist

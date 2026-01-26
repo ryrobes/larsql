@@ -15,6 +15,7 @@ from flask import Blueprint, request, jsonify
 import uuid
 import time
 import traceback
+import os
 
 sql_server_api = Blueprint('sql_server_api', __name__)
 
@@ -61,19 +62,87 @@ def _sanitize_for_json(data: list[dict]) -> list[dict]:
     - numpy arrays to Python lists
     - numpy scalars to Python scalars
     - datetime objects to ISO format strings
+    - Decimal to float
+    - UUID to string
+    - bytes/memoryview to hex string
+    - timedelta to total seconds
+    - DuckDB struct strings to dicts
     """
     import math
+    import re
+    import json
     import numpy as np
     import pandas as pd
-    from datetime import datetime, date, time
+    from datetime import datetime, date, time, timedelta
+    from decimal import Decimal
+    from uuid import UUID
+
+    def parse_duckdb_struct(s: str):
+        """
+        Parse DuckDB struct string format into a Python dict.
+        DuckDB format: {key: 'value', key2: 'value2'}
+        JSON format:   {"key": "value", "key2": "value2"}
+        """
+        # Try standard JSON first (this handles output from json.dumps in PGwire)
+        try:
+            parsed = json.loads(s)
+            # Recursively sanitize the parsed result
+            if isinstance(parsed, dict):
+                return {k: sanitize_value(v) for k, v in parsed.items()}
+            elif isinstance(parsed, list):
+                return [sanitize_value(item) for item in parsed]
+            return parsed
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+        # Convert DuckDB struct format to JSON
+        # - Add quotes around unquoted keys
+        # - Convert single quotes to double quotes (carefully)
+        try:
+            # Replace unquoted keys with quoted keys
+            # Match: { key: or , key: where key is alphanumeric
+            converted = re.sub(r'([{,])\s*(\w+)\s*:', r'\1"\2":', s)
+            # Replace single quotes with double quotes
+            # This is simplified - doesn't handle escaped quotes
+            converted = converted.replace("'", '"')
+            parsed = json.loads(converted)
+            # Recursively sanitize the parsed result
+            if isinstance(parsed, dict):
+                return {k: sanitize_value(v) for k, v in parsed.items()}
+            elif isinstance(parsed, list):
+                return [sanitize_value(item) for item in parsed]
+            return parsed
+        except (json.JSONDecodeError, TypeError):
+            return s  # Return original if parsing fails
 
     def sanitize_value(v):
+        # Handle None early
+        if v is None:
+            return None
+        # Handle dicts (DuckDB STRUCT/MAP) - recursively sanitize values
+        if isinstance(v, dict):
+            return {k: sanitize_value(val) for k, val in v.items()}
+        # Handle lists - recursively sanitize elements
+        if isinstance(v, list):
+            return [sanitize_value(item) for item in v]
+        # Handle Decimal (psycopg returns these for NUMERIC columns)
+        if isinstance(v, Decimal):
+            return float(v)
+        # Handle UUID
+        if isinstance(v, UUID):
+            return str(v)
+        # Handle bytes/memoryview (binary data)
+        if isinstance(v, (bytes, memoryview)):
+            return bytes(v).hex()
+        # Handle timedelta/intervals
+        if isinstance(v, timedelta):
+            return v.total_seconds()
+        # Handle DuckDB struct strings (e.g., {type: 'pie', values: 'total'})
+        if isinstance(v, str) and v.startswith('{') and v.endswith('}'):
+            return parse_duckdb_struct(v)
         # Handle pandas NaT (Not a Time) - must check before other types
         if pd.isna(v):
             # pd.isna handles NaT, NaN, None, etc.
-            # But we need to distinguish actual None from NaN/NaT
-            if v is None:
-                return None
             if isinstance(v, float) and not math.isnan(v):
                 return v
             return None
@@ -103,6 +172,90 @@ def _sanitize_for_json(data: list[dict]) -> list[dict]:
         {k: sanitize_value(v) for k, v in row.items()}
         for row in data
     ]
+
+
+def _execute_via_pgwire(query: str, database: str, output_format: str, pgwire_port: int, start_time: float):
+    """
+    Execute SQL query via PGwire server using psycopg.
+
+    This is the preferred execution path when running with multiple workers,
+    as PGwire handles all LARS features internally and avoids DuckDB file locking.
+
+    Args:
+        query: SQL query to execute
+        database: Database name ('memory', 'workspace', etc.)
+        output_format: Response format ('records', 'json', 'csv')
+        pgwire_port: Port of PGwire server
+        start_time: Request start time for timing
+
+    Returns:
+        Flask JSON response
+    """
+    import psycopg
+
+    # Connect to PGwire with the specified database
+    conn = psycopg.connect(
+        host='localhost',
+        port=pgwire_port,
+        dbname=database,
+        user='lars',
+        password='',
+        autocommit=True,
+    )
+
+    try:
+        with conn.cursor() as cur:
+            cur.execute(query)
+
+            # Handle non-SELECT queries (CREATE, INSERT, etc.)
+            if cur.description is None:
+                execution_time = (time.time() - start_time) * 1000
+                return jsonify({
+                    "success": True,
+                    "columns": [],
+                    "data": [],
+                    "row_count": cur.rowcount if cur.rowcount >= 0 else 0,
+                    "database": database,
+                    "execution_time_ms": round(execution_time, 2),
+                    "via": "pgwire",
+                })
+
+            columns = [desc[0] for desc in cur.description]
+            rows = cur.fetchall()
+
+            # Convert to list of dicts
+            data = [dict(zip(columns, row)) for row in rows]
+
+            # Sanitize for JSON
+            data = _sanitize_for_json(data)
+
+            execution_time = (time.time() - start_time) * 1000
+
+            response = {
+                "success": True,
+                "columns": columns,
+                "row_count": len(data),
+                "database": database,
+                "execution_time_ms": round(execution_time, 2),
+                "via": "pgwire",
+            }
+
+            if output_format == 'csv':
+                import io
+                import csv
+                output = io.StringIO()
+                if data:
+                    writer = csv.DictWriter(output, fieldnames=columns)
+                    writer.writeheader()
+                    writer.writerows(data)
+                response["data"] = output.getvalue()
+            else:
+                response["data"] = data
+
+            return jsonify(response)
+
+    finally:
+        conn.close()
 
 
 def _split_sql_statements(sql: str) -> list[str]:
@@ -214,6 +367,76 @@ def _extract_param_key(on_select_template: str):
     if match:
         return match.group(1), match.group(2)
     return None, None
+
+
+def _complete_http_query_tracking(query_id: str, query_start_time: float, caller_id: str, rows_output: int):
+    """
+    Log query completion for SQL Trail (HTTP API version).
+
+    Mirrors the PGWire _complete_query_tracking behavior but simplified for HTTP.
+    """
+    try:
+        import time
+        from lars.sql_trail import (
+            log_query_complete,
+            get_cascade_paths, get_cascade_summary, clear_cascade_executions,
+            get_and_clear_cache_counts
+        )
+        from lars.caller_context import clear_caller_context
+
+        duration_ms = (time.time() - query_start_time) * 1000
+
+        cascade_paths = get_cascade_paths(caller_id) if caller_id else []
+        cascade_summary = get_cascade_summary(caller_id) if caller_id else {}
+
+        # Get accumulated cache counts for this query
+        cache_hits, cache_misses = get_and_clear_cache_counts(caller_id)
+
+        log_query_complete(
+            query_id=query_id,
+            status='completed',
+            rows_output=rows_output,
+            duration_ms=duration_ms,
+            cascade_paths=cascade_paths,
+            cascade_count=cascade_summary.get('cascade_count', 0),
+            cache_hits=cache_hits,
+            cache_misses=cache_misses,
+        )
+
+        if caller_id:
+            clear_cascade_executions(caller_id)
+        clear_caller_context()
+
+    except Exception as e:
+        # Fire-and-forget - don't fail the main request
+        print(f"[sql_server_api] SQL Trail completion log failed: {e}")
+
+
+def _error_http_query_tracking(query_id: str, query_start_time: float, error: Exception):
+    """
+    Log query error for SQL Trail (HTTP API version).
+    """
+    if not query_id:
+        return
+
+    try:
+        import time
+        from lars.sql_trail import log_query_error
+        from lars.caller_context import clear_caller_context
+
+        duration_ms = (time.time() - query_start_time) * 1000
+
+        log_query_error(
+            query_id=query_id,
+            error_message=str(error),
+            error_type=type(error).__name__,
+            duration_ms=duration_ms
+        )
+
+        clear_caller_context()
+
+    except Exception as e:
+        print(f"[sql_server_api] SQL Trail error log failed: {e}")
 
 
 def parse_multi_panel_query(query: str):
@@ -401,17 +624,145 @@ def parse_multi_panel_query(query: str):
     }
 
 
+def _handle_shared_table_create_direct(query: str, conn, lock):
+    """
+    Handle CREATE TABLE shared.* for direct DuckDB execution path.
+
+    Parses the CREATE TABLE statement, extracts the SELECT query,
+    and routes to shared_parquet.write_shared_table_with_view_name().
+
+    Returns a DataFrame indicating success (mimics DDL response).
+    """
+    import re
+    import pandas as pd
+    import logging
+
+    log = logging.getLogger(__name__)
+
+    # Parse the CREATE TABLE statement
+    # Pattern: CREATE [OR REPLACE] TABLE shared.[subdir.]name AS SELECT ...
+    # Note: \s* allows leading whitespace/newlines from frontend parsing
+    pattern = r'''
+        ^\s*CREATE\s+
+        (?:OR\s+REPLACE\s+)?
+        TABLE\s+
+        shared\.
+        (?:(\w+)\.)?           # Optional subdir (staging, results, user)
+        (\w+)                  # Table name
+        \s+AS\s+
+        (.+)$                  # SELECT query
+    '''
+    match = re.match(pattern, query, re.IGNORECASE | re.VERBOSE | re.DOTALL)
+
+    if not match:
+        raise ValueError("Shared tables require CREATE TABLE shared.name AS SELECT syntax")
+
+    explicit_subdir = match.group(1)  # None if not specified
+    table_name = match.group(2)
+    select_query = match.group(3).rstrip(';').strip()
+
+    # Determine subdir and view name
+    valid_subdirs = ('staging', 'results', 'user')
+    if explicit_subdir:
+        subdir = explicit_subdir.lower()
+        if subdir not in valid_subdirs:
+            raise ValueError(f"Invalid shared table subdirectory '{subdir}'. Must be one of: {', '.join(valid_subdirs)}")
+        # Explicit subdir: include prefix in view name (except staging which is default)
+        if subdir == 'staging':
+            view_name = table_name
+        else:
+            view_name = f"{subdir}_{table_name}"
+    else:
+        # No explicit subdir: default to staging, use simple view name
+        subdir = 'staging'
+        view_name = table_name
+
+    log.info(f"[shared_parquet] Creating shared.{view_name} (file: {subdir}/{table_name}.parquet)")
+
+    from lars.sql_tools.shared_parquet import write_shared_table_with_view_name
+
+    with lock:
+        parquet_path = write_shared_table_with_view_name(
+            conn,
+            table_name,
+            view_name,
+            select_query,
+            subdir=subdir,
+            schema='shared'
+        )
+
+    if not parquet_path:
+        raise RuntimeError("Failed to create shared table - check logs for details")
+
+    log.info(f"[shared_parquet] Created shared.{view_name} -> {parquet_path}")
+
+    # Return a DataFrame that mimics DDL success (similar to COUNT result)
+    return pd.DataFrame({'status': ['CREATE TABLE']})
+
+
 def execute_single_query(query: str, conn, lock, database: str, caller_id: str = None):
     """
     Execute a single SQL query and return the result as a DataFrame.
 
     Handles LARS syntax rewriting and pipeline execution.
+    Returns empty DataFrame for empty/comment-only queries.
     """
     import pandas as pd
     from lars.sql_rewriter import rewrite_lars_syntax
     from lars.sql_tools.pipeline_parser import has_pipeline_syntax, parse_pipeline_syntax
     from lars.sql_tools.database_manager import ensure_lazy_attach
     from lars.sql_tools.deref_preprocessor import preprocess_deref_cascades
+
+    # Early return for empty or comment-only queries
+    if not query or not query.strip():
+        return pd.DataFrame()
+
+    # Check if query is only comments (lines starting with -- or /* */)
+    lines = query.strip().split('\n')
+    non_comment_lines = []
+    in_block_comment = False
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        # Handle block comments
+        if '/*' in stripped:
+            in_block_comment = True
+        if '*/' in stripped:
+            in_block_comment = False
+            continue
+        if in_block_comment:
+            continue
+        # Handle line comments (-- or ---)
+        if stripped.startswith('--'):
+            continue
+        non_comment_lines.append(stripped)
+
+    if not non_comment_lines:
+        # Query is only comments - return empty DataFrame
+        return pd.DataFrame()
+
+    # Rewrite into_ table references to read from ClickHouse
+    # Tables created with THEN PASS INTO xxx are stored in lars_results.into_xxx
+    try:
+        from lars.sql_tools.into_table_rewriter import rewrite_into_tables
+        query, into_changed = rewrite_into_tables(query)
+        if into_changed:
+            import logging
+            logging.getLogger(__name__).debug(f"[into_rewriter] Query rewritten for INTO tables")
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).debug(f"[into_rewriter] Rewrite skipped: {e}")
+
+    # Handle CREATE TABLE shared.* - write to parquet for cross-session visibility
+    # This intercepts shared table creation and routes to parquet-backed storage
+    # Note: \s* allows leading whitespace/newlines from frontend parsing
+    import re
+    query_upper = query.upper()
+    if re.match(r'^\s*CREATE\s+(OR\s+REPLACE\s+)?TABLE\s+SHARED\.', query_upper):
+        from lars.sql_tools.shared_parquet import is_shared_tables_enabled
+        if is_shared_tables_enabled():
+            return _handle_shared_table_create_direct(query, conn, lock)
 
     # Deref preprocessing: evaluate @cascade() expressions first
     # Try to get client info from Flask request context
@@ -441,6 +792,10 @@ def execute_single_query(query: str, conn, lock, database: str, caller_id: str =
 
     # Apply LARS syntax rewriting
     rewritten_query = rewrite_lars_syntax(query, duckdb_conn=conn)
+
+    # Handle case where rewriting returns None/empty (comment-only after rewrite)
+    if not rewritten_query or not rewritten_query.strip():
+        return pd.DataFrame()
 
     # Check for PIPELINE syntax
     if has_pipeline_syntax(rewritten_query):
@@ -543,29 +898,71 @@ def execute_sql():
             "hint": "Send JSON body with 'query' field"
         }), 400
 
+    # =========================================================================
+    # Check for multi-panel queries FIRST (before trying PGwire)
+    # =========================================================================
+    # Multi-panel queries (with --- PANEL markers) require special handling:
+    # setup SQL runs first, then each panel query runs separately.
+    # PGwire doesn't support this, so skip PGwire for multi-panel queries.
+    is_multi_panel = '--- PANEL' in query or '---PANEL' in query
+
+    # =========================================================================
+    # Try PGwire for single queries (preferred path for multi-worker setups)
+    # =========================================================================
+    # PGwire handles all LARS features (UDFs, rewriting, pipelines) internally,
+    # so we just send the raw query and get results back.
+    # NOTE: Skip PGwire for multi-panel queries as it doesn't handle panels.
+    pgwire_port = os.environ.get('LARS_STUDIO_PGWIRE_PORT')
+    if pgwire_port and not is_multi_panel:
+        try:
+            return _execute_via_pgwire(
+                query=query,
+                database=database,
+                output_format=output_format,
+                pgwire_port=int(pgwire_port),
+                start_time=start_time,
+            )
+        except Exception as e:
+            # Log but fall through to direct DuckDB
+            import logging
+            logging.getLogger(__name__).warning(f"PGwire execution failed, falling back to direct: {e}")
+
+    # =========================================================================
+    # Fallback: Direct DuckDB connection (single-worker mode or PGwire unavailable)
+    # =========================================================================
     try:
         # Import here to avoid circular dependencies
         import sys
-        import os
         import pandas as pd
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
+        from contextlib import nullcontext
         from lars.sql_tools.database_manager import (
-            get_database_connection,
+            get_fresh_connection,
             get_database_lock,
+            release_connection,
         )
         from lars.sql_rewriter import _is_lars_statement
         from lars.sql_tools.pipeline_parser import has_pipeline_syntax
 
-        # Get fully initialized database connection (UDFs, auto-attach, etc.)
-        conn = get_database_connection(database)
-        lock = get_database_lock(database)
+        # Get database connection optimized for parallel execution
+        # File-based DBs: fresh connection per request (parallel via DuckDB WAL)
+        # In-memory DBs: tries pre-warmed pool first, falls back to shared cached connection
+        conn, is_memory, needs_lock = get_fresh_connection(database)
+        lock = get_database_lock(database) if needs_lock else nullcontext()
+
+        # Track if this is a pooled connection (is_memory=True but needs_lock=False means pooled)
+        is_pooled = is_memory and not needs_lock
 
         # Set caller context for LARS queries (enables cost tracking and debugging)
         caller_id = None
+        query_id = None
+        query_start_time = time.time()
+
         if _is_lars_statement(query) or has_pipeline_syntax(query):
             from lars.session_naming import generate_woodland_id
             from lars.caller_context import set_caller_context, build_sql_metadata
+            from lars.sql_trail import log_query_start
 
             caller_id = f"http-{generate_woodland_id()}"
             metadata = build_sql_metadata(
@@ -574,6 +971,13 @@ def execute_sql():
                 triggered_by="http_api"
             )
             set_caller_context(caller_id, metadata)
+
+            # Log query start to sql_query_log (mirrors PGWire behavior)
+            query_id = log_query_start(
+                caller_id=caller_id,
+                query_raw=query,
+                protocol='http'
+            )
 
         # Check for multi-panel query syntax (--- PANEL 'name')
         parsed = parse_multi_panel_query(query)
@@ -661,6 +1065,16 @@ def execute_sql():
 
             execution_time_ms = (time.time() - start_time) * 1000
 
+            # Log query completion (mirrors PGWire behavior)
+            if query_id and caller_id:
+                _complete_http_query_tracking(
+                    query_id, query_start_time, caller_id, total_rows
+                )
+
+            # Return pooled connection for reuse
+            if is_pooled:
+                release_connection(conn, is_pooled=True)
+
             return jsonify({
                 "success": True,
                 "multi_panel": True,
@@ -677,9 +1091,18 @@ def execute_sql():
 
         execution_time_ms = (time.time() - start_time) * 1000
 
+        # Log query completion (mirrors PGWire behavior)
+        if query_id and caller_id:
+            _complete_http_query_tracking(
+                query_id, query_start_time, caller_id, len(result_df)
+            )
+
         # Format response
         if output_format == 'csv':
             csv_data = result_df.to_csv(index=False)
+            # Return pooled connection for reuse
+            if is_pooled:
+                release_connection(conn, is_pooled=True)
             return csv_data, 200, {
                 'Content-Type': 'text/csv',
                 'Content-Disposition': f'attachment; filename="query_result.csv"'
@@ -693,6 +1116,9 @@ def execute_sql():
                 [None if isinstance(v, float) and (math.isnan(v) or math.isinf(v)) else v for v in row]
                 for row in result_df.values.tolist()
             ]
+            # Return pooled connection for reuse
+            if is_pooled:
+                release_connection(conn, is_pooled=True)
             return jsonify({
                 "success": True,
                 "columns": list(result_df.columns),
@@ -725,6 +1151,10 @@ def execute_sql():
                             selected_value = param_store_get(database, param_key)
                             panel['selected_value'] = selected_value
 
+            # Return pooled connection for reuse
+            if is_pooled:
+                release_connection(conn, is_pooled=True)
+
             return jsonify({
                 "success": True,
                 "columns": list(result_df.columns),
@@ -736,7 +1166,25 @@ def execute_sql():
             })
 
     except Exception as e:
+        # Release pooled connection even on error
+        try:
+            if 'is_pooled' in locals() and is_pooled and 'conn' in locals():
+                release_connection(conn, is_pooled=True)
+        except Exception:
+            pass
         execution_time_ms = (time.time() - start_time) * 1000
+
+        # Log query error (mirrors PGWire behavior)
+        try:
+            if query_id:
+                _error_http_query_tracking(query_id, query_start_time, e)
+        except NameError:
+            pass  # query_id not defined yet (error occurred early)
+
+        try:
+            error_caller_id = caller_id
+        except NameError:
+            error_caller_id = None
 
         return jsonify({
             "success": False,
@@ -744,7 +1192,142 @@ def execute_sql():
             "error_type": type(e).__name__,
             "traceback": traceback.format_exc(),
             "database": database,
-            "execution_time_ms": execution_time_ms
+            "execution_time_ms": execution_time_ms,
+            "caller_id": error_caller_id
+        }), 500
+
+    # Note: Thread-local connections are NOT closed here.
+    # They persist across requests within the same thread, avoiding
+    # repeated UDF registration overhead. DuckDB handles file-based
+    # concurrency via WAL, so different threads can execute in parallel.
+
+
+@sql_server_api.route('/api/sql/actual-cost/<caller_id>', methods=['GET'])
+def get_actual_cost(caller_id: str):
+    """
+    Get actual costs for a query execution.
+
+    Returns aggregated cost totals and per-operator breakdown for
+    future granular cost visualization.
+
+    GET /api/sql/actual-cost/<caller_id>
+
+    Returns:
+    {
+      "caller_id": "http-swift-otter-abc123",
+      "status": "complete",  // "pending" if costs still arriving
+      "total_cost": 0.0042,
+      "total_tokens_in": 1250,
+      "total_tokens_out": 320,
+      "llm_calls": 5,
+      "operators": [
+        {
+          "cascade_id": "semantic_matches",
+          "session_id": "session_xyz",
+          "cost": 0.0021,
+          "tokens_in": 625,
+          "tokens_out": 160,
+          "inputs_summary": "text='...' criterion='...'"
+        },
+        ...
+      ]
+    }
+    """
+    try:
+        import sys
+        import os
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
+
+        from lars.sql_trail import aggregate_query_costs, get_cascade_executions
+        from lars.db_adapter import get_db
+
+        # Get aggregated totals
+        totals = aggregate_query_costs(caller_id)
+
+        # Get per-operator breakdown from cascade executions
+        cascade_executions = get_cascade_executions(caller_id)
+
+        # For each cascade execution, get its individual cost from unified_logs
+        operators = []
+        db = get_db()
+
+        for execution in cascade_executions:
+            session_id = execution.get('session_id')
+            if not session_id:
+                continue
+
+            # Query unified_logs for this specific session's cost
+            try:
+                session_cost = db.query(f"""
+                    SELECT
+                        SUM(cost) as cost,
+                        SUM(tokens_in) as tokens_in,
+                        SUM(tokens_out) as tokens_out,
+                        COUNT(*) as llm_calls,
+                        any(model) as model
+                    FROM unified_logs
+                    WHERE session_id = '{session_id}'
+                      AND request_id IS NOT NULL AND request_id != ''
+                """)
+
+                if session_cost and len(session_cost) > 0:
+                    row = session_cost[0]
+                    operators.append({
+                        "cascade_id": execution.get('cascade_id'),
+                        "cascade_path": execution.get('cascade_path'),
+                        "session_id": session_id,
+                        "cost": row.get('cost') or 0,
+                        "tokens_in": row.get('tokens_in') or 0,
+                        "tokens_out": row.get('tokens_out') or 0,
+                        "llm_calls": row.get('llm_calls') or 0,
+                        "model": row.get('model'),
+                        "inputs_summary": execution.get('inputs_summary', ''),
+                        "timestamp": execution.get('timestamp')
+                    })
+            except Exception as e:
+                # Log but don't fail - include execution with zero cost
+                print(f"[actual-cost] Failed to get cost for session {session_id}: {e}")
+                operators.append({
+                    "cascade_id": execution.get('cascade_id'),
+                    "cascade_path": execution.get('cascade_path'),
+                    "session_id": session_id,
+                    "cost": 0,
+                    "tokens_in": 0,
+                    "tokens_out": 0,
+                    "llm_calls": 0,
+                    "model": None,
+                    "inputs_summary": execution.get('inputs_summary', ''),
+                    "timestamp": execution.get('timestamp')
+                })
+
+        # Determine status based on whether we have any costs
+        # If we have cascade executions but no costs yet, costs are still arriving
+        total_cost = totals.get('total_cost') or 0
+        has_executions = len(cascade_executions) > 0
+        has_costs = total_cost > 0 or totals.get('llm_calls_count', 0) > 0
+
+        if has_executions and not has_costs:
+            status = "pending"
+        else:
+            status = "complete"
+
+        return jsonify({
+            "caller_id": caller_id,
+            "status": status,
+            "total_cost": total_cost,
+            "total_tokens_in": totals.get('total_tokens_in') or 0,
+            "total_tokens_out": totals.get('total_tokens_out') or 0,
+            "llm_calls": totals.get('llm_calls_count') or 0,
+            "operators": operators
+        })
+
+    except Exception as e:
+        import traceback
+        return jsonify({
+            "caller_id": caller_id,
+            "status": "error",
+            "error": str(e),
+            "traceback": traceback.format_exc()
         }), 500
 
 

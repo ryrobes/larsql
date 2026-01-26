@@ -1,0 +1,87 @@
+/**
+ * CostAnalysisDashboard styles
+ */
+
+.cost-analysis-dashboard {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: rgba(10, 10, 15, 0.5);
+}
+
+.cost-analysis-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1));
+  border-bottom: 1px solid rgba(99, 102, 241, 0.2);
+}
+
+.cost-analysis-header h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cost-analysis-header h2::before {
+  content: '📊';
+}
+
+.cost-analysis-source {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  font-style: italic;
+}
+
+.cost-analysis-caller-id {
+  font-size: 10px;
+  font-family: 'Google Sans Code', 'Menlo', monospace;
+  color: rgba(255, 255, 255, 0.3);
+  background: rgba(0, 0, 0, 0.2);
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: auto;
+}
+
+.cost-analysis-content {
+  flex: 1;
+  overflow: auto;
+  padding: 16px;
+}
+
+/* Empty state */
+.cost-analysis-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 40px;
+}
+
+.cost-analysis-empty-content {
+  text-align: center;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.cost-analysis-empty-icon {
+  font-size: 48px;
+  display: block;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.cost-analysis-empty h3 {
+  margin: 0 0 8px;
+  font-size: 18px;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.cost-analysis-empty p {
+  margin: 0;
+  font-size: 14px;
+}

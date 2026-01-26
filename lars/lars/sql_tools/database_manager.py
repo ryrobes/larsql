@@ -18,6 +18,7 @@ import tempfile
 import duckdb
 from typing import Dict, List, Set, Any, Tuple
 from threading import Lock
+import threading
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 import logging
 
@@ -30,6 +31,11 @@ _init_db_lock = Lock()
 # Cache of database connections (separate from session_db.py for clarity)
 _database_connections: Dict[str, duckdb.DuckDBPyConnection] = {}
 _database_locks: Dict[str, Lock] = {}
+
+# Thread-local storage for file-based connections (one per thread per database)
+# This enables parallel execution across threads without locking, while reusing
+# connections within the same thread to avoid repeated UDF registration overhead.
+_thread_local = threading.local()
 
 # Track snapshot copies for cleanup
 _snapshot_paths: Dict[str, str] = {}  # db_key -> snapshot_path
@@ -53,8 +59,26 @@ def list_databases() -> List[Dict[str, Any]]:
         - size_mb: File size in MB (for persistent)
     """
     from ..config import get_config
+    config = get_config()
+    session_db_dir = os.path.join(config.root_dir, 'session_dbs')
 
     databases = []
+
+    # Always include workspace (default persistent database for Studio)
+    workspace_path = os.path.join(session_db_dir, 'workspace.duckdb')
+    workspace_size = None
+    if os.path.exists(workspace_path):
+        try:
+            workspace_size = round(os.path.getsize(workspace_path) / (1024 * 1024), 2)
+        except Exception:
+            pass
+
+    databases.append({
+        "name": "workspace",
+        "type": "persistent",
+        "path": workspace_path,
+        "size_mb": workspace_size,
+    })
 
     # Always include memory/default options
     databases.append({
@@ -64,9 +88,7 @@ def list_databases() -> List[Dict[str, Any]]:
         "size_mb": None,
     })
 
-    # Scan session_dbs directory for persistent databases
-    config = get_config()
-    session_db_dir = os.path.join(config.root_dir, 'session_dbs')
+    # Scan session_dbs directory for other persistent databases
 
     if os.path.exists(session_db_dir):
         for filename in os.listdir(session_db_dir):
@@ -74,8 +96,9 @@ def list_databases() -> List[Dict[str, Any]]:
                 db_name = filename[:-7]  # Remove .duckdb extension
                 db_path = os.path.join(session_db_dir, filename)
 
-                # Skip internal/temp/ephemeral databases
-                if (db_name.startswith('http_api_') or
+                # Skip internal/temp/ephemeral databases and workspace (already added above)
+                if (db_name == 'workspace' or
+                    db_name.startswith('http_api_') or
                     db_name.startswith('health_check_') or
                     db_name.startswith('cli-') or
                     db_name.startswith('inttest')):
@@ -94,8 +117,14 @@ def list_databases() -> List[Dict[str, Any]]:
                     "size_mb": size_mb,
                 })
 
-    # Sort by name (memory first, then alphabetical)
-    databases.sort(key=lambda d: (0 if d["type"] == "memory" else 1, d["name"]))
+    # Sort: workspace first, then memory, then other persistent DBs alphabetically
+    def sort_key(d):
+        if d["name"] == "workspace":
+            return (0, "")
+        if d["type"] == "memory":
+            return (1, "")
+        return (2, d["name"])
+    databases.sort(key=sort_key)
 
     return databases
 
@@ -237,6 +266,130 @@ def get_database_lock(database_name: str) -> Lock:
         return _database_locks[db_key]
 
 
+def get_fresh_connection(
+    database_name: str,
+    initialize: bool = True,
+    use_pool: bool = True
+) -> Tuple[duckdb.DuckDBPyConnection, bool, bool]:
+    """
+    Get a database connection optimized for parallel execution.
+
+    For in-memory databases: First tries to get a pre-warmed connection from
+    the pool (instant). Falls back to cached shared connection if pool empty.
+
+    For file-based databases: Uses thread-local connections. Each thread gets
+    its own connection that persists across requests, avoiding repeated UDF
+    registration overhead. Different threads can execute in parallel since
+    DuckDB handles concurrency via WAL.
+
+    Args:
+        database_name: Database name ("memory", "default", or persistent name)
+        initialize: If True, run full initialization sequence
+        use_pool: If True, try to get a pre-warmed connection from pool (memory only)
+
+    Returns:
+        Tuple of (connection, is_memory, needs_lock)
+        - connection: DuckDB connection
+        - is_memory: True if this is an in-memory database
+        - needs_lock: True if caller should use get_database_lock() for serialization
+    """
+    db_key = _normalize_database_name(database_name)
+    is_memory = db_key in ('memory', 'default', ':memory:')
+
+    if is_memory:
+        # Try pre-warmed pool first (instant, no initialization needed)
+        if use_pool:
+            try:
+                from .connection_pool import get_pooled_connection
+                pooled = get_pooled_connection(timeout=0.05)
+                if pooled:
+                    log.debug("[database_manager] Using pre-warmed pooled connection")
+                    # Pooled connections don't need lock since each request gets its own
+                    return pooled, True, False
+            except ImportError:
+                pass
+            except Exception as e:
+                log.debug(f"[database_manager] Pool access failed: {e}")
+
+        # Fallback: cached shared connection (requires lock)
+        conn = get_database_connection(database_name, initialize)
+        return conn, True, True  # needs_lock=True
+
+    # File-based: use thread-local connection for efficiency
+    # Each thread gets its own connection, reused across requests
+    if not hasattr(_thread_local, 'connections'):
+        _thread_local.connections = {}
+
+    # Check for existing thread-local connection
+    if db_key in _thread_local.connections:
+        conn = _thread_local.connections[db_key]
+        # Health check
+        try:
+            conn.execute("SELECT 1").fetchone()
+            log.debug(f"[database_manager] Reusing thread-local connection for: {db_key}")
+            return conn, False, False
+        except Exception as e:
+            log.warning(f"[database_manager] Thread-local connection for {db_key} is bad: {e}")
+            try:
+                conn.close()
+            except:
+                pass
+            del _thread_local.connections[db_key]
+
+    # Create new thread-local connection
+    db_path = _get_database_path(db_key)
+
+    try:
+        conn = duckdb.connect(db_path)
+        log.debug(f"[database_manager] Opened new thread-local connection to: {db_path}")
+    except duckdb.IOException as e:
+        if "lock" in str(e).lower():
+            # Try read-only if write-locked
+            conn = duckdb.connect(db_path, read_only=True)
+            log.debug(f"[database_manager] Opened thread-local read-only connection to: {db_path}")
+        else:
+            raise
+
+    # Configure DuckDB
+    conn.execute("SET threads TO 4")
+
+    # Run initialization
+    if initialize:
+        _initialize_database(conn, db_key, is_memory=False)
+
+    # Cache in thread-local storage
+    _thread_local.connections[db_key] = conn
+
+    return conn, False, False  # needs_lock=False (DuckDB handles concurrency)
+
+
+def release_connection(conn: duckdb.DuckDBPyConnection, is_pooled: bool = False) -> None:
+    """
+    Release a connection after use.
+
+    For pooled connections: Returns to pool for reuse.
+    For non-pooled connections: No-op (connection stays cached).
+
+    Args:
+        conn: Connection to release
+        is_pooled: True if this connection came from the pool
+    """
+    if not is_pooled:
+        return  # Non-pooled connections stay cached
+
+    try:
+        from .connection_pool import return_to_pool, refill_pool
+        returned = return_to_pool(conn)
+        if returned:
+            log.debug("[database_manager] Returned connection to pool")
+        # Trigger refill in background if pool is getting low
+        refill_pool()
+    except ImportError:
+        pass
+    except Exception as e:
+        log.debug(f"[database_manager] Pool return failed: {e}")
+
+
 def ensure_lazy_attach(conn: duckdb.DuckDBPyConnection, sql: str) -> None:
     """
     Ensure external databases referenced in SQL are attached.
@@ -285,25 +438,30 @@ def _initialize_database(
     Run full database initialization sequence.
 
     Replicates PGwire's setup_session_minimal() + setup_session_deferred().
+
+    IMPORTANT: UDFs are per-connection, so _setup_minimal() must ALWAYS run
+    for each new connection. Only _setup_deferred() (metadata tables, auto-attach)
+    can be skipped for already-initialized file-based databases.
     """
-    # Skip if already initialized (for persistent DBs)
-    if not is_memory and db_key in _initialized_databases:
-        log.info(f"[database_manager] Database {db_key} already initialized, skipping")
-        return
+    # Check if deferred setup already done (for persistent DBs)
+    already_initialized = not is_memory and db_key in _initialized_databases
 
-    log.info(f"[database_manager] Initializing database: {db_key}")
+    log.info(f"[database_manager] Initializing connection for: {db_key} (deferred={'skip' if already_initialized else 'run'})")
 
-    # Phase 1: Minimal setup (UDFs)
+    # Phase 1: Minimal setup (UDFs) - ALWAYS run for each connection
+    # UDFs are registered per-connection, not persisted in the database file
     _setup_minimal(conn)
 
     # Phase 2: Deferred setup (auto-attach, metadata tables)
-    _setup_deferred(conn, db_key)
+    # Only run once per database (persisted in the file)
+    if not already_initialized:
+        _setup_deferred(conn, db_key)
 
-    # Mark as initialized
-    if not is_memory:
-        _initialized_databases.add(db_key)
+        # Mark as initialized
+        if not is_memory:
+            _initialized_databases.add(db_key)
 
-    log.info(f"[database_manager] Database {db_key} initialization complete")
+    log.info(f"[database_manager] Connection initialization complete for: {db_key}")
 
 
 def _install_community_extensions(conn: duckdb.DuckDBPyConnection) -> None:
@@ -382,6 +540,16 @@ def _setup_deferred(conn: duckdb.DuckDBPyConnection, db_key: str) -> None:
     This runs after minimal setup and handles heavier initialization.
     """
     log.debug(f"[database_manager] Running deferred setup for {db_key}")
+
+    # Attach shared parquet tables for cross-session visibility
+    # Tables in 'shared' schema are backed by parquet files (no locking issues)
+    try:
+        from .shared_parquet import attach_shared_tables, is_shared_tables_enabled
+        if is_shared_tables_enabled():
+            if attach_shared_tables(conn):
+                log.info(f"[database_manager] Shared tables attached (parquet-backed 'shared' schema)")
+    except Exception as e:
+        log.warning(f"[database_manager] Shared tables attachment failed: {e}")
 
     # Auto-attach external databases (if enabled)
     try:

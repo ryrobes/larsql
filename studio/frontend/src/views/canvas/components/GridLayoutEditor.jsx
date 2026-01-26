@@ -30,20 +30,29 @@ function tryParseJsonFromCell(panelData) {
 
     for (const key of keys) {
       const value = row[key];
+
+      // Handle both string JSON and already-parsed objects
+      let parsed = null;
       if (typeof value === 'string') {
         const trimmed = value.trim();
         if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
           try {
-            const parsed = JSON.parse(trimmed);
-            if (parsed.format === 'image' || (Array.isArray(parsed.images) && parsed.images.length > 0)) {
-              parsedImageData = parsed;
-              continue;
-            }
+            parsed = JSON.parse(trimmed);
           } catch (e) {
             // Not valid JSON
           }
         }
+      } else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+        // Already an object (from PGwire path where backend parses JSON)
+        parsed = value;
       }
+
+      // Check if this is image data (has format: "image" or images array)
+      if (parsed && (parsed.format === 'image' || (Array.isArray(parsed.images) && parsed.images.length > 0))) {
+        parsedImageData = parsed;
+        continue;
+      }
+
       otherFields[key] = value;
     }
 

@@ -138,37 +138,12 @@ app.register_blueprint(sql_server_api)
 
 def _run_startup_tasks():
     """
-    Run essential startup tasks: migrations and tool indexing.
+    Minimal worker startup - housekeeping tasks run once in cli.py before workers spawn.
 
-    Called at module level so it runs regardless of whether we're started via:
-    - `python app.py` (dev mode, Flask dev server)
-    - `gunicorn app:app` (production mode)
-
-    All operations are idempotent and safe to run on every boot.
+    This function runs on each worker startup but only does lightweight initialization.
+    Heavy tasks (DB migrations, tool sync) are done once in cli.py.
     """
-    print("🌊 LARS Studio Backend Initializing...")
-
-    # 1. Database housekeeping (schema creation, migrations)
-    print("🔧 Running database housekeeping...")
-    try:
-        from lars.db_adapter import ensure_housekeeping
-        ensure_housekeeping()
-        print("✅ Database housekeeping complete")
-    except Exception as e:
-        print(f"⚠️  Database housekeeping failed: {e}")
-
-    # 2. Tool manifest sync (index available tools/skills)
-    print("🔧 Syncing tool manifest to database...")
-    try:
-        from lars.tools_mgmt import sync_tools_to_db
-        sync_tools_to_db()
-        print("✅ Tool manifest synced")
-    except Exception as e:
-        print(f"⚠️  Tool manifest sync failed: {e}")
-        print("   Run 'lars tools sync' manually if needed")
-
-    print("🌊 LARS Studio Backend Ready")
-    print()
+    print("🌊 LARS Studio Worker Ready")
 
 
 # Run startup tasks at module load (works for both dev and production)
