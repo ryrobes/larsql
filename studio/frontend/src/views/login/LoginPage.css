@@ -39,10 +39,11 @@
 
 .login-title {
   margin: 0;
-  font-size: 2.5rem;
-  font-weight: var(--font-weight-bold);
+  font-family: 'Outrun future', sans-serif;
+  font-size: 3rem;
+  font-weight: normal;
   color: var(--color-accent-cyan);
-  letter-spacing: 0.1em;
+  letter-spacing: 0.15em;
 }
 
 .login-subtitle {

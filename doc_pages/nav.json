@@ -46,6 +46,20 @@
           ]
         },
         {
+          "id": "authentication",
+          "title": "Authentication",
+          "sections": [
+            { "anchor": "overview", "title": "Overview" },
+            { "anchor": "default-credentials", "title": "Default Credentials" },
+            { "anchor": "user-management", "title": "User Management" },
+            { "anchor": "api-keys", "title": "API Keys" },
+            { "anchor": "sql-client-auth", "title": "SQL Client Authentication" },
+            { "anchor": "studio-auth", "title": "Studio Authentication" },
+            { "anchor": "configuration", "title": "Configuration" },
+            { "anchor": "cli-reference", "title": "CLI Reference" }
+          ]
+        },
+        {
           "id": "providers",
           "title": "AI Providers",
           "sections": [

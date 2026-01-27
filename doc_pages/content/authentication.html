@@ -1,0 +1,514 @@
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     LARS AUTHENTICATION
+     User authentication and API key management
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+<h1 id="top">Authentication</h1>
+<p class="section-intro">
+  LARS includes a built-in authentication system for securing the SQL server and Studio web interface.
+  Authentication is <strong>enabled by default</strong> with a default admin account.
+</p>
+
+<div class="toc">
+  <strong>On This Page</strong>
+  <ul>
+    <li><a href="#overview">Overview</a></li>
+    <li><a href="#default-credentials">Default Credentials</a></li>
+    <li><a href="#user-management">User Management</a></li>
+    <li><a href="#api-keys">API Keys</a></li>
+    <li><a href="#sql-client-auth">SQL Client Authentication</a></li>
+    <li><a href="#studio-auth">Studio Authentication</a></li>
+    <li><a href="#configuration">Configuration</a></li>
+    <li><a href="#cli-reference">CLI Reference</a></li>
+  </ul>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     OVERVIEW
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+<h2 id="overview">Overview</h2>
+
+<p>
+  LARS authentication provides:
+</p>
+
+<ul>
+  <li><strong>User accounts</strong> with password hashing (Argon2)</li>
+  <li><strong>API keys</strong> for programmatic access (JWT-based)</li>
+  <li><strong>PGwire authentication</strong> for SQL clients (DBeaver, psql, DataGrip)</li>
+  <li><strong>Bearer token authentication</strong> for REST API and Studio</li>
+  <li><strong>Session scoping</strong> for user-specific parameters and data</li>
+</ul>
+
+<div class="info-box note">
+  <div class="info-box-title">Enabled by Default</div>
+  <p>
+    Authentication is <strong>enabled by default</strong> starting from LARS 0.x.
+    A default <code>admin</code> user is automatically created on first initialization.
+    You can disable authentication for development by setting <code>LARS_AUTH_ENABLED=0</code>.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     DEFAULT CREDENTIALS
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+<h2 id="default-credentials">Default Credentials</h2>
+
+<p>
+  When LARS initializes for the first time, it creates a default admin account:
+</p>
+
+<table class="props-table">
+  <thead>
+    <tr>
+      <th>Field</th>
+      <th>Value</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Username</td>
+      <td><code>admin</code></td>
+    </tr>
+    <tr>
+      <td>Password</td>
+      <td><code>admin</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="info-box warning">
+  <div class="info-box-title">Change Default Password</div>
+  <p>
+    For production use, change the default admin password immediately:
+  </p>
+  <div class="code-block">
+    <div class="code-block-content">
+      <pre>lars auth set-password admin</pre>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     USER MANAGEMENT
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+<h2 id="user-management">User Management</h2>
+
+<h3>Create a User</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Bash</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Create a new user (prompts for password)</span>
+lars auth create-user alice
+
+<span class="cmt"># Create with email</span>
+lars auth create-user bob --email bob@example.com
+
+<span class="cmt"># Create an admin user</span>
+lars auth create-user superadmin --admin</pre>
+  </div>
+</div>
+
+<h3>List Users</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Bash</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># List all users</span>
+lars auth list-users
+
+<span class="cmt"># Output as JSON</span>
+lars auth list-users --json</pre>
+  </div>
+</div>
+
+<h3>Change Password</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Bash</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Change password (prompts for new password)</span>
+lars auth set-password alice</pre>
+  </div>
+</div>
+
+<h3>Enable/Disable Users</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Bash</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Disable a user (prevents login)</span>
+lars auth disable-user alice
+
+<span class="cmt"># Re-enable a user</span>
+lars auth enable-user alice</pre>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     API KEYS
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+<h2 id="api-keys">API Keys</h2>
+
+<p>
+  API keys provide programmatic access for SQL clients, scripts, and integrations.
+  Each key is a JWT token with an optional expiration date.
+</p>
+
+<h3>Create an API Key</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Bash</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Create a key for a user</span>
+lars auth create-key alice --name "DBeaver"
+
+<span class="cmt"># Create with expiration</span>
+lars auth create-key alice --name "CI Pipeline" --expires 30d
+
+<span class="cmt"># Create with longer expiration</span>
+lars auth create-key bob --name "Data Team" --expires 1y</pre>
+  </div>
+</div>
+
+<p>The command outputs the full API key. <strong>Save it immediately</strong> - it cannot be retrieved later.</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">Output</span>
+  </div>
+  <div class="code-block-content">
+    <pre>Created API key for alice:
+  Name: DBeaver
+  Key: lars_abc123...xyz789
+  Expires: never
+
+<span class="cmt">Save this key - it cannot be retrieved later!</span></pre>
+  </div>
+</div>
+
+<h3>List API Keys</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Bash</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># List all keys</span>
+lars auth list-keys
+
+<span class="cmt"># List keys for a specific user</span>
+lars auth list-keys --user alice
+
+<span class="cmt"># Output as JSON</span>
+lars auth list-keys --json</pre>
+  </div>
+</div>
+
+<h3>Revoke an API Key</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Bash</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Revoke by key prefix (first 8 characters)</span>
+lars auth revoke-key lars_abc
+
+<span class="cmt"># Revoke with reason</span>
+lars auth revoke-key lars_abc --reason "Employee departure"</pre>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     SQL CLIENT AUTHENTICATION
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+<h2 id="sql-client-auth">SQL Client Authentication</h2>
+
+<p>
+  SQL clients authenticate via the PostgreSQL wire protocol. You can use either:
+</p>
+
+<ul>
+  <li><strong>Password authentication</strong>: Username + password</li>
+  <li><strong>API key authentication</strong>: Username + API key as password</li>
+</ul>
+
+<h3>Using Password</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Bash</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Connect with psql using password</span>
+psql -h localhost -p 15432 -U admin -d default
+<span class="cmt"># Enter password when prompted: admin</span>
+
+<span class="cmt"># Or use connection URL</span>
+psql postgresql://admin:admin@localhost:15432/default</pre>
+  </div>
+</div>
+
+<h3>Using API Key</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Bash</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Connect with API key as password</span>
+psql -h localhost -p 15432 -U alice -d default
+<span class="cmt"># Enter API key when prompted: lars_abc123...</span>
+
+<span class="cmt"># Or use connection URL (URL-encode the key if needed)</span>
+psql postgresql://alice:lars_abc123...@localhost:15432/default</pre>
+  </div>
+</div>
+
+<h3>DBeaver / DataGrip Configuration</h3>
+
+<table class="props-table">
+  <thead>
+    <tr>
+      <th>Setting</th>
+      <th>Value</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Host</td>
+      <td><code>localhost</code></td>
+    </tr>
+    <tr>
+      <td>Port</td>
+      <td><code>15432</code></td>
+    </tr>
+    <tr>
+      <td>Database</td>
+      <td><code>default</code> or your database name</td>
+    </tr>
+    <tr>
+      <td>Username</td>
+      <td>Your LARS username</td>
+    </tr>
+    <tr>
+      <td>Password</td>
+      <td>Your password <strong>or</strong> API key</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="info-box tip">
+  <div class="info-box-title">API Keys for SQL Clients</div>
+  <p>
+    For SQL clients that save credentials, using an API key instead of your password is recommended.
+    API keys can be revoked individually without changing your account password.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     STUDIO AUTHENTICATION
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+<h2 id="studio-auth">Studio Authentication</h2>
+
+<p>
+  LARS Studio uses the same authentication system. When you open Studio, you'll see a login page.
+</p>
+
+<h3>Login</h3>
+
+<ol>
+  <li>Open <a href="http://localhost:5050" target="_blank">http://localhost:5050</a></li>
+  <li>Enter your username and password (default: <code>admin</code> / <code>admin</code>)</li>
+  <li>Click "Sign In"</li>
+</ol>
+
+<h3>User Menu</h3>
+
+<p>
+  Once logged in, a user menu appears in the bottom-right corner of the screen.
+  Click it to access account options including logout.
+</p>
+
+<h3>REST API Authentication</h3>
+
+<p>
+  For programmatic access to the Studio REST API, use Bearer token authentication:
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Bash</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Execute SQL via REST API</span>
+curl -X POST http://localhost:5050/api/sql/execute \
+  -H "Authorization: Bearer lars_abc123..." \
+  -H "Content-Type: application/json" \
+  -d '{"sql": "SELECT 1 + 1 AS result"}'</pre>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     CONFIGURATION
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+<h2 id="configuration">Configuration</h2>
+
+<p>Authentication behavior is controlled by environment variables:</p>
+
+<table class="props-table">
+  <thead>
+    <tr>
+      <th>Variable</th>
+      <th>Default</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>LARS_AUTH_ENABLED</code></td>
+      <td><code>1</code></td>
+      <td>Enable/disable authentication. Set to <code>0</code> to disable.</td>
+    </tr>
+    <tr>
+      <td><code>LARS_AUTH_SECRET_KEY</code></td>
+      <td>(auto-generated)</td>
+      <td>Secret key for JWT signing. Auto-generated if not set.</td>
+    </tr>
+    <tr>
+      <td><code>LARS_AUTH_KEY_DEFAULT_EXPIRY</code></td>
+      <td><code>365d</code></td>
+      <td>Default expiration for API keys when <code>--expires</code> not specified.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Disable Authentication</h3>
+
+<p>For local development or testing, you can disable authentication:</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Bash</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Disable authentication</span>
+export LARS_AUTH_ENABLED=0
+
+<span class="cmt"># Start servers - no login required</span>
+lars serve sql
+lars serve studio</pre>
+  </div>
+</div>
+
+<div class="info-box warning">
+  <div class="info-box-title">Production Warning</div>
+  <p>
+    Never disable authentication in production environments.
+    Always use strong passwords and consider network-level security (firewalls, VPNs)
+    in addition to LARS authentication.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     CLI REFERENCE
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+<h2 id="cli-reference">CLI Reference</h2>
+
+<p>Complete list of authentication CLI commands:</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Bash</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># User management</span>
+lars auth create-user &lt;username&gt; [--email EMAIL] [--admin]
+lars auth list-users [--json]
+lars auth set-password &lt;username&gt;
+lars auth enable-user &lt;username&gt;
+lars auth disable-user &lt;username&gt;
+
+<span class="cmt"># API key management</span>
+lars auth create-key &lt;username&gt; --name NAME [--expires DURATION]
+lars auth list-keys [--user USERNAME] [--json]
+lars auth revoke-key &lt;key_prefix&gt; [--reason REASON]
+
+<span class="cmt"># Status</span>
+lars auth status</pre>
+  </div>
+</div>
+
+<h3>Expiration Duration Format</h3>
+
+<p>The <code>--expires</code> flag accepts these formats:</p>
+
+<table class="props-table">
+  <thead>
+    <tr>
+      <th>Format</th>
+      <th>Example</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>Nd</code></td>
+      <td><code>30d</code></td>
+      <td>N days</td>
+    </tr>
+    <tr>
+      <td><code>Nw</code></td>
+      <td><code>2w</code></td>
+      <td>N weeks</td>
+    </tr>
+    <tr>
+      <td><code>Nm</code></td>
+      <td><code>6m</code></td>
+      <td>N months (30 days each)</td>
+    </tr>
+    <tr>
+      <td><code>Ny</code></td>
+      <td><code>1y</code></td>
+      <td>N years</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="info-box tip">
+  <div class="info-box-title">Quick Setup</div>
+  <p>
+    For a quick multi-user setup:
+  </p>
+  <div class="code-block">
+    <div class="code-block-content">
+      <pre><span class="cmt"># Create users</span>
+lars auth create-user analyst1
+lars auth create-user analyst2
+
+<span class="cmt"># Create long-lived API keys for SQL clients</span>
+lars auth create-key analyst1 --name "DBeaver" --expires 1y
+lars auth create-key analyst2 --name "DataGrip" --expires 1y</pre>
+    </div>
+  </div>
+</div>

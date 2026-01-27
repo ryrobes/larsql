@@ -1,9 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Icon } from '@iconify/react';
-import { useNavigate } from 'react-router-dom';
 import RichTooltip, { RunningCascadeTooltipContent, Tooltip } from '../components/RichTooltip';
 import { getTopViews, getBottomViews } from '../views';
-import { useAuthStore } from '../stores/authStore';
 import './VerticalSidebar.css';
 import { API_BASE_URL } from '../config/api';
 
@@ -47,21 +45,9 @@ const VerticalSidebar = ({
   onSessions,
   onBlocked,
 }) => {
-  const navigate = useNavigate();
-
   // Get views from registry
   const topViews = getTopViews();
   const bottomViews = getBottomViews();
-
-  // Auth state
-  const { user, logout, authEnabled } = useAuthStore();
-  const [showUserMenu, setShowUserMenu] = useState(false);
-
-  // Handle logout
-  const handleLogout = async () => {
-    await logout();
-    navigate('/login');
-  };
 
   // Track latest images for running sessions (for faint background effect)
   const [sessionImages, setSessionImages] = useState({});
@@ -404,48 +390,6 @@ const VerticalSidebar = ({
             </Tooltip>
           );
         })}
-
-        {/* User Menu */}
-        {authEnabled && user && (
-          <div className="vsidebar-user-section">
-            <div className="vsidebar-user-menu-container">
-              <button
-                className={`vsidebar-user-btn ${showUserMenu ? 'active' : ''}`}
-                onClick={() => setShowUserMenu(!showUserMenu)}
-              >
-                <div className="vsidebar-user-avatar">
-                  {user.display_name?.[0]?.toUpperCase() || user.username?.[0]?.toUpperCase() || 'U'}
-                </div>
-              </button>
-              {showUserMenu && (
-                <>
-                  <div
-                    className="vsidebar-user-menu-backdrop"
-                    onClick={() => setShowUserMenu(false)}
-                  />
-                  <div className="vsidebar-user-menu">
-                    <div className="vsidebar-user-menu-header">
-                      <span className="vsidebar-user-menu-name">
-                        {user.display_name || user.username}
-                      </span>
-                      <span className="vsidebar-user-menu-username">
-                        @{user.username}
-                      </span>
-                    </div>
-                    <div className="vsidebar-user-menu-divider" />
-                    <button
-                      className="vsidebar-user-menu-item"
-                      onClick={handleLogout}
-                    >
-                      <Icon icon="mdi:logout" width="16" />
-                      <span>Sign out</span>
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        )}
 
       </div>
     </div>

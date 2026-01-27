@@ -28,8 +28,8 @@ const LoginPage = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
 
-  // Get redirect destination from location state or default to home
-  const from = location.state?.from?.pathname || '/';
+  // Get redirect destination from location state or default to console
+  const from = location.state?.from?.pathname || '/console';
 
   // Check auth status on mount
   useEffect(() => {

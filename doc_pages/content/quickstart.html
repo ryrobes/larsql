@@ -180,6 +180,15 @@ lars db init</pre>
   </div>
 </div>
 
+<div class="info-box note">
+  <div class="info-box-title">Authentication Enabled</div>
+  <p>
+    LARS has authentication <strong>enabled by default</strong>. The default credentials are
+    <code>admin</code> / <code>admin</code>. See <a href="#authentication" data-link>Authentication</a>
+    for user management and API keys.
+  </p>
+</div>
+
 <h3>Connect with psql</h3>
 
 <div class="code-block">
@@ -187,8 +196,8 @@ lars db init</pre>
     <span class="code-block-lang bash">Bash</span>
   </div>
   <div class="code-block-content">
-    <pre><span class="cmt"># Connect (default credentials: lars/lars)</span>
-psql postgresql://localhost:15432/default</pre>
+    <pre><span class="cmt"># Connect (default credentials: admin/admin)</span>
+psql postgresql://admin:admin@localhost:15432/default</pre>
   </div>
 </div>
 
@@ -218,11 +227,11 @@ psql postgresql://localhost:15432/default</pre>
     </tr>
     <tr>
       <td>Username</td>
-      <td><code>lars</code></td>
+      <td><code>admin</code></td>
     </tr>
     <tr>
       <td>Password</td>
-      <td><code>lars</code></td>
+      <td><code>admin</code></td>
     </tr>
   </tbody>
 </table>
@@ -272,7 +281,10 @@ psql postgresql://localhost:15432/default</pre>
   </div>
 </div>
 
-<p>Open your browser to <a href="http://localhost:5050" target="_blank">http://localhost:5050</a></p>
+<p>
+  Open your browser to <a href="http://localhost:5050" target="_blank">http://localhost:5050</a>
+  and log in with the default credentials (<code>admin</code> / <code>admin</code>).
+</p>
 
 <h3>Studio Features</h3>
 
@@ -309,6 +321,13 @@ psql postgresql://localhost:15432/default</pre>
 <p>You now have a working LARS installation. Here's what to explore next:</p>
 
 <div class="feature-grid">
+  <div class="feature-item">
+    <iconify-icon icon="mdi:shield-account" class="feature-icon"></iconify-icon>
+    <div class="feature-content">
+      <h4><a href="#authentication" data-link>Authentication</a></h4>
+      <p>User management, API keys, and securing your LARS instance</p>
+    </div>
+  </div>
   <div class="feature-item">
     <iconify-icon icon="mdi:brain" class="feature-icon"></iconify-icon>
     <div class="feature-content">

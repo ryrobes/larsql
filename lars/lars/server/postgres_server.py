@@ -2013,6 +2013,10 @@ class ClientConnection:
         # Avoid empty names
         if not sanitized:
             sanitized = '_col'
+        # Avoid SQL reserved keywords as column names
+        reserved_keywords = {'NULL', 'TRUE', 'FALSE', 'SELECT', 'FROM', 'WHERE', 'AND', 'OR', 'NOT', 'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'DROP', 'TABLE', 'INDEX', 'ORDER', 'BY', 'GROUP', 'HAVING', 'LIMIT', 'OFFSET', 'JOIN', 'LEFT', 'RIGHT', 'INNER', 'OUTER', 'ON', 'AS', 'IN', 'IS', 'LIKE', 'BETWEEN', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END', 'UNION', 'ALL', 'DISTINCT', 'VALUES', 'SET', 'INTO', 'DEFAULT', 'PRIMARY', 'KEY', 'FOREIGN', 'REFERENCES', 'CONSTRAINT', 'CHECK', 'UNIQUE', 'AUTO_INCREMENT'}
+        if sanitized.upper() in reserved_keywords:
+            sanitized = f'col_{sanitized}'
         return sanitized
 
     def _maybe_materialize_result(self, query: str, result_df, query_id: str | None = None, caller_id: str | None = None):
@@ -2148,7 +2152,13 @@ class ClientConnection:
                             return "'" + v.replace("\\", "\\\\").replace("'", "''").replace("%", "%%") + "'"
                         elif isinstance(v, bool):
                             return '1' if v else '0'
-                        elif isinstance(v, (int, float)):
+                        elif isinstance(v, float):
+                            # Handle nan/inf - ClickHouse can't store these in numeric columns
+                            import math
+                            if math.isnan(v) or math.isinf(v):
+                                return 'NULL'
+                            return str(v)
+                        elif isinstance(v, int):
                             return str(v)
                         elif isinstance(v, (dict, list)):
                             # Escape: backslash, single quote, and % (ClickHouse driver uses %-formatting)
@@ -6361,6 +6371,13 @@ class ClientConnection:
                 except Exception:
                     pass
 
+                # Rewrite into_ table references to read from ClickHouse
+                try:
+                    from ..sql_tools.into_table_rewriter import rewrite_into_tables
+                    query, _ = rewrite_into_tables(query)
+                except Exception:
+                    pass  # Non-fatal
+
                 # Rewrite the query (handles LARS syntax, semantic operators, etc.)
                 from ..sql_rewriter import rewrite_lars_syntax
                 rewritten = rewrite_lars_syntax(query, duckdb_conn=bg_conn)
@@ -6622,6 +6639,13 @@ class ClientConnection:
                     LazyAttachManager(bg_conn, load_sql_connections()).ensure_for_query(query, aggressive=False)
                 except Exception:
                     pass
+
+                # Rewrite into_ table references to read from ClickHouse
+                try:
+                    from ..sql_tools.into_table_rewriter import rewrite_into_tables
+                    query, _ = rewrite_into_tables(query)
+                except Exception:
+                    pass  # Non-fatal
 
                 # Rewrite and execute query
                 from ..sql_rewriter import rewrite_lars_syntax
@@ -6890,6 +6914,13 @@ class ClientConnection:
 
             # For non-pipeline queries, use the existing rewriter-based EXPLAIN
             # (handles LARS MAP/RUN and inline semantic functions)
+            # Rewrite into_ table references to read from ClickHouse
+            try:
+                from ..sql_tools.into_table_rewriter import rewrite_into_tables
+                query, _ = rewrite_into_tables(query)
+            except Exception:
+                pass  # Non-fatal
+
             from ..sql_rewriter import rewrite_lars_syntax
             explain_sql = rewrite_lars_syntax(query, duckdb_conn=explain_conn)
 
@@ -6976,6 +7007,13 @@ class ClientConnection:
                         # Fall through to regular EXPLAIN handling
 
             # For non-pipeline queries (or if pipeline explain failed), use rewriter-based EXPLAIN
+            # Rewrite into_ table references to read from ClickHouse
+            try:
+                from ..sql_tools.into_table_rewriter import rewrite_into_tables
+                query, _ = rewrite_into_tables(query)
+            except Exception:
+                pass  # Non-fatal
+
             try:
                 from ..sql_rewriter import rewrite_lars_syntax
                 explain_sql = rewrite_lars_syntax(query, duckdb_conn=explain_conn)
@@ -7025,6 +7063,16 @@ class ClientConnection:
         try:
             # 1. Execute base SQL with unified rewriting (handles dimension functions, semantic operators, etc.)
             base_sql = pipeline.base_sql
+
+            # Rewrite into_ table references to read from ClickHouse
+            # Tables created with THEN PASS INTO xxx are stored in lars_results.into_xxx
+            try:
+                from ..sql_tools.into_table_rewriter import rewrite_into_tables
+                base_sql, into_changed = rewrite_into_tables(base_sql)
+                if into_changed:
+                    styled_print(f"[{self.session_id}]   {S.LINK} INTO table references rewritten in base SQL")
+            except Exception as e:
+                styled_print(f"[{self.session_id}]   {S.WARN}  INTO table rewrite skipped: {e}")
 
             # Deref preprocessing: evaluate @cascade() expressions first
             from ..sql_tools.deref_preprocessor import preprocess_deref_cascades
@@ -7422,6 +7470,13 @@ class ClientConnection:
         styled_print(f"[{self.session_id}]   {S.CFG} Parse statement '{stmt_name or '(unnamed)'}': {query[:80]}...")
 
         try:
+            # Rewrite into_ table references to read from ClickHouse
+            try:
+                from ..sql_tools.into_table_rewriter import rewrite_into_tables
+                query, _ = rewrite_into_tables(query)
+            except Exception:
+                pass  # Non-fatal
+
             # Rewrite LARS MAP/RUN syntax to standard SQL BEFORE preparing
             from lars.sql_rewriter import rewrite_lars_syntax
             original_query = query
@@ -7823,6 +7878,13 @@ class ClientConnection:
                         if pipeline and pipeline.stages:
                             # Execute base SQL with unified rewriting (handles dimension functions, semantic operators, etc.)
                             base_sql = pipeline.base_sql
+
+                            # Rewrite into_ table references to read from ClickHouse
+                            try:
+                                from ..sql_tools.into_table_rewriter import rewrite_into_tables
+                                base_sql, _ = rewrite_into_tables(base_sql)
+                            except Exception:
+                                pass  # Non-fatal
 
                             # Deref preprocessing: evaluate @cascade() expressions first
                             from ..sql_tools.deref_preprocessor import preprocess_deref_cascades

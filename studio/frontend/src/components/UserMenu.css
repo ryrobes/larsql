@@ -1,0 +1,174 @@
+/* UserMenu - Floating user account button */
+
+.user-menu {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 9999;
+}
+
+/* Avatar button */
+.user-menu-button {
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(30, 30, 30, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  padding: 0;
+}
+
+.user-menu-button:hover {
+  background: rgba(40, 40, 40, 0.95);
+  transform: scale(1.05);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.user-menu-button:active {
+  transform: scale(0.98);
+}
+
+.user-menu.open .user-menu-button {
+  background: rgba(45, 212, 191, 0.2);
+  box-shadow: 0 0 0 2px rgba(45, 212, 191, 0.4);
+}
+
+/* Avatar initial */
+.user-avatar {
+  font-family: 'Outrun future', sans-serif;
+  font-size: 18px;
+  font-weight: normal;
+  color: #00e5ff;
+  text-transform: uppercase;
+  line-height: 1;
+  user-select: none;
+}
+
+.user-menu-button:hover .user-avatar {
+  color: #5eead4;
+}
+
+/* Dropdown menu */
+.user-menu-dropdown {
+  position: absolute;
+  bottom: calc(100% + 12px);
+  right: 0;
+  min-width: 200px;
+  background: rgba(15, 14, 33, 0.98);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  animation: slideUp 0.15s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* User info header */
+.user-menu-header {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.user-menu-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #f0f4f8;
+}
+
+.user-menu-username {
+  font-size: 12px;
+  color: #64748b;
+}
+
+/* Divider */
+.user-menu-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 0 12px;
+}
+
+/* Menu items */
+.user-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 16px;
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: left;
+}
+
+.user-menu-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #f0f4f8;
+}
+
+.user-menu-item:active {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Subtle idle state */
+.user-menu:not(.open) .user-menu-button {
+  opacity: 0.7;
+}
+
+.user-menu:not(.open):hover .user-menu-button {
+  opacity: 1;
+}
+
+/* Mobile adjustments */
+@media (max-width: 768px) {
+  .user-menu {
+    bottom: 16px;
+    right: 16px;
+  }
+
+  .user-menu-button {
+    width: 48px;
+    height: 48px;
+  }
+
+  .user-avatar {
+    font-size: 18px;
+  }
+
+  .user-menu-dropdown {
+    min-width: 180px;
+  }
+}
+
+/* Respect reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  .user-menu-button,
+  .user-menu-dropdown {
+    transition: none;
+    animation: none;
+  }
+}

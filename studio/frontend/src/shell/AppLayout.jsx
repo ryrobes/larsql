@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import VerticalSidebar from './VerticalSidebar';
 import ErrorBoundary from './ErrorBoundary';
 import { ToastContainer } from '../components/Toast/Toast';
-import GlobalVoiceInput from '../components/GlobalVoiceInput';
+import UserMenu from '../components/UserMenu';
 import useToastStore from '../stores/toastStore';
 import useRunningSessions from '../studio/hooks/useRunningSessions';
 import useNavigationStore from '../stores/navigationStore';
@@ -106,8 +106,8 @@ const AppLayout = () => {
       {/* Toast Notifications */}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
 
-      {/* Global Voice Input */}
-      <GlobalVoiceInput />
+      {/* User Account Menu */}
+      <UserMenu />
     </div>
   );
 };

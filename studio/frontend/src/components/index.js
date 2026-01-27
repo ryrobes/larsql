@@ -29,6 +29,7 @@ export { default as VideoLoader } from './VideoLoader';
 
 // Auth
 export { default as AuthGuard } from './AuthGuard';
+export { default as UserMenu } from './UserMenu';
 
 // Hooks
 export { useToast } from '../stores/toastStore';
