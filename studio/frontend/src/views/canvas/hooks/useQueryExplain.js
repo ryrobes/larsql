@@ -72,6 +72,8 @@ export function useQueryExplain({ editorValue, editorRef, monacoRef, database, l
   const decorationsRef = useRef([]);
   const pollingTimerRef = useRef(null);
   const pollingStartRef = useRef(null);
+  const explainRunRef = useRef(0);
+  const explainAbortRef = useRef(null);
 
   // Auto-explain on editor value change (debounced)
   // Also triggers when editorReady changes (for initial load)
@@ -85,6 +87,14 @@ export function useQueryExplain({ editorValue, editorRef, monacoRef, database, l
 
     // Debounce explain calls
     debounceTimerRef.current = setTimeout(async () => {
+      // Cancel any in-flight explain requests from a previous run
+      if (explainAbortRef.current) {
+        explainAbortRef.current.abort();
+      }
+      const runId = ++explainRunRef.current;
+      const runAbort = new AbortController();
+      explainAbortRef.current = runAbort;
+
       const queries = parseQueries(editorValue);
 
       console.log(`[explain] Parsed ${queries.length} queries from editor`);
@@ -92,6 +102,7 @@ export function useQueryExplain({ editorValue, editorRef, monacoRef, database, l
       // Process queries with limited concurrency (matches panel execution)
       // This prevents overwhelming the server with EXPLAIN requests
       const MAX_CONCURRENT = 4;
+      const EXPLAIN_TIMEOUT_MS = 15000;
 
       // Helper to process a single query and update state progressively
       const processQuery = async (query) => {
@@ -122,6 +133,7 @@ export function useQueryExplain({ editorValue, editorRef, monacoRef, database, l
           return { queryHash, explainData: cached };
         }
 
+        let didTimeout = false;
         try {
           // Clean query: remove comments before sending to EXPLAIN
           let inBlockComment = false;
@@ -155,37 +167,91 @@ export function useQueryExplain({ editorValue, editorRef, monacoRef, database, l
           const explainQuery = `EXPLAIN (FORMAT JSON) ${cleanQuery}`;
           console.log(`[explain] Sending: "${explainQuery.substring(0, 80)}..."`);
 
-          const response = await fetch(`${API_BASE_URL}/api/sql/execute`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-            body: JSON.stringify({
-              query: explainQuery,
-              database: database || 'memory',
-            }),
-          });
+          // Per-request timeout + run-level cancellation.
+          const requestAbort = new AbortController();
+          const timeout = setTimeout(() => {
+            didTimeout = true;
+            requestAbort.abort();
+          }, EXPLAIN_TIMEOUT_MS);
+          const onRunAbort = () => requestAbort.abort();
+          runAbort.signal.addEventListener('abort', onRunAbort, { once: true });
+
+          let response;
+          try {
+            response = await fetch(`${API_BASE_URL}/api/sql/execute`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+              body: JSON.stringify({
+                query: explainQuery,
+                database: database || 'memory',
+              }),
+              signal: requestAbort.signal,
+            });
+          } finally {
+            clearTimeout(timeout);
+            runAbort.signal.removeEventListener('abort', onRunAbort);
+          }
+
+          if (!response.ok) {
+            const bodyText = await response.text().catch(() => '');
+            throw new Error(`EXPLAIN HTTP ${response.status}${bodyText ? `: ${bodyText.slice(0, 120)}` : ''}`);
+          }
 
           const data = await response.json();
 
           if (data.success && data.data && data.data.length > 0) {
-            const firstRow = data.data[0];
+            let firstRow = data.data[0];
+            // Defensive: some formats return row arrays + columns.
+            if (Array.isArray(firstRow) && Array.isArray(data.columns)) {
+              firstRow = Object.fromEntries(data.columns.map((c, i) => [c, firstRow[i]]));
+            }
 
-            if (firstRow.query_plan) {
-              const plan = typeof firstRow.query_plan === 'string'
-                ? JSON.parse(firstRow.query_plan)
-                : firstRow.query_plan;
+            if (firstRow.query_plan !== undefined) {
+              // PGwire formats native DuckDB EXPLAIN output into a single `query_plan` string
+              // like: "physical_plan:\n<plan...>". That is not JSON, so only JSON.parse when
+              // the payload looks like a JSON object (semantic explain format).
+              const rawPlan = firstRow.query_plan;
+
+              let plan = null;
+              if (typeof rawPlan === 'string') {
+                const trimmedPlan = rawPlan.trim();
+                if (trimmedPlan.startsWith('{')) {
+                  plan = JSON.parse(trimmedPlan);
+                } else {
+                  // Treat as native/pure SQL explain plan text
+                  return {
+                    queryHash,
+                    explainData: {
+                      query: query.text,
+                      position: query,
+                      estimatedCost: 0,
+                      estimatedCalls: 0,
+                      estimatedDuration: 0,
+                      operations: [],
+                      aggregates: [],
+                      pipelineStages: [],
+                      queryType: 'sql_query',
+                      explainPlan: rawPlan,
+                      hints: [],
+                    },
+                  };
+                }
+              } else {
+                plan = rawPlan;
+              }
 
               const explainData = {
                 query: query.text,
                 position: query,
-                estimatedCost: plan.total_estimated_cost || 0,
-                estimatedCalls: plan.total_estimated_llm_calls || 0,
-                estimatedDuration: plan.estimated_duration_seconds || 0,
-                operations: plan.operations || [],
-                aggregates: plan.aggregates || [],
-                pipelineStages: plan.pipeline_stages || [],
-                queryType: plan.query_type,
-                explainPlan: plan.native_plan,
-                hints: plan.optimization_hints || [],
+                estimatedCost: plan?.total_estimated_cost || 0,
+                estimatedCalls: plan?.total_estimated_llm_calls || 0,
+                estimatedDuration: plan?.estimated_duration_seconds || 0,
+                operations: plan?.operations || [],
+                aggregates: plan?.aggregates || [],
+                pipelineStages: plan?.pipeline_stages || [],
+                queryType: plan?.query_type,
+                explainPlan: plan?.native_plan,
+                hints: plan?.optimization_hints || [],
               };
 
               if (explainData.operations.length > 0) {
@@ -211,11 +277,37 @@ export function useQueryExplain({ editorValue, editorRef, monacoRef, database, l
                 },
               };
             }
+
+            // Success response but unexpected shape - surface it so panels don't hang on "Awaiting explain..."
+            console.warn('[explain] Unexpected EXPLAIN response shape:', { queryHash, columns: data.columns, firstRow });
+            return {
+              queryHash,
+              explainData: {
+                query: query.text,
+                position: query,
+                estimatedCost: 0,
+                estimatedCalls: 0,
+                estimatedDuration: 0,
+                operations: [],
+                aggregates: [],
+                pipelineStages: [],
+                queryType: 'error',
+                error: 'Explain returned an unexpected shape',
+                explainPlan: null,
+                hints: ['Unexpected EXPLAIN response shape'],
+              },
+            }
           } else {
             const errorMessage = data.error || 'Explain failed';
             if (errorMessage.includes('Parser Error')) {
-              console.debug('[explain] Skipping parser error');
-              return null;
+              // While users are typing, partial SQL frequently throws parser errors.
+              // If the statement looks "complete" (ends with ;) surface the error,
+              // otherwise silently skip to avoid flashing errors mid-edit.
+              const isCompleteStatement = query.text.trim().endsWith(';');
+              if (!isCompleteStatement) {
+                console.debug('[explain] Skipping parser error (incomplete statement)');
+                return null;
+              }
             }
             console.log('[explain] EXPLAIN error:', errorMessage);
             return {
@@ -237,10 +329,51 @@ export function useQueryExplain({ editorValue, editorRef, monacoRef, database, l
             };
           }
         } catch (err) {
-          if (!err.message?.includes('JSON')) {
-            console.debug('[explain] Error:', err.message);
+          // Ignore aborted requests (new run started)
+          if (err?.name === 'AbortError') {
+            if (runAbort.signal.aborted) {
+              return null;
+            }
+            if (didTimeout) {
+              return {
+                queryHash,
+                explainData: {
+                  query: query.text,
+                  position: query,
+                  estimatedCost: 0,
+                  estimatedCalls: 0,
+                  estimatedDuration: 0,
+                  operations: [],
+                  aggregates: [],
+                  pipelineStages: [],
+                  queryType: 'error',
+                  error: `Explain timed out after ${Math.round(EXPLAIN_TIMEOUT_MS / 1000)}s`,
+                  explainPlan: null,
+                  hints: ['Explain request timed out'],
+                },
+              };
+            }
+            return null;
           }
-          return null;
+
+          console.debug('[explain] Error:', err?.message || String(err));
+          return {
+            queryHash,
+            explainData: {
+              query: query.text,
+              position: query,
+              estimatedCost: 0,
+              estimatedCalls: 0,
+              estimatedDuration: 0,
+              operations: [],
+              aggregates: [],
+              pipelineStages: [],
+              queryType: 'error',
+              error: err?.message || String(err),
+              explainPlan: null,
+              hints: [`Error: ${err?.message || String(err)}`],
+            },
+          };
         }
       };
 
@@ -253,7 +386,7 @@ export function useQueryExplain({ editorValue, editorRef, monacoRef, database, l
           const result = await processQuery(queries[idx]);
 
           // Update state progressively as each explain completes
-          if (result) {
+          if (result && runId === explainRunRef.current) {
             setQueryExplains(prev => {
               const updated = new Map(prev);
               updated.set(result.queryHash, result.explainData);
@@ -278,13 +411,19 @@ export function useQueryExplain({ editorValue, editorRef, monacoRef, database, l
       }
       await Promise.all(workers);
 
-      console.log('[explain] All explains complete');
+      if (runId === explainRunRef.current) {
+        console.log('[explain] All explains complete');
+      }
 
     }, 300); // 300ms debounce
 
     return () => {
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
+      }
+      // Cancel in-flight explains when editor changes or unmounts
+      if (explainAbortRef.current) {
+        explainAbortRef.current.abort();
       }
     };
   }, [editorValue, database, editorReady]); // Intentionally not including queryExplains to avoid loops
