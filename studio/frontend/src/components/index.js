@@ -27,6 +27,9 @@ export { default as AppPreview } from './AppPreview';
 // Loading States
 export { default as VideoLoader } from './VideoLoader';
 
+// Auth
+export { default as AuthGuard } from './AuthGuard';
+
 // Hooks
 export { useToast } from '../stores/toastStore';
 export { useModal } from '../stores/modalStore';

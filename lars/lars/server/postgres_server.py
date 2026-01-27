@@ -54,6 +54,9 @@ from .postgres_protocol import (
     ParameterDescription,
     NoData,
     RowDescription,
+    # Authentication classes
+    AuthenticationCleartextPassword,
+    PasswordMessage,
 )
 
 
@@ -233,6 +236,10 @@ class ClientConnection:
 
         # Connection pool tracking
         self._is_pooled_connection = False  # True if connection came from pre-warmed pool
+
+        # Authentication state
+        self.authenticated_user = None  # User dict from auth.validate_api_key()
+        self.auth_user_id = 'anonymous'  # User ID for param store scoping
 
     def setup_session_minimal(self):
         """
@@ -4249,6 +4256,71 @@ class ClientConnection:
 
         # Note: send_startup_response is called AFTER setup_session in handle()
 
+    def _authenticate(self) -> bool:
+        """
+        Authenticate the client using API key or password.
+
+        If LARS_AUTH_ENABLED is set, this method:
+        1. Sends AuthenticationCleartextPassword to request password
+        2. Reads PasswordMessage response from client
+        3. Validates the credential as either:
+           - A LARS API key (JWT token)
+           - A user password
+        4. Sets self.authenticated_user with user info
+
+        Returns:
+            True if authentication successful (or auth disabled)
+            False if authentication failed
+        """
+        try:
+            from lars.auth import get_auth_manager
+
+            auth = get_auth_manager()
+
+            # If auth disabled, allow all connections
+            if not auth.is_enabled():
+                self.authenticated_user = None
+                self.auth_user_id = 'anonymous'
+                return True
+
+            # Request password from client
+            styled_print(f"[{self.session_id}]   {S.INFO} Requesting authentication...")
+            self.sock.sendall(AuthenticationCleartextPassword.encode())
+
+            # Read password response
+            credential = PasswordMessage.read(self.sock)
+            if credential is None:
+                styled_print(f"[{self.session_id}]   {S.ERR} No password provided")
+                return False
+
+            # Validate the credential (API key or password)
+            # Username comes from the StartupMessage (self.user_name)
+            user = auth.authenticate(self.user_name, credential)
+            if not user:
+                styled_print(f"[{self.session_id}]   {S.ERR} Invalid credentials for user: {self.user_name}")
+                return False
+
+            # Store authenticated user info
+            self.authenticated_user = user
+            self.auth_user_id = user['user_id']
+
+            auth_method = user.get('auth_method', 'unknown')
+            if auth_method == 'api_key':
+                styled_print(f"[{self.session_id}]   {S.OK} Authenticated: {user.get('username')} (key: {user.get('key_name', 'api')})")
+            else:
+                styled_print(f"[{self.session_id}]   {S.OK} Authenticated: {user.get('username')} (password)")
+            return True
+
+        except ImportError:
+            # Auth module not available - allow connection
+            styled_print(f"[{self.session_id}]   {S.WARN} Auth module not available - allowing connection")
+            self.authenticated_user = None
+            self.auth_user_id = 'anonymous'
+            return True
+        except Exception as e:
+            styled_print(f"[{self.session_id}]   {S.ERR} Authentication error: {e}")
+            return False
+
     # =========================================================================
     # SQL Trail Query Tracking Helpers
     # =========================================================================
@@ -4853,7 +4925,7 @@ class ClientConnection:
             # Deref preprocessing: evaluate @cascade() expressions first
             from ..sql_tools.deref_preprocessor import preprocess_deref_cascades
             deref_context = {
-                'session_id': self.session_id,
+                'session_id': f"{self.auth_user_id}:{self.database_name}",  # Scoped by user + database for param store
                 'protocol': 'pgwire',
                 'database_name': self.database_name,
                 'user_name': self.user_name,
@@ -6957,7 +7029,7 @@ class ClientConnection:
             # Deref preprocessing: evaluate @cascade() expressions first
             from ..sql_tools.deref_preprocessor import preprocess_deref_cascades
             deref_context = {
-                'session_id': self.session_id,
+                'session_id': f"{self.auth_user_id}:{self.database_name}",  # Scoped by user + database for param store
                 'protocol': 'pgwire',
                 'database_name': self.database_name,
                 'user_name': self.user_name,
@@ -7755,7 +7827,7 @@ class ClientConnection:
                             # Deref preprocessing: evaluate @cascade() expressions first
                             from ..sql_tools.deref_preprocessor import preprocess_deref_cascades
                             deref_context = {
-                                'session_id': self.session_id,
+                                'session_id': f"{self.auth_user_id}:{self.database_name}",
                                 'protocol': 'pgwire',
                                 'database_name': self.database_name,
                                 'user_name': self.user_name,
@@ -7886,7 +7958,7 @@ class ClientConnection:
                         # Deref preprocessing: evaluate @cascade() expressions
                         from ..sql_tools.deref_preprocessor import preprocess_deref_cascades
                         deref_context = {
-                            'session_id': self.session_id,
+                            'session_id': f"{self.auth_user_id}:{self.database_name}",
                             'protocol': 'pgwire',
                             'database_name': self.database_name,
                             'user_name': self.user_name,
@@ -9081,7 +9153,7 @@ class ClientConnection:
             # Deref preprocessing: evaluate @cascade() expressions
             from ..sql_tools.deref_preprocessor import preprocess_deref_cascades
             deref_context = {
-                'session_id': self.session_id,
+                'session_id': f"{self.auth_user_id}:{self.database_name}",  # Scoped by user + database for param store
                 'protocol': 'pgwire',
                 'database_name': self.database_name,
                 'user_name': self.user_name,
@@ -9612,6 +9684,17 @@ class ClientConnection:
 
             # Step 2: Handle startup (sets session_id based on database name)
             self.handle_startup(startup['params'])
+
+            # Step 2b: Authenticate (if auth enabled)
+            if not self._authenticate():
+                # Authentication failed - send error and close connection
+                send_error(
+                    self.sock,
+                    "Authentication failed",
+                    detail="Invalid username or password",
+                    severity='FATAL'
+                )
+                return
 
             # Step 3: Setup DuckDB session with LARS UDFs
             # NOTE: We do ALL setup before sending startup response to avoid race conditions.

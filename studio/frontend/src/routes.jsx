@@ -11,7 +11,10 @@ import { createBrowserRouter, Navigate } from 'react-router-dom';
 import AppLayout from './shell/AppLayout';
 
 // Components
-import { VideoLoader } from './components';
+import { VideoLoader, AuthGuard } from './components';
+
+// Auth
+const LoginPage = lazy(() => import('./views/login/LoginPage'));
 
 // Loading fallback - uses random video from /public/videos
 const ViewLoading = () => (
@@ -46,9 +49,19 @@ const withSuspense = (Component) => (
 
 // Route configuration
 export const router = createBrowserRouter([
+  // Login route (public)
+  {
+    path: '/login',
+    element: withSuspense(LoginPage),
+  },
+  // Protected routes (require authentication)
   {
     path: '/',
-    element: <AppLayout />,
+    element: (
+      <AuthGuard>
+        <AppLayout />
+      </AuthGuard>
+    ),
     children: [
       // Default route - Cascades view
       {

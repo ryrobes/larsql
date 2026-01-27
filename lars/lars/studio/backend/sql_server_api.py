@@ -174,7 +174,15 @@ def _sanitize_for_json(data: list[dict]) -> list[dict]:
     ]
 
 
-def _execute_via_pgwire(query: str, database: str, output_format: str, pgwire_port: int, start_time: float):
+def _execute_via_pgwire(
+    query: str,
+    database: str,
+    output_format: str,
+    pgwire_port: int,
+    start_time: float,
+    username: str = None,
+    password: str = None,
+):
     """
     Execute SQL query via PGwire server using psycopg.
 
@@ -187,19 +195,21 @@ def _execute_via_pgwire(query: str, database: str, output_format: str, pgwire_po
         output_format: Response format ('records', 'json', 'csv')
         pgwire_port: Port of PGwire server
         start_time: Request start time for timing
+        username: Username for PGwire authentication
+        password: Password or API key for PGwire authentication
 
     Returns:
         Flask JSON response
     """
     import psycopg
 
-    # Connect to PGwire with the specified database
+    # Connect to PGwire with credentials passed through from Flask auth
     conn = psycopg.connect(
         host='localhost',
         port=pgwire_port,
         dbname=database,
-        user='lars',
-        password='',
+        user=username or 'lars',
+        password=password or '',
         autocommit=True,
     )
 
@@ -776,11 +786,18 @@ def execute_single_query(query: str, conn, lock, database: str, caller_id: str =
     except Exception:
         pass
 
+    # Get user_id from Flask g (set by auth middleware) or use 'anonymous'
+    from flask import g
+    user_id = getattr(g, 'user_id', 'anonymous')
+    user_name = ''
+    if hasattr(g, 'user') and g.user:
+        user_name = g.user.get('username', '')
+
     session_context = {
-        'session_id': database,
+        'session_id': f"{user_id}:{database}",  # Scoped by user + database for param store
         'protocol': 'http',
         'database_name': database,
-        'user_name': '',  # HTTP doesn't have user auth yet
+        'user_name': user_name,
         'application_name': user_agent,
         'client_address': client_address,
         'caller_id': caller_id,
@@ -891,6 +908,12 @@ def execute_sql():
     database = request.json.get('database', 'memory')
     output_format = request.json.get('format', 'records')
 
+    # Get auth context from Flask g (set by auth middleware)
+    from flask import g
+    user_id = getattr(g, 'user_id', 'anonymous')
+    auth_username = getattr(g, 'user', {}).get('username') if hasattr(g, 'user') and g.user else None
+    auth_token = getattr(g, 'auth_token', None)
+
     if not query:
         return jsonify({
             "success": False,
@@ -921,6 +944,8 @@ def execute_sql():
                 output_format=output_format,
                 pgwire_port=int(pgwire_port),
                 start_time=start_time,
+                username=auth_username,
+                password=auth_token,
             )
         except Exception as e:
             # Log but fall through to direct DuckDB
@@ -1047,16 +1072,20 @@ def execute_sql():
                     if panel_multi_select:
                         param_key, select_field = _extract_params_key(panel_on_select)
                         if param_key and select_field:
-                            from lars.sql_tools.param_store import params_store_get
-                            selected_values = params_store_get(database, param_key)
+                            from lars.auth.param_store import params_store_get
+                            # Use user-scoped session_id (user_id:database)
+                            scoped_session = f"{user_id}:{database}"
+                            selected_values = params_store_get(scoped_session, param_key)
                             panel_result["selected_values"] = selected_values
                             panel_result["select_field"] = select_field
                     else:
                         # For single-select panels, include current selection state
                         param_key, select_field = _extract_param_key(panel_on_select)
                         if param_key and select_field:
-                            from lars.sql_tools.param_store import param_store_get
-                            selected_value = param_store_get(database, param_key)
+                            from lars.auth.param_store import param_store_get
+                            # Use user-scoped session_id (user_id:database)
+                            scoped_session = f"{user_id}:{database}"
+                            selected_value = param_store_get(scoped_session, param_key)
                             panel_result["selected_value"] = selected_value
                             panel_result["select_field"] = select_field
 
@@ -1147,8 +1176,9 @@ def execute_sql():
                             if not panel.get('select_field'):
                                 panel['select_field'] = select_field
                             # Look up current param value for single-select panels
-                            from lars.sql_tools.param_store import param_store_get
-                            selected_value = param_store_get(database, param_key)
+                            from lars.auth.param_store import param_store_get
+                            scoped_session = f"{user_id}:{database}"
+                            selected_value = param_store_get(scoped_session, param_key)
                             panel['selected_value'] = selected_value
 
             # Return pooled connection for reuse
@@ -1544,40 +1574,40 @@ def get_session_params(database: str):
     }
     """
     try:
-        from lars.sql_tools.param_store import param_store_list, params_store_get, _params_store, _params_store_lock
+        from flask import g
+        from lars.auth.param_store import get_param_store
         import json
 
-        # Get scalar params
-        scalar_params = param_store_list(database)
+        # Get user-scoped session ID
+        user_id = getattr(g, 'user_id', 'anonymous')
 
-        # Get array params
-        with _params_store_lock:
-            array_params = _params_store.get(database, {})
+        # Get all params from unified store
+        store = get_param_store()
+        all_params = store.list_params(user_id, database)
 
-        # Build combined list
+        # Build params list with type info
         params = []
-
-        for key, value in scalar_params.items():
-            # Try to parse JSON values
-            parsed_value = value
-            if value and isinstance(value, str):
-                try:
-                    parsed_value = json.loads(value)
-                except (json.JSONDecodeError, TypeError):
-                    pass
-
-            params.append({
-                "key": key,
-                "value": parsed_value,
-                "type": "scalar"
-            })
-
-        for key, values in array_params.items():
-            params.append({
-                "key": key,
-                "value": values,
-                "type": "array"
-            })
+        for key, value in all_params.items():
+            # Determine type based on value
+            if isinstance(value, list):
+                params.append({
+                    "key": key,
+                    "value": value,
+                    "type": "array"
+                })
+            else:
+                # Try to parse JSON values for scalar
+                parsed_value = value
+                if value and isinstance(value, str):
+                    try:
+                        parsed_value = json.loads(value)
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+                params.append({
+                    "key": key,
+                    "value": parsed_value,
+                    "type": "scalar"
+                })
 
         # Sort by key for consistent ordering
         params.sort(key=lambda p: p["key"])
@@ -1605,11 +1635,16 @@ def clear_session_param(database: str, key: str):
     }
     """
     try:
-        from lars.sql_tools.param_store import param_store_clear, params_store_clear
+        from flask import g
+        from lars.auth.param_store import param_store_clear, params_store_clear
+
+        # Get user-scoped session ID
+        user_id = getattr(g, 'user_id', 'anonymous')
+        scoped_session = f"{user_id}:{database}"
 
         # Clear from both stores (scalar and array)
-        param_store_clear(database, key)
-        params_store_clear(database, key)
+        param_store_clear(scoped_session, key)
+        params_store_clear(scoped_session, key)
 
         return jsonify({
             "success": True,
@@ -1634,10 +1669,15 @@ def clear_all_session_params(database: str):
     }
     """
     try:
-        from lars.sql_tools.param_store import param_store_clear_session, params_store_clear_session
+        from flask import g
+        from lars.auth.param_store import param_store_clear_session
 
-        param_store_clear_session(database)
-        params_store_clear_session(database)
+        # Get user-scoped session ID
+        user_id = getattr(g, 'user_id', 'anonymous')
+        scoped_session = f"{user_id}:{database}"
+
+        # Unified store handles both scalar and array params
+        param_store_clear_session(scoped_session)
 
         return jsonify({
             "success": True,

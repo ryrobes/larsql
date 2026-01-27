@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Icon } from '@iconify/react';
 import { API_BASE_URL } from '../../../config/api';
+import { getAuthHeaders } from '../../../stores/authStore';
 import './ParamsPanel.css';
 
 /**
@@ -27,7 +28,9 @@ const ParamsPanel = ({ database, refreshTrigger, collapsed, onToggle, onParamCha
     setError(null);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/sql/params/${database}`);
+      const response = await fetch(`${API_BASE_URL}/api/sql/params/${database}`, {
+        headers: getAuthHeaders(),
+      });
       const data = await response.json();
 
       if (data.error) {
@@ -52,7 +55,8 @@ const ParamsPanel = ({ database, refreshTrigger, collapsed, onToggle, onParamCha
   const clearParam = async (key) => {
     try {
       await fetch(`${API_BASE_URL}/api/sql/params/${database}/${encodeURIComponent(key)}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers: getAuthHeaders(),
       });
       // Refresh params list
       fetchParams();
@@ -67,7 +71,8 @@ const ParamsPanel = ({ database, refreshTrigger, collapsed, onToggle, onParamCha
   const clearAll = async () => {
     try {
       await fetch(`${API_BASE_URL}/api/sql/params/${database}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers: getAuthHeaders(),
       });
       // Refresh params list
       fetchParams();

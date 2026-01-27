@@ -28,6 +28,7 @@ class MessageType:
     CLOSE = ord('C')      # Extended query
     SYNC = ord('S')       # Extended query
     FLUSH = ord('H')      # Extended query (optional)
+    PASSWORD = ord('p')   # Password response (for authentication)
 
     # Server → Client
     AUTHENTICATION = ord('R')
@@ -193,6 +194,72 @@ class AuthenticationOk:
         """
         payload = struct.pack('!I', 0)  # Auth type 0 = success
         return PostgresMessage.build_message(MessageType.AUTHENTICATION, payload)
+
+
+class AuthenticationCleartextPassword:
+    """
+    AuthenticationCleartextPassword message - request password from client.
+
+    Sent to request the client to send a cleartext password.
+    Client responds with PasswordMessage (type 'p').
+    """
+
+    @staticmethod
+    def encode() -> bytes:
+        """
+        Build AuthenticationCleartextPassword message.
+
+        Payload: [4 bytes: 3] (3 = AuthenticationCleartextPassword)
+        """
+        payload = struct.pack('!I', 3)  # Auth type 3 = cleartext password
+        return PostgresMessage.build_message(MessageType.AUTHENTICATION, payload)
+
+
+class PasswordMessage:
+    """
+    PasswordMessage - client's password response.
+
+    Received from client after we send AuthenticationCleartextPassword.
+    Message type: 'p' (0x70)
+    """
+
+    @staticmethod
+    def decode(payload: bytes) -> str:
+        """
+        Decode PasswordMessage payload.
+
+        Args:
+            payload: Raw message payload (password + null terminator)
+
+        Returns:
+            Password string
+        """
+        # Password is null-terminated string
+        if payload.endswith(b'\x00'):
+            return payload[:-1].decode('utf-8')
+        return payload.decode('utf-8')
+
+    @staticmethod
+    def read(sock) -> Optional[str]:
+        """
+        Read a PasswordMessage from socket.
+
+        Args:
+            sock: Socket to read from
+
+        Returns:
+            Password string, or None if error/wrong message type
+        """
+        msg_type, payload = PostgresMessage.read_message(sock)
+
+        if msg_type is None:
+            return None
+
+        if msg_type != MessageType.PASSWORD:
+            print(f"[Protocol] Expected PasswordMessage (p), got: {chr(msg_type) if msg_type else 'None'}")
+            return None
+
+        return PasswordMessage.decode(payload)
 
 
 class ParameterStatus:

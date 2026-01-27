@@ -37,7 +37,7 @@ dependencies = [
     # Allow minor/patch updates, block major version bumps
     # ========================================================================
     "pandas>=2.0,<3.0",              # Stable 2.x series
-    "pyarrow>=14.0,<22.0",           # Compatibility with pandas 2.x and downstream libs (e.g., streamlit)
+    "pyarrow>=14.0,<24.0",           # Compatibility with pandas 2.x and downstream libs
     "flask>=3.0,<4.0",               # Current stable major version
     "flask-cors>=6.0,<7.0",          # Follows flask versioning
     "altair>=5.0,<6.0",              # Compatible with downstream tools (streamlit requires <6)
@@ -46,7 +46,7 @@ dependencies = [
     "clickhouse-driver>=0.2,<0.3",   # ClickHouse client library
     "clickhouse-connect>=0.7,<0.8",  # Alternative ClickHouse client
     "jinja2>=3.0,<4.0",              # Template engine
-    "chdb>=2.0,<3.0",                # ClickHouse embedded
+    ##"chdb>=2.0,<3.0",                # ClickHouse embedded
 
     # ========================================================================
     # LOW RISK - Minimum version only (very stable APIs)
@@ -67,6 +67,8 @@ dependencies = [
     "vl-convert-python>=1.0",        # Vega-Lite conversion
     "gunicorn[gevent]>=23.0",        # WSGI server
     "psycopg[binary]>=3.1",          # PostgreSQL client (PGwire for Studio multi-worker)
+    "authlib>=1.3,<2.0",             # JWT and OAuth2 authentication
+    "passlib[argon2]>=1.7",          # Password hashing with Argon2
 ]
 
 [project.urls]

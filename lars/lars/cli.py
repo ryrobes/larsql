@@ -943,6 +943,85 @@ def main():
         help='Prune expired entries and optimize storage'
     )
 
+    # Auth command group - User and API key management
+    auth_parser = subparsers.add_parser('auth', help='Authentication and API key management')
+    auth_subparsers = auth_parser.add_subparsers(dest='auth_command', help='Auth subcommands')
+
+    # auth create-user
+    auth_create_user_parser = auth_subparsers.add_parser(
+        'create-user',
+        help='Create a new user'
+    )
+    auth_create_user_parser.add_argument('username', help='Username (unique identifier)')
+    auth_create_user_parser.add_argument('--email', help='Email address (optional)')
+    auth_create_user_parser.add_argument('--display-name', help='Display name (optional)')
+    auth_create_user_parser.add_argument('--admin', action='store_true', help='Grant admin privileges')
+
+    # auth create-key
+    auth_create_key_parser = auth_subparsers.add_parser(
+        'create-key',
+        help='Create an API key for a user'
+    )
+    auth_create_key_parser.add_argument('username', help='Username to create key for')
+    auth_create_key_parser.add_argument('--name', '-n', required=True, help='Key name (e.g., "DBeaver", "CI pipeline")')
+    auth_create_key_parser.add_argument('--expires', help='Expiration (e.g., "30d", "1y", "never")', default=None)
+
+    # auth list-users
+    auth_list_users_parser = auth_subparsers.add_parser(
+        'list-users',
+        help='List all users'
+    )
+    auth_list_users_parser.add_argument('--json', action='store_true', help='Output as JSON')
+    auth_list_users_parser.add_argument('--include-inactive', action='store_true', help='Include disabled users')
+
+    # auth list-keys
+    auth_list_keys_parser = auth_subparsers.add_parser(
+        'list-keys',
+        help='List API keys'
+    )
+    auth_list_keys_parser.add_argument('--user', help='Filter by username')
+    auth_list_keys_parser.add_argument('--json', action='store_true', help='Output as JSON')
+    auth_list_keys_parser.add_argument('--include-revoked', action='store_true', help='Include revoked keys')
+
+    # auth revoke-key
+    auth_revoke_key_parser = auth_subparsers.add_parser(
+        'revoke-key',
+        help='Revoke an API key'
+    )
+    auth_revoke_key_parser.add_argument('key_prefix', help='Key prefix (e.g., "lars_abc123")')
+    auth_revoke_key_parser.add_argument('--reason', help='Reason for revocation')
+
+    # auth disable-user
+    auth_disable_user_parser = auth_subparsers.add_parser(
+        'disable-user',
+        help='Disable a user (revokes all their keys)'
+    )
+    auth_disable_user_parser.add_argument('username', help='Username to disable')
+
+    # auth enable-user
+    auth_enable_user_parser = auth_subparsers.add_parser(
+        'enable-user',
+        help='Re-enable a disabled user'
+    )
+    auth_enable_user_parser.add_argument('username', help='Username to enable')
+
+    # auth status
+    auth_status_parser = auth_subparsers.add_parser(
+        'status',
+        help='Show authentication system status'
+    )
+
+    # auth set-password
+    auth_set_password_parser = auth_subparsers.add_parser(
+        'set-password',
+        help='Set or update a user password'
+    )
+    auth_set_password_parser.add_argument('username', help='Username')
+    auth_set_password_parser.add_argument(
+        '--password', '-p',
+        help='Password (prompted securely if not provided)'
+    )
+
     # Serve command group - Run servers
     serve_parser = subparsers.add_parser('serve', help='Run LARS servers (studio, sql)')
     serve_subparsers = serve_parser.add_subparsers(dest='serve_command', help='Server subcommands')
@@ -1581,6 +1660,28 @@ def main():
             cmd_cache_prune(args)
         else:
             cache_parser.print_help()
+            sys.exit(1)
+    elif args.command == 'auth':
+        if args.auth_command == 'create-user':
+            cmd_auth_create_user(args)
+        elif args.auth_command == 'create-key':
+            cmd_auth_create_key(args)
+        elif args.auth_command == 'list-users':
+            cmd_auth_list_users(args)
+        elif args.auth_command == 'list-keys':
+            cmd_auth_list_keys(args)
+        elif args.auth_command == 'revoke-key':
+            cmd_auth_revoke_key(args)
+        elif args.auth_command == 'disable-user':
+            cmd_auth_disable_user(args)
+        elif args.auth_command == 'enable-user':
+            cmd_auth_enable_user(args)
+        elif args.auth_command == 'status':
+            cmd_auth_status(args)
+        elif args.auth_command == 'set-password':
+            cmd_auth_set_password(args)
+        else:
+            auth_parser.print_help()
             sys.exit(1)
     elif args.command == 'serve':
         if args.serve_command == 'studio':
@@ -5832,6 +5933,333 @@ def cmd_cache_prune(args):
         console.print("[green]L2 (ClickHouse) auto-prunes via TTL, triggered OPTIMIZE TABLE[/green]")
     except Exception as e:
         console.print(f"[red]Error pruning cache: {e}[/red]")
+
+
+# =============================================================================
+# Auth Commands
+# =============================================================================
+
+
+def cmd_auth_create_user(args):
+    """Create a new user."""
+    from rich.console import Console
+
+    console = Console()
+
+    try:
+        from lars.auth import get_auth_manager
+
+        auth = get_auth_manager()
+        user = auth.create_user(
+            username=args.username,
+            email=getattr(args, 'email', None),
+            display_name=getattr(args, 'display_name', None),
+            is_admin=getattr(args, 'admin', False),
+        )
+
+        if user:
+            console.print(f"[green]Created user: {user['username']}[/green]")
+            console.print(f"  User ID: {user['user_id']}")
+            if user.get('email'):
+                console.print(f"  Email: {user['email']}")
+            if user.get('is_admin'):
+                console.print("  [yellow]Admin: Yes[/yellow]")
+        else:
+            console.print("[red]Failed to create user (username may already exist)[/red]")
+            sys.exit(1)
+
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        sys.exit(1)
+
+
+def cmd_auth_create_key(args):
+    """Create an API key for a user."""
+    from rich.console import Console
+
+    console = Console()
+
+    try:
+        from lars.auth import get_auth_manager
+        from lars.auth.config import _parse_expiry
+
+        auth = get_auth_manager()
+
+        # Parse expiry
+        expires_seconds = None
+        if args.expires:
+            expires_seconds = _parse_expiry(args.expires)
+
+        result = auth.create_api_key(
+            username=args.username,
+            name=args.name,
+            expires_in_seconds=expires_seconds,
+        )
+
+        if result:
+            console.print(f"[green]Created API key for {args.username}[/green]")
+            console.print(f"  Name: {result['name']}")
+            console.print(f"  Prefix: {result['key_prefix']}")
+            if result.get('expires_at'):
+                console.print(f"  Expires: {result['expires_at']}")
+            else:
+                console.print("  Expires: Never")
+            console.print("")
+            console.print("[yellow]API Key (save this, it will NOT be shown again):[/yellow]")
+            console.print(f"  {result['key']}")
+        else:
+            console.print("[red]Failed to create API key (user may not exist or is disabled)[/red]")
+            sys.exit(1)
+
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        sys.exit(1)
+
+
+def cmd_auth_list_users(args):
+    """List all users."""
+    from rich.console import Console
+    from rich.table import Table
+
+    console = Console()
+
+    try:
+        from lars.auth import get_auth_manager
+
+        auth = get_auth_manager()
+        users = auth.list_users(include_inactive=getattr(args, 'include_inactive', False))
+
+        if getattr(args, 'json', False):
+            import json
+            print(json.dumps(users, default=str, indent=2))
+            return
+
+        if not users:
+            console.print("[yellow]No users found[/yellow]")
+            return
+
+        table = Table(title="Users")
+        table.add_column("Username")
+        table.add_column("Email")
+        table.add_column("Admin")
+        table.add_column("Active")
+        table.add_column("Created")
+        table.add_column("Last Login")
+
+        for user in users:
+            table.add_row(
+                user.get('username', ''),
+                user.get('email') or '-',
+                "[green]Yes[/green]" if user.get('is_admin') else "No",
+                "[green]Yes[/green]" if user.get('is_active') else "[red]No[/red]",
+                str(user.get('created_at', ''))[:10],
+                str(user.get('last_login_at', ''))[:10] if user.get('last_login_at') else '-',
+            )
+
+        console.print(table)
+
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        sys.exit(1)
+
+
+def cmd_auth_list_keys(args):
+    """List API keys."""
+    from rich.console import Console
+    from rich.table import Table
+
+    console = Console()
+
+    try:
+        from lars.auth import get_auth_manager
+
+        auth = get_auth_manager()
+        keys = auth.list_api_keys(
+            username=getattr(args, 'user', None),
+            include_revoked=getattr(args, 'include_revoked', False),
+        )
+
+        if getattr(args, 'json', False):
+            import json
+            print(json.dumps(keys, default=str, indent=2))
+            return
+
+        if not keys:
+            console.print("[yellow]No API keys found[/yellow]")
+            return
+
+        table = Table(title="API Keys")
+        table.add_column("Prefix")
+        table.add_column("Name")
+        table.add_column("User")
+        table.add_column("Active")
+        table.add_column("Uses")
+        table.add_column("Last Used")
+        table.add_column("Expires")
+
+        for key in keys:
+            active = key.get('is_active', True)
+            table.add_row(
+                key.get('key_prefix', ''),
+                key.get('name', ''),
+                key.get('username', ''),
+                "[green]Yes[/green]" if active else "[red]Revoked[/red]",
+                str(key.get('use_count', 0)),
+                str(key.get('last_used_at', ''))[:10] if key.get('last_used_at') else '-',
+                str(key.get('expires_at', ''))[:10] if key.get('expires_at') else 'Never',
+            )
+
+        console.print(table)
+
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        sys.exit(1)
+
+
+def cmd_auth_revoke_key(args):
+    """Revoke an API key."""
+    from rich.console import Console
+
+    console = Console()
+
+    try:
+        from lars.auth import get_auth_manager
+
+        auth = get_auth_manager()
+        success = auth.revoke_api_key(
+            key_prefix=args.key_prefix,
+            reason=getattr(args, 'reason', None),
+        )
+
+        if success:
+            console.print(f"[green]Revoked API key: {args.key_prefix}[/green]")
+        else:
+            console.print(f"[red]Failed to revoke key (not found): {args.key_prefix}[/red]")
+            sys.exit(1)
+
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        sys.exit(1)
+
+
+def cmd_auth_disable_user(args):
+    """Disable a user."""
+    from rich.console import Console
+
+    console = Console()
+
+    try:
+        from lars.auth import get_auth_manager
+
+        auth = get_auth_manager()
+        success = auth.disable_user(args.username)
+
+        if success:
+            console.print(f"[green]Disabled user: {args.username}[/green]")
+        else:
+            console.print(f"[red]Failed to disable user (not found): {args.username}[/red]")
+            sys.exit(1)
+
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        sys.exit(1)
+
+
+def cmd_auth_enable_user(args):
+    """Enable a user."""
+    from rich.console import Console
+
+    console = Console()
+
+    try:
+        from lars.auth import get_auth_manager
+
+        auth = get_auth_manager()
+        success = auth.enable_user(args.username)
+
+        if success:
+            console.print(f"[green]Enabled user: {args.username}[/green]")
+        else:
+            console.print(f"[red]Failed to enable user (not found): {args.username}[/red]")
+            sys.exit(1)
+
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        sys.exit(1)
+
+
+def cmd_auth_status(args):
+    """Show authentication system status."""
+    from rich.console import Console
+
+    console = Console()
+
+    try:
+        from lars.auth import get_auth_manager
+
+        auth = get_auth_manager()
+        status = auth.get_status()
+
+        console.print("[bold]Authentication System Status[/bold]")
+        console.print("")
+
+        if status.get('enabled'):
+            console.print("[green]Enabled: Yes[/green]")
+        else:
+            console.print("[yellow]Enabled: No[/yellow]")
+            console.print("  Set LARS_AUTH_ENABLED=1 to enable authentication")
+
+        console.print(f"Database: {'[green]Connected[/green]' if status.get('database_available') else '[red]Not available[/red]'}")
+        console.print(f"Tables: {'[green]Ready[/green]' if status.get('tables_ready') else '[yellow]Run migrations[/yellow]'}")
+        console.print(f"Algorithm: {status.get('algorithm', 'HS256')}")
+        console.print(f"Default key expiry: {status.get('default_key_expiry_days', 365)} days")
+
+        if status.get('active_users') is not None:
+            console.print(f"Active users: {status['active_users']}")
+        if status.get('active_keys') is not None:
+            console.print(f"Active API keys: {status['active_keys']}")
+
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        sys.exit(1)
+
+
+def cmd_auth_set_password(args):
+    """Set or update a user's password."""
+    from rich.console import Console
+    import getpass
+
+    console = Console()
+    username = args.username
+    password = args.password
+
+    # Prompt for password if not provided
+    if not password:
+        password = getpass.getpass(f"New password for {username}: ")
+        confirm = getpass.getpass("Confirm password: ")
+        if password != confirm:
+            console.print("[red]Passwords do not match[/red]")
+            sys.exit(1)
+
+    if not password:
+        console.print("[red]Password cannot be empty[/red]")
+        sys.exit(1)
+
+    try:
+        from lars.auth import get_auth_manager
+
+        auth = get_auth_manager()
+        success = auth.set_password(username, password)
+
+        if success:
+            console.print(f"[green]Password set for user: {username}[/green]")
+        else:
+            console.print(f"[red]Failed to set password for user: {username}[/red]")
+            sys.exit(1)
+
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        sys.exit(1)
 
 
 def _run_server_subprocess(cmd, cwd=None, env=None):

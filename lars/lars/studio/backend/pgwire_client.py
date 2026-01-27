@@ -71,13 +71,20 @@ _connection_pool: Dict[str, Any] = {}  # database -> connection
 
 
 @contextmanager
-def get_pgwire_connection(database: str = 'memory', port: Optional[int] = None):
+def get_pgwire_connection(
+    database: str = 'memory',
+    port: Optional[int] = None,
+    username: Optional[str] = None,
+    password: Optional[str] = None,
+):
     """
     Get a connection to PGwire server for the given database.
 
     Args:
         database: Database name ('memory', 'workspace', etc.)
         port: PGwire port (auto-detected if not specified)
+        username: Username for authentication (default: 'lars')
+        password: Password or API key for authentication (default: '')
 
     Yields:
         psycopg connection
@@ -95,12 +102,13 @@ def get_pgwire_connection(database: str = 'memory', port: Optional[int] = None):
 
     # Create connection with the database name
     # PGwire uses database name to select persistent vs in-memory
+    # Credentials are passed through for authentication
     conn = psycopg.connect(
         host='localhost',
         port=port,
         dbname=database,
-        user='lars',
-        password='',  # No password required
+        user=username or 'lars',
+        password=password or '',
         autocommit=True,
     )
 
@@ -114,6 +122,8 @@ def execute_sql_via_pgwire(
     query: str,
     database: str = 'memory',
     port: Optional[int] = None,
+    username: Optional[str] = None,
+    password: Optional[str] = None,
 ) -> Tuple[List[str], List[Dict[str, Any]]]:
     """
     Execute SQL query via PGwire and return results.
@@ -122,6 +132,8 @@ def execute_sql_via_pgwire(
         query: SQL query to execute
         database: Database name
         port: PGwire port (auto-detected if not specified)
+        username: Username for authentication
+        password: Password or API key for authentication
 
     Returns:
         Tuple of (column_names, rows_as_dicts)
@@ -130,7 +142,7 @@ def execute_sql_via_pgwire(
         RuntimeError: If PGwire is not available
         Exception: SQL execution errors
     """
-    with get_pgwire_connection(database, port) as conn:
+    with get_pgwire_connection(database, port, username, password) as conn:
         with conn.cursor() as cur:
             cur.execute(query)
 
@@ -151,6 +163,8 @@ def execute_sql_via_pgwire_df(
     query: str,
     database: str = 'memory',
     port: Optional[int] = None,
+    username: Optional[str] = None,
+    password: Optional[str] = None,
 ):
     """
     Execute SQL query via PGwire and return pandas DataFrame.
@@ -159,6 +173,8 @@ def execute_sql_via_pgwire_df(
         query: SQL query to execute
         database: Database name
         port: PGwire port (auto-detected if not specified)
+        username: Username for authentication
+        password: Password or API key for authentication
 
     Returns:
         pandas DataFrame with results
@@ -169,7 +185,7 @@ def execute_sql_via_pgwire_df(
     """
     import pandas as pd
 
-    columns, data = execute_sql_via_pgwire(query, database, port)
+    columns, data = execute_sql_via_pgwire(query, database, port, username, password)
 
     if not columns:
         return pd.DataFrame()

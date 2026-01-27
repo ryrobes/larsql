@@ -90,6 +90,7 @@ from training_api import training_bp
 from catalog_api import catalog_bp
 from watchers_api import watchers_bp
 from tests_api import tests_bp
+from auth_api import auth_api
 
 app.register_blueprint(message_flow_bp)
 app.register_blueprint(checkpoint_bp)
@@ -131,6 +132,9 @@ app.register_blueprint(notebook_bp)
 from sql_server_api import sql_server_api
 app.register_blueprint(sql_server_api)
 
+# Auth API - Authentication endpoints for login/logout
+app.register_blueprint(auth_api)
+
 
 # ==============================================================================
 # Startup Initialization - Runs on EVERY boot (dev and production)
@@ -154,6 +158,13 @@ _run_startup_tasks()
 @app.before_request
 def set_request_context():
     """Set query context variables based on the current request."""
+    # Set authentication context from Bearer token (if auth enabled)
+    try:
+        from lars.auth.middleware import set_auth_context
+        set_auth_context()
+    except ImportError:
+        pass  # Auth module not available
+
     # Capture the endpoint name (e.g., 'sextant.get_species_data')
     if request.endpoint:
         set_query_caller(request.endpoint)

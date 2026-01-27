@@ -1,0 +1,176 @@
+/* ============================================
+   LOGIN PAGE
+   Full-screen login form
+   ============================================ */
+
+.login-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  width: 100vw;
+  background: linear-gradient(
+    135deg,
+    var(--color-bg-primary) 0%,
+    var(--color-bg-secondary) 50%,
+    var(--color-bg-tertiary) 100%
+  );
+  padding: var(--space-lg);
+}
+
+.login-container {
+  width: 100%;
+  max-width: 400px;
+  background-color: var(--color-bg-secondary);
+  border: 1px solid var(--color-border-dim);
+  border-radius: var(--radius-lg);
+  padding: var(--space-2xl);
+  box-shadow: var(--shadow-floating);
+}
+
+/* ============================================
+   HEADER
+   ============================================ */
+
+.login-header {
+  text-align: center;
+  margin-bottom: var(--space-xl);
+}
+
+.login-title {
+  margin: 0;
+  font-size: 2.5rem;
+  font-weight: var(--font-weight-bold);
+  color: var(--color-accent-cyan);
+  letter-spacing: 0.1em;
+}
+
+.login-subtitle {
+  margin: var(--space-sm) 0 0;
+  font-size: var(--font-size-md);
+  color: var(--color-text-muted);
+}
+
+/* ============================================
+   FORM
+   ============================================ */
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.login-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.login-field label {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+}
+
+.login-field input {
+  padding: var(--space-md);
+  background-color: var(--color-bg-tertiary);
+  border: 1px solid var(--color-border-dim);
+  border-radius: var(--radius-md);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-md);
+  font-family: inherit;
+  transition: all var(--transition-fast);
+}
+
+.login-field input:focus {
+  outline: none;
+  border-color: var(--color-accent-cyan);
+  box-shadow: 0 0 0 2px rgba(0, 191, 255, 0.2);
+}
+
+.login-field input::placeholder {
+  color: var(--color-text-muted);
+}
+
+.login-field input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ============================================
+   ERROR MESSAGE
+   ============================================ */
+
+.login-error {
+  padding: var(--space-md);
+  background-color: rgba(255, 87, 87, 0.15);
+  border: 1px solid var(--color-accent-red);
+  border-radius: var(--radius-md);
+  color: var(--color-accent-red);
+  font-size: var(--font-size-sm);
+  text-align: center;
+}
+
+/* ============================================
+   SUBMIT BUTTON
+   ============================================ */
+
+.login-button {
+  padding: var(--space-md) var(--space-lg);
+  background: linear-gradient(
+    135deg,
+    var(--color-accent-cyan) 0%,
+    var(--color-accent-teal) 100%
+  );
+  border: none;
+  border-radius: var(--radius-md);
+  color: var(--color-bg-primary);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  font-family: inherit;
+  cursor: pointer;
+  transition: all var(--transition-normal);
+  margin-top: var(--space-sm);
+}
+
+.login-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-glow-cyan);
+}
+
+.login-button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.login-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ============================================
+   FOOTER
+   ============================================ */
+
+.login-footer {
+  margin-top: var(--space-xl);
+  padding-top: var(--space-lg);
+  border-top: 1px solid var(--color-border-dim);
+  text-align: center;
+}
+
+.login-hint {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.login-hint code {
+  padding: 2px 6px;
+  background-color: var(--color-bg-tertiary);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--color-accent-yellow);
+}

@@ -582,8 +582,8 @@ def _execute_deref_cascade(name: str, args: list, session_context: dict):
     Returns:
         The cascade result (can be any JSON-serializable value)
     """
-    # Import here to avoid circular deps
-    from lars.sql_tools.param_store import (
+    # Import from auth module (ClickHouse-backed with L1/L2 caching)
+    from lars.auth.param_store import (
         param_store_get,
         param_store_set,
         param_store_clear,

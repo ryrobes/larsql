@@ -13,6 +13,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { parseQueries, hashQuery } from '../utils/querySplitter';
 import { findOperatorPositions, getOperatorCostTier } from '../utils/operatorFinder';
 import { API_BASE_URL } from '../../../config/api';
+import { getAuthHeaders } from '../../../stores/authStore';
 
 // Cost tier thresholds
 const COST_TIERS = {
@@ -156,7 +157,7 @@ export function useQueryExplain({ editorValue, editorRef, monacoRef, database, l
 
           const response = await fetch(`${API_BASE_URL}/api/sql/execute`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
             body: JSON.stringify({
               query: explainQuery,
               database: database || 'memory',
@@ -307,7 +308,9 @@ export function useQueryExplain({ editorValue, editorRef, monacoRef, database, l
 
     const fetchActualCost = async () => {
       try {
-        const response = await fetch(`/api/sql/actual-cost/${lastExecutionCallerId}`);
+        const response = await fetch(`/api/sql/actual-cost/${lastExecutionCallerId}`, {
+          headers: getAuthHeaders(),
+        });
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }

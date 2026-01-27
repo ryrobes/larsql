@@ -70,6 +70,7 @@ const PanelRenderer = ({ panel, style, onInteraction }) => {
 
   // Handle data click from DataGridPanel or chart panels
   const handleDataClick = (rowData) => {
+    console.log('[PanelRenderer] handleDataClick called:', { name, on_select, rowData, hasOnInteraction: !!onInteraction });
     if (onInteraction && on_select) {
       onInteraction({
         panelName: name,

@@ -6,6 +6,24 @@
  */
 
 /**
+ * Extract param key and field name from an on_select template.
+ * Handles both @param_set (single) and @params_set (multi) formats.
+ *
+ * @param {string} template - e.g., "@param_set('level', level)" or "@params_set('depts', dept)"
+ * @returns {Object} { paramKey, selectField } or { paramKey: null, selectField: null }
+ */
+export function extractParamInfo(template) {
+  if (!template) return { paramKey: null, selectField: null };
+
+  // Match @param_set('key', field) or @params_set('key', field) or with * wildcard
+  const match = template.match(/@params?_set\(['"]([^'"]+)['"],\s*(\w+|\*)\)/);
+  if (match) {
+    return { paramKey: match[1], selectField: match[2] };
+  }
+  return { paramKey: null, selectField: null };
+}
+
+/**
  * Extract panel metadata from SQL editor content
  *
  * @param {string} sql - Full SQL text from editor
@@ -17,8 +35,13 @@ export function parsePanelMetadata(sql) {
   const panels = [];
   const lines = sql.split('\n');
 
-  // Pattern: --- PANEL 'name' (col, row, colspan, rowspan) ON_SELECT ... HIDE_BORDER HIDE_TITLE etc.
+  // Pattern: --- PANEL 'name' (col, row, colspan, rowspan) ON_SELECT[] @cascade(...) HIDE_BORDER HIDE_TITLE etc.
+  // Groups: 1=name, 2=col, 3=row, 4=colspan, 5=rowspan
   const panelPattern = /^---\s*PANEL\s+['"]([^'"]+)['"](?:\s*\((\d+)\s*,\s*(\d+)(?:\s*,\s*(\d+)\s*,\s*(\d+))?\))?/i;
+
+  // Pattern for ON_SELECT with optional [] and cascade template
+  // Matches: ON_SELECT @param_set('key', field) or ON_SELECT[] @params_set('key', field)
+  const onSelectPattern = /ON_SELECT(\[\])?\s+(@\w+\([^)]*\))/i;
 
   let currentPanel = null;
   let currentPanelQueryLines = [];
@@ -54,6 +77,15 @@ export function parsePanelMetadata(sql) {
       const opacityMatch = trimmedLine.match(/OPACITY\(([0-9.]+)\)/i);
       const blurMatch = trimmedLine.match(/BLUR\((\d+(?:px)?)\)/i);
 
+      // Parse ON_SELECT with template
+      const onSelectMatch = trimmedLine.match(onSelectPattern);
+      const hasOnSelect = !!onSelectMatch;
+      const multiSelect = hasOnSelect && !!onSelectMatch[1]; // [1] is the [] group
+      const onSelectTemplate = hasOnSelect ? onSelectMatch[2] : null; // [2] is the cascade template
+
+      // Extract param key and select field from template
+      const { paramKey, selectField } = extractParamInfo(onSelectTemplate);
+
       currentPanel = {
         name,
         position: (col !== null && row !== null) ? { col, row, colspan, rowspan } : null,
@@ -61,7 +93,11 @@ export function parsePanelMetadata(sql) {
         lineIndex: i,      // 0-indexed for array access
         hide_border: lineUpper.includes('HIDE_BORDER'),
         hide_title: lineUpper.includes('HIDE_TITLE'),
-        hasOnSelect: lineUpper.includes('ON_SELECT'),
+        hasOnSelect,
+        on_select: onSelectTemplate,    // Full template: @param_set('key', field)
+        multi_select: multiSelect,       // true if ON_SELECT[]
+        param_key: paramKey,             // Extracted param key for lookups
+        select_field: selectField,       // Field name to match for selection
         isBackground: col === 0 && row === 0, // Background panels at (0,0)
         opacity: opacityMatch ? parseFloat(opacityMatch[1]) : null,
         blur: blurMatch ? blurMatch[1] : null,

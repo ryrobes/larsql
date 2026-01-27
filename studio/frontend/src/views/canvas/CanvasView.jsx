@@ -14,6 +14,7 @@ import CostAnalysisDashboard from './components/CostAnalysisDashboard';
 import { useTabs, parseTabNameFromSql } from './hooks/useTabs';
 import { configureMonacoTheme, STUDIO_THEME_NAME, handleEditorMount } from '../../studio/utils/monacoTheme';
 import { API_BASE_URL } from '../../config/api';
+import { getAuthHeaders } from '../../stores/authStore';
 import { fillCascadeTemplate } from './utils/cascadeTemplate';
 import { injectRenderDimensions } from './utils/sqlPanelLayout';
 import { useQueryExplain } from './hooks/useQueryExplain';
@@ -147,6 +148,7 @@ const CanvasView = () => {
   const [panelExecutionState, setPanelExecutionState] = useState('idle'); // 'idle' | 'setup' | 'executing' | 'complete'
   const [lastSoloQuery, setLastSoloQuery] = useState(null); // Track last solo query for re-run
   const [isSoloResult, setIsSoloResult] = useState(false); // Track if current result is from solo execution
+  const [paramValues, setParamValues] = useState({}); // Map of param_key -> value for interactive panel selection state
 
   // Track if we're in the middle of loading a tab to avoid circular saves
   const isLoadingTabRef = useRef(false);
@@ -256,6 +258,48 @@ const CanvasView = () => {
   // Track previous panel data for smart re-render diffing
   const prevPanelsRef = useRef({});
 
+  // Fetch current param values for interactive panels
+  // This is needed to show selection state in charts/grids when using parallel execution mode
+  const fetchParamValues = useCallback(async () => {
+    if (!panelLayout) return;
+
+    // Find all unique param keys from interactive panels
+    const paramKeys = new Set();
+    panelLayout.panels.forEach(panel => {
+      if (panel.param_key) {
+        paramKeys.add(panel.param_key);
+      }
+    });
+
+    if (paramKeys.size === 0) return;
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/sql/params/${selectedDatabase}`, {
+        headers: getAuthHeaders(),
+      });
+      const data = await response.json();
+
+      if (data.params && Array.isArray(data.params)) {
+        const newParamValues = {};
+        data.params.forEach(param => {
+          if (paramKeys.has(param.key)) {
+            newParamValues[param.key] = param.value;
+          }
+        });
+        setParamValues(newParamValues);
+      }
+    } catch (err) {
+      console.error('Failed to fetch param values:', err);
+    }
+  }, [panelLayout, selectedDatabase]);
+
+  // Fetch param values when panel layout changes or params are refreshed
+  useEffect(() => {
+    if (panelLayout) {
+      fetchParamValues();
+    }
+  }, [panelLayout, paramsRefreshTrigger, fetchParamValues]);
+
   // Auto-explain and cost tracking
   const {
     queryExplains,
@@ -283,7 +327,7 @@ const CanvasView = () => {
     try {
       const response = await fetch(`${API_BASE_URL}/api/sql/execute`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ query: sqlToExecute, database: selectedDatabase })
       });
 
@@ -323,7 +367,9 @@ const CanvasView = () => {
   useEffect(() => {
     const fetchDatabases = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/api/sql/databases`);
+        const response = await fetch(`${API_BASE_URL}/api/sql/databases`, {
+          headers: getAuthHeaders(),
+        });
         const data = await response.json();
         if (data.databases && data.databases.length > 0) {
           setDatabases(data.databases);
@@ -482,7 +528,7 @@ const CanvasView = () => {
 
           const response = await fetch(`${API_BASE_URL}/api/voice/transcribe`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
             body: JSON.stringify({
               audio_base64: base64Audio,
               format: format,
@@ -581,7 +627,7 @@ const CanvasView = () => {
       // Call the dashboard builder cascade
       const response = await fetch(`${API_BASE_URL}/api/hyper/generate-dashboard`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({
           request: transcript,
           current_sql: includeData ? currentSql : sql,
@@ -620,8 +666,10 @@ const CanvasView = () => {
 
     panelLayoutTimerRef.current = setTimeout(() => {
       const parsed = parsePanelMetadata(sql);
+      console.log('[panelLayout] Parsed panels:', parsed.panels.map(p => ({ name: p.name, on_select: p.on_select, param_key: p.param_key })));
       if (parsed.panels.length > 0) {
         const layout = generateGridLayout(parsed.panels);
+        console.log('[panelLayout] Generated layout panels:', layout.panels.map(p => ({ name: p.name, on_select: p.on_select, param_key: p.param_key })));
         setPanelLayout({
           ...layout,
           hasSetup: parsed.hasSetup,
@@ -666,7 +714,7 @@ const CanvasView = () => {
         console.log('[parallel] Executing setup SQL...');
         const setupResponse = await fetch(`${API_BASE_URL}/api/sql/execute`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
           body: JSON.stringify({
             query: panelLayout.setupSql,
             database: selectedDatabase,
@@ -701,7 +749,7 @@ const CanvasView = () => {
         try {
           const response = await fetch(`${API_BASE_URL}/api/sql/execute`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
             body: JSON.stringify({
               query: panel.query,
               database: selectedDatabase,
@@ -827,7 +875,7 @@ const CanvasView = () => {
     try {
       const response = await fetch(`${API_BASE_URL}/api/sql/execute`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ query: queryToRun, database: selectedDatabase })
       });
 
@@ -871,7 +919,12 @@ const CanvasView = () => {
   const handleInteraction = useCallback(async (event) => {
     const { panelName, data: rowData, onSelectTemplate } = event;
 
-    if (!onSelectTemplate) return;
+    console.log('[handleInteraction] Event received:', { panelName, rowData, onSelectTemplate });
+
+    if (!onSelectTemplate) {
+      console.log('[handleInteraction] No onSelectTemplate, returning early');
+      return;
+    }
 
     let cascadeToExecute;
 
@@ -882,6 +935,7 @@ const CanvasView = () => {
       if (match) {
         cascadeToExecute = `@param_clear('${match[1]}')`;
       } else {
+        console.log('[handleInteraction] Could not extract param key for deselect');
         return; // Can't determine param key
       }
     } else {
@@ -889,16 +943,20 @@ const CanvasView = () => {
       cascadeToExecute = fillCascadeTemplate(onSelectTemplate, rowData);
     }
 
+    console.log('[handleInteraction] Executing cascade:', cascadeToExecute);
+
     try {
       // Execute the cascade (e.g., @param_set('region', 'US') or @param_clear('region'))
-      await fetch(`${API_BASE_URL}/api/sql/execute`, {
+      const cascadeResponse = await fetch(`${API_BASE_URL}/api/sql/execute`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({
           query: `SELECT ${cascadeToExecute}`,
           database: selectedDatabase
         })
       });
+      const cascadeResult = await cascadeResponse.json();
+      console.log('[handleInteraction] Cascade result:', cascadeResult);
 
       // Re-run the entire dashboard query
       // The smart diffing happens in React - panels with unchanged data
@@ -907,11 +965,12 @@ const CanvasView = () => {
 
       const response = await fetch(`${API_BASE_URL}/api/sql/execute`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ query: sql, database: selectedDatabase })
       });
 
       const newResult = await response.json();
+      console.log('[handleInteraction] Dashboard re-run result:', newResult);
       setExecutionTime(Date.now() - startTime);
 
       if (!newResult.success) {
@@ -940,13 +999,35 @@ const CanvasView = () => {
 
       setResult(newResult);
 
+      // Update panelResults if we're in parallel execution mode
+      // This syncs the interaction response data back to the unified panel data structure
+      if (panelLayout && newResult.multi_panel && newResult.panels) {
+        console.log('[handleInteraction] Updating panelResults from newResult.panels:',
+          newResult.panels.map(p => ({ name: p.name, rowCount: p.data?.length, firstRow: p.data?.[0] })));
+        const updatedResults = new Map();
+        newResult.panels.forEach((panel, idx) => {
+          // Find matching panel in layout by name
+          const layoutIdx = panelLayout.panels.findIndex(p => p.name === panel.name);
+          if (layoutIdx !== -1) {
+            updatedResults.set(layoutIdx, {
+              status: 'complete',
+              columns: Object.keys(panel.data?.[0] || {}),
+              data: panel.data || [],
+              row_count: panel.data?.length || 0,
+            });
+          }
+        });
+        console.log('[handleInteraction] Setting panelResults:', [...updatedResults.entries()]);
+        setPanelResults(updatedResults);
+      }
+
       // Trigger params panel refresh
       setParamsRefreshTrigger(t => t + 1);
     } catch (err) {
       console.error('Interaction failed:', err);
       setError(err.message || 'Failed to execute interaction');
     }
-  }, [sql, selectedDatabase]);
+  }, [sql, selectedDatabase, panelLayout]);
 
   // Handle loading a file from the modal - opens in a new tab
   const handleLoadFile = useCallback((loadedSql, fileName, filePath) => {
@@ -1169,6 +1250,20 @@ const CanvasView = () => {
         panelExplain = queryExplains.get(queryHash);
       }
 
+      // Look up current selection state from param values
+      let selectedValue = null;
+      let selectedValues = null;
+      if (panel.param_key && paramValues[panel.param_key] !== undefined) {
+        const paramValue = paramValues[panel.param_key];
+        if (panel.multi_select) {
+          // Multi-select: param value is an array
+          selectedValues = Array.isArray(paramValue) ? paramValue : [paramValue];
+        } else {
+          // Single-select: param value is a scalar
+          selectedValue = paramValue;
+        }
+      }
+
       // Build panel object compatible with CanvasRenderer
       return {
         name: panel.name,
@@ -1186,9 +1281,15 @@ const CanvasView = () => {
         row_count: panelResult?.row_count || 0,
         // Explain data for skeleton preview
         explain: panelExplain,
+        // Interaction metadata for click handlers
+        on_select: panel.on_select,
+        multi_select: panel.multi_select,
+        select_field: panel.select_field,
+        selected_value: selectedValue,
+        selected_values: selectedValues,
       };
     });
-  }, [panelLayout, panelResults, queryExplains]);
+  }, [panelLayout, panelResults, queryExplains, paramValues]);
 
   // Detect result format: multi-panel, canvas, or error
   const isMultiPanelResult = result?.multi_panel === true;
