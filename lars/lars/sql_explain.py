@@ -651,23 +651,27 @@ def explain_lars_map(
     result.cells = cascade_info['cells']
     result.model = cascade_info['model']
     result.takes = cascade_info['takes']
+    uses_llm = not cascade_info.get('is_deterministic', False)
+    llm_cells = cascade_info.get('llm_cells') or result.cells
 
     # 3. Get historical cost for this cascade
     historical_cascade = _get_historical_cascade_stats(cascade_info.get('cascade_id', stmt.cascade_path))
 
     # 4. Estimate cost per row
-    if historical_cascade and historical_cascade.get('avg_cost', 0) > 0:
+    if not uses_llm:
+        cost_per_row = 0.0
+    elif historical_cascade and historical_cascade.get('avg_cost', 0) > 0:
         cost_per_row = historical_cascade['avg_cost']
     else:
         cost_per_row = _estimate_cost_per_row(
             result.model,
-            result.cells,
+            llm_cells,
             result.takes
         )
 
     # 5. Estimate cache hit rate
     cache_hit_rate = 0.0
-    if check_cache:
+    if check_cache and uses_llm:
         cache_hit_rate = _estimate_map_cache_hit_rate(
             stmt.cascade_path,
             stmt.using_query,
@@ -675,7 +679,7 @@ def explain_lars_map(
         )
 
     # 6. Calculate totals
-    actual_llm_calls = int(result.input_rows * (1 - cache_hit_rate))
+    actual_llm_calls = int(result.input_rows * (1 - cache_hit_rate)) if uses_llm else 0
     result.total_estimated_llm_calls = actual_llm_calls
     result.total_estimated_cost = cost_per_row * actual_llm_calls
     result.estimated_duration_seconds = actual_llm_calls * 1.0  # 1s avg per call
@@ -699,7 +703,7 @@ def explain_lars_map(
         estimated_llm_calls=actual_llm_calls,
         estimated_cost=result.total_estimated_cost,
         prewarm_eligible=False,  # MAP doesn't benefit from prewarm (unique rows)
-        prewarm_reason="LARS MAP processes unique rows; prewarm not applicable"
+        prewarm_reason="Deterministic cascade (no LLM calls)" if not uses_llm else "LARS MAP processes unique rows; prewarm not applicable"
     )
     result.operations.append(operation)
 
@@ -843,7 +847,7 @@ def explain_pipeline_query(
 
     # Pipeline stage costs
     pipeline_cost = sum(stage.estimated_cost for stage in result.pipeline_stages)
-    pipeline_calls = len(result.pipeline_stages)  # Each stage = 1 LLM call (roughly)
+    pipeline_calls = sum(1 for stage in result.pipeline_stages if stage.estimated_cost > 0)  # Count only LLM-using stages
 
     result.total_estimated_cost = scalar_cost + agg_cost + pipeline_cost
     result.total_estimated_llm_calls = scalar_calls + agg_calls + pipeline_calls
@@ -904,22 +908,21 @@ def _analyze_pipeline_stage(stage, index: int) -> PipelineStageExplain:
     output_mode = cascade_entry.output_mode or 'value'
     cache_enabled = cascade_entry.cache_enabled
 
-    # Get model and cells from cascade config
-    config = cascade_entry.config
-    cells = []
-    model = _get_default_model()
+    # Load cascade info (includes deterministic + cell model metadata)
+    cascade_info = _load_cascade_info(cascade_path)
+    cells = cascade_info['cells']
+    model = cascade_info['model']
+    uses_llm = not cascade_info.get('is_deterministic', False)
 
-    if config and 'cells' in config:
-        for cell in config['cells']:
-            if isinstance(cell, dict):
-                cells.append(cell.get('name', 'unknown'))
-                if 'model' in cell:
-                    model = cell['model']
-
-    # Estimate cost (rough: based on model pricing)
-    pricing = _get_model_pricing(model)
-    # Assume ~500 input tokens, ~200 output tokens per stage
-    estimated_cost = (500 * pricing['prompt_price']) + (200 * pricing['completion_price'])
+    # Estimate cost per stage invocation
+    if not uses_llm:
+        estimated_cost = 0.0
+    else:
+        estimated_cost = _estimate_cost_per_row(
+            model,
+            cascade_info.get('llm_cells') or cells,
+            cascade_info.get('takes', 1)
+        )
 
     # Build description
     args_str = f"({', '.join(repr(a) for a in stage.args)})" if stage.args else ""
@@ -1569,83 +1572,96 @@ def _analyze_semantic_operation(
 
     cache_hit_rate = cache_hits / cache_total if cache_total > 0 else 0.0
 
-    # Get cascade-specific token profile (much better than model-class estimates)
-    cascade_profile = _get_cascade_token_profile(cascade_id, cascade_info['model'])
-    historical = _get_historical_cascade_stats(cascade_id)
+    # Deterministic cascades (all cells marked deterministic) do not use LLMs.
+    # EXPLAIN should not assign any LLM/token cost to these.
+    uses_llm = not cascade_info.get('is_deterministic', False)
 
     # Calculate cost using best available data
     # Use round() to avoid floating point truncation (e.g., 5 * 0.2 = 0.999... -> 0)
-    estimated_llm_calls = round(distinct_count * (1 - cache_hit_rate))
+    estimated_llm_calls = round(distinct_count * (1 - cache_hit_rate)) if uses_llm else 0
 
-    if cascade_profile and cascade_profile.get('avg_cost', 0) > 0:
-        # BEST: Use cascade-specific historical cost data
-        cost_per_call = cascade_profile['avg_cost']
-        cost_stddev = cascade_profile.get('stddev_cost', 0)
-        run_count = cascade_profile.get('sample_count', 0)
+    # Default values (deterministic cascades stay at 0 cost/0 calls)
+    cost_per_call = 0.0
+    cost_stddev = 0.0
+    run_count = 0
+    estimated_cost = 0.0
 
-        # For multi-cell cascades, prefer historical cost - token-based estimation
-        # only works for simple single-cell LLM cascades. Multi-cell cascades often
-        # have image/audio/tool cells that don't report tokens but do have costs.
-        cell_models = cascade_info.get('cell_models') or []
-        cells_value = cascade_info.get('cells', 1)
-        # 'cells' might be a list of cell definitions or an integer count
-        num_cells = len(cell_models) if cell_models else (len(cells_value) if isinstance(cells_value, list) else cells_value)
-        is_multi_cell = num_cells > 1
+    if uses_llm:
+        # Get cascade-specific token profile (much better than model-class estimates)
+        cascade_profile = _get_cascade_token_profile(cascade_id, cascade_info['model'])
+        historical = _get_historical_cascade_stats(cascade_id)
 
-        # Token-based estimation only for single-cell LLM cascades with token data
-        if uncached_samples and cascade_profile.get('avg_tokens_out', 0) > 0 and not is_multi_cell:
-            pricing = _get_model_pricing(cascade_info['model'])
-            avg_output_tokens = cascade_profile['avg_tokens_out']
+        if cascade_profile and cascade_profile.get('avg_cost', 0) > 0:
+            # BEST: Use cascade-specific historical cost data
+            cost_per_call = cascade_profile['avg_cost']
+            cost_stddev = cascade_profile.get('stddev_cost', 0)
+            run_count = cascade_profile.get('sample_count', 0)
 
-            # Estimate total input tokens from actual text
-            total_input_tokens = sum(s['estimated_tokens'] for s in uncached_samples)
+            # For multi-cell cascades, prefer historical cost - token-based estimation
+            # only works for simple single-cell LLM cascades. Multi-cell cascades often
+            # have image/audio/tool cells that don't report tokens but do have costs.
+            cell_models = cascade_info.get('cell_models') or []
+            cells_value = cascade_info.get('cells', 1)
+            # 'cells' might be a list of cell definitions or an integer count
+            num_cells = len(cell_models) if cell_models else (len(cells_value) if isinstance(cells_value, list) else cells_value)
+            is_multi_cell = num_cells > 1
 
-            # Scale up if sample is smaller than total uncached
-            uncached_count = round(distinct_count * (1 - cache_hit_rate))
-            if len(uncached_samples) > 0 and uncached_count > len(uncached_samples):
-                avg_sample_tokens = total_input_tokens / len(uncached_samples)
-                total_input_tokens = int(avg_sample_tokens * uncached_count)
+            # Token-based estimation only for single-cell LLM cascades with token data
+            if uncached_samples and cascade_profile.get('avg_tokens_out', 0) > 0 and not is_multi_cell:
+                pricing = _get_model_pricing(cascade_info['model'])
+                avg_output_tokens = cascade_profile['avg_tokens_out']
 
-            # Add prompt overhead (instructions, etc.) - cascade-specific
-            prompt_overhead_per_call = max(0, cascade_profile['avg_tokens_in'] - 200)  # Assume ~200 tokens is data
-            total_input_tokens += int(prompt_overhead_per_call * uncached_count)
+                # Estimate total input tokens from actual text
+                total_input_tokens = sum(s['estimated_tokens'] for s in uncached_samples)
 
-            # Calculate cost from tokens
-            estimated_cost = _estimate_cost_from_pricing(
-                pricing,
-                total_input_tokens,
-                int(avg_output_tokens * uncached_count)
-            )
-            log.info(f"[explain] Token-based cost estimate: {total_input_tokens} in, "
-                    f"{int(avg_output_tokens * uncached_count)} out = ${estimated_cost:.4f}")
-        else:
-            # Use historical average cost (better for multi-cell cascades)
+                # Scale up if sample is smaller than total uncached
+                uncached_count = round(distinct_count * (1 - cache_hit_rate))
+                if len(uncached_samples) > 0 and uncached_count > len(uncached_samples):
+                    avg_sample_tokens = total_input_tokens / len(uncached_samples)
+                    total_input_tokens = int(avg_sample_tokens * uncached_count)
+
+                # Add prompt overhead (instructions, etc.) - cascade-specific
+                prompt_overhead_per_call = max(0, cascade_profile['avg_tokens_in'] - 200)  # Assume ~200 tokens is data
+                total_input_tokens += int(prompt_overhead_per_call * uncached_count)
+
+                # Calculate cost from tokens
+                estimated_cost = _estimate_cost_from_pricing(
+                    pricing,
+                    total_input_tokens,
+                    int(avg_output_tokens * uncached_count)
+                )
+                log.info(f"[explain] Token-based cost estimate: {total_input_tokens} in, "
+                        f"{int(avg_output_tokens * uncached_count)} out = ${estimated_cost:.4f}")
+            else:
+                # Use historical average cost (better for multi-cell cascades)
+                estimated_cost = estimated_llm_calls * cost_per_call
+                if is_multi_cell:
+                    log.info(f"[explain] Using historical cost for {num_cells}-cell cascade: ${cost_per_call:.4f}/call")
+
+        elif historical and historical.get('avg_cost', 0) > 0:
+            # GOOD: Use session-level historical cost (less accurate)
+            cost_per_call = historical['avg_cost']
+            cost_stddev = historical.get('stddev_cost', 0)
+            run_count = historical.get('run_count', 0)
             estimated_cost = estimated_llm_calls * cost_per_call
-            if is_multi_cell:
-                log.info(f"[explain] Using historical cost for {num_cells}-cell cascade: ${cost_per_call:.4f}/call")
-
-    elif historical and historical.get('avg_cost', 0) > 0:
-        # GOOD: Use session-level historical cost (less accurate)
-        cost_per_call = historical['avg_cost']
-        cost_stddev = historical.get('stddev_cost', 0)
-        run_count = historical.get('run_count', 0)
-        estimated_cost = estimated_llm_calls * cost_per_call
-    else:
-        # FALLBACK: Model-based estimate (least accurate)
-        cost_per_call = _estimate_cost_per_row(
-            cascade_info['model'],
-            cascade_info['cells'],
-            cascade_info['takes']
-        )
-        cost_stddev = 0
-        run_count = 0
-        estimated_cost = estimated_llm_calls * cost_per_call
+        else:
+            # FALLBACK: Model-based estimate (least accurate)
+            cost_per_call = _estimate_cost_per_row(
+                cascade_info['model'],
+                cascade_info.get('llm_cells') or cascade_info['cells'],
+                cascade_info['takes']
+            )
+            cost_stddev = 0
+            run_count = 0
+            estimated_cost = estimated_llm_calls * cost_per_call
 
     # Determine prewarm eligibility
     prewarm_eligible = False
     prewarm_reason = ""
 
-    if distinct_count < 10:
+    if not uses_llm:
+        prewarm_reason = "Deterministic cascade (no LLM calls)"
+    elif distinct_count < 10:
         prewarm_reason = f"Too few distinct values ({distinct_count}); serial execution is fine"
     elif distinct_count > 500:
         prewarm_reason = f"Too many distinct values ({distinct_count}); diminishing returns from prewarm"
@@ -2739,6 +2755,8 @@ def _load_cascade_info(cascade_path: str) -> Dict[str, Any]:
     cells = config.get('cells', [])
     cell_names = []
     cell_models = []  # List of (cell_name, model) tuples
+    deterministic_cells = []
+    llm_cells = []  # Non-deterministic cells (LLM/tool calls)
     model = None
     takes = 1
 
@@ -2746,8 +2764,12 @@ def _load_cascade_info(cascade_path: str) -> Dict[str, Any]:
         if isinstance(cell, dict):
             cell_name = cell.get('name', f'cell_{i}')
             cell_names.append(cell_name)
+            if cell.get('deterministic') is True:
+                deterministic_cells.append(cell_name)
+            else:
+                llm_cells.append(cell_name)
             cell_model = cell.get('model')
-            if cell_model:
+            if cell_model and cell.get('deterministic') is not True:
                 cell_models.append((cell_name, cell_model))
                 # Primary model is first cell's model
                 if not model:
@@ -2761,8 +2783,12 @@ def _load_cascade_info(cascade_path: str) -> Dict[str, Any]:
                         takes = factor
 
     # Default model - use system default from config
+    # IMPORTANT: Deterministic cascades (all cells marked deterministic) do not use LLMs.
+    # Don't fill in the default LLM model for these, or EXPLAIN will incorrectly
+    # estimate LLM/token costs for purely deterministic tool cascades like param_get/param_set.
+    is_deterministic = bool(cell_names) and len(llm_cells) == 0
     if not model:
-        model = _get_default_model()
+        model = "deterministic" if is_deterministic else _get_default_model()
 
     # Extract sql_function args schema (for cache matching)
     sql_function = config.get('sql_function', {})
@@ -2781,6 +2807,9 @@ def _load_cascade_info(cascade_path: str) -> Dict[str, Any]:
         'cells': cell_names if cell_names else ['unknown'],
         'model': model,
         'cell_models': cell_models,  # All (cell_name, model) pairs for multi-model cascades
+        'deterministic_cells': deterministic_cells,
+        'llm_cells': llm_cells,
+        'is_deterministic': is_deterministic,
         'takes': takes,
         'args_schema': args_schema,
     }
@@ -3160,6 +3189,8 @@ def format_explain_result(result: ExplainResult) -> str:
 
             if op.historical_runs > 0:
                 lines.append(f"{inner_prefix}├─ Historical Cost: ${op.historical_cost_per_call:.6f}/call (±${op.historical_cost_stddev:.6f}, n={op.historical_runs})")
+            elif op.model == "deterministic":
+                lines.append(f"{inner_prefix}├─ Estimated Cost: ${op.historical_cost_per_call:.6f}/call (deterministic)")
             else:
                 lines.append(f"{inner_prefix}├─ Estimated Cost: ${op.historical_cost_per_call:.6f}/call (model-based)")
 
