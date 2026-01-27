@@ -37,7 +37,7 @@ log = logging.getLogger(__name__)
 
 # Pool configuration
 _DEFAULT_WARMUP_SIZE = 16   # Pre-warm this many connections at startup
-_DEFAULT_MAX_SIZE = 32     # Pool can grow up to this size with demand
+_DEFAULT_MAX_SIZE = 64     # Pool can grow up to this size with demand
 _pool: Optional[Queue] = None
 _pool_lock = threading.Lock()
 _pool_initialized = False

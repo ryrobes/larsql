@@ -148,6 +148,14 @@ def quote_sql_value(value: Any, sql_type: str = "VARCHAR") -> str:
         try:
             return str(int(value))
         except (ValueError, TypeError):
+            if isinstance(value, str):
+                # Handle float-like integer strings (e.g. "1.0") from JSON extraction.
+                stripped = value.strip()
+                if re.fullmatch(r"[+-]?\d+\.0+", stripped):
+                    try:
+                        return str(int(float(stripped)))
+                    except (ValueError, TypeError):
+                        pass
             return "NULL"
 
     if sql_type in ("DOUBLE", "FLOAT", "REAL", "DECIMAL", "NUMERIC"):
@@ -286,7 +294,16 @@ def execute_sql_fragment(
             if rt in ("INTEGER", "INT", "BIGINT"):
                 if value is None:
                     return 0
-                return int(value)
+                try:
+                    return int(value)
+                except (ValueError, TypeError):
+                    if isinstance(value, str):
+                        # DuckDB JSON extraction can yield float-like strings for integral values
+                        # (e.g. "1.0"), which int(...) rejects.
+                        stripped = value.strip()
+                        if re.fullmatch(r"[+-]?\d+\.0+", stripped):
+                            return int(float(stripped))
+                    raise
 
             if rt == "JSON":
                 # For JSON return type, always return a proper JSON string

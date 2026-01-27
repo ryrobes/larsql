@@ -7561,10 +7561,18 @@ class ClientConnection:
                                     params.append(float(value_str))
                                 except:
                                     params.append(value_str)
-                        elif param_type == 23:  # INTEGER
-                            params.append(int(value_str))
-                        elif param_type == 20:  # BIGINT
-                            params.append(int(value_str))
+                        elif param_type in (23, 20, 21):  # INTEGER, BIGINT, SMALLINT
+                            try:
+                                params.append(int(value_str))
+                            except ValueError:
+                                # Some clients send integral values as float-like strings (e.g. "4.0")
+                                # even when the parameter type is an integer OID.
+                                import re
+                                stripped = value_str.strip()
+                                if re.fullmatch(r"[+-]?\d+\.0+", stripped):
+                                    params.append(int(stripped.split(".", 1)[0]))
+                                else:
+                                    raise
                         elif param_type == 701:  # DOUBLE
                             params.append(float(value_str))
                         elif param_type == 16:  # BOOLEAN

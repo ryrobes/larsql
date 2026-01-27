@@ -453,6 +453,8 @@ class DataRow:
                 elements.append(DataRow._to_pg_array(item))
             elif isinstance(item, bool):
                 elements.append('t' if item else 'f')
+            elif isinstance(item, float) and item.is_integer():
+                elements.append(str(int(item)))
             elif isinstance(item, str):
                 # Escape special characters in strings
                 escaped = item.replace('\\', '\\\\').replace('"', '\\"')
@@ -479,6 +481,15 @@ class DataRow:
         payload = struct.pack('!H', len(values))  # Column count
 
         for value in values:
+            # Normalize numpy scalar types to native Python values.
+            # This keeps encoding logic simple and avoids surprises like numpy.float64 -> "5.0"
+            # for integer-ish values.
+            try:
+                if type(value).__module__.startswith('numpy') and hasattr(value, 'item'):
+                    value = value.item()
+            except Exception:
+                pass
+
             # Check for various NULL representations
             is_null = (
                 value is None or
@@ -497,7 +508,14 @@ class DataRow:
                 if isinstance(value, bool):
                     value_str = 't' if value else 'f'  # PostgreSQL boolean format
                 elif isinstance(value, (int, float)):
-                    value_str = str(value)
+                    # psycopg will parse INTEGER columns using int(text). If pandas/NumPy
+                    # upcast an integer column with NULLs to float, values can arrive as 5.0.
+                    # Encode integral floats without the trailing ".0" so both int() and float()
+                    # parsers accept them.
+                    if isinstance(value, float) and value.is_integer():
+                        value_str = str(int(value))
+                    else:
+                        value_str = str(value)
                 elif isinstance(value, bytes):
                     value_str = value.decode('utf-8', errors='replace')
                 elif isinstance(value, dict):

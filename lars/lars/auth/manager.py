@@ -34,6 +34,7 @@ class AuthManager:
 
     _instance = None
     _lock = threading.Lock()
+    _init_lock = threading.Lock()
 
     # ClickHouse connection (lazy initialized)
     _db = None
@@ -48,18 +49,23 @@ class AuthManager:
         return cls._instance
 
     def __init__(self, config: Optional[AuthConfig] = None):
-        # Only initialize once
-        if hasattr(self, '_initialized') and self._initialized:
+        # __init__ can be called concurrently across threads (singleton pattern),
+        # so guard against a partially-initialized instance being observed.
+        if getattr(self, "_initialized", False):
             return
-        self._initialized = True
-        self.config = config or get_auth_config()
+        with self._init_lock:
+            if getattr(self, "_initialized", False):
+                return
+            self.config = config or get_auth_config()
+            self._initialized = True
 
     @classmethod
     def get_instance(cls, config: Optional[AuthConfig] = None) -> 'AuthManager':
         """Get the singleton instance."""
-        if cls._instance is None:
-            cls._instance = cls(config)
-        return cls._instance
+        # Always go through the constructor so __init__ runs (and can block
+        # behind _init_lock). Returning cls._instance directly can leak a
+        # partially-initialized object under concurrent startup load.
+        return cls(config)
 
     def is_enabled(self) -> bool:
         """Check if authentication is enabled."""
