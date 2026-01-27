@@ -31,6 +31,7 @@ import './PanelRenderer.css';
  */
 const PanelRenderer = ({ panel, style, onInteraction }) => {
   const { name, content, type, on_select, multi_select, selected_values, selected_value, select_field, isAutoMetric, hide_border, hide_title, status = 'complete', error, explain } = panel;
+  const isRefreshing = status === 'refreshing';
 
   // Get icon for panel type
   const getIcon = () => {
@@ -229,22 +230,29 @@ const PanelRenderer = ({ panel, style, onInteraction }) => {
     hide_border && 'canvas-panel-no-border',
     hide_title && 'canvas-panel-no-title',
     (status === 'loading' || status === 'pending') && 'canvas-panel-loading',
+    isRefreshing && 'canvas-panel-refreshing',
     status === 'error' && 'canvas-panel-error',
   ].filter(Boolean).join(' ');
 
   // Determine if we should show loading state
   const isLoading = status === 'loading' || status === 'pending' || status === 'error';
+  const typeLabel = isLoading ? status : (isRefreshing ? 'refreshing' : type);
 
   return (
     <div className={panelClasses} style={style} data-panel-name={name}>
+      {isRefreshing && hide_title && (
+        <div className="canvas-panel-refresh-overlay" aria-hidden="true">
+          <Icon icon="mdi:loading" width="14" className="spin" />
+        </div>
+      )}
       {!hide_title && (
         <div className="canvas-panel-header">
           <Icon icon={getIcon()} width="14" />
           <span className="canvas-panel-title">{name}</span>
-          {status === 'loading' && (
+          {(status === 'loading' || isRefreshing) && (
             <Icon icon="mdi:loading" width="12" className="spin panel-header-spinner" />
           )}
-          <span className="canvas-panel-type">{isLoading ? status : type}</span>
+          <span className="canvas-panel-type">{typeLabel}</span>
         </div>
       )}
       <div className="canvas-panel-content">

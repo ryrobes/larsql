@@ -754,12 +754,38 @@ const CanvasView = () => {
     setError(null);
     setPanelExecutionState('setup');
 
-    // Reset panel results with pending status
-    const initialResults = new Map();
-    panelLayout.panels.forEach((panel, idx) => {
-      initialResults.set(idx, { status: 'pending' });
+    // Keep previous panel content on re-runs (filters, refreshes) to avoid the
+    // jarring "explain flash". Only preserve when it's the same panel query.
+    setPanelResults(prev => {
+      const prevByQueryHash = new Map();
+      const prevByName = new Map();
+      prev.forEach((value) => {
+        if (value?.name) {
+          prevByName.set(value.name, value);
+        }
+        if (value?.queryHash) {
+          prevByQueryHash.set(value.queryHash, value);
+        }
+      });
+
+      const next = new Map();
+      panelLayout.panels.forEach((panel, idx) => {
+        const fullQueryText = panel.panelMarkerLine
+          ? `${panel.panelMarkerLine}\n${panel.query}`
+          : panel.query;
+        const queryHash = hashQuery(fullQueryText);
+        const existing = prevByQueryHash.get(queryHash) || prevByName.get(panel.name);
+
+        const isSameQuery = existing?.queryHash ? existing.queryHash === queryHash : true;
+
+        if (existing && isSameQuery && (existing.status === 'complete' || existing.status === 'refreshing')) {
+          next.set(idx, { ...existing, status: 'refreshing', name: panel.name, queryHash });
+        } else {
+          next.set(idx, { status: 'pending', name: panel.name, queryHash });
+        }
+      });
+      return next;
     });
-    setPanelResults(initialResults);
 
     const startTime = Date.now();
 
@@ -818,12 +844,24 @@ const CanvasView = () => {
       const executePanel = async (panel, idx) => {
         if (isStaleInteraction()) return { idx, success: false, stale: true };
 
+        const fullQueryText = panel.panelMarkerLine
+          ? `${panel.panelMarkerLine}\n${panel.query}`
+          : panel.query;
+        const queryHash = hashQuery(fullQueryText);
+
         // Mark panel as loading
         setPanelResults(prev => {
           // Don't apply stale interaction updates
           if (isStaleInteraction()) return prev;
           const updated = new Map(prev);
-          updated.set(idx, { status: 'loading', name: panel.name });
+          const existing = updated.get(idx);
+          const hasPreviousContent = existing && (existing.status === 'complete' || existing.status === 'refreshing');
+          updated.set(idx, {
+            ...existing,
+            status: hasPreviousContent ? 'refreshing' : 'loading',
+            name: panel.name,
+            queryHash,
+          });
           return updated;
         });
 
@@ -851,6 +889,7 @@ const CanvasView = () => {
               updated.set(idx, {
                 status: 'complete',
                 name: panel.name,
+                queryHash,
                 columns: data.columns,
                 data: data.data,
                 row_count: data.row_count,
@@ -865,6 +904,7 @@ const CanvasView = () => {
               updated.set(idx, {
                 status: 'error',
                 name: panel.name,
+                queryHash,
                 error: data.error,
               });
               return updated;
