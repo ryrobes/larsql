@@ -77,6 +77,62 @@ def _sanitize_for_json(data: list[dict]) -> list[dict]:
     from decimal import Decimal
     from uuid import UUID
 
+    def parse_duckdb_array(s: str):
+        """
+        Parse DuckDB array string format into a Python list.
+        DuckDB format: {value1, value2, value3}
+        Also handles: {'value1', 'value2'} with quoted values
+        Returns None if not a valid array format.
+        """
+        inner = s[1:-1].strip()  # Remove outer braces
+        if not inner:
+            return []  # Empty array
+
+        # Check if this looks like an array (no colons for key:value pairs)
+        # Arrays have comma-separated values, structs have key: value pairs
+        if ':' in inner and not inner.startswith("'") and not inner.startswith('"'):
+            # This might be a struct, return None to let struct parser handle it
+            # But check if the colon is inside quotes first
+            # Simple heuristic: if there's a colon before any comma, likely a struct
+            first_comma = inner.find(',')
+            first_colon = inner.find(':')
+            if first_colon != -1 and (first_comma == -1 or first_colon < first_comma):
+                return None  # Likely a struct
+
+        # Parse comma-separated values
+        values = []
+        current = []
+        in_quotes = False
+        quote_char = None
+
+        for char in inner:
+            if char in ("'", '"') and not in_quotes:
+                in_quotes = True
+                quote_char = char
+            elif char == quote_char and in_quotes:
+                in_quotes = False
+                quote_char = None
+            elif char == ',' and not in_quotes:
+                val = ''.join(current).strip()
+                # Remove surrounding quotes if present
+                if (val.startswith("'") and val.endswith("'")) or \
+                   (val.startswith('"') and val.endswith('"')):
+                    val = val[1:-1]
+                values.append(val)
+                current = []
+                continue
+            current.append(char)
+
+        # Don't forget the last value
+        if current:
+            val = ''.join(current).strip()
+            if (val.startswith("'") and val.endswith("'")) or \
+               (val.startswith('"') and val.endswith('"')):
+                val = val[1:-1]
+            values.append(val)
+
+        return values
+
     def parse_duckdb_struct(s: str):
         """
         Parse DuckDB struct string format into a Python dict.
@@ -94,6 +150,12 @@ def _sanitize_for_json(data: list[dict]) -> list[dict]:
             return parsed
         except (json.JSONDecodeError, TypeError):
             pass
+
+        # Try parsing as DuckDB array first (simpler format)
+        array_result = parse_duckdb_array(s)
+        if array_result is not None:
+            # Recursively sanitize array elements
+            return [sanitize_value(item) for item in array_result]
 
         # Convert DuckDB struct format to JSON
         # - Add quotes around unquoted keys
@@ -935,14 +997,21 @@ def execute_sql():
     # PGwire handles all LARS features (UDFs, rewriting, pipelines) internally,
     # so we just send the raw query and get results back.
     # NOTE: Skip PGwire for multi-panel queries as it doesn't handle panels.
-    pgwire_port = os.environ.get('LARS_STUDIO_PGWIRE_PORT')
-    if pgwire_port and not is_multi_panel:
+    pgwire_port = None
+    if not is_multi_panel:
+        try:
+            from lars.studio.backend.pgwire_client import get_pgwire_port
+            pgwire_port = get_pgwire_port()
+        except Exception:
+            pgwire_port = None
+
+    if pgwire_port is not None and not is_multi_panel:
         try:
             return _execute_via_pgwire(
                 query=query,
                 database=database,
                 output_format=output_format,
-                pgwire_port=int(pgwire_port),
+                pgwire_port=pgwire_port,
                 start_time=start_time,
                 username=auth_username,
                 password=auth_token,

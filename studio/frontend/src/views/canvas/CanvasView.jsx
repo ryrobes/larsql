@@ -19,7 +19,7 @@ import { fillCascadeTemplate } from './utils/cascadeTemplate';
 import { injectRenderDimensions } from './utils/sqlPanelLayout';
 import { useQueryExplain } from './hooks/useQueryExplain';
 import { useQueryViewZones } from './hooks/useQueryViewZones';
-import { parsePanelMetadata, generateGridLayout } from './utils/panelParser';
+import { parsePanelMetadata, generateGridLayout, extractParamInfo } from './utils/panelParser';
 import { parseQueries, hashQuery } from './utils/querySplitter';
 // import PanelSkeleton from './components/PanelSkeleton'; // Kept for future use
 import './CanvasView.css';
@@ -184,6 +184,13 @@ const CanvasView = () => {
       setPanelResults(activeTab.panelResults || new Map());
       setLastExecutionCallerId(activeTab.lastExecutionCallerId || null);
       setSelectedDatabase(activeTab.database || 'memory');
+      // IMPORTANT: Clear param values when switching tabs to prevent
+      // old values from being applied to new dashboard's panels
+      setParamValues({});
+      // Reset interaction counter to prevent in-flight interactions from old tab
+      // affecting the new tab's state
+      interactionCounterRef.current = 0;
+      prevParamKeysRef.current = new Set();
       prevTabIdRef.current = activeTabId;
       // Reset loading flag after a tick
       requestAnimationFrame(() => {
@@ -258,6 +265,47 @@ const CanvasView = () => {
   // Track previous panel data for smart re-render diffing
   const prevPanelsRef = useRef({});
 
+  // Track interaction counter for race condition prevention
+  const interactionCounterRef = useRef(0);
+
+  // Track setup execution per (database, setupSql) so interactions can re-run panels
+  // without re-running setup SQL (THEN PASS INTO materialization, etc.)
+  const setupExecutionRef = useRef({ database: null, setupHash: null, completed: false });
+
+  // Track previous param keys to detect dashboard changes
+  const prevParamKeysRef = useRef(new Set());
+
+  // Clear param values when panel structure changes (new dashboard pasted)
+  // This prevents old param keys from bleeding into new dashboards
+  useEffect(() => {
+    if (!panelLayout) {
+      if (prevParamKeysRef.current.size > 0) {
+        setParamValues({});
+        prevParamKeysRef.current = new Set();
+      }
+      return;
+    }
+
+    // Get current param keys from panel layout
+    const currentKeys = new Set(
+      panelLayout.panels
+        .map(p => p.param_key)
+        .filter(Boolean)
+    );
+
+    // Check if the param key set changed (different dashboard)
+    const keysChanged = currentKeys.size !== prevParamKeysRef.current.size ||
+      ![...currentKeys].every(k => prevParamKeysRef.current.has(k));
+
+    if (keysChanged) {
+      console.log('[paramValues] Panel param keys changed, clearing old values');
+      console.log('[paramValues] Old keys:', [...prevParamKeysRef.current]);
+      console.log('[paramValues] New keys:', [...currentKeys]);
+      setParamValues({});
+      prevParamKeysRef.current = currentKeys;
+    }
+  }, [panelLayout]);
+
   // Fetch current param values for interactive panels
   // This is needed to show selection state in charts/grids when using parallel execution mode
   const fetchParamValues = useCallback(async () => {
@@ -293,12 +341,14 @@ const CanvasView = () => {
     }
   }, [panelLayout, selectedDatabase]);
 
-  // Fetch param values when panel layout changes or params are refreshed
+  // Fetch param values ONLY when panel layout changes (new dashboard loaded)
+  // Do NOT refetch after interactions - the optimistic update is correct
+  // and refetching can cause race conditions with stale server data
   useEffect(() => {
     if (panelLayout) {
       fetchParamValues();
     }
-  }, [panelLayout, paramsRefreshTrigger, fetchParamValues]);
+  }, [panelLayout, fetchParamValues]);
 
   // Auto-explain and cost tracking
   const {
@@ -689,11 +739,16 @@ const CanvasView = () => {
   }, [sql]);
 
   // Parallel panel execution
-  const executeParallel = useCallback(async () => {
+  const executeParallel = useCallback(async (options = {}) => {
+    const { skipSetup = false, interactionId = null } = options;
+
     if (!panelLayout || panelLayout.panels.length === 0) {
       // No panels, fall back to regular execution
       return false;
     }
+
+    const isStaleInteraction = () =>
+      interactionId !== null && interactionId !== interactionCounterRef.current;
 
     setLoading(true);
     setError(null);
@@ -711,23 +766,45 @@ const CanvasView = () => {
     try {
       // Step 1: Execute setup SQL if present
       if (panelLayout.hasSetup && panelLayout.setupSql) {
-        console.log('[parallel] Executing setup SQL...');
-        const setupResponse = await fetch(`${API_BASE_URL}/api/sql/execute`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-          body: JSON.stringify({
-            query: panelLayout.setupSql,
+        const setupHash = hashQuery(panelLayout.setupSql);
+        const setupAlreadyRan =
+          setupExecutionRef.current.completed &&
+          setupExecutionRef.current.database === selectedDatabase &&
+          setupExecutionRef.current.setupHash === setupHash;
+
+        const shouldRunSetup = !skipSetup || !setupAlreadyRan;
+
+        if (shouldRunSetup) {
+          console.log('[parallel] Executing setup SQL...');
+          const setupResponse = await fetch(`${API_BASE_URL}/api/sql/execute`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+            body: JSON.stringify({
+              query: panelLayout.setupSql,
+              database: selectedDatabase,
+            }),
+          });
+          const setupData = await setupResponse.json();
+          if (!setupData.success) {
+            setupExecutionRef.current = {
+              database: selectedDatabase,
+              setupHash,
+              completed: false,
+            };
+            setError(`Setup SQL failed: ${setupData.error}`);
+            setLoading(false);
+            setPanelExecutionState('complete');
+            return true;
+          }
+          setupExecutionRef.current = {
             database: selectedDatabase,
-          }),
-        });
-        const setupData = await setupResponse.json();
-        if (!setupData.success) {
-          setError(`Setup SQL failed: ${setupData.error}`);
-          setLoading(false);
-          setPanelExecutionState('complete');
-          return true;
+            setupHash,
+            completed: true,
+          };
+          console.log('[parallel] Setup SQL complete');
+        } else {
+          console.log('[parallel] Skipping setup SQL (already executed for this dashboard)');
         }
-        console.log('[parallel] Setup SQL complete');
       }
 
       // Step 2: Execute panels with limited concurrency
@@ -739,8 +816,12 @@ const CanvasView = () => {
 
       // Helper to execute a single panel
       const executePanel = async (panel, idx) => {
+        if (isStaleInteraction()) return { idx, success: false, stale: true };
+
         // Mark panel as loading
         setPanelResults(prev => {
+          // Don't apply stale interaction updates
+          if (isStaleInteraction()) return prev;
           const updated = new Map(prev);
           updated.set(idx, { status: 'loading', name: panel.name });
           return updated;
@@ -765,6 +846,7 @@ const CanvasView = () => {
           if (data.success) {
             // Update this panel with result
             setPanelResults(prev => {
+              if (isStaleInteraction()) return prev;
               const updated = new Map(prev);
               updated.set(idx, {
                 status: 'complete',
@@ -778,6 +860,7 @@ const CanvasView = () => {
             console.log(`[parallel] Panel "${panel.name}" complete (${data.row_count} rows)`);
           } else {
             setPanelResults(prev => {
+              if (isStaleInteraction()) return prev;
               const updated = new Map(prev);
               updated.set(idx, {
                 status: 'error',
@@ -792,6 +875,7 @@ const CanvasView = () => {
           return { idx, success: data.success, data };
         } catch (err) {
           setPanelResults(prev => {
+            if (isStaleInteraction()) return prev;
             const updated = new Map(prev);
             updated.set(idx, {
               status: 'error',
@@ -824,15 +908,21 @@ const CanvasView = () => {
       }
       await Promise.all(workers);
 
-      setExecutionTime(Date.now() - startTime);
-      setPanelExecutionState('complete');
-      setParamsRefreshTrigger(t => t + 1);
+      if (!isStaleInteraction()) {
+        setExecutionTime(Date.now() - startTime);
+        setPanelExecutionState('complete');
+        setParamsRefreshTrigger(t => t + 1);
+      }
 
     } catch (err) {
-      setError(err.message || 'Failed to execute query');
-      setExecutionTime(Date.now() - startTime);
+      if (!isStaleInteraction()) {
+        setError(err.message || 'Failed to execute query');
+        setExecutionTime(Date.now() - startTime);
+      }
     } finally {
-      setLoading(false);
+      if (!isStaleInteraction()) {
+        setLoading(false);
+      }
     }
 
     return true; // Indicate parallel execution was used
@@ -916,34 +1006,36 @@ const CanvasView = () => {
 
   // Handle panel interactions (clicks, etc.)
   // Executes the cascade and re-runs the dashboard
+  // Uses interaction counter to prevent race conditions from rapid clicks
   const handleInteraction = useCallback(async (event) => {
     const { panelName, data: rowData, onSelectTemplate } = event;
 
-    console.log('[handleInteraction] Event received:', { panelName, rowData, onSelectTemplate });
+    if (!onSelectTemplate) return;
 
-    if (!onSelectTemplate) {
-      console.log('[handleInteraction] No onSelectTemplate, returning early');
-      return;
-    }
+    // Increment interaction counter - used to detect stale results
+    const thisInteraction = ++interactionCounterRef.current;
+
+    // Extract param key and check if multi-select
+    const { paramKey, selectField } = extractParamInfo(onSelectTemplate);
+    const isMultiSelect = onSelectTemplate.includes('@params_set');
 
     let cascadeToExecute;
+    let isDeselect = false;
 
     // Check for deselect (toggle off) - single-select only
     if (rowData._isDeselect) {
+      isDeselect = true;
       // Extract param key from template like @param_set('level', level)
       const match = onSelectTemplate.match(/@param_set\(['"]([^'"]+)['"]/);
       if (match) {
         cascadeToExecute = `@param_clear('${match[1]}')`;
       } else {
-        console.log('[handleInteraction] Could not extract param key for deselect');
         return; // Can't determine param key
       }
     } else {
       // Fill the cascade template with values from clicked row
       cascadeToExecute = fillCascadeTemplate(onSelectTemplate, rowData);
     }
-
-    console.log('[handleInteraction] Executing cascade:', cascadeToExecute);
 
     try {
       // Execute the cascade (e.g., @param_set('region', 'US') or @param_clear('region'))
@@ -956,11 +1048,97 @@ const CanvasView = () => {
         })
       });
       const cascadeResult = await cascadeResponse.json();
-      console.log('[handleInteraction] Cascade result:', cascadeResult);
+
+      // Check if a newer interaction has started - if so, skip this stale result
+      if (thisInteraction !== interactionCounterRef.current) {
+        console.log('[interaction] Skipping stale cascade result (interaction', thisInteraction, 'superseded by', interactionCounterRef.current, ')');
+        return;
+      }
+
+      // Optimistic update for paramValues to provide immediate visual feedback
+      // This is authoritative - we trust the cascade result, not server refetch
+      if (paramKey && cascadeResult.success) {
+        if (isMultiSelect) {
+          // For multi-select (@params_set), the cascade should return the updated array.
+          // Some execution paths return empty arrays as NULL / strings; when that happens,
+          // fall back to a local toggle so the grid can fully deselect the last item.
+          let serverArray = null;
+          if (cascadeResult.data && cascadeResult.data.length > 0) {
+            const firstRow = cascadeResult.data[0];
+            const resultKey = Object.keys(firstRow)[0];
+            const newArrayRaw = firstRow[resultKey];
+
+            if (Array.isArray(newArrayRaw)) {
+              serverArray = newArrayRaw;
+            } else if (typeof newArrayRaw === 'string') {
+              const trimmed = newArrayRaw.trim();
+              if (trimmed === '' || trimmed === '[]' || trimmed === '{}' || trimmed.toUpperCase() === 'NULL') {
+                serverArray = [];
+              } else if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+                try {
+                  const parsed = JSON.parse(trimmed);
+                  if (Array.isArray(parsed)) {
+                    serverArray = parsed;
+                  }
+                } catch (err) {
+                  // Ignore parse errors; we'll fall back to local toggle.
+                }
+              }
+            }
+          }
+
+          // Determine the toggled value from the clicked row.
+          const toggleValueRaw =
+            selectField && rowData && rowData[selectField] !== undefined
+              ? rowData[selectField]
+              : Object.values(rowData || {})[0];
+          const toggleValue = toggleValueRaw === null || toggleValueRaw === undefined ? null : String(toggleValueRaw);
+
+          setParamValues(prev => {
+            if (Array.isArray(serverArray)) {
+              return { ...prev, [paramKey]: serverArray.map(v => String(v)) };
+            }
+
+            if (toggleValue === null) {
+              return prev;
+            }
+
+            const currentRaw = prev[paramKey];
+            const currentArray = Array.isArray(currentRaw)
+              ? currentRaw.map(v => String(v))
+              : (currentRaw === null || currentRaw === undefined ? [] : [String(currentRaw)]);
+
+            const nextArray = currentArray.includes(toggleValue)
+              ? currentArray.filter(v => v !== toggleValue)
+              : [...currentArray, toggleValue];
+
+            return { ...prev, [paramKey]: nextArray };
+          });
+        } else if (isDeselect) {
+          // For single-select deselect (@param_clear), remove the param
+          setParamValues(prev => {
+            const newValues = { ...prev };
+            delete newValues[paramKey];
+            return newValues;
+          });
+        } else {
+          // For single-select (@param_set), set the specific value
+          const value = selectField && rowData[selectField] !== undefined
+            ? rowData[selectField]
+            : Object.values(rowData)[0];
+          setParamValues(prev => ({ ...prev, [paramKey]: value }));
+        }
+      }
 
       // Re-run the entire dashboard query
-      // The smart diffing happens in React - panels with unchanged data
-      // will keep their identity and not re-render
+      // For panel dashboards, re-run panels via parallel execution (PGWire path) and
+      // skip setup SQL when it's already been executed for the current dashboard.
+      if (panelLayout && panelLayout.panels && panelLayout.panels.length > 0) {
+        await executeParallel({ skipSetup: true, interactionId: thisInteraction });
+        return;
+      }
+
+      // Fallback: non-panel dashboards run as a single query
       const startTime = Date.now();
 
       const response = await fetch(`${API_BASE_URL}/api/sql/execute`, {
@@ -970,7 +1148,13 @@ const CanvasView = () => {
       });
 
       const newResult = await response.json();
-      console.log('[handleInteraction] Dashboard re-run result:', newResult);
+
+      // Check again if a newer interaction has started before applying results
+      if (thisInteraction !== interactionCounterRef.current) {
+        console.log('[interaction] Skipping stale dashboard result (interaction', thisInteraction, 'superseded by', interactionCounterRef.current, ')');
+        return;
+      }
+
       setExecutionTime(Date.now() - startTime);
 
       if (!newResult.success) {
@@ -999,35 +1183,13 @@ const CanvasView = () => {
 
       setResult(newResult);
 
-      // Update panelResults if we're in parallel execution mode
-      // This syncs the interaction response data back to the unified panel data structure
-      if (panelLayout && newResult.multi_panel && newResult.panels) {
-        console.log('[handleInteraction] Updating panelResults from newResult.panels:',
-          newResult.panels.map(p => ({ name: p.name, rowCount: p.data?.length, firstRow: p.data?.[0] })));
-        const updatedResults = new Map();
-        newResult.panels.forEach((panel, idx) => {
-          // Find matching panel in layout by name
-          const layoutIdx = panelLayout.panels.findIndex(p => p.name === panel.name);
-          if (layoutIdx !== -1) {
-            updatedResults.set(layoutIdx, {
-              status: 'complete',
-              columns: Object.keys(panel.data?.[0] || {}),
-              data: panel.data || [],
-              row_count: panel.data?.length || 0,
-            });
-          }
-        });
-        console.log('[handleInteraction] Setting panelResults:', [...updatedResults.entries()]);
-        setPanelResults(updatedResults);
-      }
-
       // Trigger params panel refresh
       setParamsRefreshTrigger(t => t + 1);
     } catch (err) {
       console.error('Interaction failed:', err);
       setError(err.message || 'Failed to execute interaction');
     }
-  }, [sql, selectedDatabase, panelLayout]);
+  }, [sql, selectedDatabase, panelLayout, executeParallel]);
 
   // Handle loading a file from the modal - opens in a new tab
   const handleLoadFile = useCallback((loadedSql, fileName, filePath) => {

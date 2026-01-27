@@ -46,6 +46,12 @@ const DataGridPanel = ({ content, onRowClick, interactive, multiSelect, selected
   // Flag to prevent event emission during initialization
   const isInitializingRef = useRef(false);
 
+  // Debug: Log props on render (uncomment for debugging)
+  // console.log('[DataGridPanel] RENDER props:', {
+  //   interactive, multiSelect, selectField, selectedValue, selectedValues,
+  //   dataColumns: content && Array.isArray(content) && content.length > 0 ? Object.keys(content[0]) : [],
+  // });
+
   // Normalize content to array
   const data = useMemo(() => {
     if (!content) return null;
@@ -198,7 +204,8 @@ const DataGridPanel = ({ content, onRowClick, interactive, multiSelect, selected
     for (const key of lastSelection) {
       if (!currentSelection.has(key)) {
         // This row was just deselected - emit it (for toggle-off)
-        onRowClick(JSON.parse(key));
+        const rowData = JSON.parse(key);
+        onRowClick(rowData);
         lastSelectionRef.current = currentSelection;
         return;
       }
@@ -213,6 +220,21 @@ const DataGridPanel = ({ content, onRowClick, interactive, multiSelect, selected
     if (!interactive) return undefined;
     return multiSelect ? 'multiple' : 'single';
   }, [interactive, multiSelect]);
+
+  // Generate stable row IDs to preserve selection across data updates
+  // Without this, AG Grid resets selection every time rowData changes
+  const getRowId = useCallback((params) => {
+    // Use selectField if available (e.g., 'dept' or 'level')
+    if (selectField && params.data[selectField] !== undefined) {
+      return String(params.data[selectField]);
+    }
+    // Fallback: use first column value or row index
+    const firstKey = Object.keys(params.data)[0];
+    if (firstKey) {
+      return String(params.data[firstKey]);
+    }
+    return String(params.node?.rowIndex ?? Math.random());
+  }, [selectField]);
 
   // Sync selection when selectedValues or data changes (after initial render)
   // We need to re-apply selection when data refreshes, even if selectedValues is unchanged
@@ -299,6 +321,7 @@ const DataGridPanel = ({ content, onRowClick, interactive, multiSelect, selected
           defaultColDef={defaultColDef}
           theme={darkTheme}
           animateRows={false}
+          getRowId={getRowId}
           onGridReady={onGridReady}
           onFirstDataRendered={onFirstDataRendered}
           onRowClicked={interactive && !multiSelect ? handleRowClicked : undefined}

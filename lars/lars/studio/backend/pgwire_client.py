@@ -28,6 +28,25 @@ INTERNAL_PGWIRE_PORT = 15433
 # Environment variable to communicate PGwire port to workers
 PGWIRE_PORT_ENV = 'LARS_STUDIO_PGWIRE_PORT'
 
+_invalid_env_port_logged = False
+
+
+def _parse_pgwire_port(value: str) -> Optional[int]:
+    value = value.strip()
+    if not value:
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        # Accept float-like strings (e.g. "15433.0") produced by some env/config paths.
+        try:
+            as_float = float(value)
+        except ValueError:
+            return None
+        if as_float.is_integer():
+            return int(as_float)
+        return None
+
 
 def check_pgwire_available(host: str = 'localhost', port: int = DEFAULT_PGWIRE_PORT, timeout: float = 1.0) -> bool:
     """
@@ -46,18 +65,26 @@ def get_pgwire_port() -> Optional[int]:
     """
     Get the PGwire port to use, checking in order:
     1. Environment variable (set by Studio master process)
-    2. Default port 15432 (if server is running there)
-    3. None (no PGwire available)
+    2. Internal Studio port 15433 (if listening)
+    3. Default port 15432 (if server is running there)
+    4. None (no PGwire available)
     """
+    global _invalid_env_port_logged
+
     # Check environment variable first (internal server)
     env_port = os.environ.get(PGWIRE_PORT_ENV)
     if env_port:
-        try:
-            port = int(env_port)
-            if check_pgwire_available(port=port):
-                return port
-        except ValueError:
-            pass
+        port = _parse_pgwire_port(env_port)
+        if port is None:
+            if not _invalid_env_port_logged:
+                log.warning(f"Invalid {PGWIRE_PORT_ENV} value: {env_port!r}")
+                _invalid_env_port_logged = True
+        elif check_pgwire_available(port=port):
+            return port
+
+    # Check internal port (Studio-spawned server)
+    if check_pgwire_available(port=INTERNAL_PGWIRE_PORT):
+        return INTERNAL_PGWIRE_PORT
 
     # Check default port (external server)
     if check_pgwire_available(port=DEFAULT_PGWIRE_PORT):

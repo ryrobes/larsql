@@ -120,16 +120,20 @@ def preprocess_deref_cascades(sql: str, session_context: dict) -> str:
         Uses per-query caching: identical @cascade(args) calls within the same
         query are executed once and the result is reused for all occurrences.
     """
-    # Debug logging
-    print(f"[DEREF] preprocess_deref_cascades called with sql: {sql[:100]}...")
-    print(f"[DEREF] session_context: {session_context}")
-    print(f"[DEREF] '@' in sql: {'@' in sql}")
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(
+            "[DEREF] preprocess (has_at=%s, session_id=%r, protocol=%r, caller_id=%r, sql_prefix=%r)",
+            '@' in sql,
+            session_context.get('session_id', 'unknown'),
+            session_context.get('protocol', 'unknown'),
+            session_context.get('caller_id'),
+            sql[:120],
+        )
 
     if '@' not in sql:
-        print("[DEREF] No @ found, returning unchanged")
         return sql
 
-    print(f"[DEREF] Found @ in sql, checking for patterns...")
+    #print(f"[DEREF] Found @ in sql, checking for patterns...")
 
     # Per-query cache: key = "cascade_name|arg1|arg2|..." -> escaped result string
     # This avoids re-executing identical @cascade() calls within the same query
@@ -147,15 +151,15 @@ def preprocess_deref_cascades(sql: str, session_context: dict) -> str:
         # If no change was made, stop iterating
         # (remaining @ patterns are inside strings or otherwise not processable)
         if sql == prev_sql:
-            print(f"[DEREF] No change made in iteration {iterations}, stopping")
+            #print(f"[DEREF] No change made in iteration {iterations}, stopping")
             break
 
     if iterations >= max_iterations:
         logger.warning("Deref preprocessing hit iteration limit - possible infinite loop")
 
     # Log cache stats
-    if deref_cache:
-        print(f"[DEREF] Cache stats: {len(deref_cache)} unique calls cached")
+    # if deref_cache:
+    #     print(f"[DEREF] Cache stats: {len(deref_cache)} unique calls cached")
 
     return sql
 
@@ -163,7 +167,7 @@ def preprocess_deref_cascades(sql: str, session_context: dict) -> str:
 def has_deref_pattern(sql: str) -> bool:
     """Check if SQL contains any @cascade() patterns."""
     result = bool(DEREF_PATTERN.search(sql))
-    print(f"[DEREF] has_deref_pattern: {result}")
+    #print(f"[DEREF] has_deref_pattern: {result}")
     return result
 
 
@@ -171,9 +175,9 @@ def _process_one_deref(sql: str, session_context: dict, deref_cache: dict[str, s
     """Process the first (innermost) @cascade() found in SQL."""
     # Find all candidate positions
     matches = list(DEREF_PATTERN.finditer(sql))
-    print(f"[DEREF] _process_one_deref found {len(matches)} matches")
-    for m in matches:
-        print(f"[DEREF]   match: {m.group(0)} at {m.start()}")
+    # print(f"[DEREF] _process_one_deref found {len(matches)} matches")
+    # for m in matches:
+    #     print(f"[DEREF]   match: {m.group(0)} at {m.start()}")
     if not matches:
         return sql
 
@@ -184,28 +188,28 @@ def _process_one_deref(sql: str, session_context: dict, deref_cache: dict[str, s
         cascade_name = match.group(1)
         paren_open = match.end() - 1  # Position of '('
 
-        print(f"[DEREF] Processing @{cascade_name} at position {start}")
+        #print(f"[DEREF] Processing @{cascade_name} at position {start}")
 
         # Check if this is inside a string literal
         if _is_inside_string(sql, start):
-            print(f"[DEREF]   SKIPPED: inside string literal")
+            #print(f"[DEREF]   SKIPPED: inside string literal")
             continue
 
         # Find matching close paren
         paren_close = _find_matching_paren(sql, paren_open)
-        print(f"[DEREF]   paren_open={paren_open}, paren_close={paren_close}")
+        #print(f"[DEREF]   paren_open={paren_open}, paren_close={paren_close}")
         if paren_close < 0:
-            print(f"[DEREF]   SKIPPED: unmatched paren")
+            #print(f"[DEREF]   SKIPPED: unmatched paren")
             logger.warning(f"Unmatched paren for @{cascade_name} at position {start}")
             continue
 
         # Extract args string
         args_str = sql[paren_open + 1:paren_close]
-        print(f"[DEREF]   args_str: {args_str[:50]}...")
+        #print(f"[DEREF]   args_str: {args_str[:50]}...")
 
         # Check for nested deref in args - if found, skip and let next iteration handle
         if '@' in args_str and DEREF_PATTERN.search(args_str):
-            print(f"[DEREF]   SKIPPED: nested deref in args")
+            #print(f"[DEREF]   SKIPPED: nested deref in args")
             continue
 
         # Parse accessor suffix: [0].field
@@ -213,7 +217,8 @@ def _process_one_deref(sql: str, session_context: dict, deref_cache: dict[str, s
         accessor = None
         if expr_end < len(sql):
             accessor, expr_end = _parse_accessor(sql, expr_end)
-        print(f"[DEREF]   expr_end={expr_end}, accessor={accessor}")
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug("[DEREF]   expr_end=%s, accessor=%s", expr_end, accessor)
 
         # Build cache key: cascade_name + args_str + accessor
         # This uniquely identifies the deref call
@@ -223,7 +228,7 @@ def _process_one_deref(sql: str, session_context: dict, deref_cache: dict[str, s
         # Check cache first
         if cache_key in deref_cache:
             escaped = deref_cache[cache_key]
-            print(f"[DEREF]   CACHE HIT: {escaped}")
+            #print(f"[DEREF]   CACHE HIT: {escaped}")
 
             # Log cache hit (parse args for logging)
             try:
@@ -249,9 +254,9 @@ def _process_one_deref(sql: str, session_context: dict, deref_cache: dict[str, s
         try:
             start_time = time.time()
             args = _parse_cascade_args(args_str)
-            print(f"[DEREF]   parsed args: {args}")
+            #print(f"[DEREF]   parsed args: {args}")
             raw_result = _execute_deref_cascade(cascade_name, args, session_context)
-            print(f"[DEREF]   raw_result: {raw_result}")
+            #print(f"[DEREF]   raw_result: {raw_result}")
 
             # Apply accessor if present
             if accessor:
@@ -262,11 +267,11 @@ def _process_one_deref(sql: str, session_context: dict, deref_cache: dict[str, s
             # SQL-escape and replace
             escaped = _sql_escape(final_value)
             duration_ms = (time.time() - start_time) * 1000
-            print(f"[DEREF]   escaped: {escaped}")
+            #print(f"[DEREF]   escaped: {escaped}")
 
             # Store in cache for future identical calls in this query
             deref_cache[cache_key] = escaped
-            print(f"[DEREF]   CACHE STORE: {cache_key[:50]}...")
+            #print(f"[DEREF]   CACHE STORE: {cache_key[:50]}...")
 
             # Log successful deref
             _log_deref(
@@ -284,11 +289,11 @@ def _process_one_deref(sql: str, session_context: dict, deref_cache: dict[str, s
             logger.debug(f"Deref @{cascade_name}({args_str}){accessor or ''} -> {escaped}")
 
             result = sql[:start] + escaped + sql[expr_end:]
-            print(f"[DEREF]   REPLACED: ...{result[max(0,start-20):start+len(escaped)+20]}...")
+            #print(f"[DEREF]   REPLACED: ...{result[max(0,start-20):start+len(escaped)+20]}...")
             return result
 
         except Exception as e:
-            print(f"[DEREF]   ERROR: {e}")
+            #print(f"[DEREF]   ERROR: {e}")
             import traceback
             traceback.print_exc()
             logger.error(f"Deref @{cascade_name} failed: {e}")
@@ -314,7 +319,8 @@ def _process_one_deref(sql: str, session_context: dict, deref_cache: dict[str, s
             # On error, replace with NULL to avoid infinite loop
             return sql[:start] + 'NULL' + sql[expr_end:]
 
-    print(f"[DEREF] No matches processed, returning unchanged")
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug("[DEREF] No matches processed, returning unchanged")
     return sql
 
 

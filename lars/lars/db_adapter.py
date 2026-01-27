@@ -912,7 +912,8 @@ class ClickHouseAdapter:
 
         with ClickHouseAdapter._query_lock:
             try:
-                self.client.execute(sql, params or {})
+                # Pass None when no params to avoid ClickHouse client scanning SQL for format strings
+                self.client.execute(sql, params if params else None)
             except Exception as e:
                 success = False
                 error_msg = str(e)
