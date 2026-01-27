@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LARS Dashboard</title>
+    
+    <!-- Prevent flash of wrong theme -->
+    <script>
+        (function() {
+            const saved = localStorage.getItem('theme');
+            const theme = saved || 'dark';
+            document.documentElement.setAttribute('data-theme', theme);
+        })();
+    </script>
+    
+    <!-- Tailwind CSS (configured for dark mode) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: ['selector', '[data-theme="dark"]'],
+            theme: {
+                extend: {
+                    colors: {
+                        // Map to CSS variables for consistency
+                        primary: {
+                            DEFAULT: 'var(--accent-primary)',
+                            hover: 'var(--accent-primary-hover)',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- React via ESM (no build step needed) -->
+    <script type="importmap">
+    {
+        "imports": {
+            "react": "https://esm.sh/react@18?dev",
+            "react-dom": "https://esm.sh/react-dom@18?dev",
+            "react-dom/client": "https://esm.sh/react-dom@18/client?dev",
+            "react-dom/server": "https://esm.sh/react-dom@18/server?dev",
+            "htm": "https://esm.sh/htm@3?dev",
+            "recharts": "https://esm.sh/recharts@2?dev&external=react,react-dom",
+            "ag-grid-react": "https://esm.sh/ag-grid-react@31?dev&external=react,react-dom",
+            "ag-grid-community": "https://esm.sh/ag-grid-community@31?dev"
+        }
+    }
+    </script>
+    
+    <!-- AG Grid Styles (we override with CSS vars) -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31/styles/ag-grid.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31/styles/ag-theme-alpine.css">
+    
+    <!-- Custom Styles -->
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <div id="root"></div>
+    <script type="module" src="/app.js"></script>
+</body>
+</html>

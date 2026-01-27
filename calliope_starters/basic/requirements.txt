@@ -1,0 +1,7 @@
+# LARS Dashboard Micro-App Dependencies
+# Install with: pip install -r requirements.txt
+
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+psycopg2-binary>=2.9.9
+python-dotenv>=1.0.0

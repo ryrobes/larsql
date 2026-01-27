@@ -6445,7 +6445,7 @@ def cmd_serve_studio(args):
             sys.executable, '-m', 'lars.cli',
             'serve', 'sql',
             '--port', str(INTERNAL_PGWIRE_PORT),
-            '--host', '127.0.0.1',
+            '--host', args.host,
         ]
 
         pgwire_process = subprocess.Popen(
