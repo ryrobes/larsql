@@ -6255,7 +6255,9 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
         if validator_tool and callable(validator_tool):
             try:
                 set_current_trace(ward_trace)
-                result = validator_tool(content=content)
+                # Pass content plus all original inputs as flat kwargs
+                original_input = self.echo.input if hasattr(self.echo, 'input') else {}
+                result = validator_tool(content=content, **original_input)
 
                 if isinstance(result, str):
                     try:
@@ -6399,7 +6401,9 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
         if validator_tool and callable(validator_tool):
             try:
                 set_current_trace(validator_trace)
-                result = validator_tool(content=content)
+                # Pass content plus all original inputs as flat kwargs
+                original_input = self.echo.input if hasattr(self.echo, 'input') else {}
+                result = validator_tool(content=content, **original_input)
 
                 if isinstance(result, str):
                     try:
@@ -6620,7 +6624,8 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
             if validator_tool and callable(validator_tool):
                 try:
                     set_current_trace(validation_trace)
-                    result = validator_tool(content=content)
+                    # Pass content plus all original inputs as flat kwargs
+                    result = validator_tool(content=content, **input_data)
 
                     if isinstance(result, str):
                         try:

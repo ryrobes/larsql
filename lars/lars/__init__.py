@@ -92,6 +92,7 @@ def _register_all_skills():
     from .skills.bi_tools import find_understanding, save_understanding
     from .skills.valid_json import valid_json, valid_json_array
     from .skills.hyper_tools import verify_hyper, valid_hyper
+    from .skills.calliope_tools import capture_kit_screenshot, validate_kit_visual
 
     # Core tools
     register_skill("smart_sql_run", smart_sql_run)
@@ -186,6 +187,10 @@ def _register_all_skills():
     # HyperSQL tools
     register_skill("verify_hyper", verify_hyper)
     register_skill("valid_hyper", valid_hyper)
+
+    # Calliope tools
+    register_skill("capture_kit_screenshot", capture_kit_screenshot)
+    register_skill("validate_kit_visual", validate_kit_visual)
 
     # Native Python browser tools (browser, control_browser, etc.)
     try:

@@ -33,6 +33,7 @@ const ExploreView = lazy(() => import('./views/explore/ExploreView'));
 const EvolutionView = lazy(() => import('./views/evolution/EvolutionView'));
 const InterruptsView = lazy(() => import('./views/interrupts/InterruptsView'));
 const CalliopeView = lazy(() => import('./views/calliope/CalliopeView'));
+const CalliopeLegacyView = lazy(() => import('./views/calliope/CalliopeLegacyView'));
 const WarrenView = lazy(() => import('./views/warren/WarrenView'));
 const AppsView = lazy(() => import('./views/apps/AppsView'));
 const CatalogView = lazy(() => import('./views/catalog/CatalogView'));
@@ -152,14 +153,24 @@ export const router = createBrowserRouter([
         element: withSuspense(InterruptsView),
       },
 
-      // Calliope - The Muse of App Building
+      // Calliope - Micro-App Builder
       {
         path: 'calliope',
         element: withSuspense(CalliopeView),
       },
       {
-        path: 'calliope/:sessionId',
+        path: 'calliope/:kitId',
         element: withSuspense(CalliopeView),
+      },
+
+      // Calliope Legacy - The Muse of App Building (old cascade builder)
+      {
+        path: 'calliope-old',
+        element: withSuspense(CalliopeLegacyView),
+      },
+      {
+        path: 'calliope-old/:sessionId',
+        element: withSuspense(CalliopeLegacyView),
       },
 
       // Warren - Multi-Perspective Deliberation Chat

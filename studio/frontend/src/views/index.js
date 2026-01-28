@@ -98,12 +98,20 @@ export const views = {
     enabled: true,
   },
 
+  'calliope-old': {
+    component: lazy(() => import('./calliope/CalliopeLegacyView')),
+    icon: 'mdi:account-heart',
+    label: 'Calliope (Legacy)',
+    position: 'top',
+    enabled: false, // Legacy cascade builder
+  },
+
   calliope: {
     component: lazy(() => import('./calliope/CalliopeView')),
-    icon: 'mdi:account-heart',
+    icon: 'mdi:brush',
     label: 'Calliope',
     position: 'top',
-    enabled: false, // TODO: Feature incomplete
+    enabled: true, // Micro-app builder
   },
 
   warren: {

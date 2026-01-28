@@ -91,6 +91,7 @@ from catalog_api import catalog_bp
 from watchers_api import watchers_bp
 from tests_api import tests_bp
 from auth_api import auth_api
+from calliope_api import calliope_bp
 
 app.register_blueprint(message_flow_bp)
 app.register_blueprint(checkpoint_bp)
@@ -134,6 +135,7 @@ app.register_blueprint(sql_server_api)
 
 # Auth API - Authentication endpoints for login/logout
 app.register_blueprint(auth_api)
+app.register_blueprint(calliope_bp)
 
 
 # ==============================================================================

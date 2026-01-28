@@ -502,8 +502,8 @@ def _include_virtual_sessions(existing_sessions: list, cascade_id_filter: str | 
             virtual_count += 1
 
         # Debug log
-        if virtual_count > 0:
-            print(f"[sessions_api] Added {virtual_count} virtual sessions from unified_logs")
+        # if virtual_count > 0:
+        #     print(f"[sessions_api] Added {virtual_count} virtual sessions from unified_logs")
 
         # Sort by started_at descending and limit
         existing_sessions.sort(

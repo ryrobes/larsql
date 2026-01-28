@@ -1,0 +1,87 @@
+cascade_id: calliope_validator
+description: Validates Calliope kit output by capturing a screenshot and having an LLM judge if it matches the user's request
+tags:
+- quality
+- validation
+- impartial
+- third-party
+
+# Flat inputs passed directly from validator call
+inputs_schema:
+  content: "The builder cell's output"
+  port: "Port the kit is running on"
+  request: "User's original request"
+  annotated_screenshot: "Path to user's annotated screenshot (optional)"
+
+internal: true
+
+cells:
+  # Step 1: Capture screenshot of the running kit
+  - name: capture
+    tool: capture_kit_screenshot
+    inputs:
+      port: "{{ input.port }}"
+      wait_for_render: 4.0
+
+  # Step 2: LLM judges if the screenshot matches the request
+  - name: judge
+    model: anthropic/claude-sonnet-4.5
+
+    instructions: |
+      You are a visual QA judge for a dashboard builder. Your job is to determine if
+      the dashboard screenshot matches what the user requested. Or at least is "mostly good enough" to head to the next round of revisions / iteration.
+
+      ## USER'S ORIGINAL REQUEST
+      {{ input.request }}
+
+      {% if input.annotated_screenshot %}
+      ## USER'S ANNOTATED SCREENSHOT
+      The user drew on a screenshot to show what they want. Pay attention to any
+      circles, arrows, or highlights they drew.
+      [See attached annotated image]
+      {% endif %}
+
+      ## CURRENT DASHBOARD SCREENSHOT
+      [See attached screenshot of the current dashboard state]
+
+      ## ERRORS DETECTED
+      {{ outputs.capture.errors | default('None') }}
+
+      ## JAVASCRIPT CONSOLE LOG
+      {{ outputs.capture.console_log | default('No console output captured') }}
+
+      ## YOUR TASK
+
+      Evaluate whether the current dashboard matches what the user requested.
+      Consider:
+      1. Are the requested UI elements present? (charts, tables, cards, etc.)
+      2. Does the layout match what was requested?
+      3. Are there any visible errors or broken components?
+      4. If the user drew annotations, does the dashboard match those visual hints?
+
+      ## RESPONSE FORMAT
+
+      You MUST respond with a JSON object in this exact format:
+      ```json
+      {
+        "valid": true/false,
+        "reason": "Brief explanation of your judgment",
+        "missing": ["list", "of", "missing", "elements"],
+        "suggestions": ["specific", "actionable", "fixes"]
+      }
+      ```
+
+      Be strict but fair:
+      - If the core request is met, mark as valid even if minor polish is needed
+      - If key elements are missing or broken, mark as invalid with clear feedback
+      - Always provide actionable suggestions if invalid
+
+    images:
+      - "{{ outputs.capture.screenshot }}"
+      - "{{ input.annotated_screenshot }}"
+
+    output_schema:
+      valid: "boolean - Whether the dashboard matches the request"
+      reason: "Why it passed or failed"
+      missing: "List of missing elements"
+      suggestions: "Actionable fixes if invalid"

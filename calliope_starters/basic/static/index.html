@@ -55,6 +55,31 @@
     
     <!-- Custom Styles -->
     <link rel="stylesheet" href="/styles.css">
+
+    <!-- Calliope integration (screenshot capture) - DO NOT REMOVE -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="/calliope-bridge.js"></script>
+
+    <!-- Live reload for Calliope hot-reload -->
+    <script>
+        (function() {
+            let lastId = null;
+            async function checkReload() {
+                try {
+                    const res = await fetch('/__livereload');
+                    const data = await res.json();
+                    if (lastId && lastId !== data.id) {
+                        location.reload();
+                    }
+                    lastId = data.id;
+                } catch (e) {
+                    // Server restarting, wait and retry
+                }
+            }
+            setInterval(checkReload, 1000);
+            checkReload();
+        })();
+    </script>
 </head>
 <body>
     <div id="root"></div>

@@ -1,0 +1,2 @@
+name: HTMX Server-Rendered
+description: FastAPI with HTMX. No JS framework, server renders all HTML.

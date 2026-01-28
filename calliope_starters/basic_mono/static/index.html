@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LARS Dashboard</title>
+
+    <!-- Theme init (prevent flash) -->
+    <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('theme') || 'dark');</script>
+
+    <!-- Tailwind -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: ['selector', '[data-theme="dark"]'],
+        }
+    </script>
+
+    <!-- React + Libraries via ESM -->
+    <script type="importmap">
+    {
+        "imports": {
+            "react": "https://esm.sh/react@18?dev",
+            "react-dom": "https://esm.sh/react-dom@18?dev",
+            "react-dom/client": "https://esm.sh/react-dom@18/client?dev",
+            "react-dom/server": "https://esm.sh/react-dom@18/server?dev",
+            "htm": "https://esm.sh/htm@3?dev",
+            "recharts": "https://esm.sh/recharts@2?dev&external=react,react-dom",
+            "ag-grid-react": "https://esm.sh/ag-grid-react@31?dev&external=react,react-dom",
+            "ag-grid-community": "https://esm.sh/ag-grid-community@31?dev"
+        }
+    }
+    </script>
+
+    <!-- AG Grid Styles -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31/styles/ag-grid.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31/styles/ag-theme-alpine.css">
+
+    <!-- Calliope integration (screenshot capture) - DO NOT REMOVE -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="/calliope-bridge.js"></script>
+
+    <!-- Live reload for Calliope hot-reload -->
+    <script>
+        (function() {
+            let lastId = null;
+            async function checkReload() {
+                try {
+                    const res = await fetch('/__livereload');
+                    const data = await res.json();
+                    if (lastId && lastId !== data.id) {
+                        location.reload();
+                    }
+                    lastId = data.id;
+                } catch (e) {
+                    // Server restarting, wait and retry
+                }
+            }
+            setInterval(checkReload, 1000);
+            checkReload();
+        })();
+    </script>
+
+    <style>
+        /* ========== CSS Variables ========== */
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-tertiary: #1a1a24;
+            --bg-input: #1e1e2a;
+            --text-primary: #f0f0f5;
+            --text-secondary: #a0a0b0;
+            --text-tertiary: #606070;
+            --border-primary: #2a2a3a;
+            --accent-primary: #3b82f6;
+            --accent-success: #10b981;
+            --accent-warning: #f59e0b;
+            --accent-danger: #ef4444;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+
+        /* AG Grid Theme Override */
+        .ag-theme-lars {
+            --ag-background-color: var(--bg-secondary);
+            --ag-header-background-color: var(--bg-tertiary);
+            --ag-odd-row-background-color: var(--bg-secondary);
+            --ag-row-hover-color: var(--bg-tertiary);
+            --ag-border-color: var(--border-primary);
+            --ag-foreground-color: var(--text-primary);
+            --ag-secondary-foreground-color: var(--text-secondary);
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="module">
+// =============================================================================
+// LARS Dashboard — Single-File Frontend
+// =============================================================================
+// All components are defined inline. LLM can modify this single file.
+// Backend endpoints are in app.py.
+//
+// PATTERN:
+// 1. Define components as functions
+// 2. Dashboard function composes them
+// 3. Mount at the bottom
+// =============================================================================
+
+import React, { useState, useEffect, useCallback, useContext, createContext, useMemo, useRef } from 'react';
+import { createRoot } from 'react-dom/client';
+import htm from 'htm';
+import {
+    LineChart, Line, BarChart, Bar, AreaChart, Area, PieChart, Pie, Cell,
+    XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
+} from 'recharts';
+import { AgGridReact } from 'ag-grid-react';
+
+const html = htm.bind(React.createElement);
+const COLORS = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'];
+
+// =============================================================================
+// CONTEXTS
+// =============================================================================
+
+const FilterContext = createContext({});
+const useFilters = () => useContext(FilterContext);
+
+// =============================================================================
+// UTILITY COMPONENTS
+// =============================================================================
+
+function Card({ title, children, className = '' }) {
+    return html`
+        <div className=${'rounded-lg p-4 ' + className} style=${{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-primary)' }}>
+            ${title && html`<h3 className="text-lg font-semibold mb-3" style=${{ color: 'var(--text-primary)' }}>${title}</h3>`}
+            ${children}
+        </div>
+    `;
+}
+
+function KPICard({ title, value, format = 'number' }) {
+    const formatted = value == null ? '—' :
+        format === 'currency' ? '$' + Number(value).toLocaleString() :
+        format === 'percent' ? value + '%' :
+        Number(value).toLocaleString();
+
+    return html`
+        <div className="rounded-lg p-4" style=${{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-primary)' }}>
+            <div className="text-sm mb-1" style=${{ color: 'var(--text-secondary)' }}>${title}</div>
+            <div className="text-2xl font-bold" style=${{ color: 'var(--text-primary)' }}>${formatted}</div>
+        </div>
+    `;
+}
+
+function LoadingSpinner() {
+    return html`<div className="flex justify-center p-8"><div className="animate-spin h-8 w-8 border-2 rounded-full" style=${{ borderColor: 'var(--border-primary)', borderTopColor: 'var(--accent-primary)' }}></div></div>`;
+}
+
+function ErrorDisplay({ error, onRetry }) {
+    return html`
+        <div className="text-center p-8">
+            <div style=${{ color: 'var(--accent-danger)' }}>Error: ${error?.message || error}</div>
+            ${onRetry && html`<button onClick=${onRetry} className="mt-2 px-3 py-1 rounded text-sm" style=${{ backgroundColor: 'var(--bg-tertiary)' }}>Retry</button>`}
+        </div>
+    `;
+}
+
+// =============================================================================
+// CHART COMPONENT
+// =============================================================================
+
+function Chart({ endpoint, type = 'line', xKey, yKeys, height = 300 }) {
+    const { filters } = useFilters();
+    const [data, setData] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+
+    const fetchData = useCallback(async () => {
+        setLoading(true);
+        try {
+            const params = new URLSearchParams();
+            Object.entries(filters).forEach(([k, v]) => v && params.set(k, v));
+            const url = params.toString() ? `${endpoint}?${params}` : endpoint;
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const json = await res.json();
+            setData(json.data || json);
+        } catch (e) { setError(e); }
+        finally { setLoading(false); }
+    }, [endpoint, filters]);
+
+    useEffect(() => { fetchData(); }, [fetchData]);
+
+    if (loading) return html`<${LoadingSpinner} />`;
+    if (error) return html`<${ErrorDisplay} error=${error} onRetry=${fetchData} />`;
+    if (!data?.length) return html`<div className="text-center p-8" style=${{ color: 'var(--text-tertiary)' }}>No data</div>`;
+
+    const ChartType = type === 'bar' ? BarChart : type === 'area' ? AreaChart : LineChart;
+    const DataElement = type === 'bar' ? Bar : type === 'area' ? Area : Line;
+
+    return html`
+        <${ResponsiveContainer} width="100%" height=${height}>
+            <${ChartType} data=${data}>
+                <${CartesianGrid} strokeDasharray="3 3" stroke="#334155" />
+                <${XAxis} dataKey=${xKey} tick=${{ fontSize: 12, fill: 'var(--text-secondary)' }} />
+                <${YAxis} tick=${{ fontSize: 12, fill: 'var(--text-secondary)' }} />
+                <${Tooltip} contentStyle=${{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-primary)' }} />
+                <${Legend} />
+                ${yKeys.map((y, i) => html`
+                    <${DataElement} key=${y.key} dataKey=${y.key} name=${y.name || y.key}
+                        ${type === 'line' ? { stroke: y.color || COLORS[i], strokeWidth: 2 } : { fill: y.color || COLORS[i] }}
+                        ${type === 'area' ? { fillOpacity: 0.3, stroke: y.color || COLORS[i] } : {}}
+                    />
+                `)}
+            <//>
+        <//>
+    `;
+}
+
+// =============================================================================
+// DATA GRID COMPONENT
+// =============================================================================
+
+function DataGrid({ endpoint, columns, height = 400 }) {
+    const { filters } = useFilters();
+    const [rowData, setRowData] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+
+    const fetchData = useCallback(async () => {
+        setLoading(true);
+        try {
+            const params = new URLSearchParams();
+            Object.entries(filters).forEach(([k, v]) => v && params.set(k, v));
+            const url = params.toString() ? `${endpoint}?${params}` : endpoint;
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const json = await res.json();
+            setRowData(json.data || json);
+        } catch (e) { setError(e); }
+        finally { setLoading(false); }
+    }, [endpoint, filters]);
+
+    useEffect(() => { fetchData(); }, [fetchData]);
+
+    const defaultColDef = useMemo(() => ({ sortable: true, filter: true, resizable: true }), []);
+
+    if (loading) return html`<${LoadingSpinner} />`;
+    if (error) return html`<${ErrorDisplay} error=${error} onRetry=${fetchData} />`;
+    if (!rowData?.length) return html`<div className="text-center p-8" style=${{ color: 'var(--text-tertiary)' }}>No data</div>`;
+
+    return html`
+        <div className="ag-theme-lars ag-theme-alpine" style=${{ height, width: '100%' }}>
+            <${AgGridReact} rowData=${rowData} columnDefs=${columns} defaultColDef=${defaultColDef} pagination=${true} paginationPageSize=${25} />
+        </div>
+    `;
+}
+
+// =============================================================================
+// FILTER COMPONENTS
+// =============================================================================
+
+function FilterDropdown({ label, value, onChange, endpoint, emptyLabel = 'All' }) {
+    const [options, setOptions] = useState([]);
+    useEffect(() => {
+        if (endpoint) fetch(endpoint).then(r => r.json()).then(d => setOptions(Array.isArray(d) ? d : d.data || []));
+    }, [endpoint]);
+
+    return html`
+        <div className="flex flex-col gap-1">
+            <label className="text-sm" style=${{ color: 'var(--text-secondary)' }}>${label}</label>
+            <select value=${value || ''} onChange=${e => onChange(e.target.value || null)}
+                className="px-3 py-2 rounded text-sm" style=${{ backgroundColor: 'var(--bg-input)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)' }}>
+                <option value="">${emptyLabel}</option>
+                ${options.map(o => html`<option key=${o.value} value=${o.value}>${o.label}</option>`)}
+            </select>
+        </div>
+    `;
+}
+
+function FilterMonthRange({ label, startValue, endValue, onStartChange, onEndChange }) {
+    return html`
+        <div className="flex flex-col gap-1">
+            <label className="text-sm" style=${{ color: 'var(--text-secondary)' }}>${label}</label>
+            <div className="flex items-center gap-2">
+                <input type="month" value=${startValue || ''} onChange=${e => onStartChange(e.target.value || null)}
+                    className="px-3 py-2 rounded text-sm" style=${{ backgroundColor: 'var(--bg-input)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)' }} />
+                <span style=${{ color: 'var(--text-tertiary)' }}>to</span>
+                <input type="month" value=${endValue || ''} onChange=${e => onEndChange(e.target.value || null)}
+                    className="px-3 py-2 rounded text-sm" style=${{ backgroundColor: 'var(--bg-input)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)' }} />
+            </div>
+        </div>
+    `;
+}
+
+function FilterSearch({ label, value, onChange, placeholder = 'Search...' }) {
+    const [local, setLocal] = useState(value || '');
+    const timeout = useRef(null);
+    const handleChange = v => { setLocal(v); clearTimeout(timeout.current); timeout.current = setTimeout(() => onChange(v || null), 300); };
+    return html`
+        <div className="flex flex-col gap-1">
+            <label className="text-sm" style=${{ color: 'var(--text-secondary)' }}>${label}</label>
+            <input type="text" value=${local} onChange=${e => handleChange(e.target.value)} placeholder=${placeholder}
+                className="px-3 py-2 rounded text-sm min-w-[200px]" style=${{ backgroundColor: 'var(--bg-input)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)' }} />
+        </div>
+    `;
+}
+
+// =============================================================================
+// LAYOUT
+// =============================================================================
+
+function Layout({ title, subtitle, filters, children }) {
+    return html`
+        <div className="min-h-screen" style=${{ backgroundColor: 'var(--bg-primary)' }}>
+            <header className="border-b px-6 py-4" style=${{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-primary)' }}>
+                <h1 className="text-xl font-bold">${title}</h1>
+                ${subtitle && html`<p className="text-sm" style=${{ color: 'var(--text-secondary)' }}>${subtitle}</p>`}
+            </header>
+            ${filters && html`<div className="px-6 py-4 border-b" style=${{ borderColor: 'var(--border-primary)' }}>${filters}</div>`}
+            <main className="p-6">${children}</main>
+        </div>
+    `;
+}
+
+// =============================================================================
+// DASHBOARD (Main content - LLM modifies this section)
+// =============================================================================
+
+function Dashboard() {
+    const { filters } = useFilters();
+    const [kpis, setKpis] = useState(null);
+
+    // Fetch KPIs
+    useEffect(() => {
+        const params = new URLSearchParams();
+        Object.entries(filters).forEach(([k, v]) => v && params.set(k, v));
+        fetch('/api/data/example-kpi' + (params.toString() ? '?' + params : ''))
+            .then(r => r.json()).then(setKpis).catch(console.error);
+    }, [filters]);
+
+    return html`
+        <div className="space-y-6">
+            <!-- KPIs -->
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <${KPICard} title="Total Revenue" value=${kpis?.total_revenue} format="currency" />
+                <${KPICard} title="Total Orders" value=${kpis?.total_orders} format="number" />
+                <${KPICard} title="Avg Order Value" value=${kpis?.avg_order_value} format="currency" />
+                <${KPICard} title="Profit Margin" value=${kpis?.profit_margin} format="percent" />
+            </div>
+
+            <!-- Charts -->
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <${Card} title="Revenue Over Time">
+                    <${Chart} endpoint="/api/data/example-chart" type="line" xKey="month"
+                        yKeys=${[{ key: 'revenue', color: '#3b82f6', name: 'Revenue' }, { key: 'costs', color: '#ef4444', name: 'Costs' }]} />
+                <//>
+                <${Card} title="Revenue vs Costs">
+                    <${Chart} endpoint="/api/data/example-chart" type="bar" xKey="month"
+                        yKeys=${[{ key: 'revenue', color: '#3b82f6', name: 'Revenue' }, { key: 'costs', color: '#ef4444', name: 'Costs' }]} />
+                <//>
+            </div>
+
+            <!-- Grid -->
+            <${Card} title="Recent Items">
+                <${DataGrid} endpoint="/api/data/example-grid" height=${400}
+                    columns=${[
+                        { field: 'id', headerName: 'ID', width: 80 },
+                        { field: 'name', headerName: 'Name', flex: 1 },
+                        { field: 'category', headerName: 'Category', width: 120 },
+                        { field: 'status', headerName: 'Status', width: 100 },
+                        { field: 'value', headerName: 'Value', width: 100 },
+                        { field: 'created_at', headerName: 'Created', width: 120 },
+                    ]} />
+            <//>
+        </div>
+    `;
+}
+
+// =============================================================================
+// FILTERS (LLM modifies this to add/remove filters)
+// =============================================================================
+
+function DashboardFilters() {
+    const { filters, updateFilter, clearFilters } = useFilters();
+    return html`
+        <div className="flex flex-wrap items-end gap-4">
+            <${FilterMonthRange} label="Date Range" startValue=${filters.start_date} endValue=${filters.end_date}
+                onStartChange=${v => updateFilter('start_date', v)} onEndChange=${v => updateFilter('end_date', v)} />
+            <${FilterDropdown} label="Category" value=${filters.category} endpoint="/api/filters/example-categories"
+                onChange=${v => updateFilter('category', v)} emptyLabel="All Categories" />
+            <${FilterSearch} label="Search" value=${filters.search} onChange=${v => updateFilter('search', v)} placeholder="Search items..." />
+            <button onClick=${clearFilters} className="px-3 py-2 text-sm rounded" style=${{ color: 'var(--text-secondary)' }}>Clear all</button>
+        </div>
+    `;
+}
+
+// =============================================================================
+// APP ROOT
+// =============================================================================
+
+function App() {
+    const [ready, setReady] = useState(false);
+    const [filters, setFilters] = useState({ start_date: null, end_date: null, category: null, search: '' });
+    const updateFilter = (k, v) => setFilters(prev => ({ ...prev, [k]: v }));
+    const clearFilters = () => setFilters({ start_date: null, end_date: null, category: null, search: '' });
+
+    // Setup call
+    useEffect(() => {
+        fetch('/api/setup', { method: 'POST' }).then(() => setReady(true)).catch(() => setReady(true));
+    }, []);
+
+    if (!ready) return html`<div className="min-h-screen flex items-center justify-center" style=${{ backgroundColor: 'var(--bg-primary)' }}><${LoadingSpinner} /></div>`;
+
+    return html`
+        <${FilterContext.Provider} value=${{ filters, updateFilter, clearFilters }}>
+            <${Layout} title="LARS Dashboard" subtitle="Built with LARS semantic SQL" filters=${html`<${DashboardFilters} />`}>
+                <${Dashboard} />
+            <//>
+        <//>
+    `;
+}
+
+// =============================================================================
+// MOUNT + ERROR CAPTURE
+// =============================================================================
+
+// Capture JS errors for feedback loop
+window.onerror = (msg, src, line, col, err) => {
+    window.__DASHBOARD_ERROR__ = { message: msg, source: src, line, column: col, stack: err?.stack };
+    console.error('Dashboard Error:', msg, 'at', src, line);
+};
+
+createRoot(document.getElementById('root')).render(html`<${App} />`);
+
+    </script>
+</body>
+</html>

@@ -1351,6 +1351,62 @@ def main():
         help='Number of parallel workers for model verification (default: 10)'
     )
 
+    # Kit command group - Calliope micro-app management
+    kit_parser = subparsers.add_parser('kit', help='Calliope kit management (micro-app builder)')
+    kit_subparsers = kit_parser.add_subparsers(dest='kit_command', help='Kit subcommands')
+
+    # kit create
+    kit_create_parser = kit_subparsers.add_parser(
+        'create',
+        help='Create a new kit from template'
+    )
+    kit_create_parser.add_argument(
+        '--template', '-t',
+        default='basic',
+        help='Template to use (default: basic)'
+    )
+
+    # kit run (alias: start)
+    kit_run_parser = kit_subparsers.add_parser(
+        'run',
+        help='Start a kit server',
+        aliases=['start']
+    )
+    kit_run_parser.add_argument('kit_id', help='Kit ID to start')
+    kit_run_parser.add_argument(
+        '--port', '-p',
+        type=int,
+        default=None,
+        help='Port to run on (default: auto-assign)'
+    )
+
+    # kit stop
+    kit_stop_parser = kit_subparsers.add_parser(
+        'stop',
+        help='Stop a kit server'
+    )
+    kit_stop_parser.add_argument('kit_id', help='Kit ID to stop')
+
+    # kit list
+    kit_list_parser = kit_subparsers.add_parser(
+        'list',
+        help='List all kits',
+        aliases=['ls']
+    )
+
+    # kit delete
+    kit_delete_parser = kit_subparsers.add_parser(
+        'delete',
+        help='Delete a kit',
+        aliases=['rm']
+    )
+    kit_delete_parser.add_argument('kit_id', help='Kit ID to delete')
+    kit_delete_parser.add_argument(
+        '--force', '-f',
+        action='store_true',
+        help='Force delete even if running'
+    )
+
     # Preprocess args: `lars ssql "SELECT..."` → `lars ssql query "SELECT..."`
     # This allows users to run queries directly without the `query` subcommand
     if len(sys.argv) >= 3 and sys.argv[1] == 'ssql':
@@ -1706,6 +1762,20 @@ def main():
             cmd_browser_batch(args)
         else:
             browser_parser.print_help()
+            sys.exit(1)
+    elif args.command == 'kit':
+        if args.kit_command == 'create':
+            cmd_kit_create(args)
+        elif args.kit_command in ('run', 'start'):
+            cmd_kit_run(args)
+        elif args.kit_command == 'stop':
+            cmd_kit_stop(args)
+        elif args.kit_command in ('list', 'ls'):
+            cmd_kit_list(args)
+        elif args.kit_command in ('delete', 'rm'):
+            cmd_kit_delete(args)
+        else:
+            kit_parser.print_help()
             sys.exit(1)
     # Alice TUI commands (COMMENTED OUT for initial release)
     # elif args.command == 'tui':
@@ -6257,6 +6327,138 @@ def cmd_auth_set_password(args):
             console.print(f"[red]Failed to set password for user: {username}[/red]")
             sys.exit(1)
 
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        sys.exit(1)
+
+
+# ============================================================================
+# Kit Commands (Calliope micro-app builder)
+# ============================================================================
+
+def cmd_kit_create(args):
+    """Create a new kit from template."""
+    from rich.console import Console
+    from .calliope.kit_manager import KitManager
+
+    console = Console()
+    template = args.template
+
+    try:
+        manager = KitManager()
+        kit_id = manager.create_kit(template=template)
+
+        console.print(f"[green]Created kit: {kit_id}[/green]")
+        console.print(f"  Template: {template}")
+        console.print(f"  Location: {manager.kits_dir / kit_id}")
+        console.print(f"\nTo start: [cyan]lars kit run {kit_id}[/cyan]")
+
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        sys.exit(1)
+
+
+def cmd_kit_run(args):
+    """Start a kit server."""
+    from rich.console import Console
+    from .calliope.kit_manager import KitManager
+
+    console = Console()
+    kit_id = args.kit_id
+    port = args.port
+
+    try:
+        manager = KitManager()
+        result = manager.start_kit(kit_id, port=port)
+
+        console.print(f"[green]Started kit: {kit_id}[/green]")
+        console.print(f"  Port: {result['port']}")
+        console.print(f"  PID: {result['pid']}")
+        console.print(f"\n  Open: [cyan]http://localhost:{result['port']}[/cyan]")
+
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        sys.exit(1)
+
+
+def cmd_kit_stop(args):
+    """Stop a kit server."""
+    from rich.console import Console
+    from .calliope.kit_manager import KitManager
+
+    console = Console()
+    kit_id = args.kit_id
+
+    try:
+        manager = KitManager()
+        result = manager.stop_kit(kit_id)
+
+        console.print(f"[green]Stopped kit: {kit_id}[/green]")
+
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        sys.exit(1)
+
+
+def cmd_kit_list(args):
+    """List all kits."""
+    from rich.console import Console
+    from rich.table import Table
+    from .calliope.kit_manager import KitManager
+
+    console = Console()
+
+    try:
+        manager = KitManager()
+        kits = manager.list_kits()
+
+        if not kits:
+            console.print("[dim]No kits found. Create one with: lars kit create[/dim]")
+            return
+
+        table = Table(title="Calliope Kits")
+        table.add_column("Kit ID", style="cyan")
+        table.add_column("Template")
+        table.add_column("Status")
+        table.add_column("Port")
+        table.add_column("Created")
+
+        for kit in kits:
+            status_style = "green" if kit.get('status') == 'running' else "dim"
+            table.add_row(
+                kit.get('kit_id', '?'),
+                kit.get('template', 'basic'),
+                f"[{status_style}]{kit.get('status', 'unknown')}[/{status_style}]",
+                str(kit.get('port', '-')),
+                kit.get('created_at', '?')[:19] if kit.get('created_at') else '?',
+            )
+
+        console.print(table)
+
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        sys.exit(1)
+
+
+def cmd_kit_delete(args):
+    """Delete a kit."""
+    from rich.console import Console
+    from .calliope.kit_manager import KitManager
+
+    console = Console()
+    kit_id = args.kit_id
+    force = args.force
+
+    try:
+        manager = KitManager()
+        manager.delete_kit(kit_id, force=force)
+
+        console.print(f"[green]Deleted kit: {kit_id}[/green]")
+
+    except RuntimeError as e:
+        console.print(f"[yellow]{e}[/yellow]")
+        console.print("Use --force to delete anyway")
+        sys.exit(1)
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
         sys.exit(1)

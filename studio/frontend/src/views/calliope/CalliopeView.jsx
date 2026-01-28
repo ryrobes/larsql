@@ -1,1289 +1,918 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import Split from 'react-split';
-import { motion, AnimatePresence } from 'framer-motion';
 import { Icon } from '@iconify/react';
-import { Button, Badge, CheckpointRenderer, AppPreview, useToast } from '../../components';
-import RichMarkdown from '../../components/RichMarkdown';
-import CascadeSpecGraph from '../../components/CascadeSpecGraph';
-import useExplorePolling from '../explore/hooks/useExplorePolling';
-import { ROUTES } from '../../routes.helpers';
-import './CalliopeView.css';
+import html2canvas from 'html2canvas';
+import CaptureOverlay from '../canvas/components/CaptureOverlay';
+import IntentReviewModal from '../canvas/components/IntentReviewModal';
 import { API_BASE_URL } from '../../config/api';
-
-const STORAGE_KEY = 'calliope_last_session';
-const STORAGE_TIME_KEY = 'calliope_last_session_time';
-const STORAGE_GOAL_PREFIX = 'calliope_goal_';
+import { getAuthHeaders } from '../../stores/authStore';
+import { useToast } from '../../stores/toastStore';
+import './CalliopeView.css';
 
 /**
- * CalliopeView - The Muse of App Building
+ * CalliopeView - Micro-App Builder
+ *
+ * Build full-stack micro-apps (FastAPI + React) through voice and drawing.
+ * Hold spacebar to draw and talk, release to iterate.
  */
 const CalliopeView = () => {
-  const { sessionId: urlSessionId } = useParams();
+  const { kitId: urlKitId } = useParams();
   const navigate = useNavigate();
+
+  // Kit state
+  const [kits, setKits] = useState([]);
+  const [activeKit, setActiveKit] = useState(null);
+  const [templates, setTemplates] = useState([]);
+  const [selectedTemplate, setSelectedTemplate] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [loadingKits, setLoadingKits] = useState(true);
+  const [error, setError] = useState(null);
+
+  // Capture state
+  const [captureMode, setCaptureMode] = useState('idle'); // 'idle' | 'capturing' | 'reviewing'
+  const [capturedScreenshot, setCapturedScreenshot] = useState(null);
+  const [capturedTranscript, setCapturedTranscript] = useState('');
+  const [capturedStrokes, setCapturedStrokes] = useState([]);
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  // Building state - for background generation
+  const [isBuilding, setIsBuilding] = useState(false);
+  const [buildingSessionId, setBuildingSessionId] = useState(null);
+
+  // Toasts
   const { showToast } = useToast();
-  const chatEndRef = useRef(null);
-  const hasAutoRestored = useRef(false);
 
-  // Session state
-  const [sessionId, setSessionId] = useState(urlSessionId || null);
-  const [isStarting, setIsStarting] = useState(false);
-  const [goalInput, setGoalInput] = useState('');
+  // Message polling refs
+  const lastMessageTimeRef = useRef(null);
+  const seenMessagesRef = useRef(new Set());
+  const messagePollingRef = useRef(null);
 
-  // Cascade being built
-  const [builtCascade, setBuiltCascade] = useState(null);
-  const [builtCells, setBuiltCells] = useState([]);
-  const [builtInputsSchema, setBuiltInputsSchema] = useState({});
+  // Audio state
+  const [audioLevel, setAudioLevel] = useState(0);
+  const [recordingDuration, setRecordingDuration] = useState(0);
 
-  // Spawned cascade tracking (now uses AppPreview iframe)
-  const [spawnedSessionId, setSpawnedSessionId] = useState(null);
-  const [spawnedState, setSpawnedState] = useState(null);  // State from iframe postMessage
-  const [spawnedCurrentCell, setSpawnedCurrentCell] = useState(null);  // Current cell from iframe
+  // Refs
+  const viewRef = useRef(null);
+  const captureOverlayRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const audioContextRef = useRef(null);
+  const analyserRef = useRef(null);
+  const animationFrameRef = useRef(null);
+  const durationIntervalRef = useRef(null);
+  const spacebarDownRef = useRef(false);
+  const iframeRef = useRef(null);
+  const interceptRef = useRef(null);
+  const captureModeRef = useRef('idle'); // Mirror of captureMode for use in callbacks
+  const streamRef = useRef(null);
+  const screenshotResolversRef = useRef({}); // Pending screenshot request resolvers
 
-  // UI state
-  const [splitSizes, setSplitSizes] = useState([35, 65]); // Chat narrower by default
-  const [rightPanelSizes, setRightPanelSizes] = useState([40, 60]); // Graph / Live preview split
-  const [showYaml, setShowYaml] = useState(false);
-
-  // Use the explore polling hook for Calliope session
-  const {
-    logs,
-    checkpoint: calliopeCheckpoint,
-    ghostMessages,
-    orchestrationState,
-    sessionStatus,
-    totalCost,
-    isPolling,
-    error
-  } = useExplorePolling(sessionId);
-
-  // Cell status derived from iframe postMessage events (no more log polling)
-  const cellStatus = useMemo(() => {
-    if (!builtCells || builtCells.length === 0 || !spawnedCurrentCell) {
-      return {};
-    }
-
-    const status = {};
-    const cellNames = builtCells.map(c => c.name);
-    const currentCellIndex = cellNames.indexOf(spawnedCurrentCell);
-
-    for (let i = 0; i < cellNames.length; i++) {
-      const cellName = cellNames[i];
-      if (i < currentCellIndex) {
-        status[cellName] = 'completed';
-      } else if (cellName === spawnedCurrentCell) {
-        status[cellName] = 'current';
-      } else {
-        status[cellName] = 'pending';
-      }
-    }
-
-    return status;
-  }, [builtCells, spawnedCurrentCell]);
-
-  // Auto-restore last session on mount
-  useEffect(() => {
-    if (urlSessionId || hasAutoRestored.current) return;
-    hasAutoRestored.current = true;
-
-    const lastSession = localStorage.getItem(STORAGE_KEY);
-    const lastTime = localStorage.getItem(STORAGE_TIME_KEY);
-
-    if (!lastSession || !lastTime) return;
-
-    const elapsed = Date.now() - parseInt(lastTime, 10);
-    const ONE_HOUR = 60 * 60 * 1000;
-
-    if (elapsed >= ONE_HOUR) {
-      console.log('[CalliopeView] Session expired');
-      return;
-    }
-
-    // Validate session still exists
-    fetch(`${API_BASE_URL}/api/sessions?limit=100`)
-      .then(r => r.json())
-      .then(data => {
-        const session = data.sessions?.find(s => s.session_id === lastSession);
-        if (session && (session.status === 'running' || session.status === 'blocked')) {
-          console.log('[CalliopeView] Auto-restoring session:', lastSession);
-          setSessionId(lastSession);
-          navigate(ROUTES.calliopeWithSession(lastSession));
-        }
-      })
-      .catch(err => console.error('[CalliopeView] Failed to validate session:', err));
-  }, [urlSessionId, navigate]);
-
-  // Persist session to localStorage
-  useEffect(() => {
-    if (sessionId) {
-      localStorage.setItem(STORAGE_KEY, sessionId);
-      localStorage.setItem(STORAGE_TIME_KEY, Date.now().toString());
-    }
-  }, [sessionId]);
-
-  // Restore goal from localStorage or fetch from API when viewing a session
-  useEffect(() => {
-    if (sessionId && !goalInput) {
-      // First try localStorage
-      const storedGoal = localStorage.getItem(`${STORAGE_GOAL_PREFIX}${sessionId}`);
-      if (storedGoal) {
-        setGoalInput(storedGoal);
+  // Request screenshot from iframe via postMessage
+  const requestIframeScreenshot = useCallback(() => {
+    return new Promise((resolve, reject) => {
+      if (!iframeRef.current?.contentWindow) {
+        reject(new Error('Iframe not available'));
         return;
       }
 
-      // Fallback: fetch from session API
-      fetch(`${API_BASE_URL}/api/studio/session-cascade/${sessionId}`)
-        .then(r => r.json())
-        .then(data => {
-          if (data.input_data?.goal) {
-            setGoalInput(data.input_data.goal);
-            // Cache it for future
-            localStorage.setItem(`${STORAGE_GOAL_PREFIX}${sessionId}`, data.input_data.goal);
-          }
-        })
-        .catch(err => console.log('[CalliopeView] Failed to fetch session goal:', err));
-    }
-  }, [sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
+      const requestId = `screenshot-${Date.now()}`;
+      const timeout = setTimeout(() => {
+        delete screenshotResolversRef.current[requestId];
+        reject(new Error('Screenshot request timed out'));
+      }, 5000);
 
-  // Scroll to bottom on new messages - only if user is near bottom
-  const chatContainerRef = useRef(null);
-  const isUserScrolledUp = useRef(false);
+      screenshotResolversRef.current[requestId] = { resolve, reject, timeout };
 
-  // Track if user has scrolled up
-  const handleChatScroll = useCallback(() => {
-    const container = chatContainerRef.current;
-    if (!container) return;
-
-    // Consider "at bottom" if within 100px of bottom
-    const atBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
-    isUserScrolledUp.current = !atBottom;
-  }, []);
-
-  // Auto-scroll only when user hasn't scrolled up
-  useEffect(() => {
-    if (!isUserScrolledUp.current) {
-      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [logs, calliopeCheckpoint]);
-
-  // Extract cascade_write results from logs
-  useEffect(() => {
-    if (!logs || logs.length === 0) return;
-
-    console.log('[CalliopeView] Processing', logs.length, 'logs for cascade_write');
-
-    // Look for cascade_write results - check ALL logs (most recent first)
-    // Prompt-based tools can appear in various log types, so we check content broadly
-    for (const log of [...logs].reverse()) {
-      // Tool results can be stored with various node_types/roles depending on how the tool was invoked
-      // Check broadly: tool_result, deterministic, tool role, OR any content containing cascade_write
-      const hasCascadeWriteContent = log.content_json && (
-        log.content_json.includes('cascade_write') ||
-        log.content_json.includes("'cascade_id'") ||
-        log.content_json.includes('"cascade_id"')
-      );
-      const isToolResult = log.node_type === 'tool_result' || log.node_type === 'deterministic' ||
-                          log.role === 'tool' || hasCascadeWriteContent;
-
-      // DEBUG: Log all potential tool results
-      if (log.node_type || log.role === 'tool') {
-        console.log('[CalliopeView] Take log:', {
-          role: log.role,
-          node_type: log.node_type,
-          isToolResult,
-          hasContent: !!log.content_json,
-          contentLen: log.content_json?.length,
-        });
-      }
-
-      if (isToolResult) {
-        // Check tool name from metadata
-        let toolName = null;
-        if (log.metadata_json) {
-          try {
-            const metadata = typeof log.metadata_json === 'string'
-              ? JSON.parse(log.metadata_json)
-              : log.metadata_json;
-            toolName = metadata.tool_name || metadata.name || metadata.tool;
-          } catch (e) {}
-        }
-
-        console.log('[CalliopeView] Tool result log:', {
-          toolName,
-          role: log.role,
-          node_type: log.node_type,
-          hasContent: !!log.content_json,
-          contentPreview: log.content_json?.substring(0, 200),
-          metadata: log.metadata_json
-        });
-
-        if (log.content_json) {
-          try {
-            // Try to parse the content as JSON (may be double-encoded or in Python repr format)
-            let result = log.content_json;
-
-            // First parse: content_json may be stringified
-            if (typeof result === 'string') {
-              try {
-                result = JSON.parse(result);
-              } catch (e) {
-                // Not JSON, keep as string
-              }
-            }
-
-            // Check for "Tool Result (tool_name):\n{...}" format from prompt-based tools
-            if (typeof result === 'string' && result.startsWith('Tool Result (')) {
-              // Extract the JSON/Python repr part after the prefix
-              const match = result.match(/^Tool Result \([^)]+\):\n(.+)$/s);
-              if (match) {
-                let pyRepr = match[1];
-                console.log('[CalliopeView] Extracted tool result body:', pyRepr.substring(0, 100));
-
-                // Python repr is hard to parse due to nested quotes. Extract key fields directly.
-                try {
-                  // Extract cascade_id
-                  const cascadeIdMatch = pyRepr.match(/'cascade_id':\s*'([^']+)'/);
-                  // Extract success
-                  const successMatch = pyRepr.match(/'success':\s*(True|False)/);
-                  // Extract path
-                  const pathMatch = pyRepr.match(/'path':\s*'([^']+)'/);
-                  // Extract cell_count
-                  const cellCountMatch = pyRepr.match(/'cell_count':\s*(\d+)/);
-
-                  // Extract cells array - look for the cells list
-                  const cellsMatch = pyRepr.match(/'cells':\s*\[(.*?)\],\s*'graph'/s);
-                  let cells = [];
-                  if (cellsMatch && cellsMatch[1].trim()) {
-                    // Parse individual cell objects from the cells array
-                    const cellsStr = cellsMatch[1];
-                    // Match each cell dict: {'name': '...', 'type': '...', ...}
-                    const cellMatches = cellsStr.matchAll(/\{'name':\s*'([^']+)',\s*'type':\s*'([^']+)'[^}]*'handoffs':\s*\[([^\]]*)\][^}]*\}/g);
-                    for (const cm of cellMatches) {
-                      const handoffsStr = cm[3];
-                      const handoffs = handoffsStr.match(/'([^']+)'/g)?.map(h => h.replace(/'/g, '')) || [];
-                      cells.push({
-                        name: cm[1],
-                        type: cm[2],
-                        handoffs: handoffs,
-                      });
-                    }
-                  }
-
-                  // Extract graph nodes
-                  const nodesMatch = pyRepr.match(/'nodes':\s*\[(.*?)\],\s*'edges'/s);
-                  let nodes = [];
-                  if (nodesMatch && nodesMatch[1].trim()) {
-                    const nodesStr = nodesMatch[1];
-                    // Match each node: {'id': '...', 'label': '...', 'type': '...', ...}
-                    const nodeMatches = nodesStr.matchAll(/\{'id':\s*'([^']+)',\s*'label':\s*'([^']+)',\s*'type':\s*'([^']+)'/g);
-                    for (const nm of nodeMatches) {
-                      nodes.push({
-                        id: nm[1],
-                        label: nm[2],
-                        type: nm[3],
-                      });
-                    }
-                  }
-
-                  // Extract graph edges
-                  const edgesMatch = pyRepr.match(/'edges':\s*\[(.*?)\]/s);
-                  let edges = [];
-                  if (edgesMatch && edgesMatch[1].trim()) {
-                    const edgesStr = edgesMatch[1];
-                    const edgeMatches = edgesStr.matchAll(/\{'source':\s*'([^']+)',\s*'target':\s*'([^']+)'\}/g);
-                    for (const em of edgeMatches) {
-                      edges.push({ source: em[1], target: em[2] });
-                    }
-                  }
-
-                  // Extract yaml_preview (for display)
-                  const yamlMatch = pyRepr.match(/'yaml_preview':\s*["']([^]*?)["'],\s*'cell_count'/);
-                  let yamlPreview = '';
-                  if (yamlMatch) {
-                    yamlPreview = yamlMatch[1].replace(/\\n/g, '\n').replace(/\\'/g, "'");
-                  }
-
-                  // Build result object
-                  if (cascadeIdMatch) {
-                    result = {
-                      cascade_id: cascadeIdMatch[1],
-                      success: successMatch ? successMatch[1] === 'True' : false,
-                      path: pathMatch ? pathMatch[1] : null,
-                      cell_count: cellCountMatch ? parseInt(cellCountMatch[1]) : cells.length,
-                      cells: cells,
-                      graph: { nodes, edges },
-                      yaml_preview: yamlPreview,
-                    };
-                    console.log('[CalliopeView] Parsed Python repr via regex:', {
-                      cascade_id: result.cascade_id,
-                      cells: cells.length,
-                      nodes: nodes.length,
-                    });
-                  }
-                } catch (e) {
-                  console.log('[CalliopeView] Failed to extract from Python repr:', e.message);
-                }
-              }
-            }
-
-            // Second parse: result might be str(dict) from Python - try to parse it
-            if (typeof result === 'string' && (result.startsWith('{') || result.startsWith('['))) {
-              // Try converting Python repr format
-              let converted = result
-                .replace(/'/g, '"')
-                .replace(/\bTrue\b/g, 'true')
-                .replace(/\bFalse\b/g, 'false')
-                .replace(/\bNone\b/g, 'null');
-              try {
-                result = JSON.parse(converted);
-              } catch (e) {
-                // Still can't parse
-              }
-            }
-
-            // Check if this is a cascade_write result (by structure or tool name)
-            const isCascadeWrite = (
-              (result && typeof result === 'object' && result.cascade_id && result.success !== undefined) ||
-              toolName === 'cascade_write'
-            );
-
-            if (isCascadeWrite && result && typeof result === 'object') {
-              console.log('[CalliopeView] ✓ Found cascade_write result!', {
-                cascade_id: result.cascade_id,
-                success: result.success,
-                path: result.path,
-                cell_count: result.cell_count,
-                has_graph: !!result.graph,
-                has_cells: !!result.cells,
-                graph_nodes: result.graph?.nodes?.length,
-                cells_len: result.cells?.length,
-              });
-              setBuiltCascade(result);
-
-              // Build cells from graph data (preferred)
-              if (result.graph?.nodes && result.graph.nodes.length > 0) {
-                const cells = result.graph.nodes.map(node => ({
-                  name: node.label || node.id,
-                  tool: node.tool,
-                  instructions: node.type === 'llm' ? 'LLM cell' : undefined,
-                  hitl: node.type === 'hitl' ? '<hitl>' : undefined,
-                  handoffs: (result.graph.edges || [])
-                    .filter(e => e.source === node.id)
-                    .map(e => e.target),
-                }));
-                setBuiltCells(cells);
-                console.log('[CalliopeView] Set builtCells from graph:', cells);
-              }
-              // Fallback to cells summary
-              else if (result.cells && result.cells.length > 0) {
-                const cells = result.cells.map(cell => ({
-                  name: cell.name,
-                  tool: cell.tool,
-                  hitl: cell.type === 'hitl' ? '<hitl>' : undefined,
-                  instructions: cell.type === 'llm' ? 'LLM cell' : undefined,
-                  handoffs: cell.handoffs || [],
-                }));
-                setBuiltCells(cells);
-                console.log('[CalliopeView] Set builtCells from cells:', cells);
-              }
-              // Fallback: create minimal cell representation if we have cell_count
-              else if (result.cell_count && result.cell_count > 0) {
-                console.log('[CalliopeView] No graph/cells data, but cell_count:', result.cell_count);
-                // We can still show the cascade exists, just without graph details
-              }
-
-              break; // Found the latest cascade_write result
-            }
-
-            // Also check for spawn_cascade results
-            // Can be object format or plain text: "Spawned cascade '...' with Session ID: xxx"
-            if (result && typeof result === 'object' && result.session_id && result.status === 'started') {
-              console.log('[CalliopeView] Found spawn_cascade result (object):', result.session_id);
-              setSpawnedSessionId(result.session_id);
-            } else if (toolName === 'spawn_cascade' && typeof result === 'string') {
-              // Parse from plain text: "Spawned cascade '...' with Session ID: xxx"
-              const sessionMatch = result.match(/Session ID: (\S+)/);
-              if (sessionMatch) {
-                console.log('[CalliopeView] Found spawn_cascade result (text):', sessionMatch[1]);
-                setSpawnedSessionId(sessionMatch[1]);
-              }
-            } else if (typeof log.content_json === 'string' && log.content_json.includes('spawn_cascade')) {
-              // Also try original content_json for spawn_cascade
-              const sessionMatch = log.content_json.match(/Session ID: (\S+)/);
-              if (sessionMatch) {
-                console.log('[CalliopeView] Found spawn_cascade session ID from raw:', sessionMatch[1]);
-                setSpawnedSessionId(sessionMatch[1]);
-              }
-            }
-          } catch (e) {
-            console.log('[CalliopeView] Failed to parse tool result:', e);
-          }
-        }
-      }
-    }
-  }, [logs]);
-
-  // Track which sessions we've sent feedback for
-  const feedbackSentRef = useRef(new Set());
-
-  // Handle app preview session complete (from iframe postMessage)
-  const handleAppSessionComplete = useCallback(async (data) => {
-    console.log('[CalliopeView] App session completed:', data);
-
-    // Auto-feedback to Calliope when spawned cascade completes
-    if (calliopeCheckpoint && !feedbackSentRef.current.has(data.sessionId)) {
-      feedbackSentRef.current.add(data.sessionId);
-
-      const feedback = {
-        spawned_session: data.sessionId,
-        spawned_status: data.status,
-        spawned_state: data.state,
-      };
-
-      console.log('[CalliopeView] Auto-sending feedback to Calliope:', feedback);
-
-      try {
-        await fetch(`${API_BASE_URL}/api/checkpoints/${calliopeCheckpoint.id}/respond`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            response: {
-              feedback: `Spawned cascade ${data.status}`,
-              ...feedback,
-            }
-          }),
-        });
-        showToast('Feedback sent to Calliope', { type: 'info' });
-      } catch (e) {
-        console.error('[CalliopeView] Failed to send feedback:', e);
-      }
-    }
-  }, [calliopeCheckpoint, showToast]);
-
-  // Handle cell change from iframe
-  const handleAppCellChange = useCallback((cellName, state) => {
-    console.log('[CalliopeView] App cell changed:', cellName);
-    setSpawnedCurrentCell(cellName);
-    if (state) {
-      setSpawnedState(state);
-    }
-  }, []);
-
-  // Handle app error from iframe
-  const handleAppError = useCallback((error) => {
-    console.error('[CalliopeView] App error:', error);
-    showToast(`App error: ${error.message}`, { type: 'error' });
-  }, [showToast]);
-
-  // Known tool names to filter out
-  const KNOWN_TOOLS = ['cascade_write', 'cascade_read', 'spawn_cascade', 'request_decision', 'set_state', 'route_to'];
-
-  // Extract displayable messages from logs - include assistant messages and tool calls
-  const messages = useMemo(() => {
-    const msgs = [];
-    let pendingToolCalls = []; // Collect tool calls to group them
-
-    for (const log of logs) {
-      // Tool call - collect for grouping
-      if (log.node_type === 'tool_result' || log.node_type === 'deterministic' || log.node_type === 'tool_call') {
-        let toolName = 'tool';
-        if (log.metadata_json) {
-          try {
-            const metadata = typeof log.metadata_json === 'string'
-              ? JSON.parse(log.metadata_json)
-              : log.metadata_json;
-            toolName = metadata.tool_name || metadata.name || metadata.tool || 'tool';
-          } catch (e) {}
-        }
-
-        pendingToolCalls.push({
-          id: log.message_id || `tool_${msgs.length}_${pendingToolCalls.length}`,
-          tool: toolName,
-          timestamp: log.timestamp,
-        });
-        continue;
-      }
-
-      // User messages (checkpoint responses, turn inputs)
-      if (log.role === 'user' && log.content_json) {
-        try {
-          let content = log.content_json;
-
-          // Parse content_json if it's a string
-          if (typeof content === 'string') {
-            try {
-              const parsed = JSON.parse(content);
-              if (typeof parsed === 'string') {
-                content = parsed;
-              } else if (parsed && typeof parsed === 'object') {
-                // Extract text content if present
-                if (parsed.content && typeof parsed.content === 'string') {
-                  content = parsed.content;
-                } else if (parsed.text && typeof parsed.text === 'string') {
-                  content = parsed.text;
-                }
-              }
-            } catch (e) {
-              // Not JSON, use as-is
-            }
-          }
-
-          // Skip if not a string
-          if (typeof content !== 'string') {
-            continue;
-          }
-
-          // Skip framework/system messages that start with common patterns
-          const lowerContent = content.toLowerCase();
-          if (content.startsWith('## New Task') ||
-              content.startsWith('## Input Data:') ||
-              content.startsWith('## Tool Response') ||
-              content.includes('You are an AI assistant') ||
-              lowerContent.startsWith('system:')) {
-            continue;
-          }
-
-          // Check metadata for debug_only flag
-          if (log.metadata_json) {
-            try {
-              const metadata = typeof log.metadata_json === 'string'
-                ? JSON.parse(log.metadata_json)
-                : log.metadata_json;
-              if (metadata.debug_only || metadata.not_sent_to_llm) {
-                continue;
-              }
-              // Skip framework-generated task inputs (these are prompts, not user messages)
-              if (metadata.semantic_actor === 'framework' && metadata.semantic_purpose === 'task_input') {
-                continue;
-              }
-            } catch (e) {}
-          }
-
-          // Skip very short messages
-          if (content.length < 3) {
-            continue;
-          }
-
-          // Flush any pending tool calls before user message
-          if (pendingToolCalls.length > 0) {
-            msgs.push({
-              id: `toolgroup_${msgs.length}`,
-              type: 'tool_group',
-              tools: [...pendingToolCalls],
-              timestamp: pendingToolCalls[0].timestamp,
-            });
-            pendingToolCalls = [];
-          }
-
-          msgs.push({
-            id: log.message_id || `user_${msgs.length}`,
-            type: 'user',
-            content: content,
-            timestamp: log.timestamp,
-          });
-        } catch (e) {
-          console.log('[CalliopeView] Failed to parse user message:', e);
-        }
-        continue;
-      }
-
-      // LLM text responses (assistant role)
-      if (log.role === 'assistant' && log.content_json) {
-        // First, flush any pending tool calls as a group
-        if (pendingToolCalls.length > 0) {
-          msgs.push({
-            id: `toolgroup_${msgs.length}`,
-            type: 'tool_group',
-            tools: [...pendingToolCalls],
-            timestamp: pendingToolCalls[0].timestamp,
-          });
-          pendingToolCalls = [];
-        }
-
-        try {
-          let content = log.content_json;
-
-          // Skip if raw content looks like a tool call (before any parsing)
-          if (typeof content === 'string') {
-            // Check for common tool call patterns in raw string
-            if (content.includes('"tool"') || content.includes('"function"') ||
-                content.includes('"arguments"') || content.includes('"tool_calls"') ||
-                content.includes("'tool'") || content.includes("'arguments'") ||
-                content.includes('"type": "function"') || content.includes("'type': 'function'")) {
-              continue;
-            }
-            // Check for known tool names
-            if (KNOWN_TOOLS.some(t => content.includes(`"${t}"`) || content.includes(`'${t}'`))) {
-              continue;
-            }
-            // Skip JSON-like content
-            const trimmed = content.trim();
-            if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
-              continue;
-            }
-          }
-
-          // Try to parse if it's JSON-encoded
-          try {
-            const parsed = JSON.parse(content);
-            // Skip if it's a tool call object
-            if (parsed && typeof parsed === 'object') {
-              // Tool call format: {"tool": "name", "arguments": {...}}
-              if (parsed.tool || parsed.function || parsed.name || parsed.tool_calls ||
-                  parsed.arguments || parsed.type === 'function') {
-                continue;
-              }
-              // Check if it's an array of tool calls
-              if (Array.isArray(parsed) && parsed.some(item => item.tool || item.function || item.name)) {
-                continue;
-              }
-              // Extract text content if present
-              if (parsed.content && typeof parsed.content === 'string') {
-                content = parsed.content;
-              } else if (parsed.text && typeof parsed.text === 'string') {
-                content = parsed.text;
-              } else {
-                // It's some other object, skip it
-                continue;
-              }
-            } else if (typeof parsed === 'string') {
-              content = parsed;
-            }
-          } catch (e) {
-            // Not JSON, use as-is
-          }
-
-          // Skip if it still looks like JSON, tool call, or structured data
-          if (typeof content === 'string') {
-            const trimmed = content.trim();
-            if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
-              continue;
-            }
-            // Also skip if it contains tool call markers
-            if (content.includes('"tool"') || content.includes('"arguments"') ||
-                content.includes("'tool'") || content.includes("'arguments'")) {
-              continue;
-            }
-            // Skip if it has the structure of a tool definition/call
-            if (content.includes('"type":') && content.includes('"name":')) {
-              continue;
-            }
-          }
-
-          // Skip very short messages
-          if (typeof content !== 'string' || content.length < 10) {
-            continue;
-          }
-
-          msgs.push({
-            id: log.message_id || `msg_${msgs.length}`,
-            type: 'assistant',
-            content: content,
-            timestamp: log.timestamp,
-          });
-        } catch (e) {
-          console.log('[CalliopeView] Failed to parse assistant message:', e);
-        }
-      }
-    }
-
-    // Flush remaining tool calls
-    if (pendingToolCalls.length > 0) {
-      msgs.push({
-        id: `toolgroup_${msgs.length}`,
-        type: 'tool_group',
-        tools: [...pendingToolCalls],
-        timestamp: pendingToolCalls[0].timestamp,
-      });
-    }
-
-    // Post-process: merge consecutive tool_groups together
-    const mergedMsgs = [];
-    for (const msg of msgs) {
-      if (msg.type === 'tool_group') {
-        // Check if last message is also a tool_group - merge them
-        const lastMsg = mergedMsgs[mergedMsgs.length - 1];
-        if (lastMsg && lastMsg.type === 'tool_group') {
-          lastMsg.tools = [...lastMsg.tools, ...msg.tools];
-        } else {
-          mergedMsgs.push({ ...msg, tools: [...msg.tools] });
-        }
-      } else {
-        mergedMsgs.push(msg);
-      }
-    }
-
-    return mergedMsgs;
-  }, [logs]);
-
-  // State for expanded tool groups
-  const [expandedToolGroups, setExpandedToolGroups] = useState(new Set());
-
-  const toggleToolGroup = useCallback((groupId) => {
-    setExpandedToolGroups(prev => {
-      const next = new Set(prev);
-      if (next.has(groupId)) {
-        next.delete(groupId);
-      } else {
-        next.add(groupId);
-      }
-      return next;
+      iframeRef.current.contentWindow.postMessage({
+        type: 'CALLIOPE_SCREENSHOT_REQUEST',
+        requestId,
+      }, '*');
     });
   }, []);
 
-  // Start a new session with Calliope
-  const handleStart = async () => {
-    setIsStarting(true);
+  // Listen for screenshot responses from iframe
+  useEffect(() => {
+    const handleMessage = (event) => {
+      if (event.data?.type === 'CALLIOPE_SCREENSHOT_RESPONSE') {
+        const { requestId, screenshot, error } = event.data;
+        const pending = screenshotResolversRef.current[requestId];
+        if (pending) {
+          clearTimeout(pending.timeout);
+          delete screenshotResolversRef.current[requestId];
+          if (error) {
+            pending.reject(new Error(error));
+          } else {
+            pending.resolve(screenshot);
+          }
+        }
+      }
+    };
 
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
+
+  // Fetch templates and kits on mount
+  useEffect(() => {
+    fetchTemplates();
+    fetchKits();
+  }, []);
+
+  const fetchTemplates = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/run-cascade`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          cascade_path: 'cascades/calliope.yaml',
-          inputs: goalInput ? { goal: goalInput } : {},
-        }),
+      const response = await fetch(`${API_BASE_URL}/api/calliope/templates`, {
+        headers: getAuthHeaders(),
       });
-
-      const data = await res.json();
-
-      if (data.error) {
-        showToast(data.error, { type: 'error' });
-        setIsStarting(false);
-        return;
+      if (response.ok) {
+        const data = await response.json();
+        const templateList = data.templates || [];
+        setTemplates(templateList);
+        // Set default selection to first template
+        if (templateList.length > 0 && !selectedTemplate) {
+          setSelectedTemplate(templateList[0].id);
+        }
       }
-
-      setSessionId(data.session_id);
-      // Store the goal for this session so it persists on reload
-      if (goalInput) {
-        localStorage.setItem(`${STORAGE_GOAL_PREFIX}${data.session_id}`, goalInput);
-      }
-      navigate(ROUTES.calliopeWithSession(data.session_id));
-      showToast('Calliope is ready!', { type: 'success' });
-
     } catch (err) {
-      showToast(`Failed to start: ${err.message}`, { type: 'error' });
+      console.error('Failed to fetch templates:', err);
+    }
+  };
+
+  // Handle URL kit ID
+  useEffect(() => {
+    if (urlKitId && kits.length > 0) {
+      const kit = kits.find(k => k.kit_id === urlKitId);
+      if (kit) {
+        if (kit.status === 'running') {
+          setActiveKit(kit);
+        } else {
+          // Start the kit
+          startKit(kit.kit_id);
+        }
+      }
+    }
+  }, [urlKitId, kits]);
+
+  const fetchKits = async () => {
+    try {
+      setLoadingKits(true);
+      const response = await fetch(`${API_BASE_URL}/api/calliope/kit`, {
+        headers: getAuthHeaders(),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setKits(data.kits || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch kits:', err);
     } finally {
-      setIsStarting(false);
+      setLoadingKits(false);
     }
   };
 
-  // Handle Calliope checkpoint response
-  const handleCalliopeResponse = async (response) => {
-    if (!calliopeCheckpoint) return;
-
+  const createKit = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/checkpoints/${calliopeCheckpoint.id}/respond`, {
+      setCreating(true);
+      setError(null);
+      const response = await fetch(`${API_BASE_URL}/api/calliope/kit`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ response }),
+        headers: {
+          ...getAuthHeaders(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ template: selectedTemplate }),
       });
 
-      const data = await res.json();
+      if (response.ok) {
+        const data = await response.json();
+        // Refresh kits list and start the new kit
+        await fetchKits();
+        await startKit(data.kit_id);
+      } else {
+        const err = await response.json();
+        setError(err.error || 'Failed to create kit');
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setCreating(false);
+    }
+  };
 
-      if (data.error) {
-        showToast(`Failed: ${data.error}`, { type: 'error' });
+  const startKit = async (kitId) => {
+    try {
+      setStarting(true);
+      setError(null);
+      const response = await fetch(`${API_BASE_URL}/api/calliope/kit/${kitId}/start`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setActiveKit(data);
+        navigate(`/calliope/${kitId}`);
+        // Refresh kits to update status
+        fetchKits();
+      } else {
+        const err = await response.json();
+        setError(err.error || 'Failed to start kit');
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setStarting(false);
+    }
+  };
+
+  const stopKit = async () => {
+    if (!activeKit) return;
+
+    try {
+      await fetch(`${API_BASE_URL}/api/calliope/kit/${activeKit.kit_id}/stop`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+      });
+      setActiveKit(null);
+      navigate('/calliope');
+      fetchKits();
+    } catch (err) {
+      console.error('Failed to stop kit:', err);
+    }
+  };
+
+  // ============================================
+  // SPACEBAR CAPTURE (from CanvasView)
+  // ============================================
+
+  const startCapture = useCallback(async () => {
+    if (captureModeRef.current !== 'idle') return;
+
+    captureModeRef.current = 'capturing';
+    setCaptureMode('capturing');
+    setRecordingDuration(0);
+    setAudioLevel(0);
+    audioChunksRef.current = [];
+
+    try {
+      // Request microphone access
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          sampleRate: 44100,
+        }
+      });
+      streamRef.current = stream;
+
+      // Audio analysis for visualization
+      audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+      const source = audioContextRef.current.createMediaStreamSource(stream);
+      analyserRef.current = audioContextRef.current.createAnalyser();
+      analyserRef.current.fftSize = 256;
+      source.connect(analyserRef.current);
+
+      // Start level monitoring
+      const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
+      const updateLevel = () => {
+        if (analyserRef.current) {
+          analyserRef.current.getByteFrequencyData(dataArray);
+          const avg = dataArray.reduce((a, b) => a + b) / dataArray.length;
+          setAudioLevel(Math.min(100, (avg / 128) * 100));
+        }
+        animationFrameRef.current = requestAnimationFrame(updateLevel);
+      };
+      updateLevel();
+
+      // MediaRecorder setup - pick best supported format
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/webm')
+          ? 'audio/webm'
+          : 'audio/mp4';
+
+      const mediaRecorder = new MediaRecorder(stream, { mimeType });
+      mediaRecorderRef.current = mediaRecorder;
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          audioChunksRef.current.push(e.data);
+        }
+      };
+
+      mediaRecorder.start(100);
+
+      // Duration counter
+      durationIntervalRef.current = setInterval(() => {
+        setRecordingDuration(prev => prev + 1);
+      }, 1000);
+
+    } catch (err) {
+      console.error('Failed to start audio capture:', err);
+      // Continue without audio - user can still draw and type
+    }
+  }, []);
+
+  const stopCapture = useCallback(async () => {
+    if (captureModeRef.current !== 'capturing') return;
+    captureModeRef.current = 'processing';
+
+    // Stop audio recording
+    if (mediaRecorderRef.current?.state === 'recording') {
+      mediaRecorderRef.current.stop();
+    }
+
+    // Cleanup audio
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+    }
+    if (durationIntervalRef.current) {
+      clearInterval(durationIntervalRef.current);
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close();
+      audioContextRef.current = null;
+    }
+
+    // Get strokes from overlay before clearing
+    const strokes = captureOverlayRef.current?.getStrokes?.() || [];
+
+    // Get iframe position for coordinate adjustment
+    const iframeRect = iframeRef.current?.getBoundingClientRect() || { left: 0, top: 0 };
+
+    // Wait for repaint
+    setAudioLevel(0);
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+    // Capture screenshot from iframe and composite with strokes
+    let screenshotDataUrl = null;
+    try {
+      const iframeScreenshot = await requestIframeScreenshot();
+
+      // Load the iframe screenshot into an image
+      const img = new Image();
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+        img.src = iframeScreenshot;
+      });
+
+      // Create compositing canvas
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+
+      // Draw iframe screenshot as base
+      ctx.drawImage(img, 0, 0);
+
+      // Draw strokes on top, adjusting coordinates for iframe offset
+      strokes.forEach(stroke => {
+        if (stroke.points.length < 2) return;
+
+        ctx.beginPath();
+        ctx.strokeStyle = stroke.color;
+        ctx.lineWidth = stroke.size;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        // Adjust first point by iframe offset
+        const startX = stroke.points[0].x - iframeRect.left;
+        const startY = stroke.points[0].y - iframeRect.top;
+        ctx.moveTo(startX, startY);
+
+        // Draw remaining points
+        for (let i = 1; i < stroke.points.length; i++) {
+          const x = stroke.points[i].x - iframeRect.left;
+          const y = stroke.points[i].y - iframeRect.top;
+          ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      });
+
+      screenshotDataUrl = canvas.toDataURL('image/png');
+    } catch (err) {
+      console.error('Failed to capture/composite screenshot:', err);
+      // Fallback: capture parent (will show grey iframe but includes overlay drawings)
+      try {
+        if (viewRef.current) {
+          const canvas = await html2canvas(viewRef.current, {
+            backgroundColor: '#0a0a0f',
+            scale: 1,
+            logging: false,
+            useCORS: true,
+          });
+          screenshotDataUrl = canvas.toDataURL('image/png');
+        }
+      } catch (fallbackErr) {
+        console.error('Fallback screenshot also failed:', fallbackErr);
+      }
+    }
+
+    // Transcribe audio
+    let transcript = '';
+    if (audioChunksRef.current.length > 0) {
+      try {
+        const mimeType = mediaRecorderRef.current?.mimeType || 'audio/webm';
+        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+
+        if (audioBlob.size > 0) {
+          // Convert to base64
+          const reader = new FileReader();
+          const base64Promise = new Promise((resolve, reject) => {
+            reader.onloadend = () => resolve(reader.result.split(',')[1]);
+            reader.onerror = reject;
+          });
+          reader.readAsDataURL(audioBlob);
+          const base64Audio = await base64Promise;
+
+          const format = mimeType.includes('webm') ? 'webm' :
+                         mimeType.includes('mp4') ? 'm4a' : 'webm';
+
+          const response = await fetch(`${API_BASE_URL}/api/voice/transcribe`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+            body: JSON.stringify({
+              audio_base64: base64Audio,
+              format: format,
+            }),
+          });
+
+          if (response.ok) {
+            const result = await response.json();
+            transcript = result.text || '';
+          }
+        }
+      } catch (err) {
+        console.error('Transcription failed:', err);
+      }
+    }
+
+    // Clear overlay after screenshot
+    captureOverlayRef.current?.clear?.();
+
+    // Store captured data and show review modal
+    setCapturedScreenshot(screenshotDataUrl);
+    setCapturedTranscript(transcript);
+    setCapturedStrokes(strokes);
+    captureModeRef.current = 'reviewing';
+    setCaptureMode('reviewing');
+  }, [requestIframeScreenshot]);
+
+  // Spacebar detection - use capture phase to intercept before iframe gets events
+  useEffect(() => {
+    if (!activeKit) return;
+
+    const handleKeyDown = (e) => {
+      // Escape key steals focus back from iframe
+      if (e.code === 'Escape') {
+        viewRef.current?.focus();
         return;
       }
 
-      showToast('Response sent', { type: 'success' });
-    } catch (err) {
-      showToast(`Error: ${err.message}`, { type: 'error' });
-    }
-  };
+      if (e.code === 'Space' && !spacebarDownRef.current) {
+        // Ignore if in input
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
-  // Test the built cascade
-  const handleTestCascade = async () => {
-    if (!builtCascade?.path) {
-      showToast('No cascade to test yet', { type: 'warning' });
-      return;
-    }
+        e.preventDefault();
+        e.stopPropagation();
+        spacebarDownRef.current = true;
+        startCapture();
+      }
+    };
 
-    showToast('Starting test cascade...', { type: 'info' });
+    const handleKeyUp = (e) => {
+      if (e.code === 'Space' && spacebarDownRef.current) {
+        e.preventDefault();
+        e.stopPropagation();
+        spacebarDownRef.current = false;
+        stopCapture();
+      }
+    };
+
+    // When window loses focus (e.g., iframe clicked), release spacebar
+    const handleBlur = () => {
+      if (spacebarDownRef.current) {
+        spacebarDownRef.current = false;
+        stopCapture();
+      }
+    };
+
+    // Use capture phase (true) to intercept events before they reach iframe
+    document.addEventListener('keydown', handleKeyDown, true);
+    document.addEventListener('keyup', handleKeyUp, true);
+    window.addEventListener('blur', handleBlur);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown, true);
+      document.removeEventListener('keyup', handleKeyUp, true);
+      window.removeEventListener('blur', handleBlur);
+    };
+  }, [activeKit, startCapture, stopCapture]);
+
+  // Keep the intercept layer focused so spacebar works
+  useEffect(() => {
+    if (!activeKit || captureMode !== 'idle') return;
+
+    // Focus intercept layer on mount
+    interceptRef.current?.focus();
+
+    // Refocus when mouse moves near the edges of the canvas area
+    // This allows iframe interaction in the center while enabling spacebar near edges
+    let lastRefocus = 0;
+    const handleMouseMove = (e) => {
+      if (captureModeRef.current !== 'idle') return;
+
+      const now = Date.now();
+      if (now - lastRefocus < 100) return; // Throttle
+
+      const canvasArea = document.querySelector('.calliope-canvas-area');
+      if (!canvasArea) return;
+
+      const rect = canvasArea.getBoundingClientRect();
+      const edgeThreshold = 50; // pixels from edge
+
+      const nearEdge =
+        e.clientY < rect.top + edgeThreshold ||
+        e.clientY > rect.bottom - edgeThreshold ||
+        e.clientX < rect.left + edgeThreshold ||
+        e.clientX > rect.right - edgeThreshold;
+
+      if (nearEdge && document.activeElement !== interceptRef.current) {
+        lastRefocus = now;
+        interceptRef.current?.focus();
+      }
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    return () => document.removeEventListener('mousemove', handleMouseMove);
+  }, [activeKit, captureMode]);
+
+  // Poll for session messages while building (debounced)
+  const pollSessionMessages = useCallback(async (sessionId) => {
+    if (!sessionId) return;
 
     try {
-      const res = await fetch(`${API_BASE_URL}/api/run-cascade`, {
+      const after = lastMessageTimeRef.current || new Date(Date.now() - 10000).toISOString();
+      const response = await fetch(
+        `${API_BASE_URL}/api/calliope/session/${sessionId}/messages?after=${encodeURIComponent(after)}`,
+        { headers: getAuthHeaders() }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        const messages = data.messages || [];
+
+        // Show new messages as toasts (deduplicated)
+        for (const msg of messages) {
+          const key = `${msg.timestamp}-${msg.content}`;
+          if (!seenMessagesRef.current.has(key)) {
+            seenMessagesRef.current.add(key);
+
+            // Format message for toast
+            let text = msg.content;
+            if (msg.node_type === 'tool_call') {
+              text = `🔧 ${msg.content}`;
+            } else if (msg.cell_name) {
+              text = `[${msg.cell_name}] ${text}`;
+            }
+
+            showToast(text, { type: 'info', duration: 3000, icon: 'mdi:message-processing' });
+
+            // Update cursor
+            if (msg.timestamp > (lastMessageTimeRef.current || '')) {
+              lastMessageTimeRef.current = msg.timestamp;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      // Ignore polling errors
+    }
+  }, [showToast]);
+
+  // Start/stop message polling when building state changes
+  useEffect(() => {
+    if (isBuilding && buildingSessionId) {
+      // Reset tracking
+      seenMessagesRef.current = new Set();
+      lastMessageTimeRef.current = null;
+
+      // Poll every 2 seconds (debounced)
+      messagePollingRef.current = setInterval(() => {
+        pollSessionMessages(buildingSessionId);
+      }, 2000);
+
+      // Initial poll
+      pollSessionMessages(buildingSessionId);
+    } else {
+      // Stop polling
+      if (messagePollingRef.current) {
+        clearInterval(messagePollingRef.current);
+        messagePollingRef.current = null;
+      }
+    }
+
+    return () => {
+      if (messagePollingRef.current) {
+        clearInterval(messagePollingRef.current);
+      }
+    };
+  }, [isBuilding, buildingSessionId, pollSessionMessages]);
+
+  // Poll kit health and refresh iframe when server restarts
+  const waitForServerAndRefresh = useCallback(async (port, maxAttempts = 30) => {
+    const baseUrl = `http://localhost:${port}`;
+    let serverWasDown = false;
+
+    for (let i = 0; i < maxAttempts; i++) {
+      try {
+        // Quick health check
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 1000);
+        await fetch(`${baseUrl}/api/health`, { signal: controller.signal });
+        clearTimeout(timeout);
+
+        // If server was down and is now up, refresh
+        if (serverWasDown) {
+          console.log('[Calliope] Server restarted, refreshing iframe');
+          if (iframeRef.current) {
+            iframeRef.current.src = `${baseUrl}?_t=${Date.now()}`;
+          }
+          return true;
+        }
+      } catch (e) {
+        // Server is down (restarting)
+        serverWasDown = true;
+      }
+      await new Promise(r => setTimeout(r, 500));
+    }
+    return false;
+  }, []);
+
+  // Handle intent submission
+  const handleIntentSubmit = async ({ transcript, annotatedScreenshot }) => {
+    if (!activeKit) return;
+
+    // Close modal immediately so user can watch the app update
+    captureModeRef.current = 'idle';
+    setCaptureMode('idle');
+    setCapturedScreenshot(null);
+    setCapturedTranscript('');
+    setCapturedStrokes([]);
+
+    // Start building in background
+    setIsBuilding(true);
+    showToast('Building your changes...', { type: 'info', icon: 'mdi:hammer-wrench', duration: 3000 });
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/calliope/kit/${activeKit.kit_id}/generate`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          ...getAuthHeaders(),
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
-          cascade_path: builtCascade.path,
-          inputs: {},
+          request: transcript,
+          annotated_screenshot: annotatedScreenshot,
         }),
       });
 
-      const data = await res.json();
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Generation result:', data);
+        setBuildingSessionId(data.session_id);
 
-      if (data.error) {
-        showToast(data.error, { type: 'error' });
-        return;
+        // Wait for server to restart and refresh iframe
+        await waitForServerAndRefresh(activeKit.port);
+
+        showToast('Build complete!', { type: 'success', duration: 4000 });
+      } else {
+        const err = await response.json();
+        console.error('Generation failed:', err);
+        showToast(`Build failed: ${err.error || 'Unknown error'}`, { type: 'error', duration: 6000 });
       }
-
-      setSpawnedSessionId(data.session_id);
-      showToast('Test started!', { type: 'success' });
     } catch (err) {
-      showToast(`Failed: ${err.message}`, { type: 'error' });
+      console.error('Generation error:', err);
+      showToast(`Build error: ${err.message}`, { type: 'error', duration: 6000 });
+    } finally {
+      setIsBuilding(false);
+      setBuildingSessionId(null);
     }
   };
 
-  // Start new session
-  const handleNewSession = () => {
-    localStorage.removeItem(STORAGE_KEY);
-    localStorage.removeItem(STORAGE_TIME_KEY);
-    setSessionId(null);
-    setBuiltCascade(null);
-    setBuiltCells([]);
-    setSpawnedSessionId(null);
-    setSpawnedState(null);
-    setSpawnedCurrentCell(null);
-    navigate(ROUTES.CALLIOPE);
+  // Close review modal
+  const handleCloseReview = () => {
+    captureModeRef.current = 'idle';
+    setCaptureMode('idle');
+    setCapturedScreenshot(null);
+    setCapturedTranscript('');
+    setCapturedStrokes([]);
   };
 
-  // Welcome screen (no session yet)
-  if (!sessionId) {
+  // ============================================
+  // RENDER: Kit Selector (no active kit)
+  // ============================================
+
+  if (!activeKit) {
     return (
-      <div className="calliope-welcome" style={{zoom:1.3}}>
-        <div className="welcome-content">
-          <div className="welcome-avatar">
-            <img src="/Calliope.jpg" alt="Calliope" className="calliope-avatar-img" />
+      <div className="calliope-view calliope-selector">
+        <div className="calliope-selector-content">
+          <div className="calliope-selector-header">
+            <Icon icon="mdi:brush" className="calliope-logo" />
+            <h1>Calliope</h1>
+            <p>Build micro-apps with voice and drawing</p>
           </div>
-          <h1 style={{color: '#fc0fc0', fontFamily:'Homemade Apple', fontSize:28}}>Meet Calliope</h1>
-          <p className="welcome-tagline">
-            Muse of Cascade Building
-          </p>
-          <p className="welcome-description">
-            Describe what you want to build, and I'll help you create it.
-            We'll design your app together through conversation.
-          </p>
 
-          <div className="welcome-input-area">
-            <input
-              type="text"
-              value={goalInput}
-              onChange={(e) => setGoalInput(e.target.value)}
-              placeholder="What would you like to build? (optional)"
-              className="goal-input"
-              onKeyDown={(e) => e.key === 'Enter' && handleStart()}
-            />
-            <Button
-              variant="primary"
-              size="lg"
-              icon={isStarting ? 'mdi:loading' : 'mdi:message-text'}
-              iconClass={isStarting ? 'spinning' : ''}
-              onClick={handleStart}
-              disabled={isStarting}
+          {error && (
+            <div className="calliope-error">
+              <Icon icon="mdi:alert-circle" />
+              {error}
+            </div>
+          )}
+
+          {/* Create new kit */}
+          <section className="calliope-section">
+            <h2>Create New Kit</h2>
+            <div className="calliope-template-select">
+              <label>Template</label>
+              <select
+                value={selectedTemplate}
+                onChange={(e) => setSelectedTemplate(e.target.value)}
+                disabled={creating}
+              >
+                {templates.map(t => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+              <p className="calliope-template-desc">
+                {templates.find(t => t.id === selectedTemplate)?.description}
+              </p>
+            </div>
+            <button
+              className="calliope-create-btn"
+              onClick={createKit}
+              disabled={creating || !selectedTemplate}
             >
-              {isStarting ? 'Starting...' : 'Start Building'}
-            </Button>
-          </div>
+              {creating ? (
+                <>
+                  <Icon icon="mdi:loading" className="spinning" />
+                  Creating...
+                </>
+              ) : (
+                <>
+                  <Icon icon="mdi:plus" />
+                  Create Kit
+                </>
+              )}
+            </button>
+          </section>
 
-          <div className="welcome-hints">
-            <h3>Example ideas:</h3>
-            <ul>
-              <li>"A feedback review app where I can approve or reject items"</li>
-              <li>"A multi-step onboarding wizard for new users"</li>
-              <li>"A data review dashboard with approve/escalate actions"</li>
-            </ul>
-          </div>
+          {/* Existing kits */}
+          <section className="calliope-section">
+            <h2>Your Kits</h2>
+            {loadingKits ? (
+              <div className="calliope-loading">
+                <Icon icon="mdi:loading" className="spinning" />
+                Loading kits...
+              </div>
+            ) : kits.length === 0 ? (
+              <div className="calliope-empty">
+                <Icon icon="mdi:folder-open-outline" />
+                <p>No kits yet. Create one to get started!</p>
+              </div>
+            ) : (
+              <div className="calliope-kit-grid">
+                {kits.map(kit => (
+                  <div key={kit.kit_id} className={`calliope-kit-card ${kit.status}`}>
+                    <div className="calliope-kit-header">
+                      <span className="calliope-kit-name">{kit.kit_id}</span>
+                      <span className={`calliope-kit-status ${kit.status}`}>
+                        {kit.status}
+                      </span>
+                    </div>
+                    <div className="calliope-kit-meta">
+                      <span>Template: {kit.template}</span>
+                      {kit.port && <span>Port: {kit.port}</span>}
+                    </div>
+                    <button
+                      className="calliope-kit-action"
+                      onClick={() => kit.status === 'running' ? setActiveKit(kit) && navigate(`/calliope/${kit.kit_id}`) : startKit(kit.kit_id)}
+                      disabled={starting}
+                    >
+                      {kit.status === 'running' ? (
+                        <>
+                          <Icon icon="mdi:open-in-new" />
+                          Open
+                        </>
+                      ) : (
+                        <>
+                          <Icon icon="mdi:play" />
+                          Start
+                        </>
+                      )}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
         </div>
       </div>
     );
   }
 
-  // Main split view
+  // ============================================
+  // RENDER: Active Kit (building mode)
+  // ============================================
+
   return (
-    <div className="calliope-view">
-      <Split
-        className="calliope-split"
-        sizes={splitSizes}
-        onDragEnd={(sizes) => setSplitSizes(sizes)}
-        minSize={[300, 300]}
-        gutterSize={4}
-        gutterAlign="center"
-        direction="horizontal"
-      >
-        {/* Left Panel - Chat */}
-        <div className="calliope-chat-panel">
-          <div className="chat-header">
-            <div className="chat-avatar">
-              <img src="/Calliope.jpg" alt="Calliope" className="calliope-avatar-img" />
-            </div>
-            <div className="chat-title">
-              <h2>Calliope</h2>
-              <span className="chat-subtitle">
-                {sessionStatus === 'running' ? 'Building your app...' :
-                 sessionStatus === 'blocked' ? 'Waiting for input...' :
-                 sessionStatus === 'completed' ? 'Session complete' :
-                 'Ready'}
-              </span>
-            </div>
-            <div className="chat-header-actions">
-              {sessionStatus === 'running' && !calliopeCheckpoint && (
-                <Badge variant="label" color="purple" size="sm" pulse>
-                  <Icon icon="mdi:loading" className="spinning" width="12" />
-                  Thinking
-                </Badge>
-              )}
-              {totalCost > 0 && (
-                <Badge variant="label" color="green" size="sm">
-                  ${totalCost.toFixed(4)}
-                </Badge>
-              )}
-              <Button
-                variant="ghost"
-                size="sm"
-                icon="mdi:plus"
-                onClick={handleNewSession}
-                title="New Session"
-              />
-            </div>
-          </div>
-
-          <div
-            className="chat-messages"
-            ref={chatContainerRef}
-            onScroll={handleChatScroll}
-          >
-            {/* Welcome message */}
-            <div className="message assistant">
-              <div className="message-avatar">
-                <img src="/Calliope.jpg" alt="Calliope" className="calliope-avatar-img chat-avatar-tinted" />
-              </div>
-              <div className="message-content">
-                <RichMarkdown>
-                  Hello! I'm **Calliope**, your creative partner in app building. What would you like to create today?
-                </RichMarkdown>
-              </div>
-            </div>
-
-            {/* User's initial request (if present) */}
-            {goalInput && (
-              <div className="message user">
-                <div className="message-avatar user-avatar">
-                  <Icon icon="mdi:account" width="16" />
-                </div>
-                <div className="message-content">
-                  <RichMarkdown>{goalInput}</RichMarkdown>
-                </div>
-              </div>
-            )}
-
-            {/* Message history */}
-            <AnimatePresence>
-              {messages.map((msg) => {
-                // Tool group - collapsible
-                if (msg.type === 'tool_group') {
-                  const isExpanded = expandedToolGroups.has(msg.id);
-                  return (
-                    <motion.div
-                      key={msg.id}
-                      className="message tool-group"
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0 }}
-                    >
-                      <div
-                        className="tool-group-header"
-                        onClick={() => toggleToolGroup(msg.id)}
-                      >
-                        <Icon
-                          icon={isExpanded ? 'mdi:chevron-down' : 'mdi:chevron-right'}
-                          width="16"
-                        />
-                        <Icon icon="mdi:tools" width="14" />
-                        <span>{msg.tools.length} tool{msg.tools.length !== 1 ? 's' : ''} used</span>
-                      </div>
-                      {isExpanded && (
-                        <div className="tool-group-list">
-                          {msg.tools.map(tool => (
-                            <div key={tool.id} className="tool-group-item">
-                              <Icon icon="mdi:play-circle-outline" width="12" />
-                              <span>{tool.tool}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </motion.div>
-                  );
-                }
-
-                // User message
-                if (msg.type === 'user') {
-                  return (
-                    <motion.div
-                      key={msg.id}
-                      className="message user"
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0 }}
-                    >
-                      <div className="message-avatar user-avatar">
-                        <Icon icon="mdi:account" width="16" />
-                      </div>
-                      <div className="message-content">
-                        <RichMarkdown>{msg.content}</RichMarkdown>
-                      </div>
-                    </motion.div>
-                  );
-                }
-
-                // Regular assistant message
-                return (
-                  <motion.div
-                    key={msg.id}
-                    className="message assistant"
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0 }}
-                  >
-                    <div className="message-avatar">
-                      <img src="/Calliope.jpg" alt="Calliope" className="calliope-avatar-img chat-avatar-tinted" />
-                    </div>
-                    <div className="message-content">
-                      <RichMarkdown>{msg.content}</RichMarkdown>
-                    </div>
-                  </motion.div>
-                );
-              })}
-            </AnimatePresence>
-
-            {/* Ghost messages (live activity) - only show when no cascade built yet */}
-            {!builtCascade && (
-              <AnimatePresence>
-                {ghostMessages.slice(-3).map(ghost => (
-                  <motion.div
-                    key={ghost.id}
-                    className="message ghost"
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 0.7, x: 0 }}
-                    exit={{ opacity: 0, x: -20 }}
-                  >
-                    <div className="ghost-indicator">
-                      <Icon
-                        icon={ghost.type === 'tool_call' ? 'mdi:play' : ghost.type === 'tool_result' ? 'mdi:check' : 'mdi:thought-bubble'}
-                        width="12"
-                      />
-                      <span>{ghost.tool || 'thinking...'}</span>
-                    </div>
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-            )}
-
-            {/* Thinking indicator */}
-            {sessionStatus === 'running' && !calliopeCheckpoint && messages.length === 0 && (
-              <motion.div
-                className="message assistant thinking"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-              >
-                <div className="message-avatar">
-                  <img src="/Calliope.jpg" alt="Calliope" className="calliope-avatar-img chat-avatar-tinted" />
-                </div>
-                <div className="thinking-dots">
-                  <span></span><span></span><span></span>
-                </div>
-              </motion.div>
-            )}
-
-            {/* Current Calliope checkpoint (inline) */}
-            {calliopeCheckpoint && (
-              <motion.div
-                className="chat-checkpoint"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-              >
-                <div className="checkpoint-label">
-                  <Icon icon="mdi:hand-back-right" width="12" />
-                  <span>Calliope needs your input</span>
-                </div>
-                <CheckpointRenderer
-                  checkpoint={calliopeCheckpoint}
-                  onSubmit={handleCalliopeResponse}
-                  variant="inline"
-                  showCellOutput={false}
-                />
-              </motion.div>
-            )}
-
-            <div ref={chatEndRef} />
-          </div>
+    <div
+      className="calliope-view calliope-builder"
+      ref={viewRef}
+      tabIndex={-1}
+    >
+      {/* Header */}
+      <header className="calliope-header">
+        <div className="calliope-header-left">
+          <Icon icon="mdi:brush" className="calliope-header-icon" />
+          <h1>{activeKit.kit_id}</h1>
+          <span className="calliope-status running">Running on port {activeKit.port}</span>
         </div>
-
-        {/* Right Panel - Cascade Visualization */}
-        <div className="calliope-cascade-panel">
-          <div className="cascade-header">
-            <div className="cascade-title">
-              <Icon icon="mdi:sitemap" width="16" />
-              <h3>{builtCascade?.cascade_id || 'Your App'}</h3>
-              {builtCascade && (
-                <Badge variant="label" color={builtCascade.success ? 'green' : 'yellow'} size="sm">
-                  {builtCascade.cell_count || builtCells.length || 0} screens
-                </Badge>
-              )}
-            </div>
-            <div className="cascade-actions">
-              {builtCascade && (builtCells.length > 0 || builtCascade.yaml_preview) && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  icon={showYaml ? 'mdi:graph' : 'mdi:code-braces'}
-                  onClick={() => setShowYaml(!showYaml)}
-                  title={showYaml ? 'View Graph' : 'View YAML'}
-                >
-                  {showYaml ? 'Graph' : 'YAML'}
-                </Button>
-              )}
-              {spawnedSessionId && (
-                <Badge variant="label" color="green" size="sm">
-                  <Icon icon="mdi:play-circle" width="12" />
-                  Live
-                </Badge>
-              )}
-            </div>
-          </div>
-
-          {/* Draggable vertical split between graph and preview */}
-          {spawnedSessionId && builtCascade ? (
-            <Split
-              className="cascade-vertical-split"
-              sizes={rightPanelSizes}
-              onDragEnd={(sizes) => setRightPanelSizes(sizes)}
-              minSize={[100, 100]}
-              gutterSize={6}
-              gutterAlign="center"
-              direction="vertical"
-            >
-              <div className="cascade-content">
-                {builtCells.length === 0 && !builtCascade ? (
-                  <div className="cascade-empty">
-                    <Icon icon="mdi:sitemap" width="40" />
-                    <p>Your app will appear here as we build it together</p>
-                    {logs.length > 0 && (
-                      <p className="cascade-empty-hint">
-                        <Icon icon="mdi:information" width="14" />
-                        Waiting for Calliope to create screens...
-                      </p>
-                    )}
-                  </div>
-                ) : builtCells.length === 0 && builtCascade ? (
-                  showYaml && builtCascade.yaml_preview ? (
-                    <pre className="cascade-yaml">{builtCascade.yaml_preview}</pre>
-                  ) : (
-                    <div className="cascade-empty">
-                      <Icon icon="mdi:file-document-check" width="40" />
-                      <p>Cascade created: <strong>{builtCascade.cascade_id}</strong></p>
-                      {builtCascade.path && (
-                        <p className="cascade-empty-hint">
-                          <Icon icon="mdi:folder" width="14" />
-                          {builtCascade.path}
-                        </p>
-                      )}
-                      {builtCascade.cell_count === 0 && (
-                        <p className="cascade-empty-hint">
-                          <Icon icon="mdi:information" width="14" />
-                          No screens added yet...
-                        </p>
-                      )}
-                      {builtCascade.cell_count > 0 && (
-                        <p className="cascade-empty-hint">
-                          <Icon icon="mdi:check" width="14" />
-                          {builtCascade.cell_count} screens ready
-                        </p>
-                      )}
-                    </div>
-                  )
-                ) : showYaml ? (
-                  <pre className="cascade-yaml">{builtCascade?.yaml_preview || 'No YAML preview available'}</pre>
-                ) : (
-                  <div className="cascade-graph-wrapper">
-                    <CascadeSpecGraph
-                      cells={builtCells}
-                      inputsSchema={builtInputsSchema}
-                      cascadeId={builtCascade?.cascade_id}
-                      cellStatus={cellStatus}
-                    />
-                  </div>
-                )}
-              </div>
-
-              {/* Live App Preview - Uses iframe with App API */}
-              {/* Note: We don't pass spawn_cascade's sessionId - apps_api creates its own session */}
-              <AppPreview
-                cascadeId={builtCascade.cascade_id}
-                onSessionComplete={handleAppSessionComplete}
-                onCellChange={handleAppCellChange}
-                onError={handleAppError}
-                onStateChange={setSpawnedState}
-              />
-            </Split>
-          ) : (
-            /* No spawned session - just show cascade content */
-            <div className="cascade-content">
-              {builtCells.length === 0 && !builtCascade ? (
-                <div className="cascade-empty">
-                  <Icon icon="mdi:sitemap" width="40" />
-                  <p>Your app will appear here as we build it together</p>
-                  {logs.length > 0 && (
-                    <p className="cascade-empty-hint">
-                      <Icon icon="mdi:information" width="14" />
-                      Waiting for Calliope to create screens...
-                    </p>
-                  )}
-                </div>
-              ) : builtCells.length === 0 && builtCascade ? (
-                showYaml && builtCascade.yaml_preview ? (
-                  <pre className="cascade-yaml">{builtCascade.yaml_preview}</pre>
-                ) : (
-                  <div className="cascade-empty">
-                    <Icon icon="mdi:file-document-check" width="40" />
-                    <p>Cascade created: <strong>{builtCascade.cascade_id}</strong></p>
-                    {builtCascade.path && (
-                      <p className="cascade-empty-hint">
-                        <Icon icon="mdi:folder" width="14" />
-                        {builtCascade.path}
-                      </p>
-                    )}
-                    {builtCascade.cell_count === 0 && (
-                      <p className="cascade-empty-hint">
-                        <Icon icon="mdi:information" width="14" />
-                        No screens added yet...
-                      </p>
-                    )}
-                    {builtCascade.cell_count > 0 && (
-                      <p className="cascade-empty-hint">
-                        <Icon icon="mdi:check" width="14" />
-                        {builtCascade.cell_count} screens ready
-                      </p>
-                    )}
-                  </div>
-                )
-              ) : showYaml ? (
-                <pre className="cascade-yaml">{builtCascade?.yaml_preview || 'No YAML preview available'}</pre>
-              ) : (
-                <div className="cascade-graph-wrapper">
-                  <CascadeSpecGraph
-                    cells={builtCells}
-                    inputsSchema={builtInputsSchema}
-                    cascadeId={builtCascade?.cascade_id}
-                    cellStatus={cellStatus}
-                  />
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Validation warnings */}
-          {builtCascade?.validation && !builtCascade.validation.valid && (
-            <div className="cascade-validation">
-              <Icon icon="mdi:alert" width="16" />
-              <span>
-                {builtCascade.validation.errors?.length || 0} errors,{' '}
-                {builtCascade.validation.warnings?.length || 0} warnings
-              </span>
-            </div>
-          )}
+        <div className="calliope-header-right">
+          <span className="calliope-hint">
+            Move to edge, hold <kbd>Space</kbd> to draw + talk
+          </span>
+          <button className="calliope-stop-btn" onClick={stopKit}>
+            <Icon icon="mdi:stop" />
+            Stop Kit
+          </button>
         </div>
-      </Split>
+      </header>
+
+      {/* Kit iframe */}
+      <div className="calliope-canvas-area">
+        <iframe
+          ref={iframeRef}
+          src={`http://localhost:${activeKit.port}`}
+          title="Kit Preview"
+          className="calliope-iframe"
+        />
+
+        {/* Spacebar intercept layer - maintains keyboard focus for spacebar capture */}
+        <div
+          className="calliope-spacebar-intercept"
+          tabIndex={0}
+          ref={interceptRef}
+          onKeyDown={(e) => {
+            if (e.code === 'Space' && captureModeRef.current === 'idle' && !spacebarDownRef.current) {
+              e.preventDefault();
+              e.stopPropagation();
+              spacebarDownRef.current = true;
+              startCapture();
+            }
+          }}
+          onKeyUp={(e) => {
+            if (e.code === 'Space' && spacebarDownRef.current) {
+              e.preventDefault();
+              e.stopPropagation();
+              spacebarDownRef.current = false;
+              stopCapture();
+            }
+          }}
+        />
+
+        {/* Capture overlay */}
+        <CaptureOverlay
+          ref={captureOverlayRef}
+          active={captureMode === 'capturing'}
+          audioLevel={audioLevel}
+          recordingDuration={recordingDuration}
+        />
+      </div>
+
+      {/* Intent review modal */}
+      <IntentReviewModal
+        isOpen={captureMode === 'reviewing'}
+        onClose={handleCloseReview}
+        onSubmit={handleIntentSubmit}
+        screenshotDataUrl={capturedScreenshot}
+        initialTranscript={capturedTranscript}
+        initialStrokes={capturedStrokes}
+        isProcessing={isProcessing}
+      />
+
+      {/* Building indicator - floating pill */}
+      {isBuilding && (
+        <div className="calliope-building-indicator">
+          <Icon icon="mdi:loading" className="spinning" />
+          <span>Building...</span>
+        </div>
+      )}
     </div>
   );
 };
