@@ -54,6 +54,13 @@ _pool_stats = {
 _stats_lock = threading.Lock()
 
 
+def _pool_debug_print(message: str) -> None:
+    """Optional stdout logging for the pool (disabled by default)."""
+    val = os.environ.get("LARS_POOL_DEBUG", "0").strip().lower()
+    if val in ("1", "true", "yes", "on"):
+        print(message)
+
+
 def _get_warmup_size() -> int:
     """Get number of connections to pre-warm at startup."""
     try:
@@ -241,7 +248,7 @@ def get_pooled_connection(timeout: float = 0.1) -> Optional[duckdb.DuckDBPyConne
                 hits = _pool_stats['hits']
                 misses = _pool_stats['misses']
             size = _pool.qsize()
-            print(f"[pool] GET: size={size}, hits={hits}, misses={misses}")
+            _pool_debug_print(f"[pool] GET: size={size}, hits={hits}, misses={misses}")
             return conn
         except Exception:
             # Connection is bad, discard and try again
@@ -259,7 +266,7 @@ def get_pooled_connection(timeout: float = 0.1) -> Optional[duckdb.DuckDBPyConne
             _pool_stats['misses'] += 1
             misses = _pool_stats['misses']
             hits = _pool_stats['hits']
-        print(f"[pool] MISS: pool empty, hits={hits}, misses={misses}")
+        _pool_debug_print(f"[pool] MISS: pool empty, hits={hits}, misses={misses}")
         return None
 
 
@@ -288,7 +295,7 @@ def return_to_pool(conn: duckdb.DuckDBPyConnection) -> bool:
     if _pool.qsize() >= max_size:
         with _stats_lock:
             _pool_stats['discards'] += 1
-        print(f"[pool] DISCARD: pool at max (size={max_size})")
+        _pool_debug_print(f"[pool] DISCARD: pool at max (size={max_size})")
         try:
             conn.close()
         except Exception:
@@ -305,7 +312,7 @@ def return_to_pool(conn: duckdb.DuckDBPyConnection) -> bool:
             returns = _pool_stats['returns']
             if size > _pool_stats['peak_size']:
                 _pool_stats['peak_size'] = size
-        print(f"[pool] RETURN: size={size}, total_returns={returns}")
+        _pool_debug_print(f"[pool] RETURN: size={size}, total_returns={returns}")
         return True
     except Exception:
         with _stats_lock:

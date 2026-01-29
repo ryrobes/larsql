@@ -263,7 +263,8 @@ class Config(BaseModel):
     provider_api_key: Optional[str] = Field(
         default_factory=lambda: os.getenv("OPENROUTER_API_KEY")
     )
-    default_model: str = Field(default="x-ai/grok-4.1-fast")
+    #default_model: str = Field(default="x-ai/grok-4.1-fast")
+    default_model: str = Field(default="arcee-ai/trinity-large-preview:free")
 
     # Default embedding model (used by RAG and Agent.embed())
     default_embed_model: str = Field(

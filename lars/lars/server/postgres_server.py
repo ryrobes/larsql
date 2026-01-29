@@ -62,85 +62,6 @@ from .postgres_protocol import (
 
 
 # ============================================================================
-# Shared Connection Pool for Persistent Databases
-# ============================================================================
-# DuckDB file locking requires all access to a file go through a SINGLE connection.
-# This pool maintains one connection per database file, shared across all PGwire sessions.
-
-import duckdb
-
-_db_connection_pool: dict[str, 'duckdb.DuckDBPyConnection'] = {}  # db_path -> connection
-_db_connection_locks: dict[str, Lock] = {}  # db_path -> lock for that connection
-_db_connection_refcounts: dict[str, int] = {}  # db_path -> number of sessions using it
-_db_connection_initialized: dict[str, bool] = {}  # db_path -> whether UDFs/extensions are registered
-_pool_lock = Lock()  # Lock for modifying the pool itself
-
-
-def _get_shared_connection(db_path: str) -> tuple['duckdb.DuckDBPyConnection', Lock, bool]:
-    """
-    Get or create a shared DuckDB connection for a persistent database.
-
-    All PGwire sessions connecting to the same database file share ONE connection.
-    Access is serialized via the returned lock.
-
-    Args:
-        db_path: Full path to the DuckDB file
-
-    Returns:
-        (connection, lock, needs_init) tuple
-        - connection: DuckDB connection
-        - lock: Lock for thread-safe access
-        - needs_init: True if this session should initialize UDFs/extensions
-    """
-    with _pool_lock:
-        needs_init = False
-        if db_path not in _db_connection_pool:
-            # Create new connection
-            _db_connection_pool[db_path] = duckdb.connect(db_path)
-            _db_connection_locks[db_path] = Lock()
-            _db_connection_refcounts[db_path] = 0
-            _db_connection_initialized[db_path] = False
-            needs_init = True
-            styled_print(f"   {S.DB} Created shared connection for: {os.path.basename(db_path)}")
-
-        _db_connection_refcounts[db_path] += 1
-
-        # Check if initialization is needed
-        if not _db_connection_initialized[db_path]:
-            needs_init = True
-            _db_connection_initialized[db_path] = True
-
-        return _db_connection_pool[db_path], _db_connection_locks[db_path], needs_init
-
-
-def _release_shared_connection(db_path: str):
-    """
-    Release a reference to a shared connection.
-
-    When refcount hits 0, the connection is kept open (for quick reconnection).
-    Connections are only closed on server shutdown.
-    """
-    with _pool_lock:
-        if db_path in _db_connection_refcounts:
-            _db_connection_refcounts[db_path] -= 1
-            # Don't close - keep connection alive for quick reconnection
-
-
-def _close_all_shared_connections():
-    """Close all shared connections (called on server shutdown)."""
-    with _pool_lock:
-        for db_path, conn in _db_connection_pool.items():
-            try:
-                conn.close()
-                styled_print(f"   {S.DB} Closed shared connection: {os.path.basename(db_path)}")
-            except Exception:
-                pass
-        _db_connection_pool.clear()
-        _db_connection_locks.clear()
-        _db_connection_refcounts.clear()
-
-
-# ============================================================================
 # EXPLAIN Formatting Helper
 # ============================================================================
 
@@ -216,8 +137,6 @@ class ClientConnection:
         self.results_db_name = 'lars_results_default'  # ClickHouse database for INTO tables (namespaced by database_name)
         self.user_name = 'lars'       # Logical user name from client connection
         self.application_name = 'unknown'
-        self.is_persistent_db = False   # True if using persistent DuckDB file
-        self.db_path = None             # Path to DuckDB file (for read-only connections)
         self.duckdb_conn = None
         self.db_lock = None  # Lock for thread-safe DuckDB access
         self.running = True
@@ -236,8 +155,8 @@ class ClientConnection:
         # Cache: last seen attached database set (to refresh views after lazy ATTACH)
         self._last_attached_db_names = set()
 
-        # Connection pool tracking
-        self._is_pooled_connection = False  # True if connection came from pre-warmed pool
+        # DuckDB connection pooling (optional, pre-warmed in-memory connections)
+        self._is_pooled_connection = False
 
         # Authentication state
         self.authenticated_user = None  # User dict from auth.validate_api_key()
@@ -252,65 +171,38 @@ class ClientConnection:
         """
         try:
             import duckdb
-            from ..sql_tools.udf import register_lars_udf
-            from ..config import get_config
+            from ..sql_tools.udf import register_dynamic_sql_functions, register_lars_udf
 
-            # Determine if this is a persistent or in-memory database
-            if self.database_name.lower() in ('memory', 'default', ':memory:'):
-                # In-memory database - try pre-warmed pool first (instant)
-                self.is_persistent_db = False
-                self.db_lock = Lock()  # Per-connection lock (not shared)
-
-                # Try to get a pre-warmed connection from the pool
+            # Pgwire uses an in-memory DuckDB session per client connection (optionally pre-warmed from a pool).
+            # Durable tables/results live in ClickHouse (via INTO rewriting / query insurance).
+            self.db_lock = Lock()  # Per-connection lock (not shared)
+            pooled_conn = None
+            try:
+                from ..sql_tools.connection_pool import get_pooled_connection
+                pooled_conn = get_pooled_connection(timeout=0.1)
+            except ImportError:
                 pooled_conn = None
-                try:
-                    from ..sql_tools.connection_pool import get_pooled_connection
-                    pooled_conn = get_pooled_connection(timeout=0.1)
-                except ImportError:
-                    pass
-                except Exception as e:
-                    print(f"[{self.session_id}]   ⚠ Pool access failed: {e}")
+            except Exception as e:
+                styled_print(f"[{self.session_id}]   {S.WARN}  DuckDB pool get failed: {e}")
 
-                if pooled_conn:
-                    # Got a pre-warmed connection - already has UDFs, extensions, shared tables
-                    self.duckdb_conn = pooled_conn
-                    self._is_pooled_connection = True
-                    self._needs_shared_init = False  # Skip init - pool already did it
-                    print(f"[{self.session_id}]   ⚡ In-memory database (pooled, pre-warmed)")
-                else:
-                    # No pooled connection available - create fresh
-                    self.duckdb_conn = duckdb.connect(':memory:')
-                    self._is_pooled_connection = False
-                    self._needs_shared_init = True  # Need full init
-                    print(f"[{self.session_id}]   📦 In-memory database (fresh)")
+            if pooled_conn is not None:
+                self.duckdb_conn = pooled_conn
+                self._is_pooled_connection = True
+                print(f"[{self.session_id}]   ⚡ DuckDB in-memory session (pooled, pre-warmed)")
             else:
-                # Persistent database - file-based, SHARED connection across all sessions
-                # DuckDB file locking requires single connection per file
-                self.is_persistent_db = True
-                config = get_config()
-                db_dir = os.path.join(config.root_dir, 'session_dbs')
-                os.makedirs(db_dir, exist_ok=True)
+                self.duckdb_conn = duckdb.connect(':memory:')
+                self._is_pooled_connection = False
+                print(f"[{self.session_id}]   📦 DuckDB in-memory session (fresh)")
 
-                # Sanitize database name for filename
-                safe_db_name = self.database_name.replace("/", "_").replace("\\", "_").replace("..", "_")
-                db_path = os.path.join(db_dir, f"{safe_db_name}.duckdb")
-                self.db_path = db_path  # Store for cleanup
-
-                # Get SHARED connection from pool - all sessions to same file share one connection
-                # This avoids DuckDB file locking issues with concurrent access
-                self.duckdb_conn, self.db_lock, self._needs_shared_init = _get_shared_connection(db_path)
-
-                styled_print(f"[{self.session_id}]   {S.DB} Using shared connection: {safe_db_name}")
-
-            # Cache DuckDB's internal catalog name (filename base or 'memory')
+            # Cache DuckDB's internal catalog name (usually 'memory')
             try:
                 self._duckdb_catalog_name = self.duckdb_conn.execute("SELECT current_database()").fetchone()[0]
             except Exception:
                 self._duckdb_catalog_name = None
 
-            # Initialize connection ONLY if this is a new connection or first session using shared connection
-            # For shared connections, only the first session does initialization
-            if self._needs_shared_init:
+            # Initialize connection if not pre-warmed by the pool.
+            # Pooled connections already have extensions/UDFs/attachments initialized.
+            if not self._is_pooled_connection:
                 with self.db_lock:
                     # Configure DuckDB
                     self.duckdb_conn.execute("SET threads TO 4")
@@ -318,6 +210,7 @@ class ClientConnection:
                     # Install and load community extensions for graph queries
                     # Use timeout to prevent blocking on network issues
                     duckpgq_installed = False
+
                     def install_duckpgq():
                         self.duckdb_conn.execute("INSTALL duckpgq FROM community;")
 
@@ -342,7 +235,9 @@ class ClientConnection:
                     # and later strip the pg_catalog. prefix for function calls at execution time.
                     try:
                         self.duckdb_conn.execute("CREATE OR REPLACE MACRO pg_get_userbyid(x) AS 'lars'")
-                        self.duckdb_conn.execute("CREATE OR REPLACE MACRO txid_current() AS (epoch_ms(now())::BIGINT % 4294967296)")
+                        self.duckdb_conn.execute(
+                            "CREATE OR REPLACE MACRO txid_current() AS (epoch_ms(now())::BIGINT % 4294967296)"
+                        )
                         self.duckdb_conn.execute("CREATE OR REPLACE MACRO pg_is_in_recovery() AS false")
                         self.duckdb_conn.execute("CREATE OR REPLACE MACRO pg_tablespace_location(x) AS NULL")
                     except Exception:
@@ -352,10 +247,9 @@ class ClientConnection:
                     register_lars_udf(self.duckdb_conn)
 
                     # Register dynamic SQL functions from cascade registry (SUMMARIZE_URLS, etc.)
-                    from ..sql_tools.udf import register_dynamic_sql_functions
                     register_dynamic_sql_functions(self.duckdb_conn)
 
-                    styled_print(f"[{self.session_id}]   {S.OK} Initialized shared connection (UDFs, extensions)")
+                    styled_print(f"[{self.session_id}]   {S.OK} Initialized DuckDB session (UDFs, extensions)")
 
             # Reset our transaction status to idle
             self.transaction_status = 'I'
@@ -384,23 +278,7 @@ class ClientConnection:
         This ensures the session is fully ready before the client can send queries.
         (Previously this ran after startup response, but aggressive clients like
         DataGrip would send queries immediately and timeout waiting for responses.)
-
-        For persistent databases, this only runs ONCE per database (tracked at server level).
-        Subsequent connections to the same database skip this since the state is already
-        in the DuckDB file.
         """
-        # For persistent databases, check if already initialized by another connection
-        if self.is_persistent_db and self.server:
-            with self.server._init_db_lock:
-                if self.database_name in self.server._initialized_databases:
-                    # Already initialized - skip heavy setup
-                    styled_print(f"[{self.session_id}] {S.OK} Session ready (database: {self.database_name}, using existing setup)")
-                    return
-                # Mark as initializing (will add to set after success)
-                is_first_connection = True
-        else:
-            is_first_connection = True  # In-memory always needs full setup
-
         try:
             # Register promoted metrics as SQL operators (BI of Intent)
             try:
@@ -412,25 +290,21 @@ class ClientConnection:
                 # Non-fatal - BI tables may not exist yet
                 pass
 
-            # Skip heavy operations for pooled connections - they're already done
-            if self._is_pooled_connection:
-                styled_print(f"[{self.session_id}]   ⚡ Skipping auto-attach (pooled connection)")
-            else:
-                # Auto-attach all configured connections (can be slow but must complete before client queries)
-                from ..sql_tools.lazy_attach import _auto_attach_all_enabled
-                if self._lazy_attach and _auto_attach_all_enabled():
-                    try:
-                        results = self._lazy_attach.attach_all()
-                        attached = [r for r in results if r["status"] == "attached"]
-                        failed = [r for r in results if r["status"] == "failed"]
-                        if attached:
-                            styled_print(f"[{self.session_id}]   {S.DB} Auto-attached {len(attached)} connection(s)")
-                        if failed:
-                            styled_print(f"[{self.session_id}]   {S.WARN}  {len(failed)} connection(s) failed to attach")
-                    except Exception as e:
-                        styled_print(f"[{self.session_id}]   {S.WARN}  Auto-attach failed: {e}")
+            # Auto-attach all configured connections (can be slow but must complete before client queries)
+            from ..sql_tools.lazy_attach import _auto_attach_all_enabled
+            if (not self._is_pooled_connection) and self._lazy_attach and _auto_attach_all_enabled():
+                try:
+                    results = self._lazy_attach.attach_all()
+                    attached = [r for r in results if r["status"] == "attached"]
+                    failed = [r for r in results if r["status"] == "failed"]
+                    if attached:
+                        styled_print(f"[{self.session_id}]   {S.DB} Auto-attached {len(attached)} connection(s)")
+                    if failed:
+                        styled_print(f"[{self.session_id}]   {S.WARN}  {len(failed)} connection(s) failed to attach")
+                except Exception as e:
+                    styled_print(f"[{self.session_id}]   {S.WARN}  Auto-attach failed: {e}")
 
-            # Always sync shared parquet tables (even for pooled connections)
+            # Always sync shared parquet tables
             # This is fast (directory scan + view creation) and ensures new tables are visible
             try:
                 from ..sql_tools.shared_parquet import sync_shared_views, is_shared_tables_enabled
@@ -448,25 +322,11 @@ class ClientConnection:
             # Create PostgreSQL compatibility stubs (functions and macros)
             self._create_pg_compat_stubs()
 
-            # Create metadata table for tracking ATTACH commands (persistent DBs only)
-            self._create_attachments_metadata_table()
-
-            # Create registry table for auto-materialized LARS query results
-            self._create_results_registry_table()
-
-            # Replay any previously attached databases from metadata
-            self._replay_attachments()
-
             # Create views for ATTACH'd databases so they appear in DBeaver
             self._create_attached_db_views()
 
             # Register UDF to refresh views after manual ATTACH
             self._register_refresh_views_udf()
-
-            # Mark persistent database as initialized (so other connections skip this)
-            if self.is_persistent_db and self.server and is_first_connection:
-                with self.server._init_db_lock:
-                    self.server._initialized_databases.add(self.database_name)
 
             styled_print(f"[{self.session_id}] {S.OK} Session ready (database: {self.database_name})")
 
@@ -1885,90 +1745,6 @@ class ClientConnection:
 
         return result_df
 
-    def _create_attachments_metadata_table(self):
-        """
-        Create metadata table for tracking ATTACH commands.
-
-        This table persists ATTACH statements so they can be replayed when
-        a new connection is established to the same database file.
-
-        Only created for persistent databases (not in-memory).
-        """
-        if not self.is_persistent_db:
-            return  # Only for persistent databases
-
-        try:
-            # Check if table already exists
-            existing = self.duckdb_conn.execute("""
-                SELECT table_name FROM information_schema.tables
-                WHERE table_name = '_lars_attachments'
-            """).fetchall()
-
-            if not existing:
-                # Create metadata table
-                self.duckdb_conn.execute("""
-                    CREATE TABLE _lars_attachments (
-                        id INTEGER PRIMARY KEY,
-                        database_alias VARCHAR NOT NULL,
-                        database_path VARCHAR NOT NULL,
-                        attached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        UNIQUE(database_alias)
-                    )
-                """)
-
-                # Create sequence for auto-incrementing IDs
-                self.duckdb_conn.execute("""
-                    CREATE SEQUENCE _lars_attachments_seq START 1
-                """)
-
-                styled_print(f"[{self.session_id}]   {S.DONE} Created _lars_attachments metadata table")
-        except Exception as e:
-            # Non-fatal - just log the error
-            styled_print(f"[{self.session_id}]   {S.WARN}  Could not create attachments metadata table: {e}")
-
-    def _create_results_registry_table(self):
-        """
-        Create registry table for tracking auto-materialized LARS query results.
-
-        LARS queries (cascades, UDFs, semantic operators) are expensive and
-        non-deterministic. Auto-materializing their results provides "query insurance"
-        so users don't lose expensive work if their connection drops or client crashes.
-
-        Results are organized into date-based schemas for easy discovery and cleanup:
-        - _results_20250103.q_abc12345 (query result table)
-        - _lars_results (registry of all materialized results)
-
-        Only created for persistent databases (not in-memory).
-        """
-        if not self.is_persistent_db:
-            return  # Only for persistent databases
-
-        try:
-            # Check if registry table already exists
-            existing = self.duckdb_conn.execute("""
-                SELECT table_name FROM information_schema.tables
-                WHERE table_name = '_lars_results'
-            """).fetchall()
-
-            if not existing:
-                # Create registry table
-                self.duckdb_conn.execute("""
-                    CREATE TABLE _lars_results (
-                        query_id VARCHAR PRIMARY KEY,
-                        schema_name VARCHAR NOT NULL,
-                        table_name VARCHAR NOT NULL,
-                        full_table_name VARCHAR NOT NULL,
-                        query_fingerprint VARCHAR,
-                        row_count INTEGER,
-                        column_count INTEGER,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    )
-                """)
-                styled_print(f"[{self.session_id}]   {S.DONE} Created _lars_results registry table")
-        except Exception as e:
-            # Non-fatal - just log the error
-            styled_print(f"[{self.session_id}]   {S.WARN}  Could not create results registry table: {e}")
-
     def _pandas_dtype_to_clickhouse(self, dtype) -> str:
         """Convert pandas dtype to ClickHouse type."""
         dtype_str = str(dtype).lower()
@@ -2226,39 +2002,6 @@ class ClientConnection:
                 traceback.print_exc()
                 # Continue to try DuckDB
 
-            # === SECONDARY: Also store in DuckDB (for persistent databases only) ===
-            if self.is_persistent_db:
-                try:
-                    date_str = datetime.now().strftime('%Y%m%d')
-                    schema_name = f"_results_{date_str}"
-                    table_name = f"q_{query_id}"
-                    full_table_name = f"{schema_name}.{table_name}"
-
-                    # Create schema if not exists
-                    self.duckdb_conn.execute(f"CREATE SCHEMA IF NOT EXISTS {schema_name}")
-
-                    # Register DataFrame and create table
-                    temp_name = f"_temp_materialize_{query_id}"
-                    self.duckdb_conn.register(temp_name, result_df)
-                    self.duckdb_conn.execute(f"CREATE TABLE {full_table_name} AS SELECT * FROM {temp_name}")
-                    self.duckdb_conn.unregister(temp_name)
-
-                    # Create query fingerprint (first 200 chars, normalized)
-                    query_fingerprint = ' '.join(query.split())[:200]
-
-                    # Log to registry
-                    self.duckdb_conn.execute("""
-                        INSERT INTO _lars_results
-                        (query_id, schema_name, table_name, full_table_name, query_fingerprint, row_count, column_count)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
-                    """, [query_id, schema_name, table_name, full_table_name, query_fingerprint, len(result_df), len(result_df.columns)])
-
-                    styled_print(f"[{self.session_id}]   {S.SAVE} Also stored in DuckDB: {full_table_name}")
-
-                except Exception as duckdb_err:
-                    # Non-fatal - ClickHouse is primary
-                    styled_print(f"[{self.session_id}]   {S.WARN}  DuckDB storage failed (non-fatal): {duckdb_err}")
-
             return result_location
 
         except Exception as e:
@@ -2340,69 +2083,6 @@ class ClientConnection:
 
         except Exception as e:
             styled_print(f"[{self.session_id}]   {S.WARN}  Arrow save failed for '{name}': {e}")
-
-    def _replay_attachments(self):
-        """
-        Re-execute ATTACH commands from metadata table.
-
-        Called on session startup to restore previously attached databases.
-        If an attached file no longer exists, it's removed from metadata.
-        """
-        if not self.is_persistent_db:
-            return  # Only for persistent databases
-
-        try:
-            # Check if metadata table exists
-            tables = self.duckdb_conn.execute("""
-                SELECT table_name FROM information_schema.tables
-                WHERE table_name = '_lars_attachments'
-            """).fetchall()
-
-            if not tables:
-                return  # No attachments to replay
-
-            # Get all stored attachments
-            attachments = self.duckdb_conn.execute("""
-                SELECT database_alias, database_path
-                FROM _lars_attachments
-                ORDER BY id
-            """).fetchall()
-
-            if not attachments:
-                return
-
-            styled_print(f"[{self.session_id}]   {S.LINK} Replaying {len(attachments)} ATTACH command(s)...")
-
-            replayed_count = 0
-            failed_count = 0
-
-            for alias, path in attachments:
-                try:
-                    # Re-execute ATTACH
-                    self.duckdb_conn.execute(f"ATTACH '{path}' AS {alias}")
-                    styled_print(f"[{self.session_id}]      {S.OK} ATTACH '{path}' AS {alias}")
-                    replayed_count += 1
-                except Exception as e:
-                    # File might not exist anymore - remove from metadata
-                    try:
-                        self.duckdb_conn.execute(
-                            "DELETE FROM _lars_attachments WHERE database_alias = ?",
-                            [alias]
-                        )
-                        styled_print(f"[{self.session_id}]      {S.WARN}  Could not replay ATTACH {alias}: {e}")
-                        print(f"[{self.session_id}]         Removed from metadata (file may have been deleted)")
-                        failed_count += 1
-                    except:
-                        pass
-
-            if replayed_count > 0:
-                styled_print(f"[{self.session_id}]   {S.DONE} Replayed {replayed_count} ATTACH command(s)")
-            if failed_count > 0:
-                styled_print(f"[{self.session_id}]   {S.WARN}  {failed_count} ATTACH command(s) failed (files removed)")
-
-        except Exception as e:
-            # Non-fatal - just log the error
-            styled_print(f"[{self.session_id}]   {S.WARN}  Could not replay attachments: {e}")
 
     def _create_pg_catalog_views(self):
         """
@@ -3014,10 +2694,10 @@ class ClientConnection:
 
     def _handle_attach(self, query: str):
         """
-        Handle ATTACH command - execute and persist to metadata.
+        Handle ATTACH command - execute and refresh views.
 
-        Parses ATTACH statement, executes it on DuckDB, stores metadata for
-        persistence, and creates views for the attached database's tables.
+        Parses ATTACH statement, executes it on DuckDB, and creates views for the
+        attached database's tables.
 
         Args:
             query: ATTACH statement (e.g., "ATTACH '/path/db.duckdb' AS my_db")
@@ -3048,26 +2728,10 @@ class ClientConnection:
             self.duckdb_conn.execute(query)
             styled_print(f"[{self.session_id}]      {S.OK} Attached: {db_path} AS {db_alias}")
 
-            # 2. Store in metadata (only for persistent databases)
-            if self.is_persistent_db:
-                try:
-                    # Delete if exists, then insert (simpler than INSERT OR REPLACE)
-                    self.duckdb_conn.execute(
-                        "DELETE FROM _lars_attachments WHERE database_alias = ?",
-                        [db_alias]
-                    )
-                    self.duckdb_conn.execute("""
-                        INSERT INTO _lars_attachments (id, database_alias, database_path)
-                        VALUES (nextval('_lars_attachments_seq'), ?, ?)
-                    """, [db_alias, db_path])
-                    styled_print(f"[{self.session_id}]      {S.OK} Stored in metadata")
-                except Exception as e:
-                    styled_print(f"[{self.session_id}]      {S.WARN}  Could not store metadata: {e}")
-
-            # 3. Create views for attached database tables
+            # 2. Create views for attached database tables
             self._create_attached_db_views()
 
-            # 4. Send success response
+            # 3. Send success response
             self.sock.sendall(CommandComplete.encode('ATTACH'))
             self.sock.sendall(ReadyForQuery.encode('I'))
             styled_print(f"[{self.session_id}]   {S.DONE} ATTACH complete")
@@ -3093,17 +2757,6 @@ class ClientConnection:
         if match:
             db_name = match.group(1)
             styled_print(f"[{self.session_id}]   {S.DEL}  DETACH {db_name} - cleaning up...")
-
-            # Remove from metadata table (persistent databases only)
-            if self.is_persistent_db:
-                try:
-                    deleted = self.duckdb_conn.execute(
-                        "DELETE FROM _lars_attachments WHERE database_alias = ?",
-                        [db_name]
-                    )
-                    styled_print(f"[{self.session_id}]      {S.DEL}  Removed from metadata")
-                except Exception as e:
-                    styled_print(f"[{self.session_id}]      {S.WARN}  Could not remove metadata: {e}")
 
             # Drop all views for this database
             try:
@@ -4214,11 +3867,11 @@ class ClientConnection:
         Handle client startup message.
 
         Extracts database name and username from startup params.
-        Sets up consistent session_id for persistent database.
+        Sets up session_id and ClickHouse results namespace for INTO tables.
 
-        Database routing:
-        - 'memory' or 'default' → in-memory DuckDB (ephemeral)
-        - Any other name → persistent file at session_dbs/{database}.duckdb
+        Notes:
+        - DuckDB is always ephemeral per pgwire connection.
+        - The `database` name namespaces INTO tables into ClickHouse database: lars_results_<database>.
         """
         import re
 
@@ -4267,13 +3920,10 @@ class ClientConnection:
         client_id = uuid.uuid4().hex[:8]
         self.session_id = f"{self.session_prefix}_{database}_{client_id}"
 
-        # Determine persistence mode
-        is_persistent = database.lower() not in ('memory', 'default', ':memory:')
-        mode_text = "persistent" if is_persistent else "in-memory"
-
         styled_print(f"[{self.session_id}] {S.LINK} Client startup:")
         print(f"   User: {user}")
-        print(f"   Database: {database} ({mode_text})")
+        print(f"   Database: {database}")
+        print(f"   Results DB: {self.results_db_name}")
         print(f"   Application: {application_name}")
 
         # Note: send_startup_response is called AFTER setup_session in handle()
@@ -5158,7 +4808,7 @@ class ClientConnection:
                         'owner',
                     ]
 
-                db_description = 'LARS Persistent Database' if self.is_persistent_db else 'LARS In-Memory Database'
+                db_description = 'LARS Database'
                 base = {
                     'id': 1,
                     'oid': 1,
@@ -9388,6 +9038,13 @@ class ClientConnection:
                 print(f"[{self.addr}] ✗ Failed to read initial message")
                 return
 
+            # CancelRequest uses a different startup code on a separate connection.
+            # We don't support cancelling server-side execution, but we should handle
+            # it gracefully without crashing the startup path.
+            if first_message.get('cancel_request'):
+                print(f"[{self.addr}] CancelRequest received - closing (not supported)")
+                return
+
             # Handle SSL request
             if first_message.get('ssl_request'):
                 print(f"[{self.addr}] SSL requested - rejecting (not supported in v1)")
@@ -9398,6 +9055,9 @@ class ClientConnection:
                 startup = PostgresMessage.read_startup_message(self.sock)
                 if not startup:
                     print(f"[{self.addr}] ✗ Failed to read startup after SSL rejection")
+                    return
+                if startup.get('cancel_request'):
+                    print(f"[{self.addr}] CancelRequest received after SSL rejection - closing (not supported)")
                     return
             else:
                 # No SSL request - this IS the startup message
@@ -9524,11 +9184,7 @@ class ClientConnection:
         Clean up connection and DuckDB session.
 
         Called when client disconnects or connection errors.
-        Ensures DuckDB is left in a clean state for reconnection.
-
-        IMPORTANT: Multiple clients may share the same DuckDB connection
-        (if they connect to the same database name). We must NOT force-close
-        the connection unless it's truly corrupt, or we'll break other clients.
+        Ensures DuckDB is left in a clean state.
         """
         # Unregister from server first
         if self.server:
@@ -9546,48 +9202,38 @@ class ClientConnection:
             except Exception as e:
                 error_msg = str(e).lower()
                 # "no transaction is active" is NORMAL - not an error
-                # Only force-close on actual connection problems
                 if "no transaction" in error_msg:
                     # This is fine - no transaction was active
                     styled_print(f"[{self.session_id}]   {S.OK} No active transaction (clean state)")
-                elif "connection" in error_msg and "closed" in error_msg:
-                    # Connection is already dead - remove from cache
-                    styled_print(f"[{self.session_id}]   {S.WARN} Connection already closed, removing from cache")
-                    try:
-                        from ..sql_tools.session_db import force_close_session
-                        force_close_session(self.session_id)
-                    except:
-                        pass
                 else:
-                    # Unknown error - log but don't force-close (other clients may be using it)
+                    # Unknown error - log and continue
                     styled_print(f"[{self.session_id}]   {S.WARN} Rollback warning: {e}")
 
-        # Release shared connection reference (for persistent databases)
-        if self.is_persistent_db and self.db_path:
-            _release_shared_connection(self.db_path)
-
-        # Return pooled connections to the pool for reuse
-        if self._is_pooled_connection and self.duckdb_conn:
-            try:
-                from ..sql_tools.connection_pool import return_to_pool, refill_pool
-                if return_to_pool(self.duckdb_conn):
-                    styled_print(f"[{self.session_id}]   {S.OK} Connection returned to pool")
-                    self.duckdb_conn = None  # Don't close it - it's back in the pool
-                # Trigger refill if pool is getting low
-                refill_pool()
-            except ImportError:
-                pass
-            except Exception as e:
-                styled_print(f"[{self.session_id}]   {S.WARN} Failed to return connection to pool: {e}")
+            if self._is_pooled_connection:
+                try:
+                    from ..sql_tools.connection_pool import return_to_pool, refill_pool
+                    return_to_pool(self.duckdb_conn)
+                    self.duckdb_conn = None
+                    refill_pool()
+                except Exception:
+                    try:
+                        self.duckdb_conn.close()
+                    except Exception:
+                        pass
+                    self.duckdb_conn = None
+            else:
+                # Each pgwire client owns its DuckDB session; close it on disconnect.
+                try:
+                    self.duckdb_conn.close()
+                except Exception:
+                    pass
+                self.duckdb_conn = None
 
         # 2. Close socket
         try:
             self.sock.close()
         except:
             pass
-
-        # Note: We keep the DuckDB connection in cache for other clients
-        # and quick reconnect. Only truly dead connections are removed above.
 
 
 class LARSPostgresServer:
@@ -9635,8 +9281,6 @@ class LARSPostgresServer:
         self.client_count = 0
         self.active_connections: set = set()  # Track active ClientConnection objects
         self._connections_lock = Lock()  # Protect active_connections set
-        self._initialized_databases: set = set()  # Track which persistent DBs have been set up
-        self._init_db_lock = Lock()  # Protect _initialized_databases
 
     def register_connection(self, client: 'ClientConnection') -> None:
         """Register a client connection as active."""
@@ -9705,19 +9349,24 @@ class LARSPostgresServer:
             print(f"   Semantic SQL operators may not work correctly")
             print()
 
-        # Pre-warm connection pool for fast session startup
+        # Pre-warm DuckDB in-memory connection pool for fast pgwire startup (optional)
         try:
             from ..sql_tools.connection_pool import initialize_pool, pool_status
-            styled_print(f"{S.RETRY} Pre-warming connection pool...")
+            styled_print(f"{S.RETRY} Pre-warming DuckDB connection pool...")
             initialize_pool()
             status = pool_status()
-            styled_print(f"{S.DONE} Connection pool initializing (target: {status['target_size']} connections)")
+            if status.get("enabled"):
+                styled_print(
+                    f"{S.DONE} DuckDB pool warming (target: {status.get('warmup_size')}, max: {status.get('max_size')})"
+                )
+            else:
+                styled_print(f"{S.WARN}  DuckDB pool disabled (LARS_POOL_ENABLED=0)")
             print()
         except ImportError:
-            styled_print(f"{S.WARN}  Connection pool not available")
+            styled_print(f"{S.WARN}  DuckDB connection pool not available")
             print()
         except Exception as e:
-            styled_print(f"{S.WARN}  Connection pool init failed: {e}")
+            styled_print(f"{S.WARN}  DuckDB pool init failed: {e}")
             print()
 
         # Print startup banner

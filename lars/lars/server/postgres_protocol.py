@@ -13,6 +13,8 @@ This is sufficient for 95% of SQL tools (DBeaver, psql, DataGrip, Tableau).
 """
 
 import struct
+import os
+import socket
 from typing import Tuple, Optional, List, Any
 
 
@@ -45,6 +47,28 @@ class MessageType:
 class PostgresMessage:
     """Base class for PostgreSQL wire protocol messages."""
 
+    # Defensive cap to prevent pathological memory allocation on bogus lengths.
+    _MAX_MESSAGE_BYTES = int(os.getenv("LARS_PG_MAX_MESSAGE_BYTES", str(64 * 1024 * 1024)))
+
+    @staticmethod
+    def _recv_exact(sock, nbytes: int) -> Optional[bytes]:
+        """
+        Receive exactly `nbytes` from the socket.
+
+        Returns None if the peer cleanly closes the connection before all bytes arrive.
+        Propagates socket.timeout so the server can apply idle-timeout semantics.
+        """
+        if nbytes <= 0:
+            return b""
+
+        chunks = bytearray()
+        while len(chunks) < nbytes:
+            chunk = sock.recv(nbytes - len(chunks))
+            if not chunk:
+                return None
+            chunks.extend(chunk)
+        return bytes(chunks)
+
     @staticmethod
     def read_message(sock) -> Tuple[Optional[int], bytes]:
         """
@@ -58,33 +82,42 @@ class PostgresMessage:
         """
         try:
             # Read message type (1 byte)
-            type_byte = sock.recv(1)
-            if not type_byte or len(type_byte) == 0:
+            type_byte = PostgresMessage._recv_exact(sock, 1)
+            if not type_byte:
                 return None, b''  # Connection closed
 
             msg_type = type_byte[0]
 
             # Read length (4 bytes, network byte order = big-endian)
-            length_bytes = sock.recv(4)
-            if len(length_bytes) < 4:
+            length_bytes = PostgresMessage._recv_exact(sock, 4)
+            if length_bytes is None:
                 return None, b''
 
             length = struct.unpack('!I', length_bytes)[0]
+            if length < 4:
+                raise ValueError(f"Invalid message length: {length} (must be >= 4)")
 
             # Length includes the 4 bytes of the length field itself
             # So payload length = length - 4
             payload_length = length - 4
+            if payload_length > PostgresMessage._MAX_MESSAGE_BYTES:
+                raise ValueError(
+                    f"Message too large: {payload_length} bytes (max {PostgresMessage._MAX_MESSAGE_BYTES})"
+                )
 
             # Read payload
-            payload = b''
-            while len(payload) < payload_length:
-                chunk = sock.recv(payload_length - len(payload))
-                if not chunk:
+            payload = b""
+            if payload_length > 0:
+                payload_bytes = PostgresMessage._recv_exact(sock, payload_length)
+                if payload_bytes is None:
                     return None, b''  # Connection closed mid-message
-                payload += chunk
+                payload = payload_bytes
 
             return msg_type, payload
 
+        except socket.timeout:
+            # Let the server handle idle timeouts.
+            raise
         except Exception as e:
             print(f"[Protocol] Error reading message: {e}")
             return None, b''
@@ -106,20 +139,23 @@ class PostgresMessage:
         """
         try:
             # Read length (first 4 bytes)
-            length_bytes = sock.recv(4)
-            if len(length_bytes) < 4:
+            length_bytes = PostgresMessage._recv_exact(sock, 4)
+            if length_bytes is None:
                 return None
 
             length = struct.unpack('!I', length_bytes)[0]
+            if length < 8:
+                raise ValueError(f"Invalid startup message length: {length} (must be >= 8)")
             payload_length = length - 4
+            if payload_length > PostgresMessage._MAX_MESSAGE_BYTES:
+                raise ValueError(
+                    f"Startup message too large: {payload_length} bytes (max {PostgresMessage._MAX_MESSAGE_BYTES})"
+                )
 
             # Read entire payload
-            payload = b''
-            while len(payload) < payload_length:
-                chunk = sock.recv(payload_length - len(payload))
-                if not chunk:
-                    return None
-                payload += chunk
+            payload = PostgresMessage._recv_exact(sock, payload_length)
+            if payload is None:
+                return None
 
             # Parse protocol version (first 4 bytes of payload)
             protocol = struct.unpack('!I', payload[:4])[0]
@@ -128,6 +164,12 @@ class PostgresMessage:
             SSL_REQUEST_CODE = 80877103  # 0x04d2162f
             if protocol == SSL_REQUEST_CODE:
                 return {'ssl_request': True}
+
+            # Optional: CancelRequest (client may open a separate connection to cancel a query).
+            # We don't support it, but recognizing it avoids confusing logs.
+            CANCEL_REQUEST_CODE = 80877102  # 0x04d2162e
+            if protocol == CANCEL_REQUEST_CODE:
+                return {'cancel_request': True}
 
             # Parse key-value pairs (rest of payload)
             # Format: key\0value\0key\0value\0\0 (double null terminates)
@@ -140,7 +182,7 @@ class PostgresMessage:
                 if null_idx == -1 or null_idx == 0:
                     break
 
-                key = data[:null_idx].decode('utf-8')
+                key = data[:null_idx].decode('utf-8', errors='replace')
                 data = data[null_idx + 1:]
 
                 # Read value
@@ -148,7 +190,7 @@ class PostgresMessage:
                 if null_idx == -1:
                     break
 
-                value = data[:null_idx].decode('utf-8')
+                value = data[:null_idx].decode('utf-8', errors='replace')
                 data = data[null_idx + 1:]
 
                 params[key] = value
@@ -158,6 +200,9 @@ class PostgresMessage:
                 'params': params
             }
 
+        except socket.timeout:
+            # Let the server handle idle timeouts.
+            raise
         except Exception as e:
             print(f"[Protocol] Error reading startup: {e}")
             return None
