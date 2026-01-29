@@ -22,9 +22,6 @@ class Echo:
         # Execution context for visualization
         self._current_cascade_id: Optional[str] = None
         self._current_cell_name: Optional[str] = None
-        # Mermaid continuity - cache last successful generation to ensure every message has a chart
-        self._last_mermaid_content: Optional[str] = None
-        self._mermaid_failure_count: int = 0  # Track failures to avoid log spam
         # Memory callback for saving messages
         self._message_callback: Optional[Callable[[Dict[str, Any]], None]] = None
         # Caller tracking (NEW)
@@ -124,7 +121,6 @@ class Echo:
             # Lazy import to avoid circular dependency
             from .unified_logs import log_unified
             from .echo_enrichment import detect_base64_in_content, extract_image_paths_from_tool_result, extract_audio_paths_from_tool_result
-            from .visualizer import generate_state_diagram_string
 
             # Extract data from entry
             role = entry.get("role")
@@ -164,27 +160,6 @@ class Echo:
             # (agent responses have it in entry.toon_telemetry, context messages have it in metadata)
             toon_telemetry = entry.get("toon_telemetry") or meta.get("toon_telemetry", {})
 
-            # Generate mermaid diagram content (includes the newly added entry)
-            # CRITICAL: Maintain continuity - never log NULL mermaid if we have a previous good one
-            # The mermaid chart is monotonically growing, so previous state is always a valid subset
-            mermaid_content = self._last_mermaid_content  # Start with cached value as fallback
-            try:
-                new_mermaid = generate_state_diagram_string(self)
-                # Only update cache if we got valid content
-                if new_mermaid and new_mermaid.strip() and len(new_mermaid) > 10:
-                    self._last_mermaid_content = new_mermaid
-                    mermaid_content = new_mermaid
-                    # Reset failure count on success
-                    if self._mermaid_failure_count > 0:
-                        self._mermaid_failure_count = 0
-            except Exception as mermaid_error:
-                # Don't fail logging, but track failures for debugging
-                self._mermaid_failure_count += 1
-                # Log first failure and then every 10th to avoid spam
-                if self._mermaid_failure_count == 1 or self._mermaid_failure_count % 10 == 0:
-                    print(f"[Mermaid] Generation failed (using cached, failure #{self._mermaid_failure_count}): {type(mermaid_error).__name__}: {str(mermaid_error)[:100]}")
-                # mermaid_content already set to cached value above
-
             # Log to unified system
             log_unified(
                 session_id=self.session_id,
@@ -207,7 +182,6 @@ class Echo:
                 images=images,
                 has_base64=has_base64,
                 audio=audio,
-                mermaid_content=mermaid_content,
                 mutation_applied=mutation_applied,  # Pass mutation for takes
                 mutation_type=mutation_type,
                 mutation_template=mutation_template,

@@ -25,6 +25,7 @@ import socket
 import threading
 import uuid
 import traceback
+import re
 from threading import Lock
 from typing import Optional
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
@@ -212,6 +213,7 @@ class ClientConnection:
         self.server = server  # Reference to parent server for connection tracking
         self.idle_timeout = idle_timeout  # Seconds before disconnecting idle client (0 = disabled)
         self.database_name = 'default'  # Logical database name from client connection
+        self.results_db_name = 'lars_results_default'  # ClickHouse database for INTO tables (namespaced by database_name)
         self.user_name = 'lars'       # Logical user name from client connection
         self.application_name = 'unknown'
         self.is_persistent_db = False   # True if using persistent DuckDB file
@@ -4247,8 +4249,18 @@ class ClientConnection:
         if os.environ.get('LARS_PG_LOG_STARTUP_PARAMS') == '1':
             print(f"[{self.session_id or self.addr}]   🔎 Startup params: {startup_params}")
 
+        # Enforce safe database names (used for ClickHouse namespace: lars_results_<db_name>).
+        # Be strict: reject anything outside [A-Za-z_][A-Za-z0-9_]{0,63}.
+        # This avoids injection and "silent fixing" that could misroute persisted tables.
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", database or ""):
+            raise ValueError(
+                f"Invalid database name '{database}'. "
+                "Use only letters, numbers, and underscores; must start with a letter or underscore; max 64 chars."
+            )
+
         # Store database name for session setup
         self.database_name = database
+        self.results_db_name = f"lars_results_{database}"
 
         # Create unique session_id per client connection
         # Each client needs its own connection for thread safety
@@ -4588,17 +4600,18 @@ class ClientConnection:
                     self._handle_background_query(inner_sql)
                     return
 
-            # Handle ANALYZE queries (async execution + LLM analysis)
-            # Syntax: ANALYZE 'prompt here' SELECT * FROM table;
-            # Token-based parsing handles newlines and whitespace properly
+            # NOTE: Legacy ANALYZE 'prompt' SELECT ... directive removed.
+            # Use: SELECT ... THEN ANALYZE 'prompt' [INTO ...]
             if query_upper.startswith('ANALYZE'):
                 from ..sql_tools.sql_directives import parse_sql_directives
-                directive, inner_sql = parse_sql_directives(query)
+                directive, _ = parse_sql_directives(query)
                 if directive and directive.directive_type == 'ANALYZE':
-                    # Reconstruct format expected by _handle_analyze_query
-                    # (it expects to parse the prompt itself for backwards compatibility)
-                    reconstructed = f"'{directive.prompt}' {inner_sql}"
-                    self._handle_analyze_query(reconstructed)
+                    send_error(
+                        self.sock,
+                        "ANALYZE 'prompt' SELECT ... has been removed. Use THEN ANALYZE instead.",
+                        detail="Example: SELECT * FROM t THEN ANALYZE 'what are the trends?'",
+                        transaction_status=self.transaction_status,
+                    )
                     return
 
             # Handle WATCH commands (reactive SQL subscriptions)
@@ -4946,10 +4959,11 @@ class ClientConnection:
             query = preprocess_deref_cascades(query, deref_context)
 
             # Rewrite into_ table references to read from ClickHouse
-            # Tables created with THEN PASS INTO xxx are stored in lars_results.into_xxx
+            # Tables created with ... INTO xxx are stored in ClickHouse as:
+            #   <results_db_name>.into_xxx  (results_db_name = lars_results_<database_name>)
             try:
                 from ..sql_tools.into_table_rewriter import rewrite_into_tables
-                query, into_changed = rewrite_into_tables(query)
+                query, into_changed = rewrite_into_tables(query, results_db=self.results_db_name)
                 if into_changed:
                     styled_print(f"[{self.session_id}]   {S.LINK} INTO table references rewritten")
             except Exception as e:
@@ -6273,8 +6287,8 @@ class ClientConnection:
         Execute a query in the background and return job info immediately.
 
         The query runs asynchronously in a separate thread with its own DuckDB
-        connection to the same database file. Results are materialized to a
-        table and status is tracked in sql_query_log (ClickHouse).
+        connection (in-memory). Results and status are tracked in sql_query_log
+        (ClickHouse); result materialization uses ClickHouse ("query insurance").
 
         Usage:
             BACKGROUND SELECT * FROM expensive_computation;
@@ -6286,7 +6300,7 @@ class ClientConnection:
             - Poll: SELECT * FROM job('job-swift-fox-abc123')
             - Wait: SELECT * FROM await_job('job-swift-fox-abc123')
             - List all: SELECT * FROM jobs()
-            - Query results: SELECT * FROM _results_YYYYMMDD.job_swift_fox_abc123
+            - Query results: SELECT * FROM read_json_auto(clickhouse_scan_1('lars_results.r_job_swift_fox_abc123'))
 
         Args:
             query: The SQL query to execute in background (without BACKGROUND prefix)
@@ -6297,11 +6311,7 @@ class ClientConnection:
         import pandas as pd
         from datetime import datetime
         from concurrent.futures import ThreadPoolExecutor
-
-        # Check for persistent database (required for background queries)
-        if not self.is_persistent_db:
-            send_error(self.sock, "BACKGROUND queries require a persistent database. Connect with a database name other than 'memory'.")
-            return
+        import re
 
         # Generate job ID using woodland naming (user-friendly, unique)
         from ..session_naming import generate_woodland_id
@@ -6319,21 +6329,13 @@ class ClientConnection:
             send_error(self.sock, "Failed to initialize background job")
             return
 
-        # Capture database info for background thread
-        db_name = self.database_name
-        from ..config import get_config
-        config = get_config()
-        safe_db_name = db_name.replace("/", "_").replace("\\", "_").replace("..", "_")
-        db_path = os.path.join(config.root_dir, 'session_dbs', f"{safe_db_name}.duckdb")
         session_id = self.session_id
 
-        # Predict result table location (use full job_id as table name)
-        date_str = datetime.now().strftime('%Y%m%d')
-        result_schema = f"_results_{date_str}"
-        # Convert job-swift-fox-abc123 to job_swift_fox_abc123 (valid SQL identifier)
-        safe_job_id = job_id.replace('-', '_')
-        result_table_name = safe_job_id
-        full_result_table = f"{result_schema}.{result_table_name}"
+        # Predict ClickHouse "query insurance" table name.
+        # Matches _maybe_materialize_result() naming: r_<caller_id sanitized>.
+        safe_job_id = re.sub(r'[^a-zA-Z0-9]', '_', job_id)
+        result_table_name = f"r_{safe_job_id}"
+        full_result_table = f"lars_results.{result_table_name}"
 
         def execute_in_background():
             """Background thread: execute query, materialize results, update status."""
@@ -6354,8 +6356,8 @@ class ClientConnection:
 
                 styled_print(f"[{session_id}] {S.RETRY} Background job {job_id} starting")
 
-                # Open fresh DuckDB connection to same database file
-                bg_conn = duckdb.connect(db_path)
+                # Open fresh in-memory DuckDB connection (no DuckDB persistence).
+                bg_conn = duckdb.connect()
                 bg_conn.execute("SET threads TO 4")
 
                 # Register UDFs on this connection
@@ -6374,46 +6376,81 @@ class ClientConnection:
                 # Rewrite into_ table references to read from ClickHouse
                 try:
                     from ..sql_tools.into_table_rewriter import rewrite_into_tables
-                    query, _ = rewrite_into_tables(query)
+                    query, _ = rewrite_into_tables(query, results_db=self.results_db_name)
                 except Exception:
                     pass  # Non-fatal
 
-                # Rewrite the query (handles LARS syntax, semantic operators, etc.)
+                # Deref preprocessing: evaluate @cascade() expressions first
+                try:
+                    from ..sql_tools.deref_preprocessor import preprocess_deref_cascades
+                    deref_context = {
+                        'session_id': f"{self.auth_user_id}:{self.database_name}",
+                        'protocol': 'pgwire_background',
+                        'database_name': self.database_name,
+                        'user_name': self.user_name,
+                        'application_name': self.application_name,
+                        'client_address': f"{self.addr[0]}:{self.addr[1]}" if self.addr else '',
+                        'caller_id': job_id,
+                    }
+                    query = preprocess_deref_cascades(query, deref_context)
+                except Exception:
+                    pass  # Non-fatal
+
+                # Support PIPELINE syntax (THEN/INTO) inside BACKGROUND
+                from ..sql_tools.pipeline_parser import has_pipeline_syntax, parse_pipeline_syntax, preprocess_cte_pipelines
                 from ..sql_rewriter import rewrite_lars_syntax
-                rewritten = rewrite_lars_syntax(query, duckdb_conn=bg_conn)
 
-                # Debug: print rewritten query
-                styled_print(f"[{session_id}] {S.LOG} Rewritten query (first 500 chars):")
-                print(rewritten[:500])
+                if has_pipeline_syntax(query):
+                    pipeline = parse_pipeline_syntax(query)
+                    if pipeline and pipeline.stages:
+                        base_sql = pipeline.base_sql
+                        base_sql = rewrite_lars_syntax(base_sql, duckdb_conn=bg_conn)
+                        base_sql = preprocess_cte_pipelines(
+                            base_sql,
+                            duckdb_conn=bg_conn,
+                            session_id=session_id,
+                            caller_id=job_id,
+                        )
+                        base_df = bg_conn.execute(base_sql).fetchdf()
 
-                # Execute
-                result = bg_conn.execute(rewritten)
-                result_df = result.fetchdf() if result else pd.DataFrame()
+                        from ..sql_tools.pipeline_executor import execute_pipeline_with_into
+                        result_df = execute_pipeline_with_into(
+                            stages=pipeline.stages,
+                            initial_df=base_df,
+                            into_table=pipeline.into_table,
+                            duckdb_conn=bg_conn,
+                            session_id=session_id,
+                            results_db=self.results_db_name,
+                            caller_id=job_id,
+                            original_query=query,
+                            base_into_table=pipeline.base_into_table,
+                        )
+                    else:
+                        result_df = pd.DataFrame()
+                else:
+                    rewritten = rewrite_lars_syntax(query, duckdb_conn=bg_conn)
+                    rewritten = preprocess_cte_pipelines(
+                        rewritten,
+                        duckdb_conn=bg_conn,
+                        session_id=session_id,
+                        caller_id=job_id,
+                    )
+                    result_df = bg_conn.execute(rewritten).fetchdf()
 
                 styled_print(f"[{session_id}] {S.CHART} Background job {job_id} executed, {len(result_df)} rows")
 
-                # Materialize results to the database
+                # Materialize results (ClickHouse "query insurance" table) and log location.
                 result_location = None
                 if len(result_df) > 0:
                     try:
-                        # Create schema if not exists
-                        bg_conn.execute(f"CREATE SCHEMA IF NOT EXISTS {result_schema}")
-
-                        # Register DataFrame and create table
-                        temp_name = f"_temp_bg_{safe_job_id}"
-                        bg_conn.register(temp_name, result_df)
-                        bg_conn.execute(f"CREATE OR REPLACE TABLE {full_result_table} AS SELECT * FROM {temp_name}")
-                        bg_conn.unregister(temp_name)
-
-                        result_location = {
-                            'db_name': db_name,
-                            'db_path': db_path,
-                            'schema_name': result_schema,
-                            'table_name': result_table_name
-                        }
-
-                        styled_print(f"[{session_id}] {S.SAVE} Background job {job_id} materialized to {full_result_table}")
-
+                        result_location = self._maybe_materialize_result(
+                            query=query,
+                            result_df=result_df,
+                            query_id=internal_query_id,
+                            caller_id=job_id,
+                        )
+                        if result_location and result_location.get('result_table'):
+                            styled_print(f"[{session_id}] {S.SAVE} Background job {job_id} materialized to lars_results.{result_location['result_table']}")
                     except Exception as mat_err:
                         styled_print(f"[{session_id}] {S.WARN}  Background job {job_id} materialization failed: {mat_err}")
 
@@ -6425,10 +6462,9 @@ class ClientConnection:
                     status='completed',
                     rows_output=len(result_df),
                     duration_ms=duration_ms,
-                    result_db_name=result_location.get('db_name') if result_location else None,
-                    result_db_path=result_location.get('db_path') if result_location else None,
-                    result_schema=result_location.get('schema_name') if result_location else None,
-                    result_table=result_location.get('table_name') if result_location else None,
+                    result_db_name='lars_results' if result_location else None,
+                    result_schema=None,
+                    result_table=result_location.get('result_table') if result_location else None,
                     cache_hits=cache_hits,
                     cache_misses=cache_misses,
                 )
@@ -6480,365 +6516,6 @@ class ClientConnection:
         else:
             send_query_results(self.sock, job_df, self.transaction_status)
         styled_print(f"[{self.session_id}] {S.RUN} Background job {job_id} submitted → {full_result_table}")
-
-    def _handle_analyze_query(self, query_with_prompt: str, extended_query_mode: bool = False, send_row_description: bool = True):
-        """
-        Execute a query in background, then analyze results with LLM.
-
-        The query runs asynchronously, results are formatted for LLM consumption,
-        then passed to an analysis cascade. Results and analysis are stored.
-
-        Usage:
-            ANALYZE 'why were sales low in December?' SELECT * FROM sales;
-
-        Returns immediately with:
-            job_id (e.g., 'analysis-swift-fox-abc123'), status, prompt, result_table
-
-        The user can then:
-            - Poll: SELECT * FROM job('analysis-swift-fox-abc123')
-            - Get analysis: SELECT * FROM analysis('analysis-swift-fox-abc123')
-            - Query results: SELECT * FROM _results_YYYYMMDD.analysis_swift_fox_abc123
-            - View logs: SELECT * FROM messages('analysis-swift-fox-abc123')
-
-        Args:
-            query_with_prompt: The query with prompt in format "'prompt' SELECT ..."
-            extended_query_mode: If True, use Extended Query Protocol response format
-            send_row_description: If True (and extended_query_mode), send RowDescription
-        """
-        import time
-        import re
-        import pandas as pd
-        from datetime import datetime
-        from concurrent.futures import ThreadPoolExecutor
-
-        # Parse prompt from query: ANALYZE 'prompt' SELECT ...
-        # Support both single and double quotes
-        prompt_match = re.match(r"""^(['"])(.*?)\1\s+(.+)$""", query_with_prompt, re.DOTALL)
-        if not prompt_match:
-            send_error(self.sock, "ANALYZE syntax: ANALYZE 'your question' SELECT ... ")
-            return
-
-        prompt = prompt_match.group(2)
-        query = prompt_match.group(3).strip()
-
-        if not query:
-            send_error(self.sock, "ANALYZE requires a SQL query after the prompt")
-            return
-
-        # Check for persistent database (required)
-        if not self.is_persistent_db:
-            send_error(self.sock, "ANALYZE queries require a persistent database. Connect with a database name other than 'memory'.")
-            return
-
-        # Generate job ID using woodland naming
-        from ..session_naming import generate_woodland_id
-        job_id = f"analysis-{generate_woodland_id()}"
-
-        # Log query start
-        from ..sql_trail import log_query_start, log_query_complete, log_query_error, get_and_clear_cache_counts
-        internal_query_id = log_query_start(
-            caller_id=job_id,
-            query_raw=f"ANALYZE '{prompt}' {query}",
-            protocol='postgresql_wire_analysis'
-        )
-
-        if not internal_query_id:
-            send_error(self.sock, "Failed to initialize analysis job")
-            return
-
-        # Capture database info for background thread
-        db_name = self.database_name
-        from ..config import get_config
-        config = get_config()
-        safe_db_name = db_name.replace("/", "_").replace("\\", "_").replace("..", "_")
-        db_path = os.path.join(config.root_dir, 'session_dbs', f"{safe_db_name}.duckdb")
-        session_id = self.session_id
-
-        # Predict result table location
-        date_str = datetime.now().strftime('%Y%m%d')
-        result_schema = f"_results_{date_str}"
-        safe_job_id = job_id.replace('-', '_')
-        result_table_name = safe_job_id
-        full_result_table = f"{result_schema}.{result_table_name}"
-
-        def format_for_llm(df: pd.DataFrame, max_rows: int = 100) -> str:
-            """Format DataFrame for LLM consumption - compact but informative."""
-            if len(df) == 0:
-                return "No rows returned."
-
-            lines = []
-            lines.append(f"Rows: {len(df):,} | Columns: {len(df.columns)}")
-
-            # Column info with types
-            col_types = [f"{c} ({df[c].dtype})" for c in df.columns]
-            lines.append(f"Schema: {', '.join(col_types)}")
-            lines.append("")
-
-            # Sample data as markdown table (truncated)
-            sample_df = df.head(max_rows)
-            try:
-                # Truncate long string values for display
-                display_df = sample_df.copy()
-                for col in display_df.select_dtypes(include=['object']).columns:
-                    display_df[col] = display_df[col].astype(str).str[:100]
-                lines.append(display_df.to_markdown(index=False))
-            except Exception:
-                # Fallback to CSV if markdown fails
-                lines.append(sample_df.to_csv(index=False))
-
-            if len(df) > max_rows:
-                lines.append(f"\n... ({len(df) - max_rows:,} more rows not shown)")
-
-            # Numeric column statistics
-            numeric_cols = df.select_dtypes(include=['number']).columns
-            if len(numeric_cols) > 0:
-                lines.append("\nNumeric Statistics:")
-                try:
-                    stats = df[numeric_cols].describe().round(2)
-                    lines.append(stats.to_markdown())
-                except Exception:
-                    pass
-
-            return "\n".join(lines)
-
-        def execute_and_analyze():
-            """Background thread: execute query, analyze with LLM, store results."""
-            import duckdb
-            import traceback as tb_module
-            import json
-            bg_start = time.time()
-            bg_conn = None
-            result_df = pd.DataFrame()
-            analysis_text = None
-
-            try:
-                # Set caller context for cost tracking
-                from ..caller_context import set_caller_context, build_sql_metadata, clear_caller_context
-                metadata = build_sql_metadata(
-                    sql_query=query,
-                    protocol="postgresql_wire_analysis",
-                    triggered_by="analyze_query"
-                )
-                set_caller_context(job_id, metadata)
-
-                styled_print(f"[{session_id}] {S.SEARCH} Analysis job {job_id} starting: {prompt[:50]}...")
-
-                # Open fresh DuckDB connection
-                bg_conn = duckdb.connect(db_path)
-                bg_conn.execute("SET threads TO 4")
-
-                # Register UDFs
-                from ..sql_tools.udf import register_lars_udf, register_dynamic_sql_functions
-                register_lars_udf(bg_conn)
-                register_dynamic_sql_functions(bg_conn)
-
-                # Lazy attach configured sources for analysis execution too
-                try:
-                    from ..sql_tools.config import load_sql_connections
-                    from ..sql_tools.lazy_attach import LazyAttachManager
-                    LazyAttachManager(bg_conn, load_sql_connections()).ensure_for_query(query, aggressive=False)
-                except Exception:
-                    pass
-
-                # Rewrite into_ table references to read from ClickHouse
-                try:
-                    from ..sql_tools.into_table_rewriter import rewrite_into_tables
-                    query, _ = rewrite_into_tables(query)
-                except Exception:
-                    pass  # Non-fatal
-
-                # Rewrite and execute query
-                from ..sql_rewriter import rewrite_lars_syntax
-                rewritten = rewrite_lars_syntax(query, duckdb_conn=bg_conn)
-                result = bg_conn.execute(rewritten)
-                result_df = result.fetchdf() if result else pd.DataFrame()
-
-                styled_print(f"[{session_id}] {S.CHART} Analysis job {job_id} query complete: {len(result_df)} rows")
-
-                # Materialize query results
-                result_location = None
-                if len(result_df) > 0:
-                    try:
-                        bg_conn.execute(f"CREATE SCHEMA IF NOT EXISTS {result_schema}")
-                        temp_name = f"_temp_analysis_{safe_job_id}"
-                        bg_conn.register(temp_name, result_df)
-                        bg_conn.execute(f"CREATE OR REPLACE TABLE {full_result_table} AS SELECT * FROM {temp_name}")
-                        bg_conn.unregister(temp_name)
-                        result_location = {
-                            'db_name': db_name,
-                            'db_path': db_path,
-                            'schema_name': result_schema,
-                            'table_name': result_table_name
-                        }
-                        styled_print(f"[{session_id}] {S.SAVE} Analysis job {job_id} results saved to {full_result_table}")
-                    except Exception as mat_err:
-                        styled_print(f"[{session_id}] {S.WARN}  Analysis job {job_id} materialization failed: {mat_err}")
-
-                # Format data for LLM
-                formatted_data = format_for_llm(result_df, max_rows=100)
-
-                # Call analysis via skill (uses sql_analyze cascade)
-                styled_print(f"[{session_id}] {S.AGENT} Analysis job {job_id} calling cascade...")
-                try:
-                    from ..skill_registry import get_skill
-                    analyze_skill = get_skill('sql_analyze')
-
-                    if analyze_skill:
-                        # Pass session/caller context for proper observability
-                        analysis_result = analyze_skill(
-                            prompt=prompt,
-                            query=query,
-                            data=formatted_data,
-                            row_count=len(result_df),
-                            columns=list(result_df.columns),
-                            _session_id=f"analyze-{job_id}",
-                            _caller_id=job_id,
-                        )
-                        if isinstance(analysis_result, dict):
-                            analysis_text = analysis_result.get('analysis') or analysis_result.get('result') or str(analysis_result)
-                        else:
-                            analysis_text = str(analysis_result)
-                    else:
-                        # Fallback: run cascade directly if skill not registered
-                        from ..runner import run_cascade
-                        from ..config import get_config
-                        import os as os_module
-                        cfg = get_config()
-                        cascade_path = os_module.path.join(cfg.root_dir, 'cascades', 'sql_analyze.yaml')
-
-                        styled_print(f"[{session_id}] {S.WARN}  sql_analyze skill not found, running cascade directly")
-
-                        cascade_result = run_cascade(
-                            cascade_path,
-                            input_data={
-                                "prompt": prompt,
-                                "query": query,
-                                "data": formatted_data,
-                                "row_count": len(result_df),
-                                "columns": ", ".join(result_df.columns),
-                            },
-                            session_id=f"analyze-{job_id}",
-                            caller_id=job_id,
-                        )
-
-                        # Extract analysis from cascade result
-                        state = cascade_result.get("state", {})
-                        if "analysis" in state:
-                            analysis_text = state["analysis"]
-                        elif cascade_result.get("lineage"):
-                            last_output = cascade_result["lineage"][-1].get("output", {})
-                            analysis_text = last_output.get("analysis", str(last_output))
-                        else:
-                            analysis_text = str(cascade_result.get("outputs", {}))
-
-                except Exception as llm_err:
-                    styled_print(f"[{session_id}] {S.WARN}  Analysis job {job_id} cascade failed: {llm_err}")
-                    import traceback as tb_mod
-                    tb_mod.print_exc()
-                    analysis_text = f"Analysis failed: {llm_err}"
-
-                # Store analysis in _analysis table
-                try:
-                    bg_conn.execute("""
-                        CREATE TABLE IF NOT EXISTS _analysis (
-                            job_id VARCHAR PRIMARY KEY,
-                            prompt VARCHAR,
-                            analysis TEXT,
-                            query_sql VARCHAR,
-                            row_count INTEGER,
-                            column_count INTEGER,
-                            columns VARCHAR,
-                            result_table VARCHAR,
-                            created_at TIMESTAMP DEFAULT current_timestamp
-                        )
-                    """)
-
-                    # Use parameterized insert to handle special characters
-                    bg_conn.execute("""
-                        INSERT OR REPLACE INTO _analysis
-                        (job_id, prompt, analysis, query_sql, row_count, column_count, columns, result_table, created_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, [
-                        job_id,
-                        prompt,
-                        analysis_text,
-                        query[:1000],  # Truncate long queries
-                        len(result_df),
-                        len(result_df.columns),
-                        json.dumps(list(result_df.columns)),
-                        full_result_table if result_location else None,
-                        datetime.now()
-                    ])
-
-                    styled_print(f"[{session_id}] {S.LOG} Analysis job {job_id} stored in _analysis table")
-
-                except Exception as store_err:
-                    styled_print(f"[{session_id}] {S.WARN}  Analysis job {job_id} failed to store: {store_err}")
-
-                # Log completion
-                duration_ms = (time.time() - bg_start) * 1000
-                cache_hits, cache_misses = get_and_clear_cache_counts(job_id)
-                log_query_complete(
-                    query_id=internal_query_id,
-                    status='completed',
-                    rows_output=len(result_df),
-                    duration_ms=duration_ms,
-                    result_db_name=result_location.get('db_name') if result_location else None,
-                    result_db_path=result_location.get('db_path') if result_location else None,
-                    result_schema=result_location.get('schema_name') if result_location else None,
-                    result_table=result_location.get('table_name') if result_location else None,
-                    cache_hits=cache_hits,
-                    cache_misses=cache_misses,
-                )
-
-                styled_print(f"[{session_id}] {S.DONE} Analysis job {job_id} completed in {duration_ms:.0f}ms")
-
-            except Exception as e:
-                tb_module.print_exc()
-                duration_ms = (time.time() - bg_start) * 1000
-                log_query_error(internal_query_id, str(e), duration_ms=duration_ms)
-                styled_print(f"[{session_id}] {S.ERR} Analysis job {job_id} failed: {e}")
-
-            finally:
-                if bg_conn:
-                    try:
-                        bg_conn.close()
-                    except:
-                        pass
-                try:
-                    from ..caller_context import clear_caller_context
-                    clear_caller_context()
-                except:
-                    pass
-
-        # Initialize background executor if needed
-        if not hasattr(self, '_background_executor'):
-            self._background_executor = ThreadPoolExecutor(
-                max_workers=4,
-                thread_name_prefix='bg_query'
-            )
-
-        # Submit to background executor
-        self._background_executor.submit(execute_and_analyze)
-
-        # Return job info immediately
-        job_df = pd.DataFrame([{
-            'job_id': job_id,
-            'status': 'running',
-            'prompt': prompt[:100] + ('...' if len(prompt) > 100 else ''),
-            'result_table': full_result_table,
-            'submitted_at': datetime.now().isoformat(),
-            'query_preview': query[:100] + ('...' if len(query) > 100 else ''),
-            'check_status': f"SELECT * FROM job('{job_id}')",
-            'get_analysis': f"SELECT * FROM analysis('{job_id}')",
-            'message_log': f"SELECT * FROM messages('{job_id}')",
-        }])
-
-        if extended_query_mode:
-            send_execute_results(self.sock, job_df, send_row_description=send_row_description)
-        else:
-            send_query_results(self.sock, job_df, self.transaction_status)
-        styled_print(f"[{self.session_id}] {S.SEARCH} Analysis job {job_id} submitted: {prompt[:50]}...")
 
     def _handle_explain_query(self, query: str):
         """
@@ -6917,7 +6594,7 @@ class ClientConnection:
             # Rewrite into_ table references to read from ClickHouse
             try:
                 from ..sql_tools.into_table_rewriter import rewrite_into_tables
-                query, _ = rewrite_into_tables(query)
+                query, _ = rewrite_into_tables(query, results_db=self.results_db_name)
             except Exception:
                 pass  # Non-fatal
 
@@ -7010,7 +6687,7 @@ class ClientConnection:
             # Rewrite into_ table references to read from ClickHouse
             try:
                 from ..sql_tools.into_table_rewriter import rewrite_into_tables
-                query, _ = rewrite_into_tables(query)
+                query, _ = rewrite_into_tables(query, results_db=self.results_db_name)
             except Exception:
                 pass  # Non-fatal
 
@@ -7065,10 +6742,11 @@ class ClientConnection:
             base_sql = pipeline.base_sql
 
             # Rewrite into_ table references to read from ClickHouse
-            # Tables created with THEN PASS INTO xxx are stored in lars_results.into_xxx
+            # Tables created with ... INTO xxx are stored in ClickHouse as:
+            #   <results_db_name>.into_xxx  (results_db_name = lars_results_<database_name>)
             try:
                 from ..sql_tools.into_table_rewriter import rewrite_into_tables
-                base_sql, into_changed = rewrite_into_tables(base_sql)
+                base_sql, into_changed = rewrite_into_tables(base_sql, results_db=self.results_db_name)
                 if into_changed:
                     styled_print(f"[{self.session_id}]   {S.LINK} INTO table references rewritten in base SQL")
             except Exception as e:
@@ -7120,6 +6798,7 @@ class ClientConnection:
                 into_table=pipeline.into_table,
                 duckdb_conn=self.duckdb_conn,
                 session_id=self.session_id,
+                results_db=self.results_db_name,
                 caller_id=getattr(self, '_current_caller_id', None),
                 original_query=original_query,
                 base_into_table=pipeline.base_into_table,
@@ -7473,7 +7152,7 @@ class ClientConnection:
             # Rewrite into_ table references to read from ClickHouse
             try:
                 from ..sql_tools.into_table_rewriter import rewrite_into_tables
-                query, _ = rewrite_into_tables(query)
+                query, _ = rewrite_into_tables(query, results_db=self.results_db_name)
             except Exception:
                 pass  # Non-fatal
 
@@ -7735,32 +7414,6 @@ class ClientConnection:
                         styled_print(f"[{self.session_id}]      {S.OK} Portal described (BACKGROUND - {len(columns)} columns)")
                         return
 
-                # ANALYZE queries - Return analysis job metadata columns
-                # Check original_query since ANALYZE prefix is stripped during rewriting
-                if original_query_for_directive:
-                    orig_upper = original_query_for_directive.upper().strip()
-                    if orig_upper.startswith('ANALYZE'):
-                        from ..sql_tools.sql_directives import parse_sql_directives
-                        directive, _ = parse_sql_directives(original_query_for_directive)
-                        if directive and directive.directive_type == 'ANALYZE':
-                            # Send RowDescription with analysis job metadata columns
-                            columns = [
-                                ('job_id', 'VARCHAR'),
-                                ('status', 'VARCHAR'),
-                                ('prompt', 'VARCHAR'),
-                                ('result_table', 'VARCHAR'),
-                                ('submitted_at', 'VARCHAR'),
-                                ('query_preview', 'VARCHAR'),
-                                ('check_status', 'VARCHAR'),
-                                ('get_analysis', 'VARCHAR'),
-                                ('message_log', 'VARCHAR'),
-                            ]
-                            self.sock.sendall(RowDescription.encode(columns))
-                            portal['row_description_sent'] = True
-                            portal['described_columns'] = len(columns)
-                            styled_print(f"[{self.session_id}]      {S.OK} Portal described (ANALYZE - {len(columns)} columns)")
-                            return
-
                 # WATCH commands - Handle reactive SQL subscriptions
                 # Send appropriate RowDescription based on command type
                 from ..sql_tools.sql_directives import is_watch_command, parse_watch_command
@@ -7890,7 +7543,7 @@ class ClientConnection:
                             # Rewrite into_ table references to read from ClickHouse
                             try:
                                 from ..sql_tools.into_table_rewriter import rewrite_into_tables
-                                base_sql, _ = rewrite_into_tables(base_sql)
+                                base_sql, _ = rewrite_into_tables(base_sql, results_db=self.results_db_name)
                             except Exception:
                                 pass  # Non-fatal
 
@@ -7931,6 +7584,7 @@ class ClientConnection:
                                 into_table=pipeline.into_table,
                                 duckdb_conn=self.duckdb_conn,
                                 session_id=self.session_id,
+                                results_db=self.results_db_name,
                                 caller_id=getattr(self, '_current_caller_id', None),
                                 original_query=query,
                                 base_into_table=pipeline.base_into_table,
@@ -8588,21 +8242,18 @@ class ClientConnection:
                         self._handle_background_query(inner_sql, extended_query_mode=True, send_row_description=False)
                         return
 
-            # ANALYZE queries - Handle async execution + LLM analysis via Extended Query
-            # Check original_query since ANALYZE prefix is stripped during rewriting
+            # Legacy ANALYZE 'prompt' SELECT ... directive removed.
+            # Check original_query since directive prefixes are stripped during rewriting.
             if original_query:
                 original_upper = original_query.upper().strip()
                 if original_upper.startswith('ANALYZE'):
                     from ..sql_tools.sql_directives import parse_sql_directives
-                    directive, inner_sql = parse_sql_directives(original_query)
+                    directive, _ = parse_sql_directives(original_query)
                     if directive and directive.directive_type == 'ANALYZE':
-                        styled_print(f"[{self.session_id}]      Detected ANALYZE query via Extended Query")
-                        # Reconstruct format expected by _handle_analyze_query
-                        reconstructed = f"'{directive.prompt}' {inner_sql}"
-                        # Describe Portal already sent RowDescription with job metadata columns,
-                        # so Execute only sends DataRows (no RowDescription)
-                        self._handle_analyze_query(reconstructed, extended_query_mode=True, send_row_description=False)
-                        return
+                        raise Exception(
+                            "ANALYZE 'prompt' SELECT ... has been removed. Use THEN ANALYZE instead. "
+                            "Example: SELECT * FROM t THEN ANALYZE 'what are the trends?'"
+                        )
 
             # WATCH commands - Handle reactive SQL subscriptions via Extended Query
             from ..sql_tools.sql_directives import is_watch_command
@@ -9753,7 +9404,20 @@ class ClientConnection:
                 startup = first_message
 
             # Step 2: Handle startup (sets session_id based on database name)
-            self.handle_startup(startup['params'])
+            try:
+                self.handle_startup(startup['params'])
+            except ValueError as e:
+                # Fail fast before auth/session setup; invalid db names would corrupt ClickHouse namespacing.
+                try:
+                    self.sock.sendall(ErrorResponse.encode(
+                        'FATAL',
+                        "Invalid database name",
+                        detail=str(e),
+                        sqlstate='3D000',  # invalid_catalog_name
+                    ))
+                except Exception:
+                    pass
+                return
 
             # Step 2b: Authenticate (if auth enabled)
             if not self._authenticate():

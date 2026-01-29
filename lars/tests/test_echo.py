@@ -57,8 +57,6 @@ class TestEchoInitialization:
         echo = Echo(session_id="test_internal")
         assert echo._current_cascade_id is None
         assert echo._current_cell_name is None
-        assert echo._last_mermaid_content is None
-        assert echo._mermaid_failure_count == 0
         assert echo._message_callback is None
 
 

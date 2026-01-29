@@ -24,11 +24,6 @@ _LAZY_IMPORTS = {
     "TraceContext": (".checkpoints", "TraceContext"),
     "create_eddy": (".skills.base", "create_eddy"),
     "get_echo": (".echo", "get_echo"),
-    # Visualizer
-    "generate_mermaid": (".visualizer", "generate_mermaid"),
-    "generate_mermaid_string": (".visualizer", "generate_mermaid_string"),
-    "generate_state_diagram": (".visualizer", "generate_state_diagram"),
-    "generate_state_diagram_string": (".visualizer", "generate_state_diagram_string"),
     # Browser management
     "BrowserSession": (".browser_manager", "BrowserSession"),
     "BrowserSessionManager": (".browser_manager", "BrowserSessionManager"),
@@ -347,10 +342,6 @@ __all__ = [
     "CheckpointStatus",
     "CheckpointType",
     "TraceContext",
-    "generate_mermaid",
-    "generate_mermaid_string",
-    "generate_state_diagram",
-    "generate_state_diagram_string",
     # Browser session management
     "BrowserSession",
     "BrowserSessionManager",

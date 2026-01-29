@@ -1,9 +1,11 @@
 """
 INTO Table Rewriter - JIT rewriting of into_ table references.
 
-Tables created with `THEN PASS INTO xxx` are stored in ClickHouse as `lars_results.into_xxx`.
-This rewriter detects references to `into_xxx` in table positions (FROM, JOIN) and rewrites
-them to read from ClickHouse via clickhouse_scan_1().
+Tables created with `... INTO my_table` are stored in ClickHouse as
+`<results_db>.into_my_table` (default: `lars_results`).
+
+This rewriter detects references to `into_*` in table positions (FROM, JOIN)
+and rewrites them to read from ClickHouse via clickhouse_scan_1().
 
 Example:
     Input:  SELECT * FROM into_sales WHERE category = 'Electronics'
@@ -27,12 +29,14 @@ class _Token:
     text: str
 
 
-def rewrite_into_tables(sql: str) -> Tuple[str, bool]:
+def rewrite_into_tables(sql: str, results_db: str = "lars_results") -> Tuple[str, bool]:
     """
     Rewrite into_ table references to read from ClickHouse.
 
     Args:
         sql: Input SQL query
+        results_db: ClickHouse database containing the into_* tables
+                    (e.g., "lars_results_default", "lars_results_team1")
 
     Returns:
         Tuple of (rewritten_sql, changed)
@@ -76,9 +80,9 @@ def rewrite_into_tables(sql: str) -> Tuple[str, bool]:
 
             # Check if this is an into_ table reference in a table position
             if tok.text.lower().startswith('into_') and prev_keyword in ('FROM', 'JOIN', 'INNER', 'LEFT', 'RIGHT', 'OUTER', 'CROSS', 'FULL'):
-                # Rewrite: into_xxx -> read_json_auto(clickhouse_scan_1('lars_results.into_xxx')) AS into_xxx
+                # Rewrite: into_xxx -> read_json_auto(clickhouse_scan_1('<results_db>.into_xxx')) AS into_xxx
                 table_name = tok.text
-                ch_table = f"lars_results.{table_name}"
+                ch_table = f"{results_db}.{table_name}"
                 rewritten = f"read_json_auto(clickhouse_scan_1('{ch_table}')) AS {table_name}"
                 out_tokens.append(_Token("other", rewritten))
                 changed = True

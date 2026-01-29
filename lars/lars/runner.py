@@ -213,7 +213,6 @@ console = Console()
 from .agent import Agent
 from .utils import get_tool_schema, encode_image_base64, compute_species_hash
 from .tracing import TraceNode, set_current_trace
-from .visualizer import generate_mermaid
 from .prompts import render_instruction
 from .artifact_resolver import enrich_outputs_with_artifacts, convert_to_multimodal_content
 from .state import update_cell_progress, clear_cell_progress
@@ -378,9 +377,6 @@ class LARSRunner:
         # Configure litellm if needed
         if self.api_key:
             os.environ["OPENROUTER_API_KEY"] = self.api_key
-
-        # Graph path
-        self.graph_path = os.path.join(get_config().graph_dir, f"{self.session_id}.mmd")
 
         # Token budget manager (if configured)
         if self.config.token_budget:
@@ -2493,16 +2489,8 @@ class LARSRunner:
         return messages
 
     def _update_graph(self):
-        """Updates the mermaid graph in real-time."""
-        # DISABLED: Mermaid graph generation disabled to prevent chrome process leak
-        # mmdc (mermaid-cli) spawns puppeteer/chrome processes that accumulate
-        # Re-enable by removing this return statement
+        """No-op (execution graph generation removed)."""
         return
-
-        try:
-            generate_mermaid(self.echo, self.graph_path)
-        except Exception:
-            pass # Don't crash execution for visualization
 
     def _handle_human_input_checkpoint(
         self,
@@ -7382,57 +7370,8 @@ Use only numbers 0-100 for scores."""
         costs: List[float],
         winner_index: int
     ):
-        """Log Pareto frontier data for visualization."""
-        import json
-        import os
-        from .config import get_config
-
-        config = get_config()
-        graph_dir = config.graph_dir
-
-        pareto_data = {
-            "session_id": session_id,
-            "cell_name": cell_name,
-            "frontier": [
-                {
-                    "take_index": idx,
-                    "model": take_results[idx].get("model", "unknown"),
-                    "quality": quality_scores[idx],
-                    "cost": costs[idx],
-                    "is_winner": idx == winner_index
-                }
-                for idx in frontier_indices
-            ],
-            "dominated": [
-                {
-                    "take_index": idx,
-                    "dominated_by": dom_idx,
-                    "model": take_results[idx].get("model", "unknown"),
-                    "quality": quality_scores[idx],
-                    "cost": costs[idx]
-                }
-                for idx, dom_idx in dominated_map.items()
-            ],
-            "all_takes": [
-                {
-                    "index": i,
-                    "model": sr.get("model", "unknown"),
-                    "quality": quality_scores[i],
-                    "cost": costs[i],
-                    "is_pareto_optimal": i in frontier_indices,
-                    "is_winner": i == winner_index
-                }
-                for i, sr in enumerate(take_results)
-            ]
-        }
-
-        # Write to pareto file
-        pareto_file = os.path.join(graph_dir, f"pareto_{session_id}.json")
-        os.makedirs(graph_dir, exist_ok=True)
-        with open(pareto_file, "w") as f:
-            json.dump(pareto_data, f, indent=2)
-
-        console.print(f"  [dim]Pareto frontier data saved to: {pareto_file}[/dim]")
+        """No-op (execution graph artifacts removed)."""
+        return
 
     def _execute_cell_with_takes(self, cell: CellConfig, input_data: dict, trace: TraceNode, initial_injection: dict | None = None) -> Any:
         """
@@ -13363,11 +13302,5 @@ def run_cascade(config_path: str | dict, input_data: dict | None = None, session
                           parent_session_id=parent_session_id, caller_id=caller_id, invocation_metadata=invocation_metadata)
 
     result = runner.run(input_data)
-
-    if depth == 0:
-        # Only print tree at the end of the root
-        graph_dir = get_config().graph_dir
-        graph_path = generate_mermaid(runner.echo, os.path.join(graph_dir, f"{session_id}.mmd"))
-        console.print(f"\n[bold cyan]{S.CHART} Execution Graph saved to:[/bold cyan] {graph_path}")
 
     return result

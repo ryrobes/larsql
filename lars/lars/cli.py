@@ -56,19 +56,6 @@ def main():
         help="Force render mode (default: auto-detect)"
     )
 
-    # Render Mermaid command
-    render_mermaid_parser = subparsers.add_parser(
-        'render-mermaid',
-        help='Render a Mermaid diagram (from file or inline text) in the terminal'
-    )
-    render_mermaid_parser.add_argument("mermaid", help="Path to .mmd file or inline Mermaid text")
-    render_mermaid_parser.add_argument("--width", type=int, default=None, help="Max terminal columns (defaults to terminal width)")
-    render_mermaid_parser.add_argument(
-        "--mode",
-        choices=["auto", "kitty", "iterm2", "ansi"],
-        default="auto",
-        help="Force render mode (default: auto-detect)"
-    )
     # Test command group
     test_parser = subparsers.add_parser('test', help='Cascade testing commands')
     test_subparsers = test_parser.add_subparsers(dest='test_command', help='Test subcommands')
@@ -1453,8 +1440,6 @@ def main():
         cmd_run(args)
     elif args.command == 'render':
         cmd_render(args)
-    elif args.command == 'render-mermaid':
-        cmd_render_mermaid(args)
     elif args.command == 'check':
         cmd_check(args)
     elif args.command == 'test':
@@ -1818,28 +1803,6 @@ def cmd_render(args):
         sys.exit(1)
     except Exception as e:
         print(f"✗ Failed to render image: {e}", file=sys.stderr)
-        sys.exit(1)
-
-
-def cmd_render_mermaid(args):
-    """Render a Mermaid diagram from file or inline text in the terminal."""
-    try:
-        from lars.mermaid_terminal import render_mermaid_in_terminal, MermaidRenderError
-
-        force_mode = None if args.mode == "auto" else args.mode
-        is_path = os.path.exists(args.mermaid)
-        render_mermaid_in_terminal(args.mermaid, max_width=args.width, force_mode=force_mode, is_path=is_path)
-    except MermaidRenderError as e:
-        print(f"✗ {e}", file=sys.stderr)
-        sys.exit(1)
-    except FileNotFoundError as e:
-        print(f"✗ {e}", file=sys.stderr)
-        sys.exit(1)
-    except ImportError as e:
-        print(f"✗ {e}", file=sys.stderr)
-        sys.exit(1)
-    except Exception as e:
-        print(f"✗ Failed to render Mermaid diagram: {e}", file=sys.stderr)
         sys.exit(1)
 
 

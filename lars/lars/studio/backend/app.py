@@ -929,27 +929,15 @@ def get_cascade_definitions():
                         # Convert timestamp to ISO format for frontend
                         all_cascades[cascade_id]['latest_run'] = to_iso_string(latest_time)
 
-                        # Check for mermaid and graph files
-                        mermaid_path = os.path.join(GRAPH_DIR, f"{latest_session_id}.mmd")
-                        graph_json_path = os.path.join(GRAPH_DIR, f"{latest_session_id}.json")
-
-                        all_cascades[cascade_id]['has_mermaid'] = os.path.exists(mermaid_path)
-                        all_cascades[cascade_id]['mermaid_path'] = mermaid_path if os.path.exists(mermaid_path) else None
-
-                        # Load graph JSON for complexity calculation
-                        if os.path.exists(graph_json_path):
-                            try:
-                                with open(graph_json_path) as gf:
-                                    graph_data = json.load(gf)
-                                    summary = graph_data.get('summary', {})
-                                    all_cascades[cascade_id]['graph_complexity'] = {
-                                        'total_nodes': summary.get('total_nodes', 0),
-                                        'total_cells': summary.get('total_cells', 0),
-                                        'has_takes': summary.get('has_takes', False),
-                                        'has_sub_cascades': summary.get('has_sub_cascades', False),
-                                    }
-                            except:
-                                all_cascades[cascade_id]['graph_complexity'] = None
+                        # Execution graphs/mermaid artifacts have been removed.
+                        # Provide lightweight complexity data derived from the cascade definition.
+                        cells = all_cascades[cascade_id].get('cells') or []
+                        all_cascades[cascade_id]['graph_complexity'] = {
+                            'total_nodes': len(cells),
+                            'total_cells': len(cells),
+                            'has_takes': any(c.get('has_takes') for c in cells),
+                            'has_sub_cascades': any(c.get('sub_cascades') or c.get('async_cascades') for c in cells),
+                        }
 
                 else:
                     # Dynamic/virtual cascade - exists in logs but no YAML file on disk
@@ -1001,31 +989,16 @@ def get_cascade_definitions():
                         all_cascades[cascade_id]['latest_session_id'] = latest_session_id
                         all_cascades[cascade_id]['latest_run'] = to_iso_string(latest_time)
 
-                        # Check for mermaid and graph files (might exist even without YAML)
-                        mermaid_path = os.path.join(GRAPH_DIR, f"{latest_session_id}.mmd")
-                        graph_json_path = os.path.join(GRAPH_DIR, f"{latest_session_id}.json")
-
-                        all_cascades[cascade_id]['has_mermaid'] = os.path.exists(mermaid_path)
-                        all_cascades[cascade_id]['mermaid_path'] = mermaid_path if os.path.exists(mermaid_path) else None
-
-                        if os.path.exists(graph_json_path):
-                            try:
-                                with open(graph_json_path) as gf:
-                                    graph_data = json.load(gf)
-                                    summary = graph_data.get('summary', {})
-                                    all_cascades[cascade_id]['graph_complexity'] = {
-                                        'total_nodes': summary.get('total_nodes', 0),
-                                        'total_cells': summary.get('total_cells', 0),
-                                        'has_takes': summary.get('has_takes', False),
-                                        'has_sub_cascades': summary.get('has_sub_cascades', False),
-                                    }
-                            except:
-                                all_cascades[cascade_id]['graph_complexity'] = None
+                        # Execution graphs/mermaid artifacts have been removed.
+                        all_cascades[cascade_id]['graph_complexity'] = {
+                            'total_nodes': 0,
+                            'total_cells': 0,
+                            'has_takes': False,
+                            'has_sub_cascades': False,
+                        }
                     else:
                         all_cascades[cascade_id]['latest_session_id'] = None
                         all_cascades[cascade_id]['latest_run'] = None
-                        all_cascades[cascade_id]['has_mermaid'] = False
-                        all_cascades[cascade_id]['mermaid_path'] = None
                         all_cascades[cascade_id]['graph_complexity'] = None
 
         except Exception as e:
@@ -2366,9 +2339,6 @@ def enable_cascade(cascade_id):
         return jsonify({'error': str(e)}), 500
 
 
-# NOTE: Removed duplicate route - get_mermaid_graph below handles both database and file fallback
-
-
 @app.route('/api/session/<session_id>', methods=['GET'])
 def get_session_detail(session_id):
     """Get detailed data for a specific session from ClickHouse."""
@@ -3475,318 +3445,27 @@ def get_takes_tree(session_id):
 
 @app.route('/api/graphs/<session_id>', methods=['GET'])
 def get_graph(session_id):
-    """Get execution graph JSON for a session"""
-    try:
-        graph_path = os.path.join(GRAPH_DIR, f"{session_id}.json")
-
-        if os.path.exists(graph_path):
-            with open(graph_path) as f:
-                graph_data = json.load(f)
-            return jsonify(graph_data)
-
-        return jsonify({'error': 'Graph not found'}), 404
-
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    """Deprecated: execution graph artifacts removed."""
+    return jsonify({'error': 'Execution graph artifacts have been removed.'}), 410
 
 
 @app.route('/api/mermaid/<session_id>', methods=['GET'])
 def get_mermaid_graph(session_id):
-    """Get Mermaid graph content for a session.
-
-    Priority: FILE FIRST (real-time) > DATABASE (fallback)
-
-    The .mmd file is written synchronously on every update by LARSRunner._update_graph().
-    With ClickHouse, DB writes are also immediate, but file is preferred for live updates.
-
-    Query params:
-        ?include_metadata=true - Include metadata query (slower, only needed for detail views)
-    """
-    try:
-        # Check if caller wants metadata (default: false for performance)
-        # Only the detailed debug modal needs metadata, tiles/layout don't
-        include_metadata = request.args.get('include_metadata', 'false').lower() == 'true'
-
-        mermaid_content = None
-        source = None
-
-        # PRIORITY 1: Check file first (synchronous writes, always up-to-date)
-        # Do this BEFORE creating DB connection to avoid unnecessary connections
-        mermaid_path = os.path.join(GRAPH_DIR, f"{session_id}.mmd")
-        if os.path.exists(mermaid_path):
-            try:
-                with open(mermaid_path) as f:
-                    mermaid_content = f.read()
-                if mermaid_content and mermaid_content.strip():
-                    source = "file"
-                    #print(f"[MERMAID] Loaded from file (real-time): {len(mermaid_content)} chars")
-            except Exception as file_err:
-                print(f"[MERMAID] File read error: {file_err}")
-
-        # PRIORITY 2: Fall back to database only if file doesn't exist or is empty
-        # Only create DB connection if we actually need it
-        if not mermaid_content:
-            conn = get_db_connection()
-            columns = get_available_columns()
-            if 'mermaid_content' in columns:
-                print(f"[MERMAID] No file found, checking database for session: {session_id}")
-                mermaid_query = """
-                SELECT mermaid_content, timestamp, node_type
-                FROM unified_logs
-                WHERE session_id = ?
-                  AND mermaid_content IS NOT NULL
-                  AND mermaid_content != ''
-                ORDER BY timestamp DESC
-                LIMIT 1
-                """
-                mermaid_result = conn.execute(mermaid_query, [session_id]).fetchone()
-
-                if mermaid_result and mermaid_result[0]:
-                    mermaid_content = mermaid_result[0]
-                    source = "database"
-                    #print(f"[MERMAID] Loaded from database: {len(mermaid_content)} chars")
-
-        # No content found anywhere
-        if not mermaid_content:
-            # Debug: list graph dir contents
-            try:
-                if os.path.exists(GRAPH_DIR):
-                    files = [f for f in os.listdir(GRAPH_DIR) if f.endswith('.mmd')][:10]
-                    print(f"[MERMAID] Not found. Available .mmd files (first 10): {files}")
-                else:
-                    print(f"[MERMAID] GRAPH_DIR does not exist: {GRAPH_DIR}")
-            except Exception as list_err:
-                print(f"[MERMAID] Error listing graph dir: {list_err}")
-            # Only close connection if we created one
-            if 'conn' in locals():
-                conn.close()
-            return jsonify({'error': 'Mermaid graph not found'}), 404
-
-        # Get session metadata from Parquet (only if requested)
-        metadata = None
-        if include_metadata:
-            # Only create connection if we haven't already (file-only path doesn't need DB)
-            conn_created_here = False
-            if 'conn' not in locals():
-                conn = get_db_connection()
-                conn_created_here = True
-
-            try:
-                metadata_query = """
-                SELECT
-                    cascade_id,
-                    MIN(timestamp) as start_time,
-                    MAX(timestamp) as end_time,
-                    MAX(timestamp) - MIN(timestamp) as duration_seconds
-                FROM unified_logs
-                WHERE session_id = ?
-                GROUP BY cascade_id
-                """
-                result = conn.execute(metadata_query, [session_id]).fetchone()
-
-                if result:
-                    cascade_id, start_time, end_time, duration = result
-                    cascade_file = find_cascade_file(cascade_id)
-                    filename = os.path.basename(cascade_file) if cascade_file else 'unknown.json'
-
-                    metadata = {
-                        'cascade_id': cascade_id,
-                        'cascade_file': filename,
-                        'start_time': start_time,
-                        'end_time': end_time,
-                        'duration_seconds': float(duration) if duration else 0.0
-                    }
-                else:
-                    metadata = {
-                        'cascade_id': 'unknown',
-                        'cascade_file': 'unknown.json',
-                        'start_time': None,
-                        'end_time': None,
-                        'duration_seconds': 0.0
-                    }
-            except Exception as e:
-                print(f"Error getting metadata: {e}")
-                metadata = {
-                    'cascade_id': 'unknown',
-                    'cascade_file': 'unknown.json',
-                    'start_time': None,
-                    'end_time': None,
-                    'duration_seconds': 0.0
-                }
-            finally:
-                if 'conn' in locals():
-                    conn.close()
-
-        # Add file modification time for change detection
-        file_mtime = None
-        if source == "file" and os.path.exists(mermaid_path):
-            file_mtime = os.path.getmtime(mermaid_path)
-
-        return jsonify({
-            'session_id': session_id,
-            'mermaid': mermaid_content,
-            'metadata': metadata,
-            'source': source,
-            'file_mtime': file_mtime
-        })
-
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
+    """Deprecated: Mermaid execution graphs removed."""
+    return jsonify({'error': 'Mermaid execution graphs have been removed.'}), 410
 
 
 @app.route('/api/mermaid/static/<path:cascade_path>', methods=['GET'])
 @app.route('/api/mermaid/static', methods=['POST'])
 def get_static_mermaid_from_cascade(cascade_path=None):
-    """Generate static Mermaid diagram from cascade definition file (without execution).
-
-    This endpoint performs static analysis of a cascade YAML/JSON file and returns
-    a Mermaid state diagram showing the intended flow structure.
-
-    Two modes supported:
-    1. GET /api/mermaid/static/<path> - cascade_path in URL
-    2. POST /api/mermaid/static with JSON body: {"cascade_path": "..."}
-
-    Args:
-        cascade_path: Path to cascade file (relative to LARS_ROOT or absolute)
-
-    Returns:
-        {
-            'mermaid': str,        # Mermaid diagram string
-            'cascade_id': str,     # Cascade ID from config
-            'cascade_path': str,   # Resolved file path
-            'cells_count': int,   # Number of cells
-            'has_takes': bool, # Whether any cells have takes
-            'has_routing': bool    # Whether any cells have routing/handoffs
-        }
-
-    Example:
-        GET /api/mermaid/static/examples/simple_flow.json
-        POST /api/mermaid/static
-        Body: {"cascade_path": "skills/my_cascade.yaml"}
-    """
-    try:
-        # Import here to avoid circular dependency
-        from lars.visualizer import generate_mermaid_string_from_config
-        from lars.cascade import load_cascade_config
-        from lars.config import get_config
-
-        # Handle POST request with JSON body
-        if request.method == 'POST':
-            data = request.get_json()
-            if not data or 'cascade_path' not in data:
-                return jsonify({'error': 'cascade_path required in JSON body'}), 400
-            cascade_path = data['cascade_path']
-
-        if not cascade_path:
-            return jsonify({'error': 'cascade_path is required'}), 400
-
-        # Resolve path (support relative to LARS_ROOT)
-        config = get_config()
-        lars_root = Path(config.root_dir)
-
-        # Try as absolute path first
-        resolved_path = Path(cascade_path)
-        if not resolved_path.is_absolute():
-            # Try relative to LARS_ROOT
-            resolved_path = lars_root / cascade_path
-
-        # Also check common directories
-        if not resolved_path.exists():
-            for subdir in ['cascades/examples', 'cascades', 'skills']:
-                take = lars_root / subdir / cascade_path
-                if take.exists():
-                    resolved_path = take
-                    break
-
-        if not resolved_path.exists():
-            return jsonify({
-                'error': f'Cascade file not found: {cascade_path}',
-                'searched_paths': [
-                    str(Path(cascade_path)),
-                    str(lars_root / cascade_path),
-                    str(lars_root / 'cascades' / 'examples' / cascade_path),
-                    str(lars_root / 'cascades' / cascade_path),
-                    str(lars_root / 'skills' / cascade_path),
-                ]
-            }), 404
-
-        # Load cascade config
-        try:
-            cascade_config = load_cascade_config(str(resolved_path))
-        except Exception as load_err:
-            return jsonify({
-                'error': f'Failed to load cascade config: {str(load_err)}',
-                'cascade_path': str(resolved_path)
-            }), 400
-
-        # Generate Mermaid diagram
-        try:
-            mermaid_content = generate_mermaid_string_from_config(cascade_config)
-        except Exception as gen_err:
-            return jsonify({
-                'error': f'Failed to generate Mermaid diagram: {str(gen_err)}',
-                'cascade_path': str(resolved_path)
-            }), 500
-
-        # Extract metadata from config
-        has_takes = any(
-            cell.takes and cell.takes.factor > 1
-            for cell in cascade_config.cells
-        )
-        has_routing = any(
-            cell.handoffs or (cell.routing if hasattr(cell, 'routing') else False)
-            for cell in cascade_config.cells
-        )
-
-        return jsonify({
-            'mermaid': mermaid_content,
-            'cascade_id': cascade_config.cascade_id,
-            'cascade_path': str(resolved_path),
-            'cells_count': len(cascade_config.cells),
-            'has_takes': has_takes,
-            'has_routing': has_routing,
-            'description': cascade_config.description
-        })
-
-    except Exception as e:
-        import traceback
-        print(f"Error generating static mermaid for cascade {cascade_path}: {e}")
-        traceback.print_exc()
-        return jsonify({'error': str(e), 'cascade_path': cascade_path}), 500
+    """Deprecated: static Mermaid diagram generation removed."""
+    return jsonify({'error': 'Static Mermaid diagram generation has been removed.'}), 410
 
 
 @app.route('/api/pareto/<session_id>', methods=['GET'])
 def get_pareto_frontier(session_id):
-    """Get Pareto frontier data for visualization.
-
-    Returns cost vs quality scatter plot data for multi-model takes,
-    including frontier points, dominated points, and winner selection.
-
-    The data is read from graphs/pareto_{session_id}.json which is written
-    by LARSRunner when pareto_frontier is enabled in takes config.
-    """
-    try:
-        # Look for Pareto data file
-        pareto_path = os.path.join(GRAPH_DIR, f"pareto_{session_id}.json")
-
-        if not os.path.exists(pareto_path):
-            return jsonify({'error': 'No Pareto data for this session', 'has_pareto': False}), 404
-
-        with open(pareto_path) as f:
-            pareto_data = json.load(f)
-
-        # Add has_pareto flag and sanitize for JSON
-        pareto_data['has_pareto'] = True
-        pareto_data = sanitize_for_json(pareto_data)
-
-        return jsonify(pareto_data)
-
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': str(e), 'has_pareto': False}), 500
+    """Deprecated: Pareto frontier artifacts removed."""
+    return jsonify({'error': 'Pareto frontier artifacts have been removed.', 'has_pareto': False}), 410
 
 
 def find_cascade_file(cascade_id):
@@ -7221,14 +6900,8 @@ def save_research_session_api():
         if not description:
             description = f"Research session with {len(checkpoints)} interactions and {len(tools_used)} tool calls"
 
-        # Get mermaid graph
-        from lars.config import get_config
-        cfg = get_config()
-        graph_path = os.path.join(cfg.graph_dir, f"{session_id}.mmd")
+        # Mermaid execution graphs removed.
         mermaid_graph = ""
-        if os.path.exists(graph_path):
-            with open(graph_path, 'r') as f:
-                mermaid_graph = f.read()
 
         # Generate research session ID
         research_id = f"research_session_{uuid4().hex[:12]}"

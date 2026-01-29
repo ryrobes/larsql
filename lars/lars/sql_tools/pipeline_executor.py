@@ -1113,19 +1113,25 @@ def execute_pipeline_stages(
     return current_df
 
 
-def _save_to_table(duckdb_conn: Any, df: pd.DataFrame, table_name: str) -> None:
+def _save_to_table(
+    duckdb_conn: Any,
+    df: pd.DataFrame,
+    table_name: str,
+    results_db: str = "lars_results",
+) -> None:
     """
     Save DataFrame to ClickHouse and create a view in DuckDB.
 
     This enables cross-session visibility:
-    - Data persists in ClickHouse (lars_results schema)
+    - Data persists in ClickHouse (<results_db> schema)
     - Each DuckDB session gets a view pointing to clickhouse_scan()
     - No locking issues since ClickHouse handles concurrent access
 
     Args:
         duckdb_conn: DuckDB connection for creating the view
         df: DataFrame to save
-        table_name: Name for the table/view (will be prefixed with 'into_' in ClickHouse)
+        table_name: Logical name for the table (stored as into_<name> in ClickHouse)
+        results_db: ClickHouse database for INTO tables (e.g., "lars_results_default")
     """
     import re
     import json
@@ -1156,13 +1162,16 @@ def _save_to_table(duckdb_conn: Any, df: pd.DataFrame, table_name: str) -> None:
             column_defs.append(f"`{san_col}` Nullable({ch_type})")
         columns_sql = ",\n    ".join(column_defs)
 
+        # Ensure results database exists
+        db.execute(f"CREATE DATABASE IF NOT EXISTS {results_db}")
+
         # Drop existing table
-        drop_sql = f"DROP TABLE IF EXISTS lars_results.{ch_table_name}"
+        drop_sql = f"DROP TABLE IF EXISTS {results_db}.{ch_table_name}"
         db.execute(drop_sql)
 
         # Create the table
         create_sql = f"""
-            CREATE TABLE lars_results.{ch_table_name} (
+            CREATE TABLE {results_db}.{ch_table_name} (
                 {columns_sql}
             )
             ENGINE = MergeTree()
@@ -1218,31 +1227,33 @@ def _save_to_table(duckdb_conn: Any, df: pd.DataFrame, table_name: str) -> None:
                     row_str = "(" + ", ".join(format_value(v) for v in row_tuple) + ")"
                     values_strs.append(row_str)
 
-                insert_sql = f"INSERT INTO lars_results.{ch_table_name} ({col_names}) VALUES {', '.join(values_strs)}"
+                insert_sql = f"INSERT INTO {results_db}.{ch_table_name} ({col_names}) VALUES {', '.join(values_strs)}"
                 db.execute(insert_sql)
 
-        log.info(f"[pipeline] Saved {len(df)} rows to ClickHouse: lars_results.{ch_table_name}")
+        log.info(f"[pipeline] Saved {len(df)} rows to ClickHouse: {results_db}.{ch_table_name}")
 
         # === Step 2: Create view in DuckDB session ===
         if duckdb_conn is not None:
+            view_name = ch_table_name  # Expose as into_* inside DuckDB session for convenience
+
             # Drop any existing table or view with this name
             try:
-                duckdb_conn.execute(f"DROP TABLE IF EXISTS {table_name}")
+                duckdb_conn.execute(f"DROP TABLE IF EXISTS {view_name}")
             except Exception:
                 pass
             try:
-                duckdb_conn.execute(f"DROP VIEW IF EXISTS {table_name}")
+                duckdb_conn.execute(f"DROP VIEW IF EXISTS {view_name}")
             except Exception:
                 pass
 
             # Create view that reads from ClickHouse via clickhouse_scan_1
             # (clickhouse_scan_1 is the 1-arg version registered in udf.py)
             view_sql = f"""
-                CREATE VIEW {table_name} AS
-                SELECT * FROM read_json_auto(clickhouse_scan_1('lars_results.{ch_table_name}'))
+                CREATE VIEW {view_name} AS
+                SELECT * FROM read_json_auto(clickhouse_scan_1('{results_db}.{ch_table_name}'))
             """
             duckdb_conn.execute(view_sql)
-            log.info(f"[pipeline] Created view: {table_name} -> clickhouse_scan('lars_results.{ch_table_name}')")
+            log.info(f"[pipeline] Created view: {view_name} -> clickhouse_scan('{results_db}.{ch_table_name}')")
 
     except Exception as e:
         log.error(f"[pipeline] Failed to save to ClickHouse/create view for {table_name}: {e}")
@@ -1297,12 +1308,12 @@ def _pandas_dtype_to_clickhouse(dtype) -> str:
         return 'String'
 
 
-def sync_into_tables(duckdb_conn: Any) -> int:
+def sync_into_tables(duckdb_conn: Any, results_db: str = "lars_results") -> int:
     """
     Sync INTO tables from ClickHouse as views in the DuckDB session.
 
     Call this on session start to make all INTO tables visible.
-    Discovers tables in lars_results schema with 'into_' prefix and creates
+    Discovers tables in <results_db> schema with 'into_' prefix and creates
     views pointing to clickhouse_scan_1().
 
     Args:
@@ -1320,10 +1331,10 @@ def sync_into_tables(duckdb_conn: Any) -> int:
 
         # Query ClickHouse for tables with 'into_' prefix
         # Note: %% escapes the % for Python string formatting used by ClickHouse driver
-        result = db.execute("""
+        result = db.execute(f"""
             SELECT name
             FROM system.tables
-            WHERE database = 'lars_results'
+            WHERE database = '{results_db}'
             AND name LIKE 'into_%%'
         """)
 
@@ -1333,7 +1344,7 @@ def sync_into_tables(duckdb_conn: Any) -> int:
         count = 0
         for row in result:
             ch_table_name = row[0]  # e.g., 'into_my_analysis'
-            view_name = ch_table_name[5:]  # Strip 'into_' prefix -> 'my_analysis'
+            view_name = ch_table_name  # Keep into_* prefix in DuckDB session
 
             try:
                 # Drop existing table/view
@@ -1349,11 +1360,11 @@ def sync_into_tables(duckdb_conn: Any) -> int:
                 # Create view
                 view_sql = f"""
                     CREATE VIEW {view_name} AS
-                    SELECT * FROM read_json_auto(clickhouse_scan_1('lars_results.{ch_table_name}'))
+                    SELECT * FROM read_json_auto(clickhouse_scan_1('{results_db}.{ch_table_name}'))
                 """
                 duckdb_conn.execute(view_sql)
                 count += 1
-                log.debug(f"[pipeline] Synced INTO table: {view_name} -> lars_results.{ch_table_name}")
+                log.debug(f"[pipeline] Synced INTO table: {view_name} -> {results_db}.{ch_table_name}")
             except Exception as e:
                 log.warning(f"[pipeline] Failed to sync INTO table {ch_table_name}: {e}")
 
@@ -1443,6 +1454,7 @@ def execute_pipeline_with_into(
     into_table: Optional[str],
     duckdb_conn: Any,
     session_id: str,
+    results_db: str = "lars_results",
     caller_id: Optional[str] = None,
     original_query: Optional[str] = None,
     base_into_table: Optional[str] = None,
@@ -1465,7 +1477,7 @@ def execute_pipeline_with_into(
     """
     # Save base SQL result if base_into_table specified
     if base_into_table and duckdb_conn is not None:
-        _save_to_table(duckdb_conn, initial_df, base_into_table)
+        _save_to_table(duckdb_conn, initial_df, base_into_table, results_db=results_db)
 
     # Execute pipeline stages with per-stage INTO handling
     from ..semantic_sql.registry import get_pipeline_cascade, list_pipeline_cascades
@@ -1501,7 +1513,7 @@ def execute_pipeline_with_into(
 
                 # Handle INTO for CHOOSE stage
                 if stage.into_table and duckdb_conn is not None:
-                    _save_to_table(duckdb_conn, current_df, stage.into_table)
+                    _save_to_table(duckdb_conn, current_df, stage.into_table, results_db=results_db)
 
                 if should_stop:
                     log.info(f"[pipeline] CHOOSE branch signaled stop, ending pipeline")
@@ -1525,7 +1537,7 @@ def execute_pipeline_with_into(
             log.info(f"[pipeline] PASS stage - no transformation")
             # Handle INTO for PASS stage
             if stage.into_table and duckdb_conn is not None:
-                _save_to_table(duckdb_conn, current_df, stage.into_table)
+                _save_to_table(duckdb_conn, current_df, stage.into_table, results_db=results_db)
             previous_stage = stage.name
             continue
 
@@ -1569,7 +1581,7 @@ def execute_pipeline_with_into(
 
                 # Save to per-stage INTO table if specified
                 if stage.into_table and duckdb_conn is not None:
-                    _save_to_table(duckdb_conn, current_df, stage.into_table)
+                    _save_to_table(duckdb_conn, current_df, stage.into_table, results_db=results_db)
 
                 previous_stage = stage.name
                 continue
@@ -1654,7 +1666,7 @@ def execute_pipeline_with_into(
 
             # Save to per-stage INTO table if specified
             if stage.into_table and duckdb_conn is not None:
-                _save_to_table(duckdb_conn, current_df, stage.into_table)
+                _save_to_table(duckdb_conn, current_df, stage.into_table, results_db=results_db)
 
         except PipelineExecutionError:
             raise
@@ -1670,6 +1682,6 @@ def execute_pipeline_with_into(
     # Legacy: Save to final INTO table if specified and not already saved by last stage
     last_stage_into = stages[-1].into_table if stages else None
     if into_table and into_table != last_stage_into and duckdb_conn is not None:
-        _save_to_table(duckdb_conn, current_df, into_table)
+        _save_to_table(duckdb_conn, current_df, into_table, results_db=results_db)
 
     return current_df

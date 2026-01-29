@@ -814,11 +814,21 @@ def execute_single_query(query: str, conn, lock, database: str, caller_id: str =
         # Query is only comments - return empty DataFrame
         return pd.DataFrame()
 
-    # Rewrite into_ table references to read from ClickHouse
-    # Tables created with THEN PASS INTO xxx are stored in lars_results.into_xxx
+    # Validate database name (used for ClickHouse namespace: lars_results_<database>).
+    import re
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", database or ""):
+        raise ValueError(
+            f"Invalid database name '{database}'. "
+            "Use only letters, numbers, and underscores; must start with a letter or underscore; max 64 chars."
+        )
+    results_db = f"lars_results_{database}"
+
+    # Rewrite into_ table references to read from ClickHouse.
+    # Tables created with ... INTO xxx are stored in ClickHouse as:
+    #   lars_results_<database>.into_xxx
     try:
         from lars.sql_tools.into_table_rewriter import rewrite_into_tables
-        query, into_changed = rewrite_into_tables(query)
+        query, into_changed = rewrite_into_tables(query, results_db=results_db)
         if into_changed:
             import logging
             logging.getLogger(__name__).debug(f"[into_rewriter] Query rewritten for INTO tables")
@@ -907,6 +917,7 @@ def execute_single_query(query: str, conn, lock, database: str, caller_id: str =
                 into_table=pipeline.into_table,
                 duckdb_conn=conn,
                 session_id=database,
+                results_db=results_db,
                 caller_id=caller_id,
                 original_query=query,
                 base_into_table=pipeline.base_into_table,
