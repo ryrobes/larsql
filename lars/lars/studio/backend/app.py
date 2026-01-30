@@ -45,6 +45,27 @@ from urllib.parse import urlparse
 # Set query source for all queries from the UI backend
 set_query_source('ui_backend')
 
+# In CHDB mode, the Studio CLI supervisor must not hold the CHDB lock.
+# The supervisor will ask the backend process to run housekeeping + tool sync.
+if os.getenv("LARS_STUDIO_RUN_HOUSEKEEPING") == "1":
+    print("[Studio] Running database housekeeping in backend process...")
+    try:
+        from lars.db_adapter import ensure_housekeeping
+
+        ensure_housekeeping()
+        print("[Studio] Database housekeeping complete")
+    except Exception as e:
+        print(f"[Studio] Database housekeeping failed: {e}")
+
+    print("[Studio] Syncing tool manifest in backend process...")
+    try:
+        from lars.tools_mgmt import sync_tools_to_db
+
+        sync_tools_to_db()
+        print("[Studio] Tool manifest synced")
+    except Exception as e:
+        print(f"[Studio] Tool manifest sync failed: {e}")
+
 # Supported cascade file extensions
 CASCADE_EXTENSIONS = ('json', 'yaml', 'yml')
 
@@ -147,10 +168,12 @@ app.register_blueprint(calliope_bp)
 
 def _run_startup_tasks():
     """
-    Minimal worker startup - housekeeping tasks run once in cli.py before workers spawn.
+    Minimal worker startup.
 
     This function runs on each worker startup but only does lightweight initialization.
-    Heavy tasks (DB migrations, tool sync) are done once in cli.py.
+    Heavy tasks (DB migrations, tool sync) are normally done once in cli.py.
+    In CHDB mode, cli.py delegates housekeeping to this backend process to avoid
+    holding the CHDB lock in the supervisor.
     """
     print("🌊 LARS Studio Worker Ready")
 

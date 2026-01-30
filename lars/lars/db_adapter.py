@@ -21,7 +21,6 @@ import math
 import threading
 import hashlib
 import time
-import queue
 import contextvars
 import atexit
 import traceback
@@ -29,6 +28,10 @@ import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 import pandas as pd
+
+from .stdlib_queue import Empty as StdlibQueueEmpty
+from .stdlib_queue import Full as StdlibQueueFull
+from .stdlib_queue import Queue as StdlibQueue
 
 
 # =============================================================================
@@ -350,7 +353,7 @@ class QueryLogger:
         if self._initialized:
             return
 
-        self._queue = queue.Queue()
+        self._queue = StdlibQueue()
         self._client = None
         self._host = host
         self._port = port
@@ -454,7 +457,7 @@ class QueryLogger:
 
             # Non-blocking put
             self._queue.put_nowait(entry)
-        except queue.Full:
+        except StdlibQueueFull:
             pass  # Drop entry if queue is full - never block
         except Exception:
             pass  # Silently ignore any logging errors
@@ -470,7 +473,7 @@ class QueryLogger:
                 try:
                     entry = self._queue.get(timeout=0.5)
                     batch.append(entry)
-                except queue.Empty:
+                except StdlibQueueEmpty:
                     pass
 
                 # Flush if batch is full or interval elapsed
@@ -579,7 +582,7 @@ class DerefLogger:
         if self._initialized:
             return
 
-        self._queue = queue.Queue()
+        self._queue = StdlibQueue()
         self._client = None
         self._host = host
         self._port = port
@@ -680,7 +683,7 @@ class DerefLogger:
 
             # Non-blocking put
             self._queue.put_nowait(entry)
-        except queue.Full:
+        except StdlibQueueFull:
             pass  # Drop entry if queue is full - never block
         except Exception:
             pass  # Silently ignore any logging errors
@@ -696,7 +699,7 @@ class DerefLogger:
                 try:
                     entry = self._queue.get(timeout=0.5)
                     batch.append(entry)
-                except queue.Empty:
+                except StdlibQueueEmpty:
                     pass
 
                 # Flush if batch is full or interval elapsed
@@ -933,72 +936,75 @@ class ClickHouseAdapter:
                          Default is False for fast cascade startup.
                          Use run_housekeeping() to explicitly initialize schema.
         """
-        # Skip if already initialized (singleton)
-        if ClickHouseAdapter._initialized:
-            return
+        # Serialize initialization. This is especially important for CHDB, which
+        # cannot open multiple connections to the same storage path.
+        with ClickHouseAdapter._lock:
+            # Skip if already initialized (singleton)
+            if ClickHouseAdapter._initialized:
+                return
 
-        self.host = host
-        self.port = port
-        self.database = database
-        self.user = user
-        self.password = password
+            self.host = host
+            self.port = port
+            self.database = database
+            self.user = user
+            self.password = password
 
-        self.backend = (backend or "clickhouse").strip().lower()
-        if self.backend not in ("clickhouse", "chdb"):
-            self.backend = "clickhouse"
+            self.backend = (backend or "clickhouse").strip().lower()
+            if self.backend not in ("clickhouse", "chdb"):
+                self.backend = "clickhouse"
 
-        # ClickHouse server backend
-        if self.backend == "clickhouse":
-            try:
-                from clickhouse_driver import Client  # type: ignore
-                self._Client = Client
-            except ImportError as e:
-                raise ImportError(
-                    "clickhouse-driver is not installed. "
-                    "Install it with: pip install clickhouse-driver"
-                ) from e
+            # ClickHouse server backend
+            if self.backend == "clickhouse":
+                try:
+                    from clickhouse_driver import Client  # type: ignore
+                    self._Client = Client
+                except ImportError as e:
+                    raise ImportError(
+                        "clickhouse-driver is not installed. "
+                        "Install it with: pip install clickhouse-driver"
+                    ) from e
 
-            # Create system client first (without database) to ensure database exists
+                # Create system client first (without database) to ensure database exists
+                if auto_create:
+                    self._ensure_database()
+
+                # Now connect to the database with connection pooling settings
+                self.client = self._Client(
+                    host=host,
+                    port=port,
+                    database=database,
+                    user=user,
+                    password=password,
+                    # Connection settings for high concurrency
+                    connect_timeout=10,
+                    send_receive_timeout=30,
+                    sync_request_timeout=30,
+                    # Query settings
+                    settings={
+                        "use_numpy": True,
+                        "max_block_size": 100000,
+                        "max_threads": 4,  # Limit threads per query
+                        "max_execution_time": 60,  # 60s query timeout
+                    },
+                )
+                self.chdb_path = None
+            else:
+                # CHDB backend (embedded ClickHouse)
+                if not chdb_path:
+                    from .config import get_config
+                    chdb_path = get_config().chdb_path
+
+                self.chdb_path = chdb_path
+                self._Client = None
+                self.client = _ChdbClientWrapper(path=chdb_path, database=database)
+
+            # Auto-create tables if requested
             if auto_create:
-                self._ensure_database()
+                self._ensure_tables()
+                self._run_migrations()
+                ClickHouseAdapter._housekeeping_done = True
 
-            # Now connect to the database with connection pooling settings
-            self.client = self._Client(
-                host=host,
-                port=port,
-                database=database,
-                user=user,
-                password=password,
-                # Connection settings for high concurrency
-                connect_timeout=10,
-                send_receive_timeout=30,
-                sync_request_timeout=30,
-                # Query settings
-                settings={
-                    "use_numpy": True,
-                    "max_block_size": 100000,
-                    "max_threads": 4,  # Limit threads per query
-                    "max_execution_time": 60,  # 60s query timeout
-                },
-            )
-            self.chdb_path = None
-        else:
-            # CHDB backend (embedded ClickHouse)
-            if not chdb_path:
-                from .config import get_config
-                chdb_path = get_config().chdb_path
-
-            self.chdb_path = chdb_path
-            self._Client = None
-            self.client = _ChdbClientWrapper(path=chdb_path, database=database)
-
-        # Auto-create tables if requested
-        if auto_create:
-            self._ensure_tables()
-            self._run_migrations()
-            ClickHouseAdapter._housekeeping_done = True
-
-        ClickHouseAdapter._initialized = True
+            ClickHouseAdapter._initialized = True
 
     def run_housekeeping(self):
         """
@@ -2094,6 +2100,20 @@ def get_db_adapter() -> ClickHouseAdapter:
         ):
             backend = "chdb"
 
+    chdb_path = getattr(config, "chdb_path", None)
+    if backend == "chdb":
+        # Ensure relative CHDB paths are resolved relative to LARS_ROOT/root_dir, not CWD.
+        try:
+            path = (chdb_path or "").strip()
+            if path and path not in (":memory:", ":memory"):
+                path = os.path.expanduser(path)
+                if not os.path.isabs(path):
+                    base = getattr(config, "root_dir", "") or os.getcwd()
+                    path = os.path.join(base, path)
+                chdb_path = os.path.abspath(path)
+        except Exception:
+            pass
+
     _adapter_singleton = ClickHouseAdapter(
         host=config.clickhouse_host,
         port=config.clickhouse_port,
@@ -2101,7 +2121,7 @@ def get_db_adapter() -> ClickHouseAdapter:
         user=config.clickhouse_user,
         password=config.clickhouse_password,
         backend=backend,
-        chdb_path=getattr(config, "chdb_path", None),
+        chdb_path=chdb_path,
     )
 
     return _adapter_singleton

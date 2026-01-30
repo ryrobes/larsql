@@ -1092,50 +1092,40 @@ class DatabaseConnector:
         - SQL clients can introspect schema via views
         - Scales to any table size
 
-        Requires:
-        - host: ClickHouse server hostname
-        - port: HTTP port (default 8123)
-        - database: Database name (default 'default')
-        - user: Username (default 'default')
-        - password_env: Optional password environment variable
+        Note:
+        - Table listing and querying are handled by the LARS persistence adapter
+          (ClickHouse server or CHDB), not by an external ClickHouse HTTP client.
 
-        Query syntax: SELECT * FROM {alias}.{table_name}
+        Query syntax:
+            SELECT * FROM {alias}.{table_name}
         """
         try:
-            import clickhouse_connect
+            from lars.db_adapter import get_db
         except ImportError:
-            print(f"    [WARN]  ClickHouse connector requires: pip install clickhouse-connect")
+            print("    [WARN]  ClickHouse db_adapter not available")
             return
 
-        if not config.host:
-            print(f"    [WARN]  ClickHouse connection {alias} missing host")
+        db = get_db()
+        if not db:
+            print("    [WARN]  No ClickHouse connection available")
             return
 
-        # Get connection parameters
-        host = config.host
-        port = config.port or 8123  # ClickHouse HTTP port (default)
-        database = config.database or "default"
-        user = config.user or "default"
-        password = config.password or (os.getenv(config.password_env) if config.password_env else "")
+        database = config.database or getattr(db, "database", None) or "default"
 
         try:
-            client = clickhouse_connect.get_client(
-                host=host,
-                port=port,
-                database=database,
-                username=user,
-                password=password,
-            )
-
             # Create schema
             self.conn.execute(f"CREATE SCHEMA IF NOT EXISTS {alias};")
 
-            # Get list of tables in the database
-            # Filter out internal ClickHouse tables (.inner* are MV backing tables)
-            tables_result = client.query(f"SHOW TABLES FROM {database}")
+            # Get list of tables in the database.
+            # Filter out internal ClickHouse tables (.inner* are MV backing tables).
+            tables_rows = db.query(
+                "SELECT name FROM system.tables WHERE database = %(db)s ORDER BY name",
+                {"db": database},
+                log_query=False,
+            )
             table_names = [
-                row[0] for row in tables_result.result_rows
-                if not row[0].startswith('.inner')
+                row.get("name") for row in (tables_rows or [])
+                if row and row.get("name") and not row["name"].startswith(".inner")
             ]
 
             view_count = 0
@@ -1160,7 +1150,6 @@ class DatabaseConnector:
                 except Exception as e:
                     print(f"    [WARN]  Failed to create view for {table_name}: {str(e)[:60]}")
 
-            client.close()
             print(f"  └─ Attached ClickHouse: {database} ({view_count} views, live queries via clickhouse_scan)")
 
         except Exception as e:

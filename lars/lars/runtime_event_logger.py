@@ -3,11 +3,14 @@ from __future__ import annotations
 import atexit
 import json
 import os
-import queue
 import threading
 import time
 from datetime import datetime, timezone
 from typing import Any, Optional
+
+from .stdlib_queue import Empty as StdlibQueueEmpty
+from .stdlib_queue import Full as StdlibQueueFull
+from .stdlib_queue import Queue as StdlibQueue
 
 
 class RuntimeEventLogger:
@@ -49,7 +52,7 @@ class RuntimeEventLogger:
         self._connect_backoff_base_s = _env_float("LARS_RUNTIME_EVENT_LOG_CONNECT_BACKOFF_S", 1.0)
         self._connect_backoff_max_s = _env_float("LARS_RUNTIME_EVENT_LOG_CONNECT_BACKOFF_MAX_S", 30.0)
 
-        self._queue: queue.Queue[dict[str, Any]] = queue.Queue(maxsize=self._max_queue_size)
+        self._queue: StdlibQueue[dict[str, Any]] = StdlibQueue(maxsize=self._max_queue_size)
         self._dropped = 0
 
         self._client = None
@@ -122,7 +125,7 @@ class RuntimeEventLogger:
             }
 
             self._queue.put_nowait(payload)
-        except queue.Full:
+        except StdlibQueueFull:
             self._dropped += 1
         except Exception:
             # Never break the main execution path for logging.
@@ -225,7 +228,7 @@ class RuntimeEventLogger:
                 try:
                     item = self._queue.get(timeout=0.5)
                     batch.append(item)
-                except queue.Empty:
+                except StdlibQueueEmpty:
                     pass
 
                 now = time.time()
@@ -254,7 +257,7 @@ class RuntimeEventLogger:
                 if len(batch) >= self._batch_size:
                     self._flush_batch(batch)
                     batch = []
-        except queue.Empty:
+        except StdlibQueueEmpty:
             if batch:
                 self._flush_batch(batch)
 

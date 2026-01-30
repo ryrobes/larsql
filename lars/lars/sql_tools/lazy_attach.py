@@ -1394,33 +1394,21 @@ class LazyAttachManager:
         - Fresh data on every query
         - SQL clients can introspect schema via views
         - Scales to any table size
+
+        Note:
+        - Table listing and querying are done via the LARS persistence adapter
+          (ClickHouse server or CHDB), so CHDB mode does not require any
+          external ClickHouse HTTP endpoint.
         """
         try:
-            import clickhouse_connect
+            from lars.db_adapter import get_db
         except ImportError:
-            log.warning("[lazy_attach] ClickHouse connector requires clickhouse-connect: pip install clickhouse-connect")
+            log.warning("[lazy_attach] ClickHouse db_adapter not available")
             return
 
-        if not cfg.host:
-            raise ValueError(f"clickhouse config missing host for {cfg.connection_name}")
-
-        # Get connection parameters
-        host = cfg.host
-        port = cfg.port or 8123  # ClickHouse HTTP port (default)
-        database = cfg.database or "default"
-        user = cfg.user or "default"
-        password = cfg.password or (os.getenv(cfg.password_env) if cfg.password_env else "")
-
-        try:
-            client = clickhouse_connect.get_client(
-                host=host,
-                port=port,
-                database=database,
-                username=user,
-                password=password,
-            )
-        except Exception as e:
-            log.warning("[lazy_attach] Failed to connect to ClickHouse %s:%s: %s", host, port, e)
+        db = get_db()
+        if not db:
+            log.warning("[lazy_attach] No ClickHouse connection available")
             return
 
         # Create schema
@@ -1428,12 +1416,16 @@ class LazyAttachManager:
         self._conn.execute(f"CREATE SCHEMA IF NOT EXISTS {alias};")
 
         # Get list of tables in the database
+        database = cfg.database or getattr(db, "database", None) or "default"
         try:
-            tables_result = client.query(f"SHOW TABLES FROM {database}")
-            table_names = [row[0] for row in tables_result.result_rows]
+            tables_rows = db.query(
+                "SELECT name FROM system.tables WHERE database = %(db)s ORDER BY name",
+                {"db": database},
+                log_query=False,
+            )
+            table_names = [row.get("name") for row in (tables_rows or []) if row and row.get("name")]
         except Exception as e:
             log.warning("[lazy_attach] Failed to list ClickHouse tables: %s", e)
-            client.close()
             return
 
         # Filter out internal ClickHouse tables (materialized view backing tables, etc.)
@@ -1467,7 +1459,6 @@ class LazyAttachManager:
             except Exception as e:
                 log.debug("[lazy_attach] Failed creating ClickHouse view %s: %s", table_name, e)
 
-        client.close()
         print(f"  └─ Attached ClickHouse: {database} ({view_count} views, live queries via clickhouse_scan)")
 
     def _attach_duckdb_file_if_present(self, db_name: str) -> bool:

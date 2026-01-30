@@ -46,7 +46,9 @@ dependencies = [
     "clickhouse-driver>=0.2,<0.3",   # ClickHouse client library
     "clickhouse-connect>=0.7,<0.8",  # Alternative ClickHouse client
     "jinja2>=3.0,<4.0",              # Template engine
-    ##"chdb>=2.0,<3.0",                # ClickHouse embedded
+    #"chdb>=2.0,<3.0",               # ClickHouse embedded
+    "chdb",                          # ClickHouse embedded
+    "chromadb>=0.4.0",
 
     # ========================================================================
     # LOW RISK - Minimum version only (very stable APIs)

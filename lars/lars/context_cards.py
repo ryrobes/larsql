@@ -17,7 +17,6 @@ Key features:
 """
 
 import threading
-import queue
 import json
 import re
 import hashlib
@@ -27,6 +26,9 @@ import time
 from typing import Dict, Any, List, Optional, Callable
 from datetime import datetime
 from dataclasses import dataclass, field
+
+from .stdlib_queue import Empty as StdlibQueueEmpty
+from .stdlib_queue import Queue as StdlibQueue
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +86,7 @@ class ContextCardGenerator:
         self.enabled = enabled
 
         # Queue for pending messages
-        self._queue: queue.Queue = queue.Queue()
+        self._queue: StdlibQueue[ContextCardRequest] = StdlibQueue()
         self._running = True
 
         # Start worker threads
@@ -150,7 +152,7 @@ class ContextCardGenerator:
                 try:
                     item = self._queue.get(timeout=1.0)
                     batch.append(item)
-                except queue.Empty:
+                except StdlibQueueEmpty:
                     pass
 
                 # Process batch when full or queue empty

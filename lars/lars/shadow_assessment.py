@@ -22,11 +22,13 @@ import time
 import uuid
 import logging
 import threading
-import queue
 from .config import get_config
 from typing import Dict, Any, List, Optional, Set, Tuple
 from datetime import datetime
 from dataclasses import dataclass, field
+
+from .stdlib_queue import Empty as StdlibQueueEmpty
+from .stdlib_queue import Queue as StdlibQueue
 
 logger = logging.getLogger(__name__)
 
@@ -587,7 +589,7 @@ class ShadowAssessor:
 # Background Worker for Async Assessment
 # =============================================================================
 
-_assessment_queue: queue.Queue = queue.Queue()
+_assessment_queue: StdlibQueue = StdlibQueue()
 _worker_running = False
 _worker_thread: Optional[threading.Thread] = None
 
@@ -602,14 +604,14 @@ def _worker_loop():
             try:
                 request_data = _assessment_queue.get(timeout=0.5)
                 _process_assessment_request(request_data)
-            except queue.Empty:
+            except StdlibQueueEmpty:
                 pass
 
             # Process intra-cell assessments
             try:
                 intra_request = _intra_assessment_queue.get(timeout=0.5)
                 _process_intra_assessment_request(intra_request)
-            except queue.Empty:
+            except StdlibQueueEmpty:
                 pass
 
         except Exception as e:
@@ -1199,7 +1201,7 @@ class IntraCellShadowAssessor:
 
 
 # Intra-cell assessment queue (separate from inter-cell)
-_intra_assessment_queue: queue.Queue = queue.Queue()
+_intra_assessment_queue: StdlibQueue = StdlibQueue()
 
 
 def _intra_worker_loop():
@@ -1210,7 +1212,7 @@ def _intra_worker_loop():
         try:
             try:
                 request_data = _intra_assessment_queue.get(timeout=1.0)
-            except queue.Empty:
+            except StdlibQueueEmpty:
                 continue
 
             _process_intra_assessment_request(request_data)

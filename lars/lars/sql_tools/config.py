@@ -381,14 +381,16 @@ def load_sql_connections() -> Dict[str, SqlConnectionConfig]:
                 distinct_value_threshold=50
             )
 
-    # Auto-create ClickHouse connection for lars.* tables
-    # This allows queries like SELECT * FROM lars.unified_logs to work in DuckDB
-    # Note: clickhouse-connect uses HTTP port (8123), not native port (9000)
-    clickhouse_host = os.getenv("LARS_CLICKHOUSE_HOST", "localhost")
-    clickhouse_port = int(os.getenv("LARS_CLICKHOUSE_PORT", "8123"))  # HTTP port
-    clickhouse_database = os.getenv("LARS_CLICKHOUSE_DATABASE", "lars")
-    clickhouse_user = os.getenv("LARS_CLICKHOUSE_USER", "lars")
-    clickhouse_password = os.getenv("LARS_CLICKHOUSE_PASSWORD", "lars")
+    # Auto-create persistence connection for lars.* tables.
+    # This allows queries like SELECT * FROM lars.unified_logs to work in DuckDB.
+    #
+    # Note: the ClickHouse "connection" here is backed by the LARS persistence adapter
+    # (ClickHouse server or CHDB), not a separate ClickHouse HTTP client.
+    clickhouse_host = cfg.clickhouse_host
+    clickhouse_port = cfg.clickhouse_port
+    clickhouse_database = cfg.clickhouse_database
+    clickhouse_user = cfg.clickhouse_user
+    clickhouse_password = cfg.clickhouse_password
 
     connections["lars"] = SqlConnectionConfig(
         connection_name="lars",

@@ -6542,6 +6542,29 @@ def cmd_serve_studio(args):
     config = get_config()
     workspace_root = config.root_dir
 
+    # Detect which persistence backend is active (ClickHouse server vs CHDB) without opening CHDB here.
+    # CHDB cannot be shared across processes; Studio runs the backend in a subprocess (Flask dev or Gunicorn),
+    # so this supervisor process must not hold the CHDB lock.
+    chdb_backend_active = False
+    try:
+        from lars.db_adapter import _clickhouse_server_reachable, _normalize_db_mode
+
+        mode = _normalize_db_mode(getattr(config, "db_mode", "auto"))
+        if mode == "chdb":
+            chdb_backend_active = True
+        elif mode == "clickhouse":
+            chdb_backend_active = False
+        else:
+            chdb_backend_active = not _clickhouse_server_reachable(
+                host=config.clickhouse_host,
+                port=config.clickhouse_port,
+                database=config.clickhouse_database,
+                user=config.clickhouse_user,
+                password=config.clickhouse_password,
+            )
+    except Exception:
+        chdb_backend_active = False
+
     styled_print(f"{S.CASCADE} LARS Studio")
     print(f"   Workspace: {workspace_root}")
     print(f"   Backend dir: {studio_backend_dir}")
@@ -6556,37 +6579,31 @@ def cmd_serve_studio(args):
     # =========================================================================
     # These tasks run once here instead of in each worker's app.py startup.
 
-    # 1. Database housekeeping (schema creation, migrations)
-    styled_print(f"{S.RUN} Running database housekeeping...")
-    try:
-        from lars.db_adapter import ensure_housekeeping
-        ensure_housekeeping()
-        styled_print(f"{S.OK} Database housekeeping complete")
-    except Exception as e:
-        styled_print(f"{S.WARN} Database housekeeping failed: {e}")
+    if chdb_backend_active:
+        # CHDB mode: run housekeeping inside the Studio backend subprocess (single worker).
+        # This avoids holding the CHDB lock in this supervisor process.
+        styled_print(f"{S.DB} CHDB mode: running housekeeping in backend process")
+    else:
+        # 1. Database housekeeping (schema creation, migrations)
+        styled_print(f"{S.RUN} Running database housekeeping...")
+        try:
+            from lars.db_adapter import ensure_housekeeping
+            ensure_housekeeping()
+            styled_print(f"{S.OK} Database housekeeping complete")
+        except Exception as e:
+            styled_print(f"{S.WARN} Database housekeeping failed: {e}")
 
-    # 2. Tool manifest sync (index available tools/skills)
-    styled_print(f"{S.RUN} Syncing tool manifest...")
-    try:
-        from lars.tools_mgmt import sync_tools_to_db
-        sync_tools_to_db()
-        styled_print(f"{S.OK} Tool manifest synced")
-    except Exception as e:
-        styled_print(f"{S.WARN} Tool manifest sync failed: {e}")
-        print("   Run 'lars tools sync' manually if needed")
+        # 2. Tool manifest sync (index available tools/skills)
+        styled_print(f"{S.RUN} Syncing tool manifest...")
+        try:
+            from lars.tools_mgmt import sync_tools_to_db
+            sync_tools_to_db()
+            styled_print(f"{S.OK} Tool manifest synced")
+        except Exception as e:
+            styled_print(f"{S.WARN} Tool manifest sync failed: {e}")
+            print("   Run 'lars tools sync' manually if needed")
 
     print()
-
-    # Detect which persistence backend is active (ClickHouse server vs CHDB).
-    # In CHDB mode we must avoid holding the DB lock in this supervisor process
-    # because Studio runs in a subprocess (Flask dev or Gunicorn worker).
-    chdb_backend_active = False
-    try:
-        from lars.db_adapter import get_db_adapter
-        db = get_db_adapter()
-        chdb_backend_active = getattr(db, "backend", "") == "chdb"
-    except Exception:
-        chdb_backend_active = False
 
     if chdb_backend_active:
         # CHDB cannot be shared across processes. Studio spawns a subprocess, so:
@@ -6600,17 +6617,12 @@ def cmd_serve_studio(args):
                 styled_print(f"{S.WARN} CHDB mode: disabling --preload (would lock CHDB in master process)")
                 args.preload = False
 
-        # Shut down background loggers and release any open CHDB connection in this process
-        # before starting the Studio subprocess.
+        # Best-effort: if anything instantiated background loggers before we detected CHDB,
+        # stop them so this supervisor never holds the CHDB lock.
         try:
-            from lars.db_adapter import shutdown_async_loggers, reset_adapter
+            from lars.db_adapter import reset_adapter, shutdown_async_loggers
 
             shutdown_async_loggers()
-            try:
-                if hasattr(db, "client") and hasattr(db.client, "disconnect"):
-                    db.client.disconnect()
-            except Exception:
-                pass
             reset_adapter()
         except Exception:
             pass
@@ -6707,6 +6719,8 @@ def cmd_serve_studio(args):
         env['FLASK_ENV'] = 'development'
         env['FLASK_DEBUG'] = '1'
         env['LARS_ROOT'] = workspace_root  # Pass workspace to subprocess
+        if chdb_backend_active:
+            env["LARS_STUDIO_RUN_HOUSEKEEPING"] = "1"
         if pgwire_port:
             env['LARS_STUDIO_PGWIRE_PORT'] = str(pgwire_port)
 
@@ -6744,6 +6758,8 @@ def cmd_serve_studio(args):
         # Set environment with correct LARS_ROOT
         env = os.environ.copy()
         env['LARS_ROOT'] = workspace_root  # Pass workspace to subprocess
+        if chdb_backend_active:
+            env["LARS_STUDIO_RUN_HOUSEKEEPING"] = "1"
         if pgwire_port:
             env['LARS_STUDIO_PGWIRE_PORT'] = str(pgwire_port)
 

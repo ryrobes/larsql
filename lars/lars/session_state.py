@@ -68,6 +68,47 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _parse_datetime(value: Any) -> Optional[datetime]:
+    """
+    Parse datetime-like values that may come back as strings in CHDB mode.
+
+    ClickHouse server (clickhouse-driver) returns datetime objects for DateTime/DateTime64,
+    while CHDB (JSON formats) can return strings.
+    """
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    # pandas.Timestamp compatibility
+    if hasattr(value, "to_pydatetime"):
+        try:
+            dt = value.to_pydatetime()
+            if isinstance(dt, datetime):
+                return dt
+        except Exception:
+            pass
+    if isinstance(value, str):
+        s = value.strip()
+        if not s:
+            return None
+        if s.endswith("Z"):
+            s = s[:-1] + "+00:00"
+        s = s.replace("T", " ", 1)
+        try:
+            dt = datetime.fromisoformat(s)
+        except ValueError:
+            try:
+                dt = datetime.strptime(s[:19], "%Y-%m-%d %H:%M:%S")
+            except Exception:
+                return None
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(timezone.utc)
+        else:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    return None
+
+
 class SessionStatus(str, Enum):
     """Execution status of a cascade session."""
     STARTING = "starting"
@@ -723,6 +764,13 @@ class SessionStateManager:
 
     def _row_to_state(self, row: Dict) -> SessionState:
         """Convert database row to SessionState object."""
+        blocked_timeout_at = _parse_datetime(row.get('blocked_timeout_at'))
+        heartbeat_at = _parse_datetime(row.get('heartbeat_at'))
+        cancelled_at = _parse_datetime(row.get('cancelled_at'))
+        started_at = _parse_datetime(row.get('started_at'))
+        completed_at = _parse_datetime(row.get('completed_at'))
+        updated_at = _parse_datetime(row.get('updated_at'))
+
         return SessionState(
             session_id=row['session_id'],
             cascade_id=row['cascade_id'],
@@ -733,19 +781,19 @@ class SessionStateManager:
             blocked_type=BlockedType(row['blocked_type']) if row.get('blocked_type') else None,
             blocked_on=row.get('blocked_on'),
             blocked_description=row.get('blocked_description'),
-            blocked_timeout_at=row.get('blocked_timeout_at'),
-            heartbeat_at=row.get('heartbeat_at'),
+            blocked_timeout_at=blocked_timeout_at,
+            heartbeat_at=heartbeat_at or _utcnow(),
             heartbeat_lease_seconds=row.get('heartbeat_lease_seconds', 60),
             cancel_requested=row.get('cancel_requested', False),
             cancel_reason=row.get('cancel_reason'),
-            cancelled_at=row.get('cancelled_at'),
+            cancelled_at=cancelled_at,
             error_message=row.get('error_message'),
             error_cell=row.get('error_cell'),
             last_checkpoint_id=row.get('last_checkpoint_id'),
             resumable=row.get('resumable', False),
-            started_at=row.get('started_at'),
-            completed_at=row.get('completed_at'),
-            updated_at=row.get('updated_at'),
+            started_at=started_at or _utcnow(),
+            completed_at=completed_at,
+            updated_at=updated_at or _utcnow(),
             metadata=json.loads(row['metadata_json']) if row.get('metadata_json') else None,
         )
 

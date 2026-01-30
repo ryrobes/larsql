@@ -1158,8 +1158,8 @@ def list_runs():
             runs.append({
                 'run_id': row['run_id'],
                 'run_type': row['run_type'],
-                'started_at': row['started_at'].isoformat() if row.get('started_at') else None,
-                'completed_at': row['completed_at'].isoformat() if row.get('completed_at') else None,
+                'started_at': _json_safe(row.get('started_at')),
+                'completed_at': _json_safe(row.get('completed_at')),
                 'duration_ms': row.get('duration_ms'),
                 'status': row['status'],
                 'total_tests': row.get('total_tests'),
@@ -1210,8 +1210,8 @@ def get_run(run_id: str):
         run = {
             'run_id': row['run_id'],
             'run_type': row['run_type'],
-            'started_at': row['started_at'].isoformat() if row.get('started_at') else None,
-            'completed_at': row['completed_at'].isoformat() if row.get('completed_at') else None,
+            'started_at': _json_safe(row.get('started_at')),
+            'completed_at': _json_safe(row.get('completed_at')),
             'duration_ms': row.get('duration_ms'),
             'status': row['status'],
             'total_tests': row.get('total_tests'),
@@ -1374,7 +1374,7 @@ def get_test_stats():
 
         daily_trends = [
             {
-                'date': row['date'].isoformat() if row.get('date') else None,
+                'date': _json_safe(row.get('date')),
                 'passed': row.get('passed', 0),
                 'failed': row.get('failed', 0),
                 'errors': row.get('errors', 0),
@@ -1548,7 +1548,7 @@ def get_test_history(test_id: str):
         history = [
             {
                 'run_id': row['run_id'],
-                'started_at': row['started_at'].isoformat() if row.get('started_at') else None,
+                'started_at': _json_safe(row.get('started_at')),
                 'status': row['status'],
                 'duration_ms': row.get('duration_ms'),
                 'failure_message': row.get('failure_message'),

@@ -54,6 +54,25 @@ def sanitize_for_json(obj):
     return obj
 
 
+def _to_iso_string(ts) -> str | None:
+    """Convert a timestamp-like value to an ISO string (works for CH + CHDB)."""
+    if ts is None:
+        return None
+    if hasattr(ts, "isoformat"):
+        try:
+            return ts.isoformat()
+        except Exception:
+            pass
+    if isinstance(ts, (int, float)):
+        try:
+            return datetime.fromtimestamp(ts).isoformat()
+        except Exception:
+            return None
+    if isinstance(ts, str):
+        return ts
+    return str(ts)
+
+
 def _enrich_sessions_with_metrics(sessions: list) -> list:
     """
     Enrich session list with analytics metrics from cascade_analytics and cell_analytics tables.
@@ -453,9 +472,9 @@ def _include_virtual_sessions(existing_sessions: list, cascade_id_filter: str | 
                 'cascade_id': cascade_id,
                 'status': 'completed',  # Assume completed for virtual sessions
                 'current_cell': None,
-                'started_at': row.get('started_at').isoformat() if row.get('started_at') else None,
-                'updated_at': row.get('updated_at').isoformat() if row.get('updated_at') else None,
-                'completed_at': row.get('updated_at').isoformat() if row.get('updated_at') else None,
+                'started_at': _to_iso_string(row.get('started_at')),
+                'updated_at': _to_iso_string(row.get('updated_at')),
+                'completed_at': _to_iso_string(row.get('updated_at')),
                 'error_message': None,
                 'cancel_requested': False,
                 'cancel_reason': None,

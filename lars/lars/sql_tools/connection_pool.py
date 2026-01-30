@@ -29,9 +29,10 @@ import duckdb
 import logging
 import threading
 import atexit
-from queue import Queue, Empty
 from typing import Optional
 from concurrent.futures import ThreadPoolExecutor
+
+from ..stdlib_queue import Empty, Queue
 
 log = logging.getLogger(__name__)
 

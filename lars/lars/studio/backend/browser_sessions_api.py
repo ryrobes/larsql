@@ -1564,10 +1564,10 @@ def proxy_stream(session_id, stream_path):
     try:
         from lars.browser.streaming import frame_emitter
         import asyncio
-        import queue
+        from lars.stdlib_queue import Empty, Full, Queue
 
         # Create a thread-safe queue to receive frames
-        frame_queue = queue.Queue(maxsize=30)
+        frame_queue = Queue(maxsize=30)
 
         # Subscribe to frames in the browser event loop
         loop = _get_browser_loop()
@@ -1584,7 +1584,7 @@ def proxy_stream(session_id, stream_path):
                         # Put in thread-safe queue (non-blocking, drop if full)
                         try:
                             frame_queue.put_nowait(frame)
-                        except queue.Full:
+                        except Full:
                             pass  # Drop frame if consumer is slow
                     except asyncio.TimeoutError:
                         # Send keepalive - use a minimal placeholder
@@ -1600,15 +1600,17 @@ def proxy_stream(session_id, stream_path):
             try:
                 while True:
                     try:
-                        frame = frame_queue.get(timeout=5.0)
+                        # Avoid blocking the gevent hub thread: poll the thread-safe queue.
+                        frame = frame_queue.get_nowait()
                         yield (
                             b"--frame\r\n"
                             b"Content-Type: image/jpeg\r\n"
                             b"Content-Length: " + str(len(frame)).encode() + b"\r\n"
                             b"\r\n" + frame + b"\r\n"
                         )
-                    except queue.Empty:
-                        # Timeout - yield a minimal keepalive
+                    except Empty:
+                        # No frame yet - yield to gevent/event loop and keep waiting.
+                        time.sleep(0.05)
                         continue
             except GeneratorExit:
                 # Client disconnected, cancel the subscription task

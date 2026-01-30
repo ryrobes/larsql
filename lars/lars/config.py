@@ -613,8 +613,29 @@ def _ensure_directories(config: Config):
         os.makedirs(dir_path, exist_ok=True)
 
 
+# Normalize CHDB path once at startup so subprocesses with different CWDs still
+# point at the same storage when LARS_CHDB_PATH is relative.
+def _normalize_chdb_path(config: Config) -> None:
+    try:
+        path = getattr(config, "chdb_path", "") or ""
+        if not path or path in (":memory:", ":memory"):
+            return
+
+        # Expand ~ and resolve relative paths relative to LARS_ROOT/root_dir (not CWD).
+        path = os.path.expanduser(path)
+        if not os.path.isabs(path):
+            base = getattr(config, "root_dir", "") or _LARS_ROOT or os.getcwd()
+            path = os.path.join(base, path)
+
+        config.chdb_path = os.path.abspath(path)
+    except Exception:
+        # Never fail config import for a best-effort normalization.
+        pass
+
+
 # Global configuration instance
 _global_config = Config()
+_normalize_chdb_path(_global_config)
 _ensure_directories(_global_config)
 
 
