@@ -193,7 +193,7 @@ class MemorySystem:
         message_file = memory_dir / filename
         message_file.write_text(json.dumps(entry, indent=2))
 
-        # Embed and insert into ClickHouse
+        # Embed and index for semantic search (vectors stored in Chroma).
         content = message.get('content', '')
         if content and isinstance(content, str) and content.strip():
             try:
@@ -214,7 +214,8 @@ class MemorySystem:
                 embedding = embed_result['embeddings'][0]
                 embedding_dim = embed_result['dim']
 
-                # Insert into ClickHouse rag_chunks table
+                # Insert into ClickHouse/CHDB rag_chunks table (text + metadata only).
+                # Embedding vectors are stored in Chroma to reduce load on the persistence DB.
                 from .db_adapter import get_db
                 import uuid
 
@@ -222,6 +223,7 @@ class MemorySystem:
                 chunk_id = str(uuid.uuid4())
                 doc_id = message_file.stem  # Use filename stem as doc_id
                 rag_id = f"memory_{memory_name}"
+                file_hash = hashlib.md5(content.encode()).hexdigest()
 
                 # Prepare row for insertion
                 row = {
@@ -235,9 +237,11 @@ class MemorySystem:
                     'char_end': len(content),
                     'start_line': 0,
                     'end_line': 0,
-                    'file_hash': hashlib.md5(content.encode()).hexdigest(),
-                    'embedding': embedding,
-                    'embedding_model': embed_model
+                    'file_hash': file_hash,
+                    # Placeholder only; vectors are in Chroma.
+                    'embedding': [],
+                    'embedding_model': embed_model,
+                    'embedding_dim': embedding_dim,
                 }
 
                 db.insert_rows('rag_chunks', [row])
@@ -248,20 +252,43 @@ class MemorySystem:
                     'rag_id': rag_id,
                     'rel_path': filename,
                     'abs_path': str(message_file),
-                    'file_hash': row['file_hash'],
+                    'file_hash': file_hash,
                     'file_size': len(content),
                     'mtime': time.time(),
                     'chunk_count': 1,
-                    'content_hash': row['file_hash']
+                    'content_hash': file_hash,
                 }
 
                 db.insert_rows('rag_manifests', [manifest_row])
 
-                logger.debug(f"Indexed message in ClickHouse: {rag_id} / {doc_id}")
+                # Upsert vector to Chroma.
+                try:
+                    from .rag.chroma_store import ChromaChunk, upsert_chunks
+
+                    chroma_chunk = ChromaChunk(
+                        rag_id=rag_id,
+                        doc_id=str(doc_id),
+                        chunk_index=0,
+                        text=content,
+                        embedding=embedding,
+                        rel_path=filename,
+                        start_line=0,
+                        end_line=0,
+                        char_start=0,
+                        char_end=len(content),
+                        file_hash=file_hash,
+                        embedding_model=embed_model,
+                        embedding_dim=int(embedding_dim),
+                    )
+                    upsert_chunks(embed_model, int(embedding_dim), [chroma_chunk])
+                except Exception as e:
+                    logger.warning(f"Failed to upsert memory chunk to Chroma: {e}")
+
+                logger.debug(f"Indexed message in Chroma: {rag_id} / {doc_id}")
 
             except Exception as e:
                 # Don't fail the save if indexing fails
-                logger.warning(f"Failed to index message in ClickHouse: {e}")
+                logger.warning(f"Failed to index message in memory: {e}")
 
         # Update metadata
         mem_metadata = self.get_metadata(memory_name)

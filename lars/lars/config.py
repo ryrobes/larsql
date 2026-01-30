@@ -421,6 +421,10 @@ class Config(BaseModel):
         default_factory=lambda: os.getenv("LARS_CHDB_PATH", os.path.join(_LARS_ROOT, "data", "lars.chdb")),
         description="CHDB storage path (directory/file). Used when db_mode=chdb or auto fallback.",
     )
+    chroma_path: str = Field(
+        default_factory=lambda: os.getenv("LARS_CHROMA_PATH", os.path.join(_LARS_ROOT, "chroma")),
+        description="Chroma persistence directory for vector/RAG storage.",
+    )
 
     # =========================================================================
     # ClickHouse Server Configuration
@@ -602,6 +606,7 @@ def _ensure_directories(config: Config):
         config.audio_dir,
         config.video_dir,
         config.research_db_dir,  # DuckDB research databases
+        config.chroma_path,
     ]
     # CHDB persistence path (if enabled) needs its parent directory present.
     try:

@@ -84,7 +84,7 @@ def discover_all_schemas(session_id: str | None = None):
                 console.print("[dim][OK] Elasticsearch connected - will index schemas for hybrid search[/dim]")
         except Exception as e:
             console.print(f"[dim][WARN] Elasticsearch not available: {e}[/dim]")
-            console.print("[dim]  Continuing with ClickHouse RAG only[/dim]")
+            console.print("[dim]  Continuing with Chroma RAG only[/dim]")
 
     # Load connections
     connections = load_sql_connections()
@@ -218,53 +218,19 @@ def discover_all_schemas(session_id: str | None = None):
             session_id=session_id
         )
 
-        # Index to Elasticsearch with embeddings from ClickHouse
+        # Index to Elasticsearch (optional).
+        #
+        # Note: RAG vectors are stored in Chroma. Elastic indexing currently runs
+        # in text-only mode (no dense_vector) unless we explicitly embed docs here.
         if elastic_enabled and hasattr(discover_all_schemas, '_pending_elastic_docs'):
             console.print("[bold cyan]📦 Indexing to Elasticsearch with embeddings...[/bold cyan]")
 
             try:
-                from ..db_adapter import get_db
-                db = get_db()
-
-                # Get all embeddings from ClickHouse RAG index
-                # Group by doc_id and get first chunk's embedding
-                embeddings_query = f"""
-                    SELECT
-                        doc_id,
-                        rel_path,
-                        argMax(embedding, chunk_index) as embedding,
-                        argMax(embedding_model, chunk_index) as embedding_model
-                    FROM rag_chunks
-                    WHERE rag_id = '{rag_ctx.rag_id}'
-                    GROUP BY doc_id, rel_path
-                """
-                embeddings_data = db.query(embeddings_query)
-
-                # Create mapping: table filename -> embedding
-                # rel_path looks like "conn_name/schema/table.yaml" or "conn_name/table.yaml"
-                embedding_map = {}
-                for row in embeddings_data:
-                    # Extract table name from path (handle both .yaml and legacy .json)
-                    path_parts = row['rel_path'].split('/')
-                    table_filename = path_parts[-1]
-                    table_name = table_filename.replace('.yaml', '').replace('.json', '')
-                    embedding_map[table_name] = row
-
-                # Update pending docs with embeddings
                 docs_with_embeddings = []
                 for doc in discover_all_schemas._pending_elastic_docs:
-                    table_name = doc['table_name']
-
-                    if table_name in embedding_map:
-                        emb_data = embedding_map[table_name]
-                        doc['embedding'] = emb_data['embedding']
-                        doc['embedding_model'] = emb_data['embedding_model']
-                    else:
-                        # Index without embedding (text search only)
-                        console.print(f"[dim]  [WARN] No embedding found for {table_name}[/dim]")
-                        doc['embedding'] = None
-                        doc['embedding_model'] = None
-
+                    # Text-only indexing for now (no embeddings).
+                    doc['embedding'] = None
+                    doc['embedding_model'] = None
                     docs_with_embeddings.append(doc)
 
                 # Bulk index to Elasticsearch
@@ -282,7 +248,7 @@ def discover_all_schemas(session_id: str | None = None):
 
             except Exception as e:
                 console.print(f"[yellow][WARN] Elasticsearch indexing failed: {e}[/yellow]")
-                console.print("[dim]  ClickHouse RAG indexing succeeded - you can still use sql_search[/dim]")
+                console.print("[dim]  Chroma RAG indexing succeeded - you can still use sql_search[/dim]")
 
         # Save discovery metadata
         metadata = DiscoveryMetadata(

@@ -129,6 +129,9 @@ class EphemeralRagManager:
         # Lazy-loaded DB connection
         self._db = None
 
+        # Chroma metadata
+        self._embedding_dim: int | None = None
+
     @property
     def db(self):
         """Lazy-load database connection."""
@@ -543,7 +546,7 @@ class EphemeralRagManager:
         content_hash: str,
     ):
         """
-        Insert chunks and embeddings into ClickHouse.
+        Insert chunks into ClickHouse/CHDB (text + metadata) and upsert vectors to Chroma.
 
         Args:
             rag_id: Ephemeral RAG identifier
@@ -558,6 +561,14 @@ class EphemeralRagManager:
         embed_model = cfg.default_embed_model
 
         import uuid
+
+        embedding_dim = 0
+        try:
+            embedding_dim = len(embeddings[0]) if embeddings else 0
+        except Exception:
+            embedding_dim = 0
+        if embedding_dim:
+            self._embedding_dim = self._embedding_dim or embedding_dim
 
         rows = []
         for chunk, embedding in zip(chunks, embeddings):
@@ -576,8 +587,10 @@ class EphemeralRagManager:
                 "start_line": 0,
                 "end_line": 0,
                 "file_hash": content_hash,
-                "embedding": embedding,
+                # Placeholder only; vectors are stored in Chroma.
+                "embedding": [],
                 "embedding_model": embed_model,
+                "embedding_dim": embedding_dim or (len(embedding) if embedding else 0),
             })
 
         try:
@@ -586,6 +599,36 @@ class EphemeralRagManager:
         except Exception as e:
             logger.error(f"[Ephemeral-RAG] Failed to insert chunks: {e}")
             raise
+
+        # Best-effort upsert to Chroma (failures should not crash the cell).
+        try:
+            from .rag.chroma_store import ChromaChunk, upsert_chunks
+
+            chroma_chunks = [
+                ChromaChunk(
+                    rag_id=rag_id,
+                    doc_id=str(row["doc_id"]),
+                    chunk_index=int(row["chunk_index"]),
+                    text=str(row["text"]),
+                    embedding=embedding,
+                    rel_path=str(row["rel_path"]),
+                    start_line=int(row.get("start_line") or 0),
+                    end_line=int(row.get("end_line") or 0),
+                    char_start=int(row.get("char_start") or 0),
+                    char_end=int(row.get("char_end") or 0),
+                    file_hash=str(row.get("file_hash") or ""),
+                    embedding_model=embed_model,
+                    embedding_dim=int(row.get("embedding_dim") or 0),
+                )
+                for row, embedding in zip(rows, embeddings)
+            ]
+
+            dim = int(embedding_dim or self._embedding_dim or 0)
+            if chroma_chunks and dim:
+                upsert_chunks(embed_model, dim, chroma_chunks)
+                logger.debug(f"[Ephemeral-RAG] Upserted {len(chroma_chunks)} vectors to Chroma for {rag_id}")
+        except Exception as e:
+            logger.warning(f"[Ephemeral-RAG] Failed to upsert vectors to Chroma: {e}")
 
     # =========================================================================
     # SEARCH TOOL CREATION
@@ -804,6 +847,17 @@ class EphemeralRagManager:
                 logger.debug(f"[Ephemeral-RAG] Cleaned up: {rag_id}")
             except Exception as e:
                 logger.warning(f"[Ephemeral-RAG] Cleanup failed for {rag_id}: {e}")
+
+            # Best-effort delete vectors from Chroma.
+            try:
+                if self._embedding_dim:
+                    from .config import get_config
+                    from .rag.chroma_store import delete_by_rag_id
+
+                    embed_model = get_config().default_embed_model
+                    delete_by_rag_id(embed_model, int(self._embedding_dim), rag_id)
+            except Exception as e:
+                logger.debug(f"[Ephemeral-RAG] Chroma cleanup failed for {rag_id}: {e}")
 
         # Clear tracking
         self.replacements.clear()

@@ -1,8 +1,7 @@
 """
-RAG Store - ClickHouse Vector Search Implementation
+RAG Store - Chroma Vector Search Implementation
 
-Provides semantic search over RAG chunks using ClickHouse's native cosineDistance().
-No more Python cosine similarity - ClickHouse handles it natively.
+Provides semantic search over RAG chunks using Chroma.
 
 Key functions:
 - search_chunks(): Semantic search with optional filters
@@ -108,7 +107,7 @@ def search_chunks(
     doc_filter: Optional[str] = None
 ) -> List[Dict[str, Any]]:
     """
-    Semantic search using ClickHouse cosineDistance.
+    Semantic search using Chroma.
 
     Args:
         rag_ctx: RAG context with rag_id and session info
@@ -120,9 +119,7 @@ def search_chunks(
     Returns:
         List of search results with chunk data and similarity scores
     """
-    from ..db_adapter import get_db
-
-    db = get_db()
+    from .chroma_store import query_chunks
 
     # Embed query using Agent.embed() - same model as the index
     embed_result = embed_texts(
@@ -135,47 +132,89 @@ def search_chunks(
         cascade_id=rag_ctx.cascade_id,
     )
     query_vec = embed_result["embeddings"][0]
+    query_dim = int(embed_result.get("dim") or 0)
 
-    # Build WHERE clause
-    conditions = [f"rag_id = '{rag_ctx.rag_id}'"]
-    if doc_filter:
-        # Escape single quotes in filter
-        safe_filter = doc_filter.replace("'", "''")
-        conditions.append(f"rel_path LIKE '%{safe_filter}%'")
+    expected_dim = int(rag_ctx.embedding_dim or 0) if getattr(rag_ctx, "embedding_dim", 0) else 0
+    if expected_dim and query_dim and query_dim != expected_dim:
+        raise ValueError(
+            f"Embedding dimension mismatch (index {expected_dim} dims, query {query_dim} dims). "
+            "Re-index with the current embedding model to fix."
+        )
 
-    where_clause = " AND ".join(conditions)
+    embedding_dim = expected_dim or query_dim
+    if not embedding_dim:
+        raise ValueError("Could not determine embedding dimension for Chroma query.")
 
-    # Use ClickHouse vector search
-    results = db.vector_search(
-        table='rag_chunks',
-        embedding_col='embedding',
-        query_vector=query_vec,
-        limit=k * 2 if score_threshold else k,  # Fetch extra if filtering
-        where=where_clause,
-        select_cols="doc_id, rel_path, chunk_index, start_line, end_line, text"
+    # Pull more results up-front if we have post-filters.
+    fetch_n = int(k)
+    if score_threshold is not None or doc_filter:
+        fetch_n = max(fetch_n * 4, fetch_n + 10)
+
+    raw = query_chunks(
+        embed_model=rag_ctx.embed_model,
+        embedding_dim=embedding_dim,
+        rag_id=rag_ctx.rag_id,
+        query_embedding=query_vec,
+        n_results=fetch_n,
     )
 
-    # Filter by threshold if specified (similarity = 1 - distance)
-    if score_threshold is not None:
-        results = [r for r in results if r['similarity'] >= score_threshold]
-
-    # Limit to k results
-    results = results[:k]
+    # Chroma returns nested lists (one list per query vector).
+    ids = (raw.get("ids") or [[]])[0]
+    distances = (raw.get("distances") or [[]])[0]
+    metadatas = (raw.get("metadatas") or [[]])[0]
+    documents = (raw.get("documents") or [[]])[0]
 
     # Format results
     formatted = []
-    for r in results:
-        chunk_id = f"{r['doc_id']}_{r['chunk_index']}"
+    for idx, meta in enumerate(metadatas):
+        if not meta:
+            continue
+
+        rel_path = str(meta.get("rel_path") or "")
+        if doc_filter and doc_filter not in rel_path:
+            continue
+
+        distance = None
+        try:
+            distance = float(distances[idx]) if distances and idx < len(distances) else None
+        except Exception:
+            distance = None
+
+        similarity = None
+        if distance is not None:
+            # Default Chroma distance for cosine is (1 - cosine_similarity).
+            similarity = 1.0 - distance
+        else:
+            similarity = 0.0
+
+        if score_threshold is not None and similarity is not None and similarity < float(score_threshold):
+            continue
+
+        doc_id = str(meta.get("doc_id") or "")
+        chunk_index = int(meta.get("chunk_index") or 0)
+        chunk_id = f"{doc_id}_{chunk_index}"
+
+        start_line = int(meta.get("start_line") or 0)
+        end_line = int(meta.get("end_line") or 0)
+        text = ""
+        try:
+            text = str(documents[idx]) if documents and idx < len(documents) and documents[idx] is not None else ""
+        except Exception:
+            text = ""
+
         formatted.append({
             "chunk_id": chunk_id,
-            "doc_id": r["doc_id"],
-            "source": r["rel_path"],
-            "lines": [int(r["start_line"]), int(r["end_line"])],
-            "score": float(r["similarity"]),
-            "snippet": r["text"][:400].strip(),
+            "doc_id": doc_id,
+            "source": rel_path,
+            "lines": [start_line, end_line],
+            "score": float(similarity),
+            "snippet": text[:400].strip(),
         })
 
-    return formatted
+        if len(formatted) >= int(k):
+            break
+
+    return formatted[: int(k)]
 
 
 def get_chunk_by_id(rag_id: str, chunk_id: str) -> Optional[Dict[str, Any]]:

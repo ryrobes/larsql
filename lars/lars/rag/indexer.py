@@ -1,13 +1,13 @@
 """
-RAG Indexer - ClickHouse Implementation
+RAG Indexer - Chroma Implementation
 
 Builds and updates RAG indexes by:
 1. Scanning directories for files
 2. Chunking text files
 3. Generating embeddings via Agent.embed()
-4. Storing chunks and embeddings in ClickHouse tables (rag_chunks, rag_manifests)
+4. Storing vectors in Chroma (rag_chunks embeddings are not stored in ClickHouse/CHDB)
 
-Uses ClickHouse's cosineDistance() for vector search - no Python similarity needed.
+ClickHouse/CHDB still stores lightweight metadata (rag_chunks text + rag_manifests).
 """
 import hashlib
 import json
@@ -317,12 +317,13 @@ def ensure_rag_index(
     cascade_id: Optional[str] = None
 ) -> RagContext:
     """
-    Build or update a RAG index in ClickHouse.
+    Build or update a RAG index.
 
     Returns a RagContext with rag_id and metadata.
-    Data is stored in rag_chunks and rag_manifests tables.
+    Chunk text + manifests are stored in rag_chunks/rag_manifests. Vectors are stored in Chroma.
     """
     from ..db_adapter import get_db
+    from .chroma_store import ChromaChunk, delete_by_doc_id, upsert_chunks
 
     abs_dir = _resolve_directory(rag_config, cascade_path)
     console.print(f"[bold cyan][INFO] Building RAG index[/bold cyan] for [white]{abs_dir}[/white] (recursive={rag_config.recursive})")
@@ -353,11 +354,12 @@ def ensure_rag_index(
 
     # Get existing manifests from ClickHouse
     existing_manifests = db.query(
-        f"SELECT doc_id, rel_path, file_hash, mtime, file_size FROM rag_manifests WHERE rag_id = '{rag_id}'"
+        f"SELECT doc_id, rel_path, file_hash, mtime, file_size, chunk_count FROM rag_manifests WHERE rag_id = '{rag_id}'"
     )
     prev_by_path: Dict[str, Dict[str, Any]] = {r['rel_path']: r for r in existing_manifests}
 
-    # Get current embedding dimension from existing data (if any)
+    # Get current embedding dimension from existing data (if any).
+    # Note: vectors live in Chroma, but we still keep embedding_dim/model on rag_chunks for compatibility.
     existing_dim_result = db.query(
         f"SELECT embedding_dim FROM rag_chunks WHERE rag_id = '{rag_id}' LIMIT 1"
     )
@@ -393,10 +395,10 @@ def ensure_rag_index(
         # Reuse if size + mtime unchanged
         # Note: prev values may be numpy types from ClickHouse, so convert to Python types
         if prev is not None and abs(float(prev.get("mtime", 0)) - stat.st_mtime) < 1e-6 and int(prev.get("file_size", 0)) == stat.st_size:
-            chunks_reused_count = db.query(
-                f"SELECT count() as cnt FROM rag_chunks WHERE rag_id = '{rag_id}' AND doc_id = '{prev['doc_id']}'"
-            )
-            chunks_reused += chunks_reused_count[0]['cnt'] if chunks_reused_count else 0
+            try:
+                chunks_reused += int(prev.get("chunk_count") or 0)
+            except Exception:
+                pass
             skipped_files += 1
             continue
 
@@ -457,6 +459,7 @@ def ensure_rag_index(
     # Phase 3: Build insert rows with embeddings
     chunks_to_insert = []
     manifests_to_insert = []
+    chroma_chunks_to_upsert: List[ChromaChunk] = []
 
     for file_info in files_to_process:
         doc_id = file_info["doc_id"]
@@ -470,6 +473,8 @@ def ensure_rag_index(
         # Delete old chunks for this doc (if updating)
         if prev:
             db.execute(f"ALTER TABLE rag_chunks DELETE WHERE rag_id = '{rag_id}' AND doc_id = '{prev['doc_id']}'")
+            if embedding_dim_used:
+                delete_by_doc_id(embed_model, int(embedding_dim_used), rag_id, str(prev["doc_id"]))
 
         # Prepare manifest row
         manifests_to_insert.append({
@@ -487,6 +492,7 @@ def ensure_rag_index(
         # Prepare chunk rows with embeddings from the batched result
         for idx, chunk in enumerate(chunk_objs):
             embedding_idx = chunk_start_idx + idx
+            embedding_vec = all_embeddings[embedding_idx]
             chunks_to_insert.append({
                 "rag_id": rag_id,
                 "doc_id": doc_id,
@@ -498,10 +504,28 @@ def ensure_rag_index(
                 "start_line": chunk.start_line,
                 "end_line": chunk.end_line,
                 "file_hash": content_hash,
-                "embedding": all_embeddings[embedding_idx],
+                # Vectors are stored in Chroma. Keep schema-compatible placeholder.
+                "embedding": [],
                 "embedding_model": embed_model,
-                "embedding_dim": embedding_dim_used or len(all_embeddings[embedding_idx]),
+                "embedding_dim": embedding_dim_used or len(embedding_vec),
             })
+            chroma_chunks_to_upsert.append(
+                ChromaChunk(
+                    rag_id=rag_id,
+                    doc_id=str(doc_id),
+                    chunk_index=int(idx),
+                    text=chunk.text,
+                    embedding=embedding_vec,
+                    rel_path=rel_path,
+                    start_line=int(chunk.start_line),
+                    end_line=int(chunk.end_line),
+                    char_start=int(chunk.start_char),
+                    char_end=int(chunk.end_char),
+                    file_hash=content_hash,
+                    embedding_model=embed_model,
+                    embedding_dim=int(embedding_dim_used or len(embedding_vec)),
+                )
+            )
 
         indexed_files += 1
         chunks_written += len(chunk_objs)
@@ -516,6 +540,8 @@ def ensure_rag_index(
             prev = prev_by_path[rel_path]
             db.execute(f"ALTER TABLE rag_chunks DELETE WHERE rag_id = '{rag_id}' AND doc_id = '{prev['doc_id']}'")
             db.execute(f"ALTER TABLE rag_manifests DELETE WHERE rag_id = '{rag_id}' AND doc_id = '{prev['doc_id']}'")
+            if expected_dim:
+                delete_by_doc_id(embed_model, int(expected_dim), rag_id, str(prev["doc_id"]))
 
     # Batch insert new data
     if chunks_to_insert:
@@ -523,6 +549,10 @@ def ensure_rag_index(
 
     if manifests_to_insert:
         db.insert_rows('rag_manifests', manifests_to_insert)
+
+    # Batch upsert vectors to Chroma
+    if chroma_chunks_to_upsert and embedding_dim_used:
+        upsert_chunks(embed_model, int(embedding_dim_used), chroma_chunks_to_upsert)
 
     # Get final stats
     total_chunks_result = db.query(f"SELECT count() as cnt FROM rag_chunks WHERE rag_id = '{rag_id}'")
@@ -567,8 +597,23 @@ def ensure_rag_index(
 def delete_rag_index(rag_id: str):
     """Delete all data for a RAG index."""
     from ..db_adapter import get_db
+    from .chroma_store import delete_by_rag_id
 
     db = get_db()
+    # Best-effort delete from Chroma first (requires model/dim).
+    try:
+        info = db.query(
+            f"SELECT any(embedding_model) as embedding_model, any(embedding_dim) as embedding_dim "
+            f"FROM rag_chunks WHERE rag_id = '{rag_id}'"
+        )
+        if info and info[0].get("embedding_model") and info[0].get("embedding_dim"):
+            delete_by_rag_id(
+                str(info[0]["embedding_model"]),
+                int(info[0]["embedding_dim"]),
+                rag_id,
+            )
+    except Exception:
+        pass
     db.execute(f"ALTER TABLE rag_chunks DELETE WHERE rag_id = '{rag_id}'")
     db.execute(f"ALTER TABLE rag_manifests DELETE WHERE rag_id = '{rag_id}'")
     console.print(f"[yellow]Deleted RAG index: {rag_id}[/yellow]")

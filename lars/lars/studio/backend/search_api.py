@@ -94,16 +94,17 @@ def rag_search_endpoint():
         score_threshold = data.get('score_threshold')
         doc_filter = data.get('doc_filter')
 
-        # Get the embedding model and verify consistency
+        # Get the embedding model and verify consistency.
+        # Note: vectors are stored in Chroma; rag_chunks stores only metadata.
         db = get_db()
         model_query = f"""
             SELECT
                 embedding_model,
                 COUNT(*) as count,
-                length(embedding) as embedding_dim
+                embedding_dim as embedding_dim
             FROM rag_chunks
             WHERE rag_id = '{rag_id}'
-            GROUP BY embedding_model, length(embedding)
+            GROUP BY embedding_model, embedding_dim
             ORDER BY count DESC
         """
         model_result = db.query(model_query)
@@ -130,6 +131,7 @@ def rag_search_endpoint():
             rag_id=rag_id,
             directory="",  # Not needed for search
             embed_model=embed_model,  # Use the model from the index!
+            embedding_dim=int(embedding_dim),
             stats={},
             session_id="ui_search",
             cascade_id="search_ui",

@@ -2,7 +2,8 @@
 RAG (Retrieval Augmented Generation) indexer tests.
 
 This test requires:
-- ClickHouse database (LARS_CLICKHOUSE_HOST)
+- A persistence database (ClickHouse server or CHDB)
+- ChromaDB (chromadb)
 
 Skip with: pytest -m "not integration"
 """
@@ -28,6 +29,9 @@ def deterministic_embeddings(monkeypatch):
 @pytest.mark.integration
 @pytest.mark.requires_clickhouse
 def test_rag_index_and_search(tmp_path):
+    pytest.importorskip("chromadb")
+    os.environ["LARS_CHROMA_PATH"] = str(tmp_path / "chroma")
+
     docs_dir = tmp_path / "docs"
     docs_dir.mkdir()
 
