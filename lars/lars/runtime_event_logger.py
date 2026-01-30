@@ -138,8 +138,12 @@ class RuntimeEventLogger:
         except Exception:
             pass
         try:
-            if self._client is not None:
-                self._client.disconnect()
+            # Best-effort cleanup. In CHDB mode this releases the file lock.
+            if self._client is not None and hasattr(self._client, "client"):
+                try:
+                    self._client.client.disconnect()
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -159,40 +163,45 @@ class RuntimeEventLogger:
                 return None
 
         try:
-            from .config import get_config
-            config = get_config()
-            from clickhouse_driver import Client
+            # Use the main DB adapter so this works for ClickHouse server and CHDB.
+            from .db_adapter import get_db_adapter
 
-            self._client = Client(
-                host=config.clickhouse_host,
-                port=config.clickhouse_port,
-                database=config.clickhouse_database,
-                user=config.clickhouse_user,
-                password=config.clickhouse_password,
-                connect_timeout=5,
-                send_receive_timeout=10,
-                settings={
-                    "use_numpy": False,
-                    "max_execution_time": 10,
-                },
-            )
+            db = get_db_adapter()
 
-            # Ensure table exists.
+            # Ensure table exists (best-effort). Use log_query=False to avoid spamming ui_sql_log.
             from .schema import RUNTIME_EVENT_LOG_SCHEMA
 
-            self._client.execute(RUNTIME_EVENT_LOG_SCHEMA)
+            try:
+                db.execute(RUNTIME_EVENT_LOG_SCHEMA, log_query=False)
+            except TypeError:
+                db.execute(RUNTIME_EVENT_LOG_SCHEMA)
+
             # Keep table schema forward-compatible even if migrations haven't run yet.
             try:
-                self._client.execute(
+                db.execute(
                     "ALTER TABLE runtime_event_log "
-                    "ADD COLUMN IF NOT EXISTS connection_id String DEFAULT '' AFTER timestamp_iso"
+                    "ADD COLUMN IF NOT EXISTS connection_id String DEFAULT '' AFTER timestamp_iso",
+                    log_query=False,
                 )
-                self._client.execute(
+                db.execute(
                     "ALTER TABLE runtime_event_log "
-                    "ADD INDEX IF NOT EXISTS idx_connection connection_id TYPE bloom_filter GRANULARITY 1"
+                    "ADD INDEX IF NOT EXISTS idx_connection connection_id TYPE bloom_filter GRANULARITY 1",
+                    log_query=False,
                 )
-            except Exception:
-                pass
+            except TypeError:
+                try:
+                    db.execute(
+                        "ALTER TABLE runtime_event_log "
+                        "ADD COLUMN IF NOT EXISTS connection_id String DEFAULT '' AFTER timestamp_iso"
+                    )
+                    db.execute(
+                        "ALTER TABLE runtime_event_log "
+                        "ADD INDEX IF NOT EXISTS idx_connection connection_id TYPE bloom_filter GRANULARITY 1"
+                    )
+                except Exception:
+                    pass
+
+            self._client = db
             self._connect_failures = 0
             self._next_connect_time = 0.0
             self._last_error = None
@@ -275,17 +284,17 @@ class RuntimeEventLogger:
             "thread_id",
         )
 
-        rows = [tuple(item.get(c) for c in cols) for item in batch]
-
         try:
-            client.execute(
-                f"INSERT INTO runtime_event_log ({', '.join(cols)}) VALUES",
-                rows,
-            )
+            # Adapter insert_rows accepts list[dict] directly.
+            try:
+                client.insert_rows("runtime_event_log", batch, columns=list(cols), log_query=False)
+            except TypeError:
+                client.insert_rows("runtime_event_log", batch, columns=list(cols))
         except Exception as e:
             # Don't disable permanently; this is best-effort logging.
             try:
-                client.disconnect()
+                if hasattr(client, "client") and hasattr(client.client, "disconnect"):
+                    client.client.disconnect()
             except Exception:
                 pass
             self._client = None

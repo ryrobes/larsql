@@ -1,8 +1,11 @@
 """
-Database adapter layer for LARS - Pure ClickHouse Implementation.
+Database adapter layer for LARS - ClickHouse-compatible persistence.
 
-This module provides a single ClickHouseAdapter that handles all database operations.
-No more dual-mode (chDB/ClickHouse) - we now use ClickHouse server exclusively.
+This module provides a single adapter that handles all database operations.
+
+By default, LARS uses a ClickHouse server. For easier local evaluation, it can
+optionally fall back to CHDB (embedded ClickHouse) so users don't need a running
+ClickHouse service.
 
 Key features:
 - Singleton pattern for connection reuse
@@ -13,6 +16,8 @@ Key features:
 - Query logging to ui_sql_log table (async fire-and-forget)
 """
 import json
+import os
+import math
 import threading
 import hashlib
 import time
@@ -20,6 +25,7 @@ import queue
 import contextvars
 import atexit
 import traceback
+import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 import pandas as pd
@@ -118,6 +124,163 @@ def _is_missing_table_error(error: Exception) -> tuple[bool, str | None]:
 
 
 # =============================================================================
+# Backend Selection Helpers (ClickHouse server vs CHDB)
+# =============================================================================
+
+def _normalize_db_mode(mode: str | None) -> str:
+    val = (mode or "").strip().lower()
+    if not val:
+        return "auto"
+    if val in ("auto",):
+        return "auto"
+    if val in ("clickhouse", "server", "clickhouse_server", "ch"):
+        return "clickhouse"
+    if val in ("chdb", "embedded", "local"):
+        return "chdb"
+    # Unknown mode: treat as auto (safer default than hard-fail).
+    return "auto"
+
+
+def _clickhouse_server_reachable(
+    *,
+    host: str,
+    port: int,
+    database: str,
+    user: str,
+    password: str,
+    timeout_s: float = 0.5,
+) -> bool:
+    """
+    Best-effort ClickHouse reachability check for auto mode.
+
+    Keep this fast: it runs on startup for users without ClickHouse.
+    """
+    try:
+        from clickhouse_driver import Client  # type: ignore
+
+        client = Client(
+            host=host,
+            port=port,
+            database=database,
+            user=user,
+            password=password,
+            connect_timeout=timeout_s,
+            send_receive_timeout=max(1, timeout_s),
+            sync_request_timeout=max(1, timeout_s),
+            settings={"use_numpy": False, "max_execution_time": 2},
+        )
+        client.execute("SELECT 1")
+        try:
+            client.disconnect()
+        except Exception:
+            pass
+        return True
+    except Exception:
+        return False
+
+
+_CLICKHOUSE_PARAM_RE = re.compile(r"%\(([A-Za-z0-9_]+)\)s")
+
+
+def _format_datetime_for_clickhouse(value: Any) -> str:
+    """
+    Format datetime/date-like values for ClickHouse SQL literals.
+
+    ClickHouse DateTime/DateTime64 parsing accepts common string formats.
+    Prefer a space separator to avoid edge cases across engines.
+    """
+    # pandas.Timestamp acts like datetime; avoid importing pandas here.
+    if isinstance(value, datetime):
+        dt = value
+        # Normalize tz-aware to UTC and drop tzinfo (ClickHouse typically stores naive).
+        try:
+            if dt.tzinfo is not None:
+                from datetime import timezone
+                dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+        except Exception:
+            dt = dt.replace(tzinfo=None)
+        return dt.strftime("%Y-%m-%d %H:%M:%S.%f").rstrip("0").rstrip(".")
+
+    # date objects
+    if hasattr(value, "year") and hasattr(value, "month") and hasattr(value, "day") and not hasattr(value, "hour"):
+        try:
+            return f"{int(value.year):04d}-{int(value.month):02d}-{int(value.day):02d}"
+        except Exception:
+            return str(value)
+
+    return str(value)
+
+
+def _escape_clickhouse_literal(value: Any) -> str:
+    """
+    Escape a Python value as a ClickHouse SQL literal.
+
+    Used for CHDB execution and for any code paths that require local param
+    substitution (ClickHouse server mode still relies on clickhouse-driver's
+    native parameter binding).
+    """
+    if value is None:
+        return "NULL"
+
+    # bool is a subclass of int, so check it first.
+    if isinstance(value, bool):
+        return "1" if value else "0"
+
+    if isinstance(value, (int,)):
+        return str(value)
+
+    if isinstance(value, float):
+        if math.isnan(value) or math.isinf(value):
+            return "NULL"
+        return repr(value)
+
+    # UUIDs and other identifiers
+    if hasattr(value, "hex") and type(value).__name__.lower() == "uuid":
+        return "'" + str(value) + "'"
+
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        return "'" + bytes(value).hex() + "'"
+
+    # Datetime/date-like
+    if isinstance(value, datetime) or (hasattr(value, "isoformat") and hasattr(value, "year") and hasattr(value, "month")):
+        s = _format_datetime_for_clickhouse(value)
+        s = s.replace("\\", "\\\\").replace("'", "''")
+        return f"'{s}'"
+
+    if isinstance(value, (list, tuple)):
+        return "[" + ", ".join(_escape_clickhouse_literal(v) for v in value) + "]"
+
+    if isinstance(value, dict):
+        s = json.dumps(value, default=str, ensure_ascii=False)
+        s = s.replace("\\", "\\\\").replace("'", "''")
+        return f"'{s}'"
+
+    # Fallback: treat as string
+    s = str(value)
+    s = s.replace("\\", "\\\\").replace("'", "''")
+    return f"'{s}'"
+
+
+def _substitute_clickhouse_percent_params(sql: str, params: Dict[str, Any]) -> str:
+    """
+    Substitute clickhouse-driver style params in SQL: %(name)s.
+
+    CHDB does not support clickhouse-driver's native parameter binding, so we
+    need to substitute into SQL text safely.
+    """
+    if not params:
+        return sql
+
+    def repl(match: re.Match) -> str:
+        key = match.group(1)
+        if key not in params:
+            raise KeyError(f"Missing SQL param: {key}")
+        return _escape_clickhouse_literal(params[key])
+
+    return _CLICKHOUSE_PARAM_RE.sub(repl, sql)
+
+
+# =============================================================================
 # Query Logging System - Async fire-and-forget logging to ClickHouse
 # =============================================================================
 
@@ -207,44 +370,19 @@ class QueryLogger:
         self._initialized = True
 
     def _get_client(self):
-        """Lazily create a dedicated ClickHouse client for logging."""
+        """Get the main DB adapter for logging (works for ClickHouse server and CHDB)."""
         if self._client is not None:
             return self._client
 
-        if self._host is None:
-            # Get config from main adapter if not provided
-            try:
-                from .config import get_config
-                config = get_config()
-                self._host = config.clickhouse_host
-                self._port = config.clickhouse_port
-                self._database = config.clickhouse_database
-                self._user = config.clickhouse_user
-                self._password = config.clickhouse_password
-            except Exception:
-                self._enabled = False
-                return None
-
         try:
-            from clickhouse_driver import Client
-            self._client = Client(
-                host=self._host,
-                port=self._port,
-                database=self._database,
-                user=self._user,
-                password=self._password,
-                connect_timeout=5,
-                send_receive_timeout=10,
-                settings={
-                    'use_numpy': False,
-                    'max_execution_time': 10,
-                }
-            )
-            # Ensure ui_sql_log table exists
+            db = get_db_adapter()
+            # Keep a cached reference to avoid repeated adapter lookups.
+            self._client = db
+            # Ensure ui_sql_log table exists.
             self._ensure_table()
             return self._client
         except Exception as e:
-            print(f"[QueryLogger] Failed to create client: {e}")
+            print(f"[QueryLogger] Failed to get DB adapter: {e}")
             self._enabled = False
             return None
 
@@ -252,7 +390,14 @@ class QueryLogger:
         """Ensure ui_sql_log table exists."""
         try:
             from .schema import UI_SQL_LOG_SCHEMA
-            self._client.execute(UI_SQL_LOG_SCHEMA)
+            # Use log_query=False to avoid writing ui_sql_log about itself.
+            if hasattr(self._client, "execute"):
+                # ClickHouseAdapter.execute supports log_query kwarg.
+                try:
+                    self._client.execute(UI_SQL_LOG_SCHEMA, log_query=False)
+                except TypeError:
+                    # Backwards-compatible fallback if execute() doesn't accept log_query.
+                    self._client.execute(UI_SQL_LOG_SCHEMA)
         except Exception as e:
             print(f"[QueryLogger] Failed to create ui_sql_log table: {e}")
             self._enabled = False
@@ -361,16 +506,12 @@ class QueryLogger:
                 'request_path', 'page_ref', 'success', 'error_message'
             ]
 
-            values = []
-            for entry in batch:
-                values.append(tuple(entry.get(col) for col in columns))
-
-            cols_str = ', '.join(columns)
-            client.execute(
-                f"INSERT INTO ui_sql_log ({cols_str}) VALUES",
-                values,
-                settings={'use_numpy': False}
-            )
+            # Prefer adapter insert_rows for compatibility across backends.
+            try:
+                client.insert_rows("ui_sql_log", batch, columns=columns, log_query=False)
+            except TypeError:
+                # Older adapter signature without log_query.
+                client.insert_rows("ui_sql_log", batch, columns=columns)
         except Exception as e:
             # Log but don't crash
             print(f"[QueryLogger] Flush failed: {e}")
@@ -458,42 +599,16 @@ class DerefLogger:
         self._initialized = True
 
     def _get_client(self):
-        """Lazily create a dedicated ClickHouse client for logging."""
+        """Get the main DB adapter for logging (works for ClickHouse server and CHDB)."""
         if self._client is not None:
             return self._client
 
-        if self._host is None:
-            # Get config from main adapter if not provided
-            try:
-                from .config import get_config
-                config = get_config()
-                self._host = config.clickhouse_host
-                self._port = config.clickhouse_port
-                self._database = config.clickhouse_database
-                self._user = config.clickhouse_user
-                self._password = config.clickhouse_password
-            except Exception:
-                self._enabled = False
-                return None
-
         try:
-            from clickhouse_driver import Client
-            self._client = Client(
-                host=self._host,
-                port=self._port,
-                database=self._database,
-                user=self._user,
-                password=self._password,
-                connect_timeout=5,
-                send_receive_timeout=10,
-                settings={
-                    'use_numpy': False,
-                    'max_execution_time': 10,
-                }
-            )
+            db = get_db_adapter()
+            self._client = db
             return self._client
         except Exception as e:
-            print(f"[DerefLogger] Failed to create client: {e}")
+            print(f"[DerefLogger] Failed to get DB adapter: {e}")
             self._enabled = False
             return None
 
@@ -617,17 +732,11 @@ class DerefLogger:
                 'error_message', 'session_id', 'protocol', 'database_name',
                 'user_name', 'application_name', 'client_address', 'caller_id'
             ]
-
-            values = []
-            for entry in batch:
-                values.append(tuple(entry.get(col) for col in columns))
-
-            cols_str = ', '.join(columns)
-            client.execute(
-                f"INSERT INTO deref_log ({cols_str}) VALUES",
-                values,
-                settings={'use_numpy': False}
-            )
+            # Prefer adapter insert_rows for compatibility across backends.
+            try:
+                client.insert_rows("deref_log", batch, columns=columns, log_query=False)
+            except TypeError:
+                client.insert_rows("deref_log", batch, columns=columns)
         except Exception as e:
             # Log but don't crash
             print(f"[DerefLogger] Flush failed: {e}")
@@ -652,12 +761,133 @@ def get_deref_logger() -> Optional[DerefLogger]:
     return _deref_logger
 
 
+def shutdown_async_loggers() -> None:
+    """
+    Stop background logging threads (QueryLogger/DerefLogger) if they were created.
+
+    Useful in CHDB mode when the current process is only doing one-off setup and
+    must release the CHDB file lock before starting another process.
+    """
+    global _query_logger, _deref_logger
+
+    try:
+        if _query_logger is not None:
+            _query_logger._shutdown_handler()
+    except Exception:
+        pass
+    _query_logger = None
+
+    try:
+        if _deref_logger is not None:
+            _deref_logger._shutdown_handler()
+    except Exception:
+        pass
+    _deref_logger = None
+
+
+class _ChdbClientWrapper:
+    """
+    Minimal clickhouse-driver-like client wrapper backed by CHDB.
+
+    Implements the subset of methods used by ClickHouseAdapter:
+    - execute(...)
+    - query_dataframe(...)
+    - disconnect()
+    """
+
+    def __init__(self, *, path: str, database: str):
+        try:
+            import chdb  # type: ignore
+        except ImportError as e:
+            raise ImportError(
+                "chdb is not installed (required for LARS_DB_MODE=chdb). "
+                "Install it with: pip install chdb"
+            ) from e
+
+        self._chdb = chdb
+        self._path = path
+        self._database = database
+        try:
+            self._conn = chdb.connect(path)
+        except Exception as e:
+            msg = str(e)
+            if "Cannot lock file" in msg or "Another server instance" in msg:
+                raise RuntimeError(
+                    "CHDB storage is already in use by another process. "
+                    "Stop the other LARS process or set LARS_CHDB_PATH to a different path."
+                ) from e
+            raise
+
+        # Ensure the requested default database exists and is active.
+        # Many migrations and queries rely on unqualified table names.
+        try:
+            self._conn.query(f"CREATE DATABASE IF NOT EXISTS {database}")
+            self._conn.query(f"USE {database}")
+        except Exception:
+            # If database name is invalid, surface the original error.
+            raise
+
+    def disconnect(self) -> None:
+        try:
+            self._conn.close()
+        except Exception:
+            pass
+
+    def query_dataframe(self, sql: str, params: Dict | None = None):
+        if params:
+            sql = _substitute_clickhouse_percent_params(sql, params)
+        return self._conn.query(sql, "dataframe")
+
+    @staticmethod
+    def _looks_like_select(sql: str) -> bool:
+        # Fast heuristic: good enough for distinguishing query vs DDL/DML.
+        s = sql.lstrip()
+        if not s:
+            return False
+        upper = s[:20].upper()
+        return upper.startswith(("SELECT", "WITH", "SHOW", "DESCRIBE", "EXPLAIN"))
+
+    def execute(
+        self,
+        sql: str,
+        params: Dict | None = None,
+        with_column_types: bool = False,
+        settings: Dict | None = None,
+        **kwargs,
+    ):
+        # CHDB doesn't accept clickhouse-driver params; substitute into SQL.
+        if params:
+            sql = _substitute_clickhouse_percent_params(sql, params)
+
+        # Settings are either specified inline via SETTINGS clause or ignored here.
+        _ = settings, kwargs
+
+        # Query path (needs results).
+        if with_column_types or self._looks_like_select(sql):
+            fmt = "JSONCompact" if (with_column_types or self._looks_like_select(sql)) else "CSV"
+            res = self._conn.query(sql, fmt)
+            payload = res.bytes()
+            if not payload:
+                return ([], []) if with_column_types else []
+            obj = json.loads(payload.decode("utf-8"))
+            rows = [tuple(r) for r in obj.get("data", [])]
+            if with_column_types:
+                cols = [(m.get("name"), m.get("type")) for m in obj.get("meta", [])]
+                return rows, cols
+            return rows
+
+        # DDL/DML path.
+        self._conn.query(sql)
+        return []
+
+
 class ClickHouseAdapter:
     """
-    Pure ClickHouse adapter - single implementation for all database operations.
+    ClickHouse-compatible adapter for all LARS persistence operations.
 
     This adapter:
-    - Connects to ClickHouse server (no embedded chDB, no Parquet files)
+    - Connects to ClickHouse server by default
+    - Optionally uses CHDB (embedded ClickHouse) for local evaluation
     - Provides batch INSERT for efficient writes
     - Supports ALTER TABLE UPDATE for cost tracking and winner flagging
     - Implements native vector search with cosineDistance()
@@ -686,7 +916,9 @@ class ClickHouseAdapter:
         database: str = "lars",
         user: str = "default",
         password: str = "",
-        auto_create: bool = False
+        auto_create: bool = False,
+        backend: str = "clickhouse",
+        chdb_path: str | None = None,
     ):
         """
         Initialize ClickHouse adapter (singleton - only runs once).
@@ -711,38 +943,54 @@ class ClickHouseAdapter:
         self.user = user
         self.password = password
 
-        try:
-            from clickhouse_driver import Client
-            self._Client = Client
-        except ImportError:
-            raise ImportError(
-                "clickhouse-driver is not installed. "
-                "Install it with: pip install clickhouse-driver"
+        self.backend = (backend or "clickhouse").strip().lower()
+        if self.backend not in ("clickhouse", "chdb"):
+            self.backend = "clickhouse"
+
+        # ClickHouse server backend
+        if self.backend == "clickhouse":
+            try:
+                from clickhouse_driver import Client  # type: ignore
+                self._Client = Client
+            except ImportError as e:
+                raise ImportError(
+                    "clickhouse-driver is not installed. "
+                    "Install it with: pip install clickhouse-driver"
+                ) from e
+
+            # Create system client first (without database) to ensure database exists
+            if auto_create:
+                self._ensure_database()
+
+            # Now connect to the database with connection pooling settings
+            self.client = self._Client(
+                host=host,
+                port=port,
+                database=database,
+                user=user,
+                password=password,
+                # Connection settings for high concurrency
+                connect_timeout=10,
+                send_receive_timeout=30,
+                sync_request_timeout=30,
+                # Query settings
+                settings={
+                    "use_numpy": True,
+                    "max_block_size": 100000,
+                    "max_threads": 4,  # Limit threads per query
+                    "max_execution_time": 60,  # 60s query timeout
+                },
             )
+            self.chdb_path = None
+        else:
+            # CHDB backend (embedded ClickHouse)
+            if not chdb_path:
+                from .config import get_config
+                chdb_path = get_config().chdb_path
 
-        # Create system client first (without database) to ensure database exists
-        if auto_create:
-            self._ensure_database()
-
-        # Now connect to the database with connection pooling settings
-        self.client = self._Client(
-            host=host,
-            port=port,
-            database=database,
-            user=user,
-            password=password,
-            # Connection settings for high concurrency
-            connect_timeout=10,
-            send_receive_timeout=30,
-            sync_request_timeout=30,
-            # Query settings
-            settings={
-                'use_numpy': True,
-                'max_block_size': 100000,
-                'max_threads': 4,  # Limit threads per query
-                'max_execution_time': 60,  # 60s query timeout
-            }
-        )
+            self.chdb_path = chdb_path
+            self._Client = None
+            self.client = _ChdbClientWrapper(path=chdb_path, database=database)
 
         # Auto-create tables if requested
         if auto_create:
@@ -780,6 +1028,15 @@ class ClickHouseAdapter:
 
     def _ensure_database(self):
         """Ensure the database exists, creating it if necessary."""
+        if getattr(self, "backend", "clickhouse") == "chdb":
+            # CHDB uses a local embedded ClickHouse; we can create/use databases directly.
+            try:
+                self.client.execute(f"CREATE DATABASE IF NOT EXISTS {self.database}")
+                self.client.execute(f"USE {self.database}")
+            except Exception as e:
+                print(f"[LARS] Warning: Could not check/create database: {e}")
+            return
+
         system_client = self._Client(
             host=self.host,
             port=self.port,
@@ -841,7 +1098,7 @@ class ClickHouseAdapter:
     # Query Operations
     # =========================================================================
 
-    def query(self, sql: str, params: Dict | None = None, output_format: str = "dict") -> Any:
+    def query(self, sql: str, params: Dict | None = None, output_format: str = "dict", log_query: bool = True) -> Any:
         """
         Execute a SELECT query and return results.
 
@@ -889,7 +1146,7 @@ class ClickHouseAdapter:
             finally:
                 duration_ms = (time.time() - start_time) * 1000
                 logger = get_query_logger()
-                if logger:
+                if log_query and logger:
                     logger.log_query(
                         query_type='query',
                         sql_preview=sql,
@@ -907,7 +1164,7 @@ class ClickHouseAdapter:
         """
         return self.query(sql, params, output_format="dataframe")
 
-    def execute(self, sql: str, params: Dict | None = None):
+    def execute(self, sql: str, params: Dict | None = None, log_query: bool = True):
         """
         Execute a non-SELECT statement (CREATE, INSERT, ALTER, etc.).
 
@@ -936,7 +1193,7 @@ class ClickHouseAdapter:
             finally:
                 duration_ms = (time.time() - start_time) * 1000
                 logger = get_query_logger()
-                if logger:
+                if log_query and logger:
                     logger.log_query(
                         query_type='execute',
                         sql_preview=sql,
@@ -949,7 +1206,7 @@ class ClickHouseAdapter:
     # Insert Operations
     # =========================================================================
 
-    def insert_rows(self, table: str, rows: List[Dict], columns: List[str] | None = None):
+    def insert_rows(self, table: str, rows: List[Dict], columns: List[str] | None = None, log_query: bool = True):
         """
         Batch INSERT rows into a table.
 
@@ -962,7 +1219,7 @@ class ClickHouseAdapter:
             return
 
         # Skip logging for ui_sql_log to avoid infinite recursion
-        should_log = table != 'ui_sql_log'
+        should_log = log_query and table != 'ui_sql_log'
         start_time = time.time() if should_log else 0
         success = True
         error_msg = None
@@ -1015,25 +1272,122 @@ class ClickHouseAdapter:
 
             return val
 
-        # Convert rows to list of tuples
-        values = []
-        for row in rows:
-            row_values = []
-            for col in columns:
-                val = row.get(col)
-                val = convert_value(val, col)
-                row_values.append(val)
-            values.append(tuple(row_values))
-
         cols_str = ', '.join(columns)
         with ClickHouseAdapter._query_lock:
             try:
-                # Disable numpy processing in clickhouse_driver
-                self.client.execute(
-                    f"INSERT INTO {table} ({cols_str}) VALUES",
-                    values,
-                    settings={'use_numpy': False}
-                )
+                if getattr(self, "backend", "clickhouse") == "chdb":
+                    # CHDB: use JSONEachRow for inserts (no Python-side value binding).
+                    def _split_qualified_table_name(full_name: str) -> tuple[str, str]:
+                        name = (full_name or "").strip()
+                        if not name:
+                            return self.database, name
+                        # Common form: db.table
+                        if "." in name and not name.startswith(".") and not name.endswith("."):
+                            parts = name.split(".", 1)
+                            if len(parts) == 2:
+                                return parts[0], parts[1]
+                        return self.database, name
+
+                    def _get_column_types_map() -> dict[str, str]:
+                        cache = getattr(self, "_chdb_table_column_types_cache", None)
+                        if cache is None:
+                            cache = {}
+                            setattr(self, "_chdb_table_column_types_cache", cache)
+
+                        db_name, table_name = _split_qualified_table_name(table)
+                        cache_key = f"{db_name}.{table_name}"
+                        cached = cache.get(cache_key)
+                        if isinstance(cached, dict) and cached:
+                            return cached
+
+                        # Best-effort lookup; if it fails, default to conservative formatting.
+                        try:
+                            safe_db = db_name.replace("\\", "\\\\").replace("'", "''")
+                            safe_table = table_name.replace("\\", "\\\\").replace("'", "''")
+                            result = self.client.execute(
+                                f"SELECT name, type FROM system.columns "
+                                f"WHERE database = '{safe_db}' AND table = '{safe_table}'",
+                                with_column_types=True,
+                            )
+                            if isinstance(result, tuple) and len(result) == 2:
+                                type_rows, _ = result
+                            else:
+                                type_rows = result
+                            mapping = {str(r[0]): str(r[1]) for r in (type_rows or []) if len(r) >= 2}
+                            if mapping:
+                                cache[cache_key] = mapping
+                                return mapping
+                        except Exception:
+                            pass
+                        return {}
+
+                    col_types_map = _get_column_types_map()
+
+                    def _json_safe_value(v: Any, col_type: str | None):
+                        if v is None:
+                            return None
+                        if isinstance(v, (str, int, float, bool)):
+                            if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+                                return None
+                            if isinstance(v, str) and col_type and "DateTime" in col_type and "DateTime64" not in col_type:
+                                # JSONEachRow is strict for DateTime (no fractional seconds).
+                                s = v.replace("T", " ", 1)
+                                if "." in s:
+                                    s = s.split(".", 1)[0]
+                                return s
+                            return v
+                        if isinstance(v, (bytes, bytearray, memoryview)):
+                            return bytes(v).hex()
+                        if isinstance(v, datetime):
+                            # JSONEachRow is strict for DateTime (no fractional seconds). DateTime64 accepts both.
+                            if col_type and "DateTime64" in col_type:
+                                return _format_datetime_for_clickhouse(v)
+                            return v.replace(microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
+                        if hasattr(v, "to_pydatetime"):
+                            try:
+                                dt = v.to_pydatetime()
+                                if col_type and "DateTime64" in col_type:
+                                    return _format_datetime_for_clickhouse(dt)
+                                return dt.replace(microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
+                            except Exception:
+                                pass
+                        if hasattr(v, "isoformat"):
+                            try:
+                                return v.isoformat()
+                            except Exception:
+                                pass
+                        if isinstance(v, (list, tuple)):
+                            return [_json_safe_value(x, None) for x in v]
+                        if isinstance(v, dict):
+                            return {k: _json_safe_value(val, None) for k, val in v.items()}
+                        return str(v)
+
+                    json_lines: list[str] = []
+                    for row in rows:
+                        payload_row = {}
+                        for col in columns:
+                            val = convert_value(row.get(col), col)
+                            payload_row[col] = _json_safe_value(val, col_types_map.get(col))
+                        json_lines.append(json.dumps(payload_row, default=str, ensure_ascii=False))
+
+                    insert_sql = f"INSERT INTO {table} ({cols_str}) FORMAT JSONEachRow\n" + "\n".join(json_lines)
+                    self.client.execute(insert_sql)
+                else:
+                    # ClickHouse server: clickhouse-driver can bind values efficiently.
+                    values = []
+                    for row in rows:
+                        row_values = []
+                        for col in columns:
+                            val = convert_value(row.get(col), col)
+                            row_values.append(val)
+                        values.append(tuple(row_values))
+
+                    # Disable numpy processing in clickhouse_driver
+                    self.client.execute(
+                        f"INSERT INTO {table} ({cols_str}) VALUES",
+                        values,
+                        settings={'use_numpy': False}
+                    )
             except Exception as e:
                 success = False
                 error_msg = str(e)
@@ -1058,7 +1412,7 @@ class ClickHouseAdapter:
                             error_message=error_msg
                         )
 
-    def insert_dataframe(self, table: str, df: pd.DataFrame, columns: List[str] | None = None):
+    def insert_dataframe(self, table: str, df: pd.DataFrame, columns: List[str] | None = None, log_query: bool = True):
         """
         Insert a pandas DataFrame into a table.
 
@@ -1078,15 +1432,122 @@ class ClickHouseAdapter:
         if columns is None:
             columns = list(df.columns)
 
-        # Use clickhouse-driver's native DataFrame insert
         cols_str = ', '.join(columns)
         with ClickHouseAdapter._query_lock:
             try:
-                self.client.insert_dataframe(
-                    f"INSERT INTO {table} ({cols_str}) VALUES",
-                    df[columns],
-                    settings={'use_numpy': True}
-                )
+                if getattr(self, "backend", "clickhouse") == "chdb":
+                    # CHDB: serialize dataframe rows via JSONEachRow.
+                    def _split_qualified_table_name(full_name: str) -> tuple[str, str]:
+                        name = (full_name or "").strip()
+                        if not name:
+                            return self.database, name
+                        # Common form: db.table
+                        if "." in name and not name.startswith(".") and not name.endswith("."):
+                            parts = name.split(".", 1)
+                            if len(parts) == 2:
+                                return parts[0], parts[1]
+                        return self.database, name
+
+                    def _get_column_types_map() -> dict[str, str]:
+                        cache = getattr(self, "_chdb_table_column_types_cache", None)
+                        if cache is None:
+                            cache = {}
+                            setattr(self, "_chdb_table_column_types_cache", cache)
+
+                        db_name, table_name = _split_qualified_table_name(table)
+                        cache_key = f"{db_name}.{table_name}"
+                        cached = cache.get(cache_key)
+                        if isinstance(cached, dict) and cached:
+                            return cached
+
+                        # Best-effort lookup; if it fails, default to conservative formatting.
+                        try:
+                            safe_db = db_name.replace("\\", "\\\\").replace("'", "''")
+                            safe_table = table_name.replace("\\", "\\\\").replace("'", "''")
+                            result = self.client.execute(
+                                f"SELECT name, type FROM system.columns "
+                                f"WHERE database = '{safe_db}' AND table = '{safe_table}'",
+                                with_column_types=True,
+                            )
+                            if isinstance(result, tuple) and len(result) == 2:
+                                type_rows, _ = result
+                            else:
+                                type_rows = result
+                            mapping = {str(r[0]): str(r[1]) for r in (type_rows or []) if len(r) >= 2}
+                            if mapping:
+                                cache[cache_key] = mapping
+                                return mapping
+                        except Exception:
+                            pass
+                        return {}
+
+                    col_types_map = _get_column_types_map()
+
+                    def _json_safe_value(v: Any, col_type: str | None):
+                        if v is None:
+                            return None
+                        # pandas can produce numpy scalars; normalize.
+                        try:
+                            import numpy as np
+                            if isinstance(v, np.integer):
+                                v = int(v)
+                            elif isinstance(v, np.floating):
+                                v = float(v)
+                            elif isinstance(v, np.ndarray):
+                                v = v.tolist()
+                        except Exception:
+                            pass
+
+                        if isinstance(v, (str, int, float, bool)):
+                            if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+                                return None
+                            if isinstance(v, str) and col_type and "DateTime" in col_type and "DateTime64" not in col_type:
+                                # JSONEachRow is strict for DateTime (no fractional seconds).
+                                s = v.replace("T", " ", 1)
+                                if "." in s:
+                                    s = s.split(".", 1)[0]
+                                return s
+                            return v
+                        if isinstance(v, (bytes, bytearray, memoryview)):
+                            return bytes(v).hex()
+                        if isinstance(v, datetime):
+                            # JSONEachRow is strict for DateTime (no fractional seconds). DateTime64 accepts both.
+                            if col_type and "DateTime64" in col_type:
+                                return _format_datetime_for_clickhouse(v)
+                            return v.replace(microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
+                        if hasattr(v, "to_pydatetime"):
+                            try:
+                                dt = v.to_pydatetime()
+                                if col_type and "DateTime64" in col_type:
+                                    return _format_datetime_for_clickhouse(dt)
+                                return dt.replace(microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
+                            except Exception:
+                                pass
+                        if hasattr(v, "isoformat"):
+                            try:
+                                return v.isoformat()
+                            except Exception:
+                                pass
+                        if isinstance(v, (list, tuple)):
+                            return [_json_safe_value(x, None) for x in v]
+                        if isinstance(v, dict):
+                            return {k: _json_safe_value(val, None) for k, val in v.items()}
+                        return str(v)
+
+                    json_lines: list[str] = []
+                    for row in df[columns].to_dict(orient="records"):
+                        payload_row = {col: _json_safe_value(row.get(col), col_types_map.get(col)) for col in columns}
+                        json_lines.append(json.dumps(payload_row, default=str, ensure_ascii=False))
+
+                    insert_sql = f"INSERT INTO {table} ({cols_str}) FORMAT JSONEachRow\n" + "\n".join(json_lines)
+                    self.client.execute(insert_sql)
+                else:
+                    # ClickHouse server: use clickhouse-driver's native DataFrame insert.
+                    self.client.insert_dataframe(
+                        f"INSERT INTO {table} ({cols_str}) VALUES",
+                        df[columns],
+                        settings={'use_numpy': True}
+                    )
             except Exception as e:
                 success = False
                 error_msg = str(e)
@@ -1100,7 +1561,7 @@ class ClickHouseAdapter:
             finally:
                 duration_ms = (time.time() - start_time) * 1000
                 logger = get_query_logger()
-                if logger:
+                if log_query and logger:
                     logger.log_query(
                         query_type='insert_df',
                         sql_preview=f"INSERT INTO {table} (DataFrame {row_count} rows)",
@@ -1616,12 +2077,31 @@ def get_db_adapter() -> ClickHouseAdapter:
 
     config = get_config()
 
+    mode = _normalize_db_mode(getattr(config, "db_mode", "auto"))
+    backend = "clickhouse"
+    if mode == "chdb":
+        backend = "chdb"
+    elif mode == "clickhouse":
+        backend = "clickhouse"
+    else:
+        # Auto: try ClickHouse server quickly, fall back to CHDB if unreachable.
+        if not _clickhouse_server_reachable(
+            host=config.clickhouse_host,
+            port=config.clickhouse_port,
+            database=config.clickhouse_database,
+            user=config.clickhouse_user,
+            password=config.clickhouse_password,
+        ):
+            backend = "chdb"
+
     _adapter_singleton = ClickHouseAdapter(
         host=config.clickhouse_host,
         port=config.clickhouse_port,
         database=config.clickhouse_database,
         user=config.clickhouse_user,
-        password=config.clickhouse_password
+        password=config.clickhouse_password,
+        backend=backend,
+        chdb_path=getattr(config, "chdb_path", None),
     )
 
     return _adapter_singleton

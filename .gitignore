@@ -29,3 +29,4 @@ research_dbs/market_research.duckdb.wal
 *.log 
 .tmp_*
 .playwright-mcp
+chdb

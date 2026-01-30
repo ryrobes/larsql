@@ -6577,6 +6577,44 @@ def cmd_serve_studio(args):
 
     print()
 
+    # Detect which persistence backend is active (ClickHouse server vs CHDB).
+    # In CHDB mode we must avoid holding the DB lock in this supervisor process
+    # because Studio runs in a subprocess (Flask dev or Gunicorn worker).
+    chdb_backend_active = False
+    try:
+        from lars.db_adapter import get_db_adapter
+        db = get_db_adapter()
+        chdb_backend_active = getattr(db, "backend", "") == "chdb"
+    except Exception:
+        chdb_backend_active = False
+
+    if chdb_backend_active:
+        # CHDB cannot be shared across processes. Studio spawns a subprocess, so:
+        # - Don't spawn an internal PGwire subprocess (would be a second DB user).
+        # - Enforce single-worker, no-preload (multiple Gunicorn workers would collide).
+        if not args.dev:
+            if getattr(args, "workers", 1) != 1:
+                styled_print(f"{S.WARN} CHDB mode: forcing --workers=1 (CHDB cannot be shared across processes)")
+                args.workers = 1
+            if getattr(args, "preload", False):
+                styled_print(f"{S.WARN} CHDB mode: disabling --preload (would lock CHDB in master process)")
+                args.preload = False
+
+        # Shut down background loggers and release any open CHDB connection in this process
+        # before starting the Studio subprocess.
+        try:
+            from lars.db_adapter import shutdown_async_loggers, reset_adapter
+
+            shutdown_async_loggers()
+            try:
+                if hasattr(db, "client") and hasattr(db.client, "disconnect"):
+                    db.client.disconnect()
+            except Exception:
+                pass
+            reset_adapter()
+        except Exception:
+            pass
+
     # =========================================================================
     # PGwire Server Setup
     # =========================================================================
@@ -6599,7 +6637,12 @@ def cmd_serve_studio(args):
     DEFAULT_PGWIRE_PORT = 15432
     INTERNAL_PGWIRE_PORT = 15433
 
-    if check_port(DEFAULT_PGWIRE_PORT):
+    if chdb_backend_active:
+        # CHDB mode: do not spawn internal PGwire subprocess.
+        # Studio will fall back to direct DuckDB for SQL execution.
+        pgwire_port = None
+        styled_print(f"{S.DB} CHDB mode: skipping internal PGwire server")
+    elif check_port(DEFAULT_PGWIRE_PORT):
         pgwire_port = DEFAULT_PGWIRE_PORT
         styled_print(f"{S.DB} Using existing PGwire server on port {pgwire_port}")
     else:

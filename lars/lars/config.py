@@ -1,12 +1,16 @@
 """
-LARS Configuration - Pure ClickHouse Implementation
+LARS Configuration - ClickHouse-compatible persistence
 
 This module provides centralized configuration for LARS.
 
-Key changes from dual-mode:
-- ClickHouse is now the ONLY database backend (no more chDB/Parquet)
-- data_dir is kept for backward compatibility (RAG index files during transition)
-- All log/analytics data goes to ClickHouse tables directly
+By default, LARS uses a ClickHouse server as its persistence layer. For easier local
+evaluation, LARS can optionally use CHDB (embedded ClickHouse) as a fallback so
+users don't need to run a ClickHouse service.
+
+Key notes:
+- ClickHouse SQL is the persistence dialect (server or CHDB).
+- data_dir is kept for backward compatibility (RAG index files during transition).
+- All log/analytics data goes to ClickHouse tables directly.
 """
 import os
 import json
@@ -405,9 +409,22 @@ class Config(BaseModel):
     )
 
     # =========================================================================
-    # ClickHouse Configuration (Required)
+    # Persistence Backend (ClickHouse server or CHDB)
     # =========================================================================
-    # ClickHouse is now the only database backend - these are required settings
+    # In auto mode, LARS will attempt to connect to ClickHouse server and fall
+    # back to CHDB if it is not reachable.
+    db_mode: str = Field(
+        default_factory=lambda: os.getenv("LARS_DB_MODE", "auto"),
+        description="Persistence backend mode: auto|clickhouse|chdb",
+    )
+    chdb_path: str = Field(
+        default_factory=lambda: os.getenv("LARS_CHDB_PATH", os.path.join(_LARS_ROOT, "data", "lars.chdb")),
+        description="CHDB storage path (directory/file). Used when db_mode=chdb or auto fallback.",
+    )
+
+    # =========================================================================
+    # ClickHouse Server Configuration
+    # =========================================================================
     clickhouse_host: str = Field(
         default_factory=lambda: os.getenv("LARS_CLICKHOUSE_HOST", "localhost")
     )
@@ -586,6 +603,12 @@ def _ensure_directories(config: Config):
         config.video_dir,
         config.research_db_dir,  # DuckDB research databases
     ]
+    # CHDB persistence path (if enabled) needs its parent directory present.
+    try:
+        if config.chdb_path and config.chdb_path not in (":memory:", ":memory"):
+            dirs_to_create.append(os.path.dirname(os.path.abspath(config.chdb_path)))
+    except Exception:
+        pass
     for dir_path in dirs_to_create:
         os.makedirs(dir_path, exist_ok=True)
 
@@ -666,6 +689,22 @@ def get_clickhouse_url() -> str:
     """
     c = _global_config
     return f"clickhouse://{c.clickhouse_user}@{c.clickhouse_host}:{c.clickhouse_port}/{c.clickhouse_database}"
+
+
+def get_chdb_url() -> str:
+    """
+    Get CHDB "connection URL" for display/debugging.
+
+    Returns:
+        URL string like "chdb:///abs/path/to/lars.chdb"
+    """
+    c = _global_config
+    # Use a URL-ish prefix for readability; this is not a standard DSN.
+    path = c.chdb_path
+    if not path.startswith("/"):
+        # Make relative paths explicit.
+        path = os.path.abspath(path)
+    return f"chdb://{path}"
 
 
 def set_vertex_provider(
