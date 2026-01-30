@@ -34,6 +34,7 @@ from ..console_style import S, styled_print
 
 from .postgres_protocol import (
     PostgresMessage,
+    PostgresProtocolError,
     MessageType,
     CommandComplete,
     ReadyForQuery,
@@ -129,6 +130,8 @@ class ClientConnection:
     def __init__(self, sock, addr, session_prefix='pg_client', server=None, idle_timeout=0):
         self.sock = sock
         self.addr = addr
+        # Stable identifier for correlating runtime_event_log rows across a single TCP connection.
+        self.connection_id = uuid.uuid4().hex[:12]
         self.session_id = None  # Will be set in handle_startup based on database name
         self.session_prefix = session_prefix
         self.server = server  # Reference to parent server for connection tracking
@@ -158,9 +161,76 @@ class ClientConnection:
         # DuckDB connection pooling (optional, pre-warmed in-memory connections)
         self._is_pooled_connection = False
 
+        # Console logging: keep stdout sane under concurrent connections.
+        # Most events are written to ClickHouse `runtime_event_log` instead.
+        self._console_log_level = self._parse_log_level(os.environ.get("LARS_PG_CONSOLE_LOG_LEVEL", "ERROR"))
+
         # Authentication state
         self.authenticated_user = None  # User dict from auth.validate_api_key()
         self.auth_user_id = 'anonymous'  # User ID for param store scoping
+
+    @staticmethod
+    def _parse_log_level(level: str) -> int:
+        val = (level or "").strip().upper()
+        if val in ("NONE", "OFF", "SILENT"):
+            return 10_000
+        mapping = {
+            "DEBUG": 10,
+            "INFO": 20,
+            "WARN": 30,
+            "WARNING": 30,
+            "ERROR": 40,
+            "FATAL": 50,
+        }
+        return mapping.get(val, 30)
+
+    @staticmethod
+    def _level_value(level: str) -> int:
+        return ClientConnection._parse_log_level(level)
+
+    def _runtime_log(self, level: str, message: str, *, event: str = "", **extra) -> None:
+        """
+        Write an operational log event to ClickHouse (and optionally to stdout).
+
+        This is for high-volume runtime/pgwire logs, not cascade message records.
+        """
+        try:
+            from lars.runtime_event_logger import get_runtime_event_logger
+
+            logger = get_runtime_event_logger()
+            client_addr = None
+            try:
+                client_addr = f"{self.addr[0]}:{self.addr[1]}"
+            except Exception:
+                client_addr = None
+
+            logger.log_event(
+                source="pgwire",
+                level=level,
+                event=event,
+                message=message,
+                connection_id=self.connection_id,
+                session_id=self.session_id,
+                query_id=extra.pop("query_id", None),
+                caller_id=extra.pop("caller_id", None),
+                user_name=self.user_name,
+                auth_user_id=self.auth_user_id,
+                database_name=self.database_name,
+                results_db=self.results_db_name,
+                application_name=self.application_name,
+                client_addr=client_addr,
+                thread_id=threading.get_ident(),
+                extra=extra,
+            )
+        except Exception:
+            pass
+
+        # Optional stdout echo for high-severity messages only.
+        if self._level_value(level) >= self._console_log_level:
+            try:
+                print(f"[{self.session_id or self.addr}] {level.upper()}: {message}")
+            except Exception:
+                pass
 
     def setup_session_minimal(self):
         """
@@ -183,16 +253,32 @@ class ClientConnection:
             except ImportError:
                 pooled_conn = None
             except Exception as e:
-                styled_print(f"[{self.session_id}]   {S.WARN}  DuckDB pool get failed: {e}")
+                self._runtime_log(
+                    "WARN",
+                    f"DuckDB pool get failed: {e}",
+                    event="duckdb_pool_error",
+                )
 
             if pooled_conn is not None:
                 self.duckdb_conn = pooled_conn
                 self._is_pooled_connection = True
-                print(f"[{self.session_id}]   ⚡ DuckDB in-memory session (pooled, pre-warmed)")
+                self._runtime_log(
+                    "DEBUG",
+                    "DuckDB in-memory session (pooled, pre-warmed)",
+                    event="duckdb_session",
+                    pooled=True,
+                    duckdb_conn_obj_id=id(self.duckdb_conn),
+                )
             else:
                 self.duckdb_conn = duckdb.connect(':memory:')
                 self._is_pooled_connection = False
-                print(f"[{self.session_id}]   📦 DuckDB in-memory session (fresh)")
+                self._runtime_log(
+                    "DEBUG",
+                    "DuckDB in-memory session (fresh)",
+                    event="duckdb_session",
+                    pooled=False,
+                    duckdb_conn_obj_id=id(self.duckdb_conn),
+                )
 
             # Cache DuckDB's internal catalog name (usually 'memory')
             try:
@@ -220,7 +306,12 @@ class ClientConnection:
                             future.result(timeout=5.0)  # 5 second timeout
                         duckpgq_installed = True
                     except FuturesTimeoutError:
-                        print(f"[{self.session_id}]   ⚠ duckpgq install timed out (network issue?), skipping")
+                        self._runtime_log(
+                            "WARN",
+                            "duckpgq install timed out (network issue?), skipping",
+                            event="duckdb_extension_timeout",
+                            extension="duckpgq",
+                        )
                     except Exception:
                         duckpgq_installed = True  # Already installed
 
@@ -228,7 +319,12 @@ class ClientConnection:
                         try:
                             self.duckdb_conn.execute("LOAD duckpgq;")
                         except Exception as e:
-                            print(f"[{self.session_id}]   ⚠ Could not load duckpgq: {e}")
+                            self._runtime_log(
+                                "WARN",
+                                f"Could not load duckpgq: {e}",
+                                event="duckdb_extension_load_failed",
+                                extension="duckpgq",
+                            )
 
                     # DataGrip/PostgreSQL clients frequently schema-qualify functions as pg_catalog.func(...),
                     # but DuckDB parses that as a column reference. We register unqualified compat macros
@@ -249,7 +345,7 @@ class ClientConnection:
                     # Register dynamic SQL functions from cascade registry (SUMMARIZE_URLS, etc.)
                     register_dynamic_sql_functions(self.duckdb_conn)
 
-                    styled_print(f"[{self.session_id}]   {S.OK} Initialized DuckDB session (UDFs, extensions)")
+                    self._runtime_log("INFO", "Initialized DuckDB session (UDFs, extensions)", event="duckdb_init")
 
             # Reset our transaction status to idle
             self.transaction_status = 'I'
@@ -264,10 +360,14 @@ class ClientConnection:
                 self._lazy_attach = None
 
             # Minimal setup complete - client can now receive response
-            print(f"[{self.session_id}]   ⚡ Minimal setup complete")
+            self._runtime_log("DEBUG", "Minimal setup complete", event="session_minimal_ready")
 
         except Exception as e:
-            print(f"[{self.session_id}] ✗ Error in minimal session setup: {e}")
+            self._runtime_log(
+                "ERROR",
+                f"Error in minimal session setup: {e}",
+                event="session_minimal_error",
+            )
             raise
 
     def setup_session_deferred(self):
@@ -285,7 +385,12 @@ class ClientConnection:
                 from ..bi.metric_registry import register_promoted_metrics
                 promoted_count = register_promoted_metrics(self.duckdb_conn)
                 if promoted_count > 0:
-                    styled_print(f"[{self.session_id}]   {S.DB} Registered {promoted_count} promoted metric(s)")
+                    self._runtime_log(
+                        "INFO",
+                        f"Registered {promoted_count} promoted metric(s)",
+                        event="metrics_promoted_registered",
+                        promoted_count=promoted_count,
+                    )
             except Exception:
                 # Non-fatal - BI tables may not exist yet
                 pass
@@ -298,11 +403,28 @@ class ClientConnection:
                     attached = [r for r in results if r["status"] == "attached"]
                     failed = [r for r in results if r["status"] == "failed"]
                     if attached:
-                        styled_print(f"[{self.session_id}]   {S.DB} Auto-attached {len(attached)} connection(s)")
+                        self._runtime_log(
+                            "INFO",
+                            f"Auto-attached {len(attached)} connection(s)",
+                            event="auto_attach_complete",
+                            attached_count=len(attached),
+                            failed_count=len(failed),
+                        )
                     if failed:
-                        styled_print(f"[{self.session_id}]   {S.WARN}  {len(failed)} connection(s) failed to attach")
+                        self._runtime_log(
+                            "WARN",
+                            f"{len(failed)} connection(s) failed to auto-attach",
+                            event="auto_attach_failed",
+                            attached_count=len(attached),
+                            failed_count=len(failed),
+                            failed=failed[:10],
+                        )
                 except Exception as e:
-                    styled_print(f"[{self.session_id}]   {S.WARN}  Auto-attach failed: {e}")
+                    self._runtime_log(
+                        "WARN",
+                        f"Auto-attach failed: {e}",
+                        event="auto_attach_error",
+                    )
 
             # Always sync shared parquet tables
             # This is fast (directory scan + view creation) and ensures new tables are visible
@@ -312,12 +434,25 @@ class ClientConnection:
                     with self.db_lock:
                         count = sync_shared_views(self.duckdb_conn)
                         if count > 0:
-                            styled_print(f"[{self.session_id}]   {S.DB} Synced {count} shared table(s)")
+                            self._runtime_log(
+                                "INFO",
+                                f"Synced {count} shared table(s)",
+                                event="shared_tables_synced",
+                                shared_table_count=count,
+                            )
             except Exception as e:
-                styled_print(f"[{self.session_id}]   {S.WARN}  Shared tables sync failed: {e}")
+                self._runtime_log(
+                    "WARN",
+                    f"Shared tables sync failed: {e}",
+                    event="shared_tables_sync_failed",
+                )
 
             # DuckDB v1.4.2+ has built-in pg_catalog support
-            styled_print(f"[{self.session_id}]   {S.INFO}  Using DuckDB's built-in pg_catalog (v1.4.2+)")
+            self._runtime_log(
+                "DEBUG",
+                "Using DuckDB's built-in pg_catalog (v1.4.2+)",
+                event="duckdb_pg_catalog",
+            )
 
             # Create PostgreSQL compatibility stubs (functions and macros)
             self._create_pg_compat_stubs()
@@ -328,11 +463,21 @@ class ClientConnection:
             # Register UDF to refresh views after manual ATTACH
             self._register_refresh_views_udf()
 
-            styled_print(f"[{self.session_id}] {S.OK} Session ready (database: {self.database_name})")
+            self._runtime_log(
+                "INFO",
+                "Session ready",
+                event="session_ready",
+                database_name=self.database_name,
+                results_db=self.results_db_name,
+            )
 
         except Exception as e:
             # Non-fatal - deferred setup failures shouldn't kill the connection
-            styled_print(f"[{self.session_id}] {S.WARN} Deferred setup error (non-fatal): {e}")
+            self._runtime_log(
+                "WARN",
+                f"Deferred setup error (non-fatal): {e}",
+                event="session_deferred_error",
+            )
 
     def setup_session(self):
         """
@@ -1102,7 +1247,12 @@ class ClientConnection:
             # for i, line in enumerate(lines, 1):
             #     print(f"[DEBUG]   Line {i}: {line[:120]}{'...' if len(line) > 120 else ''}")
         elif has_pg_inherits:
-            print(f"[DEBUG] _rewrite_pg_inherits_subqueries: WARNING - pg_inherits still in result!")
+            self._runtime_log(
+                "WARN",
+                "pg_inherits rewrite incomplete (reference still present)",
+                event="pg_inherits_rewrite_incomplete",
+                query_preview=result[:500],
+            )
 
         return result
 
@@ -1509,7 +1659,15 @@ class ClientConnection:
         if described_col_count is None:
             return True
         if described_col_count != actual_col_count:
-            styled_print(f"[{self.session_id}]      {S.WARN}  {handler_name}: Column count mismatch! described {described_col_count}, returning {actual_col_count}")
+            self._runtime_log(
+                "WARN",
+                f"{handler_name}: Column count mismatch (described {described_col_count}, returning {actual_col_count})",
+                event="execute_handler_column_mismatch",
+                portal_name=portal_name,
+                handler_name=handler_name,
+                described_columns=described_col_count,
+                actual_columns=actual_col_count,
+            )
             return False
         return True
 
@@ -1829,17 +1987,22 @@ class ClientConnection:
         import re
         from datetime import datetime
 
-        styled_print(f"[{self.session_id}]   {S.SEARCH} _maybe_materialize_result called: query_id={query_id}, caller_id={caller_id}, rows={len(result_df) if result_df is not None else 0}")
-
         # Skip if empty results
         if result_df is None or len(result_df) == 0:
-            styled_print(f"[{self.session_id}]   {S.SKIP}  Skipping: empty results")
             return None
 
         # Skip if results are too large (configurable threshold)
         max_rows = 100000  # Could make this configurable
         if len(result_df) > max_rows:
-            styled_print(f"[{self.session_id}]   {S.WARN}  Skipping auto-materialize: {len(result_df)} rows > {max_rows} limit")
+            self._runtime_log(
+                "DEBUG",
+                f"Skipping auto-materialize: {len(result_df)} rows > {max_rows} limit",
+                event="query_insurance_skip_large",
+                query_id=query_id,
+                caller_id=caller_id,
+                row_count=len(result_df),
+                max_rows=max_rows,
+            )
             return None
 
         result_location = None
@@ -1860,7 +2023,6 @@ class ClientConnection:
             result_table_name = f"r_{safe_table_suffix}"
 
             # === PRIMARY: Create actual table in ClickHouse ===
-            styled_print(f"[{self.session_id}]   {S.SEARCH} Creating ClickHouse table {result_table_name} for {len(result_df)} rows...")
             try:
                 from ..db_adapter import get_db
                 db = get_db()
@@ -1985,7 +2147,16 @@ class ClientConnection:
                 """
                 db.execute(log_sql)
 
-                styled_print(f"[{self.session_id}]   {S.SAVE} Results materialized: lars_results.{result_table_name} ({len(result_df)} rows, {len(columns)} cols)")
+                self._runtime_log(
+                    "DEBUG",
+                    f"Results materialized: lars_results.{result_table_name} ({len(result_df)} rows, {len(columns)} cols)",
+                    event="query_insurance_materialized",
+                    query_id=query_id,
+                    caller_id=effective_caller_id,
+                    result_table=result_table_name,
+                    row_count=len(result_df),
+                    column_count=len(columns),
+                )
 
                 result_location = {
                     'stored_in': 'clickhouse',
@@ -1997,18 +2168,34 @@ class ClientConnection:
                 }
 
             except Exception as ch_err:
-                styled_print(f"[{self.session_id}]   {S.WARN}  ClickHouse storage failed: {ch_err}")
-                import traceback
-                traceback.print_exc()
+                self._runtime_log(
+                    "WARN",
+                    f"ClickHouse storage failed: {ch_err}",
+                    event="query_insurance_clickhouse_failed",
+                    query_id=query_id,
+                    caller_id=effective_caller_id,
+                    error_type=type(ch_err).__name__,
+                )
+                if os.environ.get("LARS_PG_TRACEBACK", "0").strip().lower() in ("1", "true", "yes", "on"):
+                    import traceback
+                    traceback.print_exc()
                 # Continue to try DuckDB
 
             return result_location
 
         except Exception as e:
             # Non-fatal - log and continue
-            styled_print(f"[{self.session_id}]   {S.WARN}  Auto-materialize failed: {e}")
-            import traceback
-            traceback.print_exc()
+            self._runtime_log(
+                "WARN",
+                f"Auto-materialize failed: {e}",
+                event="query_insurance_error",
+                query_id=query_id,
+                caller_id=caller_id,
+                error_type=type(e).__name__,
+            )
+            if os.environ.get("LARS_PG_TRACEBACK", "0").strip().lower() in ("1", "true", "yes", "on"):
+                import traceback
+                traceback.print_exc()
             return None
 
     def _extract_lars_hints(self, query: str) -> tuple:
@@ -2056,7 +2243,12 @@ class ClientConnection:
             - Dotted names: "enron.players" -> creates schema if needed, then table
         """
         if result_df is None or len(result_df) == 0:
-            styled_print(f"[{self.session_id}]   {S.WARN}  Arrow save skipped: empty result")
+            self._runtime_log(
+                "DEBUG",
+                "Arrow save skipped: empty result",
+                event="arrow_save_skip_empty",
+                name=name,
+            )
             return
 
         try:
@@ -2077,12 +2269,25 @@ class ClientConnection:
                 # Drop existing table if any, then create new one
                 self.duckdb_conn.execute(f"DROP TABLE IF EXISTS {full_name}")
                 self.duckdb_conn.execute(f"CREATE TABLE {full_name} AS SELECT * FROM {temp_name}")
-                print(f"[{self.session_id}]   📌 Arrow saved: {full_name} ({len(result_df)} rows, {len(result_df.columns)} cols)")
+                self._runtime_log(
+                    "DEBUG",
+                    f"Arrow saved: {full_name} ({len(result_df)} rows, {len(result_df.columns)} cols)",
+                    event="arrow_save_complete",
+                    name=full_name,
+                    row_count=len(result_df),
+                    column_count=len(result_df.columns),
+                )
             finally:
                 self.duckdb_conn.unregister(temp_name)
 
         except Exception as e:
-            styled_print(f"[{self.session_id}]   {S.WARN}  Arrow save failed for '{name}': {e}")
+            self._runtime_log(
+                "WARN",
+                f"Arrow save failed for '{name}': {e}",
+                event="arrow_save_failed",
+                name=name,
+                error_type=type(e).__name__,
+            )
 
     def _create_pg_catalog_views(self):
         """
@@ -2096,14 +2301,18 @@ class ClientConnection:
 
         Maps DuckDB's information_schema to PostgreSQL's pg_catalog.
         """
-        styled_print(f"[{self.session_id}]   {S.CFG} Starting pg_catalog view creation...")
+        self._runtime_log(
+            "DEBUG",
+            "Starting pg_catalog view creation...",
+            event="pg_catalog_views_start",
+        )
         try:
             # NOTE: DuckDB treats 'pg_catalog' as a reserved system schema
             # We create views in 'main' schema but query them as 'pg_catalog.xyz'
             # DuckDB will automatically search 'main' when 'pg_catalog' doesn't have the object
 
             # pg_namespace - Schemas/namespaces
-            print(f"[{self.session_id}]      Creating pg_namespace view...")
+            self._runtime_log("DEBUG", "Creating pg_namespace view...", event="pg_catalog_view_create", view="pg_namespace")
             self.duckdb_conn.execute("""
                 CREATE OR REPLACE VIEW main.pg_namespace AS
                 SELECT 'main' as nspname, 0 as oid
@@ -2120,7 +2329,7 @@ class ClientConnection:
                 FROM information_schema.tables
                 WHERE table_schema NOT IN ('main', 'pg_catalog', 'information_schema', 'public')
             """)
-            styled_print(f"[{self.session_id}]      {S.OK} pg_namespace created")
+            self._runtime_log("DEBUG", "pg_namespace created", event="pg_catalog_view_created", view="pg_namespace")
 
             # pg_class - Tables, views, sequences, indexes
             # NOTE: DuckDB's pg_catalog.pg_class is EMPTY - synthesize from information_schema.tables
@@ -2367,15 +2576,28 @@ class ClientConnection:
                     false as pending_restart
             """)
 
-            styled_print(f"[{self.session_id}]   {S.DONE} ALL pg_catalog views created successfully!")
-            styled_print(f"[{self.session_id}]   {S.DONE} Schema introspection is now ENABLED")
+            self._runtime_log(
+                "INFO",
+                "ALL pg_catalog views created successfully (schema introspection enabled)",
+                event="pg_catalog_views_ready",
+            )
 
         except Exception as e:
             # Non-fatal - catalog views are nice-to-have
-            styled_print(f"[{self.session_id}]   {S.ERR} ERROR creating pg_catalog views: {e}")
-            import traceback
-            traceback.print_exc()
-            styled_print(f"[{self.session_id}]   {S.WARN}  Schema introspection will NOT work!")
+            self._runtime_log(
+                "WARN",
+                f"ERROR creating pg_catalog views: {e}",
+                event="pg_catalog_views_error",
+                error_type=type(e).__name__,
+            )
+            if os.environ.get("LARS_PG_TRACEBACK", "0").strip().lower() in ("1", "true", "yes", "on"):
+                import traceback
+                traceback.print_exc()
+            self._runtime_log(
+                "WARN",
+                "Schema introspection may not work",
+                event="pg_catalog_views_disabled",
+            )
 
     def _cleanup_orphaned_views(self):
         """
@@ -2437,7 +2659,12 @@ class ClientConnection:
                         pass
 
             if dropped_count > 0:
-                print(f"[{self.session_id}]   🧹 Cleaned up {dropped_count} orphaned views (DETACH'd databases)")
+                self._runtime_log(
+                    "INFO",
+                    f"Cleaned up {dropped_count} orphaned views (DETACH'd databases)",
+                    event="orphaned_views_cleaned",
+                    dropped_count=dropped_count,
+                )
 
             # Best-effort: drop any now-empty orphan schemas we created for exposure
             for schema_name in sorted(dropped_schemas):
@@ -2457,7 +2684,12 @@ class ClientConnection:
 
         except Exception as e:
             # Non-fatal
-            styled_print(f"[{self.session_id}]   {S.WARN}  Could not cleanup orphaned views: {e}")
+            self._runtime_log(
+                "WARN",
+                f"Could not cleanup orphaned views: {e}",
+                event="orphaned_views_cleanup_failed",
+                error_type=type(e).__name__,
+            )
 
     def _create_attached_db_views(self):
         """
@@ -2500,7 +2732,11 @@ class ClientConnection:
             ).fetchall()
 
             if not attached_dbs:
-                styled_print(f"[{self.session_id}]   {S.INFO}  No ATTACH'd databases to expose")
+                self._runtime_log(
+                    "DEBUG",
+                    "No ATTACH'd databases to expose",
+                    event="attached_db_views_none",
+                )
                 return
 
             schema_count = 0
@@ -2558,15 +2794,30 @@ class ClientConnection:
                         pass
 
             if view_count > 0:
-                styled_print(f"[{self.session_id}]   {S.DONE} Exposed {view_count} relation(s) from ATTACH'd databases")
+                self._runtime_log(
+                    "INFO",
+                    f"Exposed {view_count} relation(s) from ATTACH'd databases",
+                    event="attached_db_views_ready",
+                    view_count=view_count,
+                    schema_count=schema_count,
+                )
             else:
-                styled_print(f"[{self.session_id}]   {S.INFO}  No tables found in ATTACH'd databases")
+                self._runtime_log(
+                    "DEBUG",
+                    "No tables found in ATTACH'd databases",
+                    event="attached_db_views_empty",
+                )
 
         except Exception as e:
             # Non-fatal - ATTACH views are nice-to-have
-            styled_print(f"[{self.session_id}]   {S.WARN}  Could not create ATTACH'd DB views: {e}")
+            self._runtime_log(
+                "WARN",
+                f"Could not create ATTACH'd DB views: {e}",
+                event="attached_db_views_error",
+                error_type=type(e).__name__,
+            )
 
-    def _handle_shared_table_create(self, query: str):
+    def _handle_shared_table_create(self, query: str, send_ready: bool = True) -> bool:
         """
         Handle CREATE TABLE shared.* - write to parquet for cross-session visibility.
 
@@ -2594,7 +2845,11 @@ class ClientConnection:
         """
         import re
 
-        styled_print(f"[{self.session_id}]   {S.LINK} Shared table CREATE detected")
+        self._runtime_log(
+            "DEBUG",
+            "Shared table CREATE detected",
+            event="shared_table_create_detected",
+        )
 
         # For multi-panel queries, extract only the first statement (CREATE TABLE)
         # Split on panel markers to isolate setup SQL
@@ -2602,7 +2857,11 @@ class ClientConnection:
             # Multi-panel query: extract just the CREATE TABLE statement
             parts = re.split(r'\n---\s*PANEL', query, maxsplit=1, flags=re.IGNORECASE)
             first_statement = parts[0].strip()
-            styled_print(f"[{self.session_id}]      {S.INFO} Multi-panel query: extracted setup statement")
+            self._runtime_log(
+                "DEBUG",
+                "Multi-panel query: extracted setup statement",
+                event="shared_table_create_multi_panel",
+            )
         else:
             first_statement = query
 
@@ -2623,13 +2882,24 @@ class ClientConnection:
 
         if not match:
             # Try simpler pattern without AS (might be CREATE TABLE shared.x (...))
-            send_error(
-                self.sock,
-                "Shared tables require CREATE TABLE shared.name AS SELECT syntax",
-                transaction_status=self.transaction_status
+            if send_ready:
+                send_error(
+                    self.sock,
+                    "Shared tables require CREATE TABLE shared.name AS SELECT syntax",
+                    transaction_status=self.transaction_status
+                )
+            else:
+                self.sock.sendall(ErrorResponse.encode(
+                    "ERROR",
+                    "Shared tables require CREATE TABLE shared.name AS SELECT syntax",
+                ))
+            self._runtime_log(
+                "WARN",
+                "Could not parse shared table CREATE",
+                event="shared_table_create_parse_failed",
+                query_preview=first_statement[:300],
             )
-            styled_print(f"[{self.session_id}]   {S.WARN}  Could not parse shared table CREATE")
-            return
+            return False
 
         explicit_subdir = match.group(1)  # None if not specified
         table_name = match.group(2)
@@ -2640,12 +2910,16 @@ class ClientConnection:
         if explicit_subdir:
             subdir = explicit_subdir.lower()
             if subdir not in valid_subdirs:
-                send_error(
-                    self.sock,
-                    f"Invalid shared table subdirectory '{subdir}'. Must be one of: {', '.join(valid_subdirs)}",
-                    transaction_status=self.transaction_status
-                )
-                return
+                message = f"Invalid shared table subdirectory '{subdir}'. Must be one of: {', '.join(valid_subdirs)}"
+                if send_ready:
+                    send_error(
+                        self.sock,
+                        message,
+                        transaction_status=self.transaction_status
+                    )
+                else:
+                    self.sock.sendall(ErrorResponse.encode("ERROR", message))
+                return False
             # Explicit subdir: include prefix in view name (except staging which is default)
             if subdir == 'staging':
                 view_name = table_name
@@ -2656,8 +2930,15 @@ class ClientConnection:
             subdir = 'staging'
             view_name = table_name
 
-        styled_print(f"[{self.session_id}]      {S.INFO} Target: shared.{view_name} (file: {subdir}/{table_name}.parquet)")
-        styled_print(f"[{self.session_id}]      {S.INFO} Query: {select_query[:80]}{'...' if len(select_query) > 80 else ''}")
+        self._runtime_log(
+            "DEBUG",
+            f"Target: shared.{view_name} (file: {subdir}/{table_name}.parquet)",
+            event="shared_table_create_target",
+            table_name=table_name,
+            view_name=view_name,
+            subdir=subdir,
+            query_preview=(select_query[:200] + ("..." if len(select_query) > 200 else "")),
+        )
 
         try:
             from ..sql_tools.shared_parquet import write_shared_table_with_view_name
@@ -2673,26 +2954,65 @@ class ClientConnection:
                 )
 
             if parquet_path:
-                styled_print(f"[{self.session_id}]      {S.OK} Written to: {parquet_path}")
-                styled_print(f"[{self.session_id}]      {S.OK} View created: shared.{view_name}")
+                self._runtime_log(
+                    "INFO",
+                    f"Shared table written: {parquet_path}",
+                    event="shared_table_create_written",
+                    parquet_path=str(parquet_path),
+                    table_name=table_name,
+                    view_name=view_name,
+                    subdir=subdir,
+                )
+                self._runtime_log(
+                    "DEBUG",
+                    f"View created: shared.{view_name}",
+                    event="shared_table_create_view",
+                    view_name=view_name,
+                )
 
                 # Send success response
                 self.sock.sendall(CommandComplete.encode('CREATE TABLE'))
-                self.sock.sendall(ReadyForQuery.encode(self.transaction_status))
-                styled_print(f"[{self.session_id}]   {S.DONE} Shared table created successfully")
-            else:
-                send_error(
-                    self.sock,
-                    "Failed to create shared table - check logs for details",
-                    transaction_status=self.transaction_status
+                if send_ready:
+                    self.sock.sendall(ReadyForQuery.encode(self.transaction_status))
+                self._runtime_log(
+                    "INFO",
+                    "Shared table created successfully",
+                    event="shared_table_create_complete",
+                    table_name=table_name,
+                    view_name=view_name,
+                    subdir=subdir,
                 )
+                return True
+            else:
+                if send_ready:
+                    send_error(
+                        self.sock,
+                        "Failed to create shared table - check logs for details",
+                        transaction_status=self.transaction_status
+                    )
+                else:
+                    self.sock.sendall(ErrorResponse.encode(
+                        "ERROR",
+                        "Failed to create shared table - check logs for details",
+                    ))
+                return False
 
         except Exception as e:
             error_msg = str(e)
-            send_error(self.sock, f"Shared table creation failed: {error_msg}", transaction_status=self.transaction_status)
-            styled_print(f"[{self.session_id}]   {S.ERR} Shared table creation failed: {error_msg}")
+            if send_ready:
+                send_error(self.sock, f"Shared table creation failed: {error_msg}", transaction_status=self.transaction_status)
+            else:
+                self.sock.sendall(ErrorResponse.encode("ERROR", f"Shared table creation failed: {error_msg}"))
+            self._runtime_log(
+                "ERROR",
+                f"Shared table creation failed: {error_msg}",
+                event="shared_table_create_error",
+                table_name=table_name,
+                error_type=type(e).__name__,
+            )
+            return False
 
-    def _handle_attach(self, query: str):
+    def _handle_attach(self, query: str, send_ready: bool = True) -> bool:
         """
         Handle ATTACH command - execute and refresh views.
 
@@ -2704,16 +3024,28 @@ class ClientConnection:
         """
         import re
 
-        styled_print(f"[{self.session_id}]   {S.LINK} ATTACH command detected")
+        self._runtime_log(
+            "DEBUG",
+            "ATTACH command detected",
+            event="attach_detected",
+        )
 
         # Parse ATTACH statement
         # Handles: ATTACH '/path' AS alias, ATTACH DATABASE '/path' AS alias, ATTACH '/path' (alias = filename)
         match = re.search(r"ATTACH\s+(?:DATABASE\s+)?['\"]([^'\"]+)['\"](?:\s+AS\s+(\w+))?", query, re.IGNORECASE)
 
         if not match:
-            send_error(self.sock, "Could not parse ATTACH statement", transaction_status=self.transaction_status)
-            print(f"[{self.session_id}]   ✗ Could not parse ATTACH statement")
-            return
+            if send_ready:
+                send_error(self.sock, "Could not parse ATTACH statement", transaction_status=self.transaction_status)
+            else:
+                self.sock.sendall(ErrorResponse.encode("ERROR", "Could not parse ATTACH statement"))
+            self._runtime_log(
+                "WARN",
+                "Could not parse ATTACH statement",
+                event="attach_parse_failed",
+                query_preview=query[:200],
+            )
+            return False
 
         db_path = match.group(1)
         db_alias = match.group(2)
@@ -2726,22 +3058,46 @@ class ClientConnection:
         try:
             # 1. Execute ATTACH
             self.duckdb_conn.execute(query)
-            styled_print(f"[{self.session_id}]      {S.OK} Attached: {db_path} AS {db_alias}")
+            self._runtime_log(
+                "INFO",
+                f"Attached: {db_path} AS {db_alias}",
+                event="attach_executed",
+                db_path=db_path,
+                db_alias=db_alias,
+            )
 
             # 2. Create views for attached database tables
             self._create_attached_db_views()
 
             # 3. Send success response
             self.sock.sendall(CommandComplete.encode('ATTACH'))
-            self.sock.sendall(ReadyForQuery.encode('I'))
-            styled_print(f"[{self.session_id}]   {S.DONE} ATTACH complete")
+            if send_ready:
+                self.sock.sendall(ReadyForQuery.encode('I'))
+            self._runtime_log(
+                "INFO",
+                "ATTACH complete",
+                event="attach_complete",
+                db_alias=db_alias,
+            )
+            return True
 
         except Exception as e:
             error_message = str(e)
-            send_error(self.sock, error_message, transaction_status=self.transaction_status)
-            print(f"[{self.session_id}]   ✗ ATTACH error: {error_message}")
+            if send_ready:
+                send_error(self.sock, error_message, transaction_status=self.transaction_status)
+            else:
+                self.sock.sendall(ErrorResponse.encode("ERROR", error_message))
+            self._runtime_log(
+                "ERROR",
+                f"ATTACH error: {error_message}",
+                event="attach_error",
+                db_path=db_path,
+                db_alias=db_alias,
+                error_type=type(e).__name__,
+            )
+            return False
 
-    def _handle_detach(self, query: str):
+    def _handle_detach(self, query: str, send_ready: bool = True) -> bool:
         """
         Handle DETACH command - cleanup views before detaching.
 
@@ -2756,7 +3112,12 @@ class ClientConnection:
 
         if match:
             db_name = match.group(1)
-            styled_print(f"[{self.session_id}]   {S.DEL}  DETACH {db_name} - cleaning up...")
+            self._runtime_log(
+                "INFO",
+                f"DETACH {db_name} - cleaning up...",
+                event="detach_cleanup_start",
+                db_name=db_name,
+            )
 
             # Drop all views for this database
             try:
@@ -2777,22 +3138,51 @@ class ClientConnection:
                         pass
 
                 if dropped_count > 0:
-                    print(f"[{self.session_id}]      🧹 Dropped {dropped_count} views for {db_name}")
+                    self._runtime_log(
+                        "INFO",
+                        f"Dropped {dropped_count} views for {db_name}",
+                        event="detach_views_dropped",
+                        db_name=db_name,
+                        dropped_count=dropped_count,
+                    )
 
             except Exception as e:
-                styled_print(f"[{self.session_id}]      {S.WARN}  Could not cleanup views: {e}")
+                self._runtime_log(
+                    "WARN",
+                    f"Could not cleanup views: {e}",
+                    event="detach_cleanup_error",
+                    db_name=db_name,
+                    error_type=type(e).__name__,
+                )
 
         # Execute the actual DETACH command
         try:
             self.duckdb_conn.execute(query)
             self.sock.sendall(CommandComplete.encode('DETACH'))
-            self.sock.sendall(ReadyForQuery.encode('I'))
-            styled_print(f"[{self.session_id}]   {S.OK} DETACH executed")
+            if send_ready:
+                self.sock.sendall(ReadyForQuery.encode('I'))
+            self._runtime_log(
+                "INFO",
+                "DETACH executed",
+                event="detach_executed",
+                db_name=(db_name if match else None),
+            )
+            return True
 
         except Exception as e:
             error_message = str(e)
-            send_error(self.sock, error_message, transaction_status=self.transaction_status)
-            print(f"[{self.session_id}]   ✗ DETACH error: {error_message}")
+            if send_ready:
+                send_error(self.sock, error_message, transaction_status=self.transaction_status)
+            else:
+                self.sock.sendall(ErrorResponse.encode("ERROR", error_message))
+            self._runtime_log(
+                "ERROR",
+                f"DETACH error: {error_message}",
+                event="detach_error",
+                db_name=(db_name if match else None),
+                error_type=type(e).__name__,
+            )
+            return False
 
     def _register_refresh_views_udf(self):
         """
@@ -2814,14 +3204,23 @@ class ClientConnection:
                 return "Views refreshed for ATTACH'd databases"
 
             self.duckdb_conn.create_function('refresh_attached_views', refresh_attached_views)
-            styled_print(f"[{self.session_id}]   {S.DONE} Registered refresh_attached_views() UDF")
+            self._runtime_log(
+                "DEBUG",
+                "Registered refresh_attached_views() UDF",
+                event="refresh_views_udf_registered",
+            )
 
         except Exception as e:
             # "already created" is expected when multiple connections share DuckDB
             if "already created" in str(e).lower():
                 pass  # Silently skip - UDF is already there
             else:
-                styled_print(f"[{self.session_id}]   {S.WARN}  Could not register refresh UDF: {e}")
+                self._runtime_log(
+                    "WARN",
+                    f"Could not register refresh UDF: {e}",
+                    event="refresh_views_udf_error",
+                    error_type=type(e).__name__,
+                )
 
     def _create_pg_compat_stubs(self):
         """
@@ -3860,7 +4259,12 @@ class ClientConnection:
             #     styled_print(f"[{self.session_id}]   {S.DONE} Created PG compat stubs: {', '.join(stubs_created)}")
 
         except Exception as e:
-            styled_print(f"[{self.session_id}]   {S.WARN}  Error creating PG compat stubs: {e}")
+            self._runtime_log(
+                "WARN",
+                f"Error creating PG compat stubs: {e}",
+                event="pg_compat_stubs_error",
+                error_type=type(e).__name__,
+            )
 
     def handle_startup(self, startup_params: dict):
         """
@@ -3900,7 +4304,12 @@ class ClientConnection:
         self.application_name = application_name
 
         if os.environ.get('LARS_PG_LOG_STARTUP_PARAMS') == '1':
-            print(f"[{self.session_id or self.addr}]   🔎 Startup params: {startup_params}")
+            self._runtime_log(
+                "DEBUG",
+                "Startup params",
+                event="startup_params",
+                startup_params=startup_params,
+            )
 
         # Enforce safe database names (used for ClickHouse namespace: lars_results_<db_name>).
         # Be strict: reject anything outside [A-Za-z_][A-Za-z0-9_]{0,63}.
@@ -3920,11 +4329,15 @@ class ClientConnection:
         client_id = uuid.uuid4().hex[:8]
         self.session_id = f"{self.session_prefix}_{database}_{client_id}"
 
-        styled_print(f"[{self.session_id}] {S.LINK} Client startup:")
-        print(f"   User: {user}")
-        print(f"   Database: {database}")
-        print(f"   Results DB: {self.results_db_name}")
-        print(f"   Application: {application_name}")
+        self._runtime_log(
+            "INFO",
+            "Client startup",
+            event="startup",
+            user=user,
+            database=database,
+            results_db=self.results_db_name,
+            application_name=application_name,
+        )
 
         # Note: send_startup_response is called AFTER setup_session in handle()
 
@@ -3956,20 +4369,33 @@ class ClientConnection:
                 return True
 
             # Request password from client
-            styled_print(f"[{self.session_id}]   {S.INFO} Requesting authentication...")
+            self._runtime_log(
+                "INFO",
+                "Requesting authentication...",
+                event="auth_request",
+            )
             self.sock.sendall(AuthenticationCleartextPassword.encode())
 
             # Read password response
             credential = PasswordMessage.read(self.sock)
             if credential is None:
-                styled_print(f"[{self.session_id}]   {S.ERR} No password provided")
+                self._runtime_log(
+                    "WARN",
+                    "No password provided",
+                    event="auth_no_password",
+                )
                 return False
 
             # Validate the credential (API key or password)
             # Username comes from the StartupMessage (self.user_name)
             user = auth.authenticate(self.user_name, credential)
             if not user:
-                styled_print(f"[{self.session_id}]   {S.ERR} Invalid credentials for user: {self.user_name}")
+                self._runtime_log(
+                    "WARN",
+                    f"Invalid credentials for user: {self.user_name}",
+                    event="auth_invalid_credentials",
+                    user_name=self.user_name,
+                )
                 return False
 
             # Store authenticated user info
@@ -3978,19 +4404,41 @@ class ClientConnection:
 
             auth_method = user.get('auth_method', 'unknown')
             if auth_method == 'api_key':
-                styled_print(f"[{self.session_id}]   {S.OK} Authenticated: {user.get('username')} (key: {user.get('key_name', 'api')})")
+                self._runtime_log(
+                    "INFO",
+                    f"Authenticated: {user.get('username')} (key: {user.get('key_name', 'api')})",
+                    event="auth_success",
+                    auth_method="api_key",
+                    username=user.get("username"),
+                    key_name=user.get("key_name", "api"),
+                )
             else:
-                styled_print(f"[{self.session_id}]   {S.OK} Authenticated: {user.get('username')} (password)")
+                self._runtime_log(
+                    "INFO",
+                    f"Authenticated: {user.get('username')} (password)",
+                    event="auth_success",
+                    auth_method="password",
+                    username=user.get("username"),
+                )
             return True
 
         except ImportError:
             # Auth module not available - allow connection
-            styled_print(f"[{self.session_id}]   {S.WARN} Auth module not available - allowing connection")
+            self._runtime_log(
+                "WARN",
+                "Auth module not available - allowing connection",
+                event="auth_module_missing",
+            )
             self.authenticated_user = None
             self.auth_user_id = 'anonymous'
             return True
         except Exception as e:
-            styled_print(f"[{self.session_id}]   {S.ERR} Authentication error: {e}")
+            self._runtime_log(
+                "ERROR",
+                f"Authentication error: {e}",
+                event="auth_error",
+                error_type=type(e).__name__,
+            )
             return False
 
     # =========================================================================
@@ -4074,7 +4522,13 @@ class ClientConnection:
         attachments = self._get_duckdb_attachments()
         set_duckdb_attachments(self.session_id, attachments)
 
-        styled_print(f"[{self.session_id}] {S.LINK} Set caller_context: {caller_id} → registry[{self.session_id}] ({len(attachments)} attachments)")
+        self._runtime_log(
+            "DEBUG",
+            f"Set caller_context: {caller_id} ({len(attachments)} attachments)",
+            event="caller_context_set",
+            caller_id=caller_id,
+            attachments_count=len(attachments),
+        )
 
         query_start_time = time.time()
         log_query = original_query if original_query else query
@@ -4133,7 +4587,13 @@ class ClientConnection:
                 # The API will query ClickHouse directly using caller_id
                 if result_location.get('stored_in') == 'clickhouse':
                     # Just log that we have results, actual data is in lars_results database
-                    styled_print(f"[{self.session_id}]   {S.LOG} Results stored in ClickHouse: caller_id={result_location.get('caller_id')}, rows={result_location.get('row_count')}")
+                    self._runtime_log(
+                        "DEBUG",
+                        f"Results stored in ClickHouse: caller_id={result_location.get('caller_id')}, rows={result_location.get('row_count')}",
+                        event="sql_trail_result_stored_clickhouse",
+                        caller_id=result_location.get("caller_id"),
+                        row_count=result_location.get("row_count"),
+                    )
                 else:
                     # Legacy format (DuckDB) - for backwards compatibility
                     result_kwargs = {
@@ -4142,7 +4602,12 @@ class ClientConnection:
                         'result_schema': result_location.get('schema_name'),
                         'result_table': result_location.get('table_name'),
                     }
-                    styled_print(f"[{self.session_id}]   {S.LOG} Logging result location to SQL Trail: {result_kwargs}")
+                    self._runtime_log(
+                        "DEBUG",
+                        f"Logging result location to SQL Trail: {result_kwargs}",
+                        event="sql_trail_result_location",
+                        result_location=result_kwargs,
+                    )
 
             log_query_complete(
                 query_id=query_id,
@@ -4161,7 +4626,12 @@ class ClientConnection:
             clear_caller_context(connection_id=self.session_id)
 
         except Exception as e:
-            styled_print(f"[{self.session_id}]   {S.WARN}  SQL Trail completion log failed: {e}")
+            self._runtime_log(
+                "WARN",
+                f"SQL Trail completion log failed: {e}",
+                event="sql_trail_complete_error",
+                error_type=type(e).__name__,
+            )
 
     def _error_query_tracking(
         self,
@@ -4197,7 +4667,38 @@ class ClientConnection:
             clear_caller_context(connection_id=self.session_id)
 
         except Exception as e:
-            styled_print(f"[{self.session_id}]   {S.WARN}  SQL Trail error log failed: {e}")
+            self._runtime_log(
+                "WARN",
+                f"SQL Trail error log failed: {e}",
+                event="sql_trail_error_log_failed",
+                error_type=type(e).__name__,
+            )
+
+    def _split_sql_statements(self, sql: str) -> list[str]:
+        """
+        Split SQL into individual statements, respecting string literals and comments.
+
+        Splits on semicolons that are not inside strings or comments.
+        """
+        from ..sql_tools.pipeline_parser import _tokenize
+
+        statements: list[str] = []
+        current: list[str] = []
+
+        for tok in _tokenize(sql):
+            if tok.typ == "punct" and tok.text == ";":
+                stmt = "".join(current).strip()
+                if stmt:
+                    statements.append(stmt)
+                current = []
+                continue
+            current.append(tok.text)
+
+        stmt = "".join(current).strip()
+        if stmt:
+            statements.append(stmt)
+
+        return statements
 
     def handle_query(self, query: str):
         """
@@ -4211,10 +4712,23 @@ class ClientConnection:
         # Clean query (remove null terminators, whitespace)
         query = query.strip()
 
+        # Support multiple statements in a single Simple Query message (e.g. "SELECT 1; SELECT 2;")
+        # IMPORTANT: Clients read until ReadyForQuery, so we must only send ReadyForQuery once at the end.
+        if ';' in query:
+            split_statements = self._split_sql_statements(query)
+            if len(split_statements) > 1:
+                self._handle_multi_statement_query(split_statements, original_query=query)
+                return
+            # Normalize single-statement queries by stripping trailing semicolons
+            if len(split_statements) == 1:
+                query = split_statements[0]
+            elif len(split_statements) == 0:
+                query = ""
+
         # Handle empty queries (PostgreSQL protocol requirement)
         # Some clients (like DataGrip) send empty queries for protocol probing
         if not query:
-            print(f"[{self.session_id}] Query #{self.query_count}: (empty)")
+            self._runtime_log("DEBUG", f"Query #{self.query_count}: (empty)", event="query_empty", query_count=self.query_count)
             self.sock.sendall(EmptyQueryResponse.encode())
             self.sock.sendall(ReadyForQuery.encode(self.transaction_status))
             return
@@ -4222,9 +4736,22 @@ class ClientConnection:
         # Log query (show more for catalog queries)
         is_catalog = self._is_catalog_query(query.upper())
         if is_catalog:
-            print(f"[{self.session_id}] Query #{self.query_count} [CATALOG]: {query[:200]}{'...' if len(query) > 200 else ''}")
+            self._runtime_log(
+                "DEBUG",
+                f"Query #{self.query_count} [CATALOG]: {query[:200]}{'...' if len(query) > 200 else ''}",
+                event="query_received",
+                query_count=self.query_count,
+                is_catalog=True,
+            )
         else:
-            print(f"[{self.session_id}] Query #{self.query_count}: {query[:100]}{'...' if len(query) > 100 else ''}")
+            self._runtime_log(
+                "INFO",
+                f"Query #{self.query_count}: {query[:200]}{'...' if len(query) > 200 else ''}",
+                event="query_received",
+                query_count=self.query_count,
+                is_catalog=False,
+                query=query,
+            )
 
         try:
             # Handle PostgreSQL-specific SET commands that DuckDB doesn't understand
@@ -4293,7 +4820,11 @@ class ClientConnection:
             # Note: \s* allows leading whitespace/newlines from frontend parsing
             shared_table_match = re.match(r'^\s*CREATE\s+(OR\s+REPLACE\s+)?TABLE\s+SHARED\.', query_upper)
             if shared_table_match:
-                styled_print(f"[{self.session_id}]   {S.LINK} Intercepted CREATE TABLE shared.* -> routing to parquet handler")
+                self._runtime_log(
+                    "DEBUG",
+                    "Intercepted CREATE TABLE shared.* -> routing to parquet handler",
+                    event="shared_table_create_intercept",
+                )
                 self._handle_shared_table_create(query)
                 return
 
@@ -4302,7 +4833,11 @@ class ClientConnection:
             from ..sql_tools.canvas_rewriter import has_canvas_syntax, rewrite_canvas_syntax
             if has_canvas_syntax(query):
                 query = rewrite_canvas_syntax(query)
-                styled_print(f"[{self.session_id}]   {S.INFO} CANVAS syntax rewritten")
+                self._runtime_log(
+                    "DEBUG",
+                    "CANVAS syntax rewritten",
+                    event="canvas_rewrite",
+                )
 
             # Handle PIPELINE syntax (THEN/INTO for post-query processing)
             # Syntax: SELECT * FROM table THEN ANALYZE 'prompt' INTO result_table
@@ -4364,9 +4899,20 @@ class ClientConnection:
                         lines = [line.split('--')[0].strip() for line in normalized.split('\n')]
                         normalized = ' '.join(line for line in lines if line)
 
-                        styled_print(f"[{self.session_id}]      {S.SEARCH} Parsing normalized query: {normalized[:100]}...")
+                        self._runtime_log(
+                            "DEBUG",
+                            f"Parsing normalized query: {normalized[:100]}...",
+                            event="map_parallel_parse",
+                        )
                         stmt = _parse_lars_statement(normalized)
-                        styled_print(f"[{self.session_id}]      {S.OK} Parsed: mode={stmt.mode}, parallel={stmt.parallel}, as_table={stmt.with_options.get('as_table')}")
+                        self._runtime_log(
+                            "DEBUG",
+                            f"Parsed: mode={stmt.mode}, parallel={stmt.parallel}, as_table={stmt.with_options.get('as_table')}",
+                            event="map_parallel_parsed",
+                            mode=stmt.mode,
+                            parallel=stmt.parallel,
+                            as_table=stmt.with_options.get("as_table"),
+                        )
 
                         # SPECIAL PATH 1: MAP PARALLEL (true concurrency)
                         # SPECIAL PATH 2: Table materialization (CREATE TABLE AS or WITH as_table)
@@ -4377,11 +4923,27 @@ class ClientConnection:
                             is_materialized = stmt.with_options.get('as_table') is not None
 
                             if is_parallel and is_materialized:
-                                styled_print(f"[{self.session_id}]   {S.RUN} MAP PARALLEL + Materialization: {stmt.parallel} workers → {stmt.with_options['as_table']}")
+                                self._runtime_log(
+                                    "DEBUG",
+                                    f"MAP PARALLEL + Materialization: {stmt.parallel} workers → {stmt.with_options['as_table']}",
+                                    event="map_parallel_detected",
+                                    parallel=stmt.parallel,
+                                    as_table=stmt.with_options.get("as_table"),
+                                )
                             elif is_parallel:
-                                styled_print(f"[{self.session_id}]   {S.RUN} MAP PARALLEL detected: {stmt.parallel} workers")
+                                self._runtime_log(
+                                    "DEBUG",
+                                    f"MAP PARALLEL detected: {stmt.parallel} workers",
+                                    event="map_parallel_detected",
+                                    parallel=stmt.parallel,
+                                )
                             else:
-                                styled_print(f"[{self.session_id}]   {S.SAVE} Table materialization: {stmt.with_options['as_table']}")
+                                self._runtime_log(
+                                    "DEBUG",
+                                    f"Table materialization: {stmt.with_options['as_table']}",
+                                    event="map_parallel_materialize_only",
+                                    as_table=stmt.with_options.get("as_table"),
+                                )
 
                         # 1. Execute USING query to get input rows
                         import re
@@ -4406,14 +4968,31 @@ class ClientConnection:
                             if original_count:
                                 deduped_count = self.duckdb_conn.execute(f"SELECT COUNT(*) FROM ({using_query}) AS t").fetchone()[0]
                                 savings = ((original_count - deduped_count) / original_count * 100) if original_count > 0 else 0
-                                styled_print(f"[{self.session_id}]      {S.CFG} DISTINCT applied: {original_count} → {deduped_count} rows ({savings:.0f}% reduction)")
+                                self._runtime_log(
+                                    "DEBUG",
+                                    f"DISTINCT applied: {original_count} → {deduped_count} rows ({savings:.0f}% reduction)",
+                                    event="map_parallel_deduped",
+                                    original_count=original_count,
+                                    deduped_count=deduped_count,
+                                    savings_pct=savings,
+                                    dedupe_by=dedupe_by,
+                                )
 
                         if not re.search(r'\bLIMIT\s+\d+', using_query, re.IGNORECASE):
                             using_query += ' LIMIT 1000'  # Safety
 
-                        styled_print(f"[{self.session_id}]      {S.CHART} Fetching input rows...")
+                        self._runtime_log(
+                            "DEBUG",
+                            "Fetching input rows...",
+                            event="map_parallel_fetch_inputs",
+                        )
                         input_df = self.duckdb_conn.execute(using_query).fetchdf()
-                        styled_print(f"[{self.session_id}]      {S.OK} Got {len(input_df)} input rows")
+                        self._runtime_log(
+                            "DEBUG",
+                            f"Got {len(input_df)} input rows",
+                            event="map_parallel_inputs_ready",
+                            row_count=len(input_df),
+                        )
 
                         # 2. Convert to JSON array for parallel processing
                         import json
@@ -4423,7 +5002,12 @@ class ClientConnection:
                         result_column = stmt.result_alias or stmt.with_options.get('result_column', 'result')
 
                         if is_parallel:
-                            styled_print(f"[{self.session_id}]      {S.FAST} Executing in parallel ({stmt.parallel} workers)...")
+                            self._runtime_log(
+                                "DEBUG",
+                                f"Executing in parallel ({stmt.parallel} workers)...",
+                                event="map_parallel_execute_start",
+                                parallel=stmt.parallel,
+                            )
                             from lars.sql_tools.udf import lars_map_parallel_exec
 
                             result_df = lars_map_parallel_exec(
@@ -4432,10 +5016,19 @@ class ClientConnection:
                                 max_workers=stmt.parallel,
                                 result_column=result_column
                             )
-                            styled_print(f"[{self.session_id}]      {S.OK} Parallel execution complete")
+                            self._runtime_log(
+                                "DEBUG",
+                                "Parallel execution complete",
+                                event="map_parallel_execute_complete",
+                                row_count=len(result_df) if result_df is not None else 0,
+                            )
                         else:
                             # Sequential execution for non-parallel materialization
-                            styled_print(f"[{self.session_id}]      {S.RETRY} Executing sequentially for materialization...")
+                            self._runtime_log(
+                                "DEBUG",
+                                "Executing sequentially for materialization...",
+                                event="map_parallel_execute_sequential",
+                            )
                             # Use the regular rewritten query but execute row-by-row
                             from lars.sql_rewriter import _rewrite_map
                             from dataclasses import replace
@@ -4447,15 +5040,33 @@ class ClientConnection:
                             # Create new statement with modified options
                             temp_stmt = replace(stmt, with_options=temp_stmt_options)
 
-                            styled_print(f"[{self.session_id}]      {S.SEARCH} Rewriting query without as_table...")
+                            self._runtime_log(
+                                "DEBUG",
+                                "Rewriting query without as_table...",
+                                event="map_parallel_rewrite_without_as_table",
+                            )
                             rewritten_query = _rewrite_map(temp_stmt)
-                            styled_print(f"[{self.session_id}]      {S.SEARCH} Executing rewritten query...")
+                            self._runtime_log(
+                                "DEBUG",
+                                "Executing rewritten query...",
+                                event="map_parallel_execute_rewritten",
+                            )
                             result_df = self.duckdb_conn.execute(rewritten_query).fetchdf()
-                            styled_print(f"[{self.session_id}]      {S.OK} Sequential execution complete ({len(result_df)} rows)")
+                            self._runtime_log(
+                                "DEBUG",
+                                f"Sequential execution complete ({len(result_df)} rows)",
+                                event="map_parallel_execute_rewritten_complete",
+                                row_count=len(result_df),
+                            )
 
                         # 4. Apply schema extraction if specified
                         if stmt.output_columns:
-                            styled_print(f"[{self.session_id}]      {S.CFG} Applying schema extraction...")
+                            self._runtime_log(
+                                "DEBUG",
+                                "Applying schema extraction...",
+                                event="map_parallel_schema_extract",
+                                output_columns=len(stmt.output_columns),
+                            )
                             # Register result for JSON extraction
                             self.duckdb_conn.register("_parallel_raw", result_df)
 
@@ -4485,12 +5096,22 @@ class ClientConnection:
                         # 5. Handle table materialization if requested
                         as_table = stmt.with_options.get('as_table')
                         if as_table:
-                            styled_print(f"[{self.session_id}]      {S.SAVE} Materializing to table: {as_table}")
+                            self._runtime_log(
+                                "DEBUG",
+                                f"Materializing to table: {as_table}",
+                                event="map_parallel_materialize_start",
+                                as_table=as_table,
+                            )
                             # Register and create table
                             self.duckdb_conn.register("_temp_materialize", result_df)
                             self.duckdb_conn.execute(f"CREATE OR REPLACE TEMP TABLE {as_table} AS SELECT * FROM _temp_materialize")
                             self.duckdb_conn.unregister("_temp_materialize")
-                            styled_print(f"[{self.session_id}]      {S.OK} Table created: {as_table}")
+                            self._runtime_log(
+                                "DEBUG",
+                                f"Table created: {as_table}",
+                                event="map_parallel_materialize_complete",
+                                as_table=as_table,
+                            )
 
                             # Return metadata instead of data
                             import pandas as pd
@@ -4507,11 +5128,30 @@ class ClientConnection:
                             send_query_results(self.sock, result_df, self.transaction_status)
 
                         if is_parallel and is_materialized:
-                            styled_print(f"[{self.session_id}]   {S.DONE} MAP PARALLEL + Materialized: {len(result_df)} rows, {stmt.parallel} workers → {stmt.with_options['as_table']}")
+                            self._runtime_log(
+                                "DEBUG",
+                                f"MAP PARALLEL + Materialized: {len(result_df)} rows, {stmt.parallel} workers → {stmt.with_options['as_table']}",
+                                event="map_parallel_complete",
+                                row_count=len(result_df),
+                                parallel=stmt.parallel,
+                                as_table=stmt.with_options.get("as_table"),
+                            )
                         elif is_parallel:
-                            styled_print(f"[{self.session_id}]   {S.DONE} MAP PARALLEL complete: {len(result_df)} rows, {stmt.parallel} workers")
+                            self._runtime_log(
+                                "DEBUG",
+                                f"MAP PARALLEL complete: {len(result_df)} rows, {stmt.parallel} workers",
+                                event="map_parallel_complete",
+                                row_count=len(result_df),
+                                parallel=stmt.parallel,
+                            )
                         else:
-                            styled_print(f"[{self.session_id}]   {S.DONE} Materialized to table: {stmt.with_options['as_table']} ({len(result_df)} rows)")
+                            self._runtime_log(
+                                "DEBUG",
+                                f"Materialized to table: {stmt.with_options['as_table']} ({len(result_df)} rows)",
+                                event="map_parallel_materialize_only_complete",
+                                row_count=len(result_df),
+                                as_table=stmt.with_options.get("as_table"),
+                            )
 
                         # Log query completion for SQL Trail (special path)
                         # Uses unified helper for consistent logging
@@ -4524,9 +5164,19 @@ class ClientConnection:
 
                     except Exception as parallel_error:
                         # If parallel execution fails, log and fall back to normal path
-                        styled_print(f"[{self.session_id}]   {S.WARN}  Special path failed: {parallel_error}")
-                        traceback.print_exc()  # Use module-level import
-                        print(f"[{self.session_id}]      Falling back to sequential execution")
+                        self._runtime_log(
+                            "WARN",
+                            f"Special path failed: {parallel_error}",
+                            event="map_parallel_special_path_failed",
+                            error_type=type(parallel_error).__name__,
+                        )
+                        if os.environ.get("LARS_PG_TRACEBACK", "0").strip().lower() in ("1", "true", "yes", "on"):
+                            traceback.print_exc()  # Use module-level import
+                        self._runtime_log(
+                            "DEBUG",
+                            "Falling back to sequential execution",
+                            event="map_parallel_fallback",
+                        )
                         # Fall through to normal execution
 
             # Early termination detection for LIMIT-friendly semantic queries
@@ -4559,19 +5209,36 @@ class ClientConnection:
                         set_early_termination_hint(_caller_id, limit_value)
                         _early_term_enabled = True
                         _early_term_limit = limit_value
-                        styled_print(f"[{self.session_id}]   {S.CHART} Early termination enabled: LIMIT {limit_value}")
+                        self._runtime_log(
+                            "INFO",
+                            f"Early termination enabled: LIMIT {limit_value}",
+                            event="early_termination_enabled",
+                            limit=limit_value,
+                            caller_id=_caller_id,
+                        )
                     elif limit_value and reason:
-                        styled_print(f"[{self.session_id}]   {S.CFG} Early termination skipped: {reason}")
+                        self._runtime_log(
+                            "DEBUG",
+                            f"Early termination skipped: {reason}",
+                            event="early_termination_skipped",
+                            limit=limit_value,
+                            reason=reason,
+                            caller_id=_caller_id,
+                        )
             except Exception as et_error:
                 # Early termination detection is non-fatal
-                styled_print(f"[{self.session_id}]   {S.WARN}  Early termination check failed: {et_error}")
+                self._runtime_log(
+                    "WARN",
+                    f"Early termination check failed: {et_error}",
+                    event="early_termination_error",
+                    error_type=type(et_error).__name__,
+                )
 
             # Check for prewarm sidecar opportunity (-- @ parallel: N annotation)
             # IMPORTANT: Must run BEFORE rewrite_lars_syntax which strips comments!
             # This launches a background thread to warm the cache for scalar semantic functions
             prewarm_sidecar = None
             original_query = query  # Preserve original with annotations
-            styled_print(f"[{self.session_id}]   {S.CLIP} Prewarm check starting...")
             try:
                 from lars.sql_tools.prewarm_sidecar import maybe_launch_prewarm_sidecar
                 from lars.caller_context import get_caller_id
@@ -4583,7 +5250,12 @@ class ClientConnection:
                     if _get_parallel_annotation(original_query):
                         from lars.session_naming import generate_woodland_id
                         prewarm_caller_id = f"prewarm-{generate_woodland_id()}"
-                        styled_print(f"[{self.session_id}]   {S.RUN} Prewarm: Generated caller_id {prewarm_caller_id}")
+                        self._runtime_log(
+                            "DEBUG",
+                            f"Prewarm: generated caller_id {prewarm_caller_id}",
+                            event="prewarm_generated_caller_id",
+                            caller_id=prewarm_caller_id,
+                        )
 
                 if prewarm_caller_id:
                     prewarm_sidecar = maybe_launch_prewarm_sidecar(
@@ -4593,7 +5265,12 @@ class ClientConnection:
                     )
             except Exception as prewarm_e:
                 # Prewarm failures are non-fatal
-                styled_print(f"[{self.session_id}]   {S.WARN}  Prewarm check failed: {prewarm_e}")
+                self._runtime_log(
+                    "WARN",
+                    f"Prewarm check failed: {prewarm_e}",
+                    event="prewarm_error",
+                    error_type=type(prewarm_e).__name__,
+                )
 
             # Deref preprocessing: evaluate @cascade() expressions first
             from ..sql_tools.deref_preprocessor import preprocess_deref_cascades
@@ -4615,9 +5292,18 @@ class ClientConnection:
                 from ..sql_tools.into_table_rewriter import rewrite_into_tables
                 query, into_changed = rewrite_into_tables(query, results_db=self.results_db_name)
                 if into_changed:
-                    styled_print(f"[{self.session_id}]   {S.LINK} INTO table references rewritten")
+                    self._runtime_log(
+                        "DEBUG",
+                        "INTO table references rewritten",
+                        event="into_table_rewritten",
+                    )
             except Exception as e:
-                styled_print(f"[{self.session_id}]   {S.WARN}  INTO table rewrite skipped: {e}")
+                self._runtime_log(
+                    "WARN",
+                    f"INTO table rewrite skipped: {e}",
+                    event="into_table_rewrite_skipped",
+                    error_type=type(e).__name__,
+                )
 
             # Rewrite LARS MAP/RUN syntax to standard SQL
             # This strips annotations/comments, so prewarm check must happen first
@@ -4657,7 +5343,12 @@ class ClientConnection:
             # Send results back to client (with current transaction status)
             send_query_results(self.sock, result_df, self.transaction_status)
 
-            styled_print(f"[{self.session_id}]   {S.OK} Returned {len(result_df)} rows")
+            self._runtime_log(
+                "DEBUG",
+                f"Returned {len(result_df)} rows",
+                event="query_returned_rows",
+                row_count=len(result_df),
+            )
 
             # Log query completion for SQL Trail (if we started tracking)
             # Uses unified helper for consistent logging
@@ -4673,7 +5364,12 @@ class ClientConnection:
                     stats = clear_early_termination_hint(_caller_id)
                     if stats:
                         # Show processed vs matches for debugging
-                        styled_print(f"[{self.session_id}]   {S.OK} Early termination: processed {stats.get('processed_count', 0)} rows, found {stats.get('match_count', 0)} matches (target: {stats.get('limit_hint', 0)})")
+                        self._runtime_log(
+                            "DEBUG",
+                            f"Early termination: processed {stats.get('processed_count', 0)} rows, found {stats.get('match_count', 0)} matches (target: {stats.get('limit_hint', 0)})",
+                            event="early_termination_stats",
+                            stats=stats,
+                        )
                 except Exception:
                     pass  # Non-fatal
 
@@ -4700,7 +5396,255 @@ class ClientConnection:
 
             send_error(self.sock, error_message, detail=error_detail, transaction_status=self.transaction_status)
 
-            print(f"[{self.session_id}]   ✗ Query error: {error_message}")
+            self._runtime_log(
+                "ERROR",
+                f"Query error: {error_message}",
+                event="query_error",
+                error_type=type(e).__name__,
+            )
+
+    def _handle_multi_statement_query(self, statements: list[str], original_query: str) -> None:
+        """
+        Handle multiple SQL statements sent in a single Simple Query message.
+
+        PostgreSQL clients read responses until ReadyForQuery, so this must send
+        ReadyForQuery exactly once after all statements have been processed.
+        """
+        self._runtime_log(
+            "INFO",
+            f"Multi-statement query ({len(statements)} statements)",
+            event="query_multi_statement",
+            statement_count=len(statements),
+            query_preview=original_query[:500],
+        )
+
+        for i, stmt in enumerate(statements, start=1):
+            stmt = stmt.strip()
+            if not stmt:
+                continue
+
+            self._runtime_log(
+                "DEBUG",
+                f"Multi-statement part {i}/{len(statements)}: {stmt[:200]}{'...' if len(stmt) > 200 else ''}",
+                event="query_multi_statement_part",
+                statement_index=i,
+                statement_count=len(statements),
+            )
+
+            ok = self._execute_statement_no_ready(stmt)
+            if not ok:
+                # Match PostgreSQL semantics: errors inside a transaction move us to aborted state.
+                if self.transaction_status == 'T':
+                    self.transaction_status = 'E'
+                break
+
+        # One ReadyForQuery for the entire batch (Simple Query protocol requirement)
+        self.sock.sendall(ReadyForQuery.encode(self.transaction_status))
+
+    def _execute_statement_no_ready(self, query: str) -> bool:
+        """
+        Execute a single SQL statement and send results without ReadyForQuery.
+
+        Returns:
+            True on success, False if an error was sent.
+        """
+        import traceback
+
+        query = query.strip()
+        if not query:
+            return True
+
+        query_upper = query.upper()
+
+        _query_id = None
+        _query_start_time = None
+        _caller_id = None
+
+        try:
+            # PostgreSQL-specific SET/RESET (no ReadyForQuery here - batch mode)
+            if query_upper.startswith('SET ') or query_upper.startswith('RESET '):
+                self._execute_set_command(query)
+                self.sock.sendall(CommandComplete.encode('SET'))
+                return True
+
+            # PostgreSQL SHOW (no ReadyForQuery here - batch mode)
+            if query_upper.startswith('SHOW '):
+                self._execute_show_and_send_extended(query, send_row_description=True)
+                return True
+
+            # BACKGROUND queries (async execution)
+            if query_upper.startswith('BACKGROUND'):
+                from ..sql_tools.sql_directives import parse_sql_directives
+                directive, inner_sql = parse_sql_directives(query)
+                if directive and directive.directive_type == 'BACKGROUND':
+                    return bool(self._handle_background_query(inner_sql, extended_query_mode=True, send_row_description=True))
+
+            # Legacy ANALYZE directive removed (keep behavior consistent with Simple Query mode)
+            if query_upper.startswith('ANALYZE'):
+                from ..sql_tools.sql_directives import parse_sql_directives
+                directive, _ = parse_sql_directives(query)
+                if directive and directive.directive_type == 'ANALYZE':
+                    self.sock.sendall(ErrorResponse.encode(
+                        'ERROR',
+                        "ANALYZE 'prompt' SELECT ... has been removed. Use THEN ANALYZE instead.",
+                        detail="Example: SELECT * FROM t THEN ANALYZE 'what are the trends?'",
+                    ))
+                    if self.transaction_status == 'T':
+                        self.transaction_status = 'E'
+                    return False
+
+            # WATCH commands (reactive subscriptions)
+            # NOTE: The Simple Query multi-statement protocol expects a single ReadyForQuery at the end.
+            # The WATCH command handlers currently use Simple Query response helpers, so disallow batching.
+            from ..sql_tools.sql_directives import is_watch_command
+            if is_watch_command(query):
+                self.sock.sendall(ErrorResponse.encode(
+                    'ERROR',
+                    "Batched WATCH commands are not supported (send as separate statements).",
+                ))
+                if self.transaction_status == 'T':
+                    self.transaction_status = 'E'
+                return False
+
+            # EXPLAIN must be checked BEFORE pipeline syntax
+            import re
+            if re.match(r'^EXPLAIN[\s(]', query_upper):
+                ok = self._handle_explain_query_extended(query, send_row_description=True)
+                return bool(ok)
+
+            # Handle CREATE TABLE shared.* AS SELECT
+            shared_table_match = re.match(r'^\s*CREATE\s+(OR\s+REPLACE\s+)?TABLE\s+SHARED\.', query_upper)
+            if shared_table_match:
+                ok = self._handle_shared_table_create(query, send_ready=False)
+                return bool(ok)
+
+            # Pre-process CANVAS syntax before pipeline check
+            from ..sql_tools.canvas_rewriter import has_canvas_syntax, rewrite_canvas_syntax
+            if has_canvas_syntax(query):
+                query = rewrite_canvas_syntax(query)
+                query_upper = query.upper()
+
+            # PIPELINE syntax (THEN/INTO)
+            from ..sql_tools.pipeline_parser import has_pipeline_syntax, parse_pipeline_syntax
+            if has_pipeline_syntax(query):
+                pipeline = parse_pipeline_syntax(query)
+                if pipeline and pipeline.stages:
+                    ok = self._handle_pipeline_query(pipeline, query, extended_query_mode=True, send_row_description=True)
+                    return bool(ok)
+
+            # Transaction commands (BEGIN, COMMIT, ROLLBACK)
+            if query_upper in ['BEGIN', 'BEGIN TRANSACTION', 'BEGIN WORK', 'START TRANSACTION']:
+                return self._handle_begin(send_ready=False)
+            if query_upper in ['COMMIT', 'COMMIT TRANSACTION', 'COMMIT WORK', 'END', 'END TRANSACTION']:
+                return self._handle_commit(send_ready=False)
+            if query_upper in ['ROLLBACK', 'ROLLBACK TRANSACTION', 'ROLLBACK WORK', 'ABORT']:
+                return self._handle_rollback(send_ready=False)
+
+            # ATTACH/DETACH
+            if query_upper.startswith('ATTACH '):
+                ok = self._handle_attach(query, send_ready=False)
+                return bool(ok)
+            if query_upper.startswith('DETACH '):
+                ok = self._handle_detach(query, send_ready=False)
+                return bool(ok)
+
+            # We intentionally do not run the Simple Query catalog handler here, since it
+            # sends ReadyForQuery. Most clients won't batch catalog/introspection queries.
+            if self._is_catalog_query(query):
+                self.sock.sendall(ErrorResponse.encode(
+                    'ERROR',
+                    "Batched catalog queries are not supported (send as separate statements).",
+                ))
+                if self.transaction_status == 'T':
+                    self.transaction_status = 'E'
+                return False
+
+            # Lazy ATTACH: attach configured sql_connections on-demand when referenced
+            if self._lazy_attach is not None:
+                try:
+                    self._lazy_attach.ensure_for_query(query, aggressive=False)
+                    self._refresh_attached_view_cache()
+                except Exception:
+                    pass
+
+            # Execute normal SQL with unified rewriting (semantic operators, deref, INTO rewrites)
+            from lars.sql_rewriter import rewrite_lars_syntax
+
+            original_query = query
+            _query_id, _query_start_time, _caller_id = self._setup_query_tracking(query)
+
+            # Deref preprocessing: evaluate @cascade() expressions first
+            from ..sql_tools.deref_preprocessor import preprocess_deref_cascades
+            deref_context = {
+                'session_id': f"{self.auth_user_id}:{self.database_name}",
+                'protocol': 'pgwire',
+                'database_name': self.database_name,
+                'user_name': self.user_name,
+                'application_name': self.application_name,
+                'client_address': f"{self.addr[0]}:{self.addr[1]}" if self.addr else '',
+                'caller_id': _caller_id,
+            }
+            query = preprocess_deref_cascades(query, deref_context)
+
+            # Rewrite into_ table references to read from ClickHouse
+            try:
+                from ..sql_tools.into_table_rewriter import rewrite_into_tables
+                query, _ = rewrite_into_tables(query, results_db=self.results_db_name)
+            except Exception:
+                pass
+
+            # Rewrite LARS MAP/RUN syntax to standard SQL (strips annotations/comments)
+            query = rewrite_lars_syntax(query, duckdb_conn=self.duckdb_conn)
+
+            # Extract LARS hints (e.g., save_as from arrow syntax)
+            query, lars_hints = self._extract_lars_hints(query)
+
+            # Execute on DuckDB (retry once with aggressive lazy attach)
+            try:
+                result = self.duckdb_conn.execute(query)
+            except Exception as first_exec_error:
+                if self._lazy_attach is not None:
+                    try:
+                        self._lazy_attach.ensure_for_query(original_query, aggressive=True)
+                        result = self.duckdb_conn.execute(query)
+                    except Exception:
+                        raise first_exec_error
+                raise
+
+            import pandas as pd
+            result_df = pd.DataFrame() if result is None else result.fetchdf()
+
+            # Auto-materialize for query insurance
+            _result_location = self._maybe_materialize_result(original_query, result_df, _query_id, _caller_id)
+
+            # Arrow syntax: save result as named table if save_as hint present
+            if 'save_as' in lars_hints:
+                self._save_result_as(lars_hints['save_as'], result_df)
+
+            # Send results (no ReadyForQuery)
+            send_execute_results(self.sock, result_df, send_row_description=True)
+
+            # SQL Trail completion
+            self._complete_query_tracking(
+                _query_id, _query_start_time, _caller_id, result_df,
+                result_location=_result_location
+            )
+
+            return True
+
+        except Exception as e:
+            error_message = str(e)
+            error_detail = traceback.format_exc()
+
+            # Mark transaction as errored if we were in one
+            if self.transaction_status == 'T':
+                self.transaction_status = 'E'
+
+            # SQL Trail error logging + caller_context cleanup (if we started tracking)
+            self._error_query_tracking(_query_id, _query_start_time, e)
+
+            self.sock.sendall(ErrorResponse.encode('ERROR', error_message, detail=error_detail))
+            return False
 
     def _is_catalog_query(self, query: str) -> bool:
         """
@@ -4765,7 +5709,12 @@ class ClientConnection:
 
         query_upper = query.upper()
 
-        styled_print(f"[{self.session_id}]   {S.CLIP} Catalog query detected: {query[:80]}...")
+        self._runtime_log(
+            "DEBUG",
+            f"Catalog query detected: {query[:80]}...",
+            event="catalog_query_detected",
+            query_preview=query[:200],
+        )
 
         try:
             # ACL aggregation queries (DataGrip) often UNION tablespace + database ACLs.
@@ -4773,7 +5722,11 @@ class ClientConnection:
             if 'PG_TABLESPACE' in query_upper and 'PG_DATABASE' in query_upper and 'DATACL' in query_upper:
                 cols = self._expected_result_columns(query) or ['object_id', 'acl']
                 send_query_results(self.sock, self._empty_df_for_columns(cols), self.transaction_status)
-                styled_print(f"[{self.session_id}]   {S.OK} ACL union catalog query handled (empty)")
+                self._runtime_log(
+                    "DEBUG",
+                    "ACL union catalog query handled (empty)",
+                    event="catalog_acl_union_empty",
+                )
                 return
 
             # pg_database list queries (DataGrip schema browser)
@@ -4832,7 +5785,12 @@ class ClientConnection:
                 }
                 result_df = pd.DataFrame({c: [base.get(c, base.get(c.lower(), None))] for c in cols})
                 send_query_results(self.sock, result_df, self.transaction_status)
-                styled_print(f"[{self.session_id}]   {S.OK} pg_database → {self.database_name}")
+                self._runtime_log(
+                    "DEBUG",
+                    f"pg_database → {self.database_name}",
+                    event="catalog_pg_database",
+                    database_name=self.database_name,
+                )
                 return
 
             # PRIORITY: pg_namespace queries FIRST (before CURRENT_SCHEMA which they may contain)
@@ -4847,7 +5805,11 @@ class ClientConnection:
             is_acl_query = 'NSPACL' in select_clause or ' ACL' in select_clause or ',ACL' in select_clause or '.ACL' in select_clause
 
             if is_pg_namespace_main and not is_pg_class_main and 'FROM' in query_upper and not is_acl_query:
-                styled_print(f"[{self.session_id}]   {S.CFG} Handling pg_namespace query for schema browser...")
+                self._runtime_log(
+                    "DEBUG",
+                    "Handling pg_namespace query for schema browser...",
+                    event="catalog_pg_namespace_start",
+                )
                 try:
                     # Get expected columns from the query
                     expected_cols = self._expected_result_columns(query) or ['id', 'state_number', 'name', 'description', 'owner']
@@ -4870,7 +5832,12 @@ class ClientConnection:
                             unique_cols.append(col)
                     expected_cols = unique_cols
 
-                    print(f"[{self.session_id}]      Expected columns: {expected_cols}")
+                    self._runtime_log(
+                        "DEBUG",
+                        f"pg_namespace expected columns: {expected_cols}",
+                        event="catalog_pg_namespace_expected_cols",
+                        expected_cols=expected_cols,
+                    )
 
                     # Get schema data from DuckDB's pg_catalog
                     schema_rows = self.duckdb_conn.execute(
@@ -4934,17 +5901,36 @@ class ClientConnection:
                     if name_col and name_col in result_df.columns:
                         result_df = result_df.sort_values(name_col).reset_index(drop=True)
 
-                    # Debug: show what schemas we found
-                    styled_print(f"[{self.session_id}]   {S.CLIP} Schemas found ({len(result_df)}):")
-                    for _, row in result_df.head(10).iterrows():
-                        display_val = row.get(name_col, row.iloc[0]) if name_col else row.iloc[0]
-                        print(f"[{self.session_id}]      - {display_val}")
+                    try:
+                        if name_col and name_col in result_df.columns:
+                            preview = [str(v) for v in result_df[name_col].head(10).tolist()]
+                        else:
+                            preview = [str(v) for v in result_df.iloc[:, 0].head(10).tolist()]
+                    except Exception:
+                        preview = []
+                    self._runtime_log(
+                        "DEBUG",
+                        f"Schemas found: {len(result_df)}",
+                        event="catalog_pg_namespace_preview",
+                        schema_count=len(result_df),
+                        preview=preview,
+                    )
 
                     send_query_results(self.sock, result_df, self.transaction_status)
-                    styled_print(f"[{self.session_id}]   {S.DONE} pg_namespace handled ({len(result_df)} schemas)")
+                    self._runtime_log(
+                        "DEBUG",
+                        f"pg_namespace handled ({len(result_df)} schemas)",
+                        event="catalog_pg_namespace_handled",
+                        schema_count=len(result_df),
+                    )
                     return
                 except Exception as e:
-                    styled_print(f"[{self.session_id}]   {S.WARN}  Could not handle pg_namespace: {e}")
+                    self._runtime_log(
+                        "WARN",
+                        f"Could not handle pg_namespace: {e}",
+                        event="catalog_pg_namespace_error",
+                        error_type=type(e).__name__,
+                    )
                     # Fall through to default handler
 
             # Simple function handlers (AFTER pg_namespace to not intercept schema queries)
@@ -4967,7 +5953,12 @@ class ClientConnection:
                         row[c] = None
                 result_df = pd.DataFrame({c: [row[c]] for c in cols})
                 send_query_results(self.sock, result_df, self.transaction_status)
-                styled_print(f"[{self.session_id}]   {S.OK} CURRENT_DATABASE() → {self.database_name}")
+                self._runtime_log(
+                    "DEBUG",
+                    f"CURRENT_DATABASE() → {self.database_name}",
+                    event="catalog_current_database",
+                    database_name=self.database_name,
+                )
                 return
 
             # Skip if this is a pg_namespace query (which may use current_schema() in WHERE)
@@ -4994,7 +5985,11 @@ class ClientConnection:
                 else:
                     result_df = pd.DataFrame({'current_schema': ['main']})
                 send_query_results(self.sock, result_df, self.transaction_status)
-                styled_print(f"[{self.session_id}]   {S.OK} CURRENT_SCHEMA(S) handled")
+                self._runtime_log(
+                    "DEBUG",
+                    "CURRENT_SCHEMA(S) handled",
+                    event="catalog_current_schema",
+                )
                 return
 
             if 'VERSION()' in query_upper:
@@ -5002,13 +5997,21 @@ class ClientConnection:
                 version_str = "PostgreSQL 14.0 on x86_64-pc-linux-gnu, compiled by gcc"
                 result_df = pd.DataFrame({'version': [version_str]})
                 send_query_results(self.sock, result_df, self.transaction_status)
-                styled_print(f"[{self.session_id}]   {S.OK} VERSION() → {version_str}")
+                self._runtime_log(
+                    "DEBUG",
+                    f"VERSION() → {version_str}",
+                    event="catalog_version",
+                )
                 return
 
             if 'HAS_TABLE_PRIVILEGE' in query_upper or 'HAS_SCHEMA_PRIVILEGE' in query_upper:
                 result_df = pd.DataFrame({'has_privilege': [True]})
                 send_query_results(self.sock, result_df, self.transaction_status)
-                styled_print(f"[{self.session_id}]   {S.OK} HAS_PRIVILEGE function handled")
+                self._runtime_log(
+                    "DEBUG",
+                    "HAS_PRIVILEGE function handled",
+                    event="catalog_has_privilege",
+                )
                 return
 
             # Special case 4: PostgreSQL functions that don't exist in DuckDB
@@ -5039,13 +6042,23 @@ class ClientConnection:
                                 keywords.add(match.lower())
 
                 except Exception as e:
-                    styled_print(f"[{self.session_id}]   {S.WARN}  Could not load SQL registry: {e}")
+                    self._runtime_log(
+                        "WARN",
+                        f"Could not load SQL registry: {e}",
+                        event="catalog_pg_get_keywords_registry_error",
+                        error_type=type(e).__name__,
+                    )
 
                 # Build result DataFrame
                 lars_keywords = [(word, 'U', 'unreserved (LARS)') for word in sorted(keywords)]
                 result_df = pd.DataFrame(lars_keywords, columns=['word', 'catcode', 'catdesc'])
                 send_query_results(self.sock, result_df, self.transaction_status)
-                styled_print(f"[{self.session_id}]   {S.OK} PG_GET_KEYWORDS() → {len(lars_keywords)} LARS keywords")
+                self._runtime_log(
+                    "DEBUG",
+                    f"PG_GET_KEYWORDS() → {len(lars_keywords)} LARS keywords",
+                    event="catalog_pg_get_keywords",
+                    keyword_count=len(lars_keywords),
+                )
                 return
 
             # Special case 5: pg_locks (DataGrip queries this for transaction info)
@@ -5053,7 +6066,6 @@ class ClientConnection:
                 # Return empty result - we don't track locks
                 result_df = pd.DataFrame({'transaction_id': pd.Series([], dtype='int64')})
                 send_query_results(self.sock, result_df, self.transaction_status)
-                styled_print(f"[{self.session_id}]   {S.OK} pg_locks handled (empty)")
                 return
 
             # Special case 6: pg_is_in_recovery() (DataGrip checks if replica)
@@ -5067,7 +6079,6 @@ class ClientConnection:
                 else:
                     result_df = pd.DataFrame({'pg_is_in_recovery': [False]})
                 send_query_results(self.sock, result_df, self.transaction_status)
-                styled_print(f"[{self.session_id}]   {S.OK} pg_is_in_recovery() handled (false)")
                 return
 
             # Special case 7: pg_stat_activity (DataGrip session info)
@@ -5081,12 +6092,10 @@ class ClientConnection:
                     'state': ['active']
                 })
                 send_query_results(self.sock, result_df, self.transaction_status)
-                styled_print(f"[{self.session_id}]   {S.OK} pg_stat_activity handled")
                 return
 
             # Handle pg_timezone_names/pg_timezone_abbrevs (DataGrip queries these)
             if 'PG_TIMEZONE_NAMES' in query_upper or 'PG_TIMEZONE_ABBREVS' in query_upper:
-                styled_print(f"[{self.session_id}]   {S.CFG} Handling timezone catalog query...")
                 cols = self._expected_result_columns(query) or ['name', 'is_dst']
                 # Return common timezones (minimal shape, matching DataGrip's union query)
                 rows = [
@@ -5097,12 +6106,10 @@ class ClientConnection:
                 ]
                 result_df = pd.DataFrame([{c: r.get(c, None) for c in cols} for r in rows])
                 send_query_results(self.sock, result_df, self.transaction_status)
-                styled_print(f"[{self.session_id}]   {S.OK} timezone catalog handled")
                 return
 
             # Handle pg_roles (DataGrip queries this for user management)
             if 'PG_ROLES' in query_upper and 'FROM' in query_upper:
-                styled_print(f"[{self.session_id}]   {S.CFG} Handling pg_roles query...")
                 cols = self._expected_result_columns(query) or ['role_id', 'role_name']
                 # Use 1/0 for booleans - JDBC expects integers for these fields
                 base = {
@@ -5127,23 +6134,19 @@ class ClientConnection:
                 }
                 result_df = pd.DataFrame({c: [base.get(c, base.get(c.lower(), None))] for c in cols})
                 send_query_results(self.sock, result_df, self.transaction_status)
-                styled_print(f"[{self.session_id}]   {S.OK} pg_roles handled")
                 return
 
             # Handle pg_user_mappings (DataGrip queries for FDW user mappings)
             # Must check before pg_user to avoid false match
             if 'PG_USER_MAPPINGS' in query_upper:
-                styled_print(f"[{self.session_id}]   {S.CFG} Handling pg_user_mappings query...")
                 cols = self._expected_result_columns(query) or ['id', 'server_id', 'user', 'options']
                 result_df = self._empty_df_for_columns(cols)
                 send_query_results(self.sock, result_df, self.transaction_status)
-                styled_print(f"[{self.session_id}]   {S.OK} pg_user_mappings handled (empty)")
                 return
 
             # Handle pg_user (DataGrip queries this for user permissions)
             # Exclude pg_user_mappings which contains 'PG_USER'
             if 'PG_USER' in query_upper and 'FROM' in query_upper and 'PG_USER_MAPPINGS' not in query_upper:
-                styled_print(f"[{self.session_id}]   {S.CFG} Handling pg_user query...")
                 cols = self._expected_result_columns(query) or ['usename', 'usesuper']
                 # Use 1/0 for booleans - JDBC expects integers for these fields
                 base = {
@@ -5159,21 +6162,17 @@ class ClientConnection:
                 }
                 result_df = pd.DataFrame({c: [base.get(c, base.get(c.lower(), None))] for c in cols})
                 send_query_results(self.sock, result_df, self.transaction_status)
-                styled_print(f"[{self.session_id}]   {S.OK} pg_user handled")
                 return
 
             # Handle pg_auth_members (DataGrip queries for role membership)
             if 'PG_AUTH_MEMBERS' in query_upper:
-                styled_print(f"[{self.session_id}]   {S.CFG} Handling pg_auth_members query...")
                 cols = self._expected_result_columns(query) or ['id', 'role_id', 'admin_option']
                 result_df = self._empty_df_for_columns(cols)
                 send_query_results(self.sock, result_df, self.transaction_status)
-                styled_print(f"[{self.session_id}]   {S.OK} pg_auth_members handled (empty)")
                 return
 
             # Handle pg_language (DataGrip queries for procedural languages)
             if 'PG_LANGUAGE' in query_upper and 'FROM' in query_upper:
-                styled_print(f"[{self.session_id}]   {S.CFG} Handling pg_language query...")
                 cols = self._expected_result_columns(query) or ['oid', 'lanname']
                 # Provide standard PostgreSQL languages
                 languages = [
@@ -5188,79 +6187,63 @@ class ClientConnection:
                 ]
                 result_df = pd.DataFrame([{c: lang.get(c, lang.get(c.lower(), None)) for c in cols} for lang in languages])
                 send_query_results(self.sock, result_df, self.transaction_status)
-                styled_print(f"[{self.session_id}]   {S.OK} pg_language handled ({len(languages)} languages)")
                 return
 
             # Handle pg_cast queries (DataGrip queries for type casting information)
             if 'PG_CAST' in query_upper and 'FROM' in query_upper:
-                styled_print(f"[{self.session_id}]   {S.CFG} Handling pg_cast query...")
                 cols = self._expected_result_columns(query) or ['oid', 'castsource', 'casttarget', 'castfunc', 'castcontext', 'castmethod']
                 # Return empty - DuckDB doesn't have pg_cast
                 result_df = pd.DataFrame(columns=cols)
                 send_query_results(self.sock, result_df, self.transaction_status)
-                styled_print(f"[{self.session_id}]   {S.OK} pg_cast handled (empty)")
                 return
 
             # Handle pg_collation queries (DataGrip queries for collation information)
             if self._primary_from_table(query_upper) == 'PG_COLLATION':
-                styled_print(f"[{self.session_id}]   {S.CFG} Handling pg_collation query...")
                 cols = self._expected_result_columns(query) or ['oid', 'collname', 'collnamespace', 'collowner']
                 # Return empty - DuckDB doesn't have pg_collation
                 result_df = pd.DataFrame(columns=cols)
                 send_query_results(self.sock, result_df, self.transaction_status)
-                styled_print(f"[{self.session_id}]   {S.OK} pg_collation handled (empty)")
                 return
 
             # Handle pg_inherits queries (including subqueries) - DuckDB doesn't have inheritance
             # Only match if pg_inherits is the main table, not just a LEFT JOIN in a pg_class query
             if 'PG_INHERITS' in query_upper and 'PG_CLASS' not in query_upper:
-                styled_print(f"[{self.session_id}]   {S.CFG} Handling pg_inherits query...")
                 cols = self._expected_result_columns(query) or ['inhrelid', 'inhparent', 'inhseqno']
                 result_df = pd.DataFrame(columns=cols)
                 send_query_results(self.sock, result_df, self.transaction_status)
-                styled_print(f"[{self.session_id}]   {S.OK} pg_inherits handled (empty)")
                 return
 
             # Handle pg_partitioned_table queries - DuckDB doesn't have table partitioning metadata
             if 'PG_PARTITIONED_TABLE' in query_upper:
-                styled_print(f"[{self.session_id}]   {S.CFG} Handling pg_partitioned_table query...")
                 cols = self._expected_result_columns(query) or ['partrelid', 'partstrat', 'partnatts']
                 result_df = pd.DataFrame(columns=cols)
                 send_query_results(self.sock, result_df, self.transaction_status)
-                styled_print(f"[{self.session_id}]   {S.OK} pg_partitioned_table handled (empty)")
                 return
 
             # Handle pg_operator queries - DuckDB doesn't have pg_operator
             if self._primary_from_table(query_upper) == 'PG_OPERATOR':
-                styled_print(f"[{self.session_id}]   {S.CFG} Handling pg_operator query...")
                 cols = self._expected_result_columns(query) or ['oid', 'oprname', 'oprnamespace', 'oprowner']
                 result_df = pd.DataFrame(columns=cols)
                 send_query_results(self.sock, result_df, self.transaction_status)
-                styled_print(f"[{self.session_id}]   {S.OK} pg_operator handled (empty)")
                 return
 
             # Handle pg_aggregate queries - DuckDB doesn't have pg_aggregate
             if 'PG_AGGREGATE' in query_upper:
-                styled_print(f"[{self.session_id}]   {S.CFG} Handling pg_aggregate query...")
                 cols = self._expected_result_columns(query) or ['aggfnoid', 'aggkind', 'aggnumdirectargs']
                 result_df = pd.DataFrame(columns=cols)
                 send_query_results(self.sock, result_df, self.transaction_status)
-                styled_print(f"[{self.session_id}]   {S.OK} pg_aggregate handled (empty)")
                 return
 
             # Handle complex pg_constraint queries with PostgreSQL-specific array functions
             # These use UNNEST, regoper::varchar etc. that don't work in DuckDB
             if 'PG_CONSTRAINT' in query_upper and ('CONEXCLOP' in query_upper or 'UNNEST' in query_upper or 'REGOPER' in query_upper):
-                styled_print(f"[{self.session_id}]   {S.CFG} Handling complex pg_constraint query...")
                 cols = self._expected_result_columns(query) or ['oid', 'conname', 'connamespace', 'contype']
                 result_df = pd.DataFrame(columns=cols)
                 send_query_results(self.sock, result_df, self.transaction_status)
-                styled_print(f"[{self.session_id}]   {S.OK} pg_constraint (complex) handled (empty)")
                 return
 
             # Handle pg_tablespace queries (DataGrip queries this)
             if 'PG_TABLESPACE' in query_upper and 'FROM' in query_upper:
-                styled_print(f"[{self.session_id}]   {S.CFG} Handling pg_tablespace query...")
                 cols = self._expected_result_columns(query) or ['id', 'name']
                 base = {
                     'id': 1,
@@ -5275,89 +6258,70 @@ class ClientConnection:
                 }
                 result_df = pd.DataFrame({c: [base.get(c, base.get(c.lower(), None))] for c in cols})
                 send_query_results(self.sock, result_df, self.transaction_status)
-                styled_print(f"[{self.session_id}]   {S.OK} pg_tablespace handled")
                 return
 
             # Handle pg_extension (DataGrip queries for extensions)
             if 'PG_EXTENSION' in query_upper and 'FROM' in query_upper:
-                styled_print(f"[{self.session_id}]   {S.CFG} Handling pg_extension query...")
                 cols = self._expected_result_columns(query) or ['oid', 'extname']
                 result_df = self._empty_df_for_columns(cols)
                 send_query_results(self.sock, result_df, self.transaction_status)
-                styled_print(f"[{self.session_id}]   {S.OK} pg_extension handled (empty)")
                 return
 
             # Handle pg_cast (DataGrip queries for type casts)
             if 'PG_CAST' in query_upper and 'FROM' in query_upper:
-                styled_print(f"[{self.session_id}]   {S.CFG} Handling pg_cast query...")
                 cols = self._expected_result_columns(query) or ['oid', 'castsource', 'casttarget']
                 result_df = self._empty_df_for_columns(cols)
                 send_query_results(self.sock, result_df, self.transaction_status)
-                styled_print(f"[{self.session_id}]   {S.OK} pg_cast handled (empty)")
                 return
 
             # Handle pg_collation (DataGrip queries for collations)
             if self._primary_from_table(query_upper) == 'PG_COLLATION':
-                styled_print(f"[{self.session_id}]   {S.CFG} Handling pg_collation query...")
                 cols = self._expected_result_columns(query) or ['oid', 'collname']
                 result_df = self._empty_df_for_columns(cols)
                 send_query_results(self.sock, result_df, self.transaction_status)
-                styled_print(f"[{self.session_id}]   {S.OK} pg_collation handled (empty)")
                 return
 
             # Handle pg_inherits (DataGrip queries for table inheritance)
             # Only match if pg_inherits is the main table, not just a LEFT JOIN in a pg_class query
             if 'PG_INHERITS' in query_upper and 'FROM' in query_upper and 'PG_CLASS' not in query_upper:
-                styled_print(f"[{self.session_id}]   {S.CFG} Handling pg_inherits query...")
                 cols = self._expected_result_columns(query) or ['inhrelid', 'inhparent', 'inhseqno']
                 result_df = self._empty_df_for_columns(cols)
                 send_query_results(self.sock, result_df, self.transaction_status)
-                styled_print(f"[{self.session_id}]   {S.OK} pg_inherits handled (empty)")
                 return
 
             # Handle pg_foreign_table (DataGrip queries for foreign tables)
             if 'PG_FOREIGN_TABLE' in query_upper and 'FROM' in query_upper:
-                styled_print(f"[{self.session_id}]   {S.CFG} Handling pg_foreign_table query...")
                 cols = self._expected_result_columns(query) or ['ftrelid', 'ftserver', 'ftoptions']
                 result_df = self._empty_df_for_columns(cols)
                 send_query_results(self.sock, result_df, self.transaction_status)
-                styled_print(f"[{self.session_id}]   {S.OK} pg_foreign_table handled (empty)")
                 return
 
             # Handle pg_foreign_data_wrapper (DataGrip queries for FDW)
             if 'PG_FOREIGN_DATA_WRAPPER' in query_upper and 'FROM' in query_upper:
-                styled_print(f"[{self.session_id}]   {S.CFG} Handling pg_foreign_data_wrapper query...")
                 cols = self._expected_result_columns(query) or ['oid', 'fdwname']
                 result_df = self._empty_df_for_columns(cols)
                 send_query_results(self.sock, result_df, self.transaction_status)
-                styled_print(f"[{self.session_id}]   {S.OK} pg_foreign_data_wrapper handled (empty)")
                 return
 
             # Handle pg_operator (DataGrip queries for operators)
             if self._primary_from_table(query_upper) == 'PG_OPERATOR':
-                styled_print(f"[{self.session_id}]   {S.CFG} Handling pg_operator query...")
                 cols = self._expected_result_columns(query) or ['oid', 'oprname']
                 result_df = self._empty_df_for_columns(cols)
                 send_query_results(self.sock, result_df, self.transaction_status)
-                styled_print(f"[{self.session_id}]   {S.OK} pg_operator handled (empty)")
                 return
 
             # Handle pg_foreign_server (DataGrip queries for FDW servers)
             if 'PG_FOREIGN_SERVER' in query_upper and 'FROM' in query_upper:
-                styled_print(f"[{self.session_id}]   {S.CFG} Handling pg_foreign_server query...")
                 cols = self._expected_result_columns(query) or ['oid', 'srvname']
                 result_df = self._empty_df_for_columns(cols)
                 send_query_results(self.sock, result_df, self.transaction_status)
-                styled_print(f"[{self.session_id}]   {S.OK} pg_foreign_server handled (empty)")
                 return
 
             # Handle pg_event_trigger (DataGrip queries for event triggers)
             if 'PG_EVENT_TRIGGER' in query_upper and 'FROM' in query_upper:
-                styled_print(f"[{self.session_id}]   {S.CFG} Handling pg_event_trigger query...")
                 cols = self._expected_result_columns(query) or ['oid', 'evtname']
                 result_df = self._empty_df_for_columns(cols)
                 send_query_results(self.sock, result_df, self.transaction_status)
-                styled_print(f"[{self.session_id}]   {S.OK} pg_event_trigger handled (empty)")
                 return
 
             # Special case 4: pg_class queries with regclass type columns
@@ -5365,20 +6329,16 @@ class ClientConnection:
             # Even after column rewriting, JOIN conditions and functions still fail
             # Solution: Replace entire query with pg_tables equivalent
             if 'FROM PG_CATALOG.PG_CLASS' in query_upper and 'C.*' in query_upper:
-                # Log the FULL original query for debugging
-                styled_print(f"[{self.session_id}]   {S.LOG} ORIGINAL QUERY:")
-                print(f"[{self.session_id}]      {query[:500]}")
-                if len(query) > 500:
-                    print(f"[{self.session_id}]      ... (truncated)")
-
-                styled_print(f"[{self.session_id}]   {S.CFG} Bypassing pg_class query (using compatible columns)...")
+                self._runtime_log(
+                    "DEBUG",
+                    "Bypassing pg_class query (using compatible columns)...",
+                    event="catalog_pg_class_bypass",
+                )
                 try:
                     # Extract WHERE clause from original query to preserve DBeaver's filters
                     import re
                     where_match = re.search(r'\bWHERE\b(.+?)(?:ORDER BY|LIMIT|$)', query, re.IGNORECASE | re.DOTALL)
                     where_clause = where_match.group(1).strip() if where_match else "c.relkind IN ('r', 'v', 'm', 'f', 'p')"
-
-                    print(f"[{self.session_id}]      Extracted WHERE: {where_clause[:200]}")
 
                     # Use information_schema.tables joined with pg_namespace for proper OIDs
                     # DuckDB's pg_catalog.pg_class is EMPTY - doesn't contain user tables
@@ -5392,8 +6352,6 @@ class ClientConnection:
                     transformed_where = re.sub(r'\b(c\.)?relkind\b', "(CASE t.table_type WHEN 'BASE TABLE' THEN 'r' WHEN 'VIEW' THEN 'v' ELSE 'r' END)", transformed_where, flags=re.IGNORECASE)
                     # relname -> t.table_name (with or without c. prefix)
                     transformed_where = re.sub(r'\b(c\.)?relname\b', 't.table_name', transformed_where, flags=re.IGNORECASE)
-
-                    print(f"[{self.session_id}]      Transformed WHERE: {transformed_where[:200]}")
 
                     safe_query = f"""
                         SELECT
@@ -5422,35 +6380,33 @@ class ClientConnection:
                     """
                     result_df = self.duckdb_conn.execute(safe_query).fetchdf()
 
-                    # Debug: Log what we're returning
-                    styled_print(f"[{self.session_id}]   {S.CHART} Returning {len(result_df)} relations:")
-                    for idx, row in result_df.head(5).iterrows():
-                        print(f"[{self.session_id}]      - {row['relname']} (kind={row['relkind']}, namespace={row['relnamespace']})")
-
                     send_query_results(self.sock, result_df, self.transaction_status)
-                    styled_print(f"[{self.session_id}]   {S.DONE} Data sent successfully")
                     return
                 except Exception as e:
-                    print(f"[{self.session_id}]   ✗ Safe query failed: {e}")
-                    print(f"[{self.session_id}]   ✗ Error details: {str(e)[:200]}")
-                    import traceback
-                    traceback.print_exc()
+                    self._runtime_log(
+                        "WARN",
+                        f"pg_class bypass failed: {e}",
+                        event="catalog_pg_class_bypass_failed",
+                        error_type=type(e).__name__,
+                    )
+                    if os.environ.get("LARS_PG_TRACEBACK", "0").strip().lower() in ("1", "true", "yes", "on"):
+                        import traceback
+                        traceback.print_exc()
                     # Fall through to default handler
 
             # Special case 5: pg_attribute queries (column metadata)
             # DBeaver queries with a.* which includes columns that don't exist in DuckDB v1.4.2
             if 'FROM PG_CATALOG.PG_ATTRIBUTE' in query_upper and 'A.*' in query_upper:
-                styled_print(f"[{self.session_id}]   {S.LOG} ORIGINAL pg_attribute QUERY:")
-                print(f"[{self.session_id}]      {query[:500]}")
-
-                styled_print(f"[{self.session_id}]   {S.CFG} Bypassing pg_attribute query (using safe columns)...")
+                self._runtime_log(
+                    "DEBUG",
+                    "Bypassing pg_attribute query (using safe columns)...",
+                    event="catalog_pg_attribute_bypass",
+                )
                 try:
                     # Extract WHERE clause
                     import re
                     where_match = re.search(r'\bWHERE\b(.+?)(?:ORDER BY|LIMIT|$)', query, re.IGNORECASE | re.DOTALL)
                     where_clause = where_match.group(1).strip() if where_match else "a.attnum > 0 AND NOT a.attisdropped"
-
-                    print(f"[{self.session_id}]      Extracted WHERE: {where_clause[:200]}")
 
                     # Query with only columns that exist in DuckDB v1.4.2
                     safe_query = f"""
@@ -5473,18 +6429,18 @@ class ClientConnection:
                     """
                     result_df = self.duckdb_conn.execute(safe_query).fetchdf()
 
-                    styled_print(f"[{self.session_id}]   {S.CHART} Returning {len(result_df)} columns:")
-                    for idx, row in result_df.head(10).iterrows():
-                        print(f"[{self.session_id}]      - {row['relname']}.{row['attname']} (type={row['atttypid']}, notnull={row['attnotnull']})")
-
                     send_query_results(self.sock, result_df, self.transaction_status)
-                    styled_print(f"[{self.session_id}]   {S.DONE} Column data sent successfully")
                     return
                 except Exception as e:
-                    print(f"[{self.session_id}]   ✗ pg_attribute query failed: {e}")
-                    print(f"[{self.session_id}]   ✗ Error details: {str(e)[:200]}")
-                    import traceback
-                    traceback.print_exc()
+                    self._runtime_log(
+                        "WARN",
+                        f"pg_attribute bypass failed: {e}",
+                        event="catalog_pg_attribute_bypass_failed",
+                        error_type=type(e).__name__,
+                    )
+                    if os.environ.get("LARS_PG_TRACEBACK", "0").strip().lower() in ("1", "true", "yes", "on"):
+                        import traceback
+                        traceback.print_exc()
                     # Fall through to default handler
 
             # Special case 6: PostgreSQL type casts (::regclass, ::oid, etc.)
@@ -5502,7 +6458,6 @@ class ClientConnection:
                     clean_query = self._rewrite_pg_system_column_refs(clean_query)
                     result_df = self.duckdb_conn.execute(clean_query).fetchdf()
                     send_query_results(self.sock, result_df, self.transaction_status)
-                    styled_print(f"[{self.session_id}]   {S.OK} Type cast query handled")
                     return
                 except:
                     # If that fails, return empty
@@ -5533,22 +6488,30 @@ class ClientConnection:
                     except Exception:
                         pass
                 send_query_results(self.sock, result_df, self.transaction_status)
-                styled_print(f"[{self.session_id}]   {S.OK} Catalog query executed ({len(result_df)} rows)")
                 return
 
             except Exception as query_error:
                 # Query failed - this might be a complex pg_catalog query we don't support
-                styled_print(f"[{self.session_id}]   {S.WARN}  Catalog query failed: {str(query_error)[:100]}")
+                self._runtime_log(
+                    "WARN",
+                    f"Catalog query failed: {str(query_error)[:200]}",
+                    event="catalog_query_failed",
+                    error_type=type(query_error).__name__,
+                )
 
                 # Fallback: Return empty result (safe - clients handle this gracefully)
                 cols = self._expected_result_columns(query)
                 empty_df = self._empty_df_for_columns(cols) if cols else pd.DataFrame()
                 send_query_results(self.sock, empty_df, self.transaction_status)
-                styled_print(f"[{self.session_id}]   {S.OK} Returned empty result (fallback)")
 
         except Exception as e:
             # Complete failure - return empty result to keep client from crashing
-            styled_print(f"[{self.session_id}]   {S.WARN}  Catalog query handler error: {e}")
+            self._runtime_log(
+                "WARN",
+                f"Catalog query handler error: {e}",
+                event="catalog_query_handler_error",
+                error_type=type(e).__name__,
+            )
             import pandas as pd
             cols = self._expected_result_columns(query)
             empty_df = self._empty_df_for_columns(cols) if cols else pd.DataFrame()
@@ -5644,7 +6607,13 @@ class ClientConnection:
                 result_df = pd.DataFrame({'setting': ['']})
 
         send_execute_results(self.sock, result_df, send_row_description=send_row_description)
-        styled_print(f"[{self.session_id}]      {S.OK} SHOW handled, returned {len(result_df)} rows (row_desc={'sent' if send_row_description else 'skipped'})")
+        self._runtime_log(
+            "DEBUG",
+            f"SHOW handled, returned {len(result_df)} rows (row_desc={'sent' if send_row_description else 'skipped'})",
+            event="show_extended_handled",
+            row_count=len(result_df),
+            row_description_sent=bool(send_row_description),
+        )
 
     def _execute_set_command(self, query: str):
         """
@@ -5677,15 +6646,23 @@ class ClientConnection:
 
         if is_ignored:
             # Silently ignore
-            print(f"[{self.session_id}]      Ignoring PostgreSQL-specific SET: {query[:60]}")
+            self._runtime_log(
+                "DEBUG",
+                f"Ignoring PostgreSQL-specific SET: {query[:200]}{'...' if len(query) > 200 else ''}",
+                event="set_ignored",
+            )
         else:
             # Try to execute on DuckDB (might work for some SET commands)
             try:
                 self.duckdb_conn.execute(query)
-                print(f"[{self.session_id}]      SET command executed on DuckDB")
+                self._runtime_log("DEBUG", "SET command executed on DuckDB", event="set_executed")
             except Exception as e:
                 # DuckDB doesn't support this either - ignore
-                print(f"[{self.session_id}]      Ignoring unsupported SET: {query[:60]}")
+                self._runtime_log(
+                    "DEBUG",
+                    f"Ignoring unsupported SET: {query[:200]}{'...' if len(query) > 200 else ''}",
+                    event="set_unsupported",
+                )
 
     def _handle_set_command(self, query: str):
         """
@@ -5719,49 +6696,64 @@ class ClientConnection:
         import pandas as pd
         query_upper = query.upper()
 
-        styled_print(f"[{self.session_id}]   {S.CLIP} SHOW command detected: {query[:60]}...")
+        self._runtime_log(
+            "DEBUG",
+            f"SHOW command detected: {query[:200]}{'...' if len(query) > 200 else ''}",
+            event="show_command",
+        )
 
         try:
             # SHOW search_path - schema search order
             if 'SEARCH_PATH' in query_upper:
                 result_df = pd.DataFrame({'search_path': ['main, pg_catalog']})
                 send_query_results(self.sock, result_df, self.transaction_status)
-                styled_print(f"[{self.session_id}]   {S.OK} SHOW search_path handled")
+                self._runtime_log("DEBUG", "SHOW search_path handled", event="show_result", setting="search_path")
                 return
 
             # SHOW timezone
             if 'TIMEZONE' in query_upper or 'TIME ZONE' in query_upper:
                 result_df = pd.DataFrame({'TimeZone': ['UTC']})
                 send_query_results(self.sock, result_df, self.transaction_status)
-                styled_print(f"[{self.session_id}]   {S.OK} SHOW timezone handled")
+                self._runtime_log("DEBUG", "SHOW timezone handled", event="show_result", setting="timezone")
                 return
 
             # SHOW server_version
             if 'SERVER_VERSION' in query_upper:
                 result_df = pd.DataFrame({'server_version': ['14.0']})
                 send_query_results(self.sock, result_df, self.transaction_status)
-                styled_print(f"[{self.session_id}]   {S.OK} SHOW server_version handled")
+                self._runtime_log("DEBUG", "SHOW server_version handled", event="show_result", setting="server_version")
                 return
 
             # SHOW client_encoding
             if 'CLIENT_ENCODING' in query_upper:
                 result_df = pd.DataFrame({'client_encoding': ['UTF8']})
                 send_query_results(self.sock, result_df, self.transaction_status)
-                styled_print(f"[{self.session_id}]   {S.OK} SHOW client_encoding handled")
+                self._runtime_log("DEBUG", "SHOW client_encoding handled", event="show_result", setting="client_encoding")
                 return
 
             # SHOW transaction isolation level
             if 'TRANSACTION' in query_upper and 'ISOLATION' in query_upper:
                 result_df = pd.DataFrame({'transaction_isolation': ['read committed']})
                 send_query_results(self.sock, result_df, self.transaction_status)
-                styled_print(f"[{self.session_id}]   {S.OK} SHOW transaction isolation level handled")
+                self._runtime_log(
+                    "DEBUG",
+                    "SHOW transaction isolation level handled",
+                    event="show_result",
+                    setting="transaction_isolation",
+                )
                 return
 
             # SHOW tables - this DuckDB supports natively!
             if 'TABLES' in query_upper:
                 result_df = self.duckdb_conn.execute(query).fetchdf()
                 send_query_results(self.sock, result_df, self.transaction_status)
-                styled_print(f"[{self.session_id}]   {S.OK} SHOW tables executed ({len(result_df)} rows)")
+                self._runtime_log(
+                    "DEBUG",
+                    f"SHOW tables executed ({len(result_df)} rows)",
+                    event="show_result",
+                    setting="tables",
+                    row_count=len(result_df),
+                )
                 return
 
             # SHOW RESULTS - list auto-materialized LARS query results
@@ -5791,10 +6783,20 @@ class ClientConnection:
                             'info': ['No auto-materialized results yet. Run LARS queries to see results here.']
                         })
                     send_query_results(self.sock, result_df, self.transaction_status)
-                    styled_print(f"[{self.session_id}]   {S.OK} SHOW RESULTS: {len(result_df)} entries")
+                    self._runtime_log(
+                        "DEBUG",
+                        f"SHOW RESULTS: {len(result_df)} entries",
+                        event="show_results",
+                        entry_count=len(result_df),
+                    )
                     return
                 except Exception as e:
-                    styled_print(f"[{self.session_id}]   {S.WARN}  SHOW RESULTS failed: {e}")
+                    self._runtime_log(
+                        "WARN",
+                        f"SHOW RESULTS failed: {e}",
+                        event="show_results_error",
+                        error_type=type(e).__name__,
+                    )
                     result_df = pd.DataFrame({'error': [str(e)]})
                     send_query_results(self.sock, result_df, self.transaction_status)
                     return
@@ -5815,10 +6817,20 @@ class ClientConnection:
                             'info': ['Lazy attach manager not initialized']
                         })
                     send_query_results(self.sock, result_df, self.transaction_status)
-                    styled_print(f"[{self.session_id}]   {S.OK} SHOW CONNECTIONS: {len(result_df)} entries")
+                    self._runtime_log(
+                        "DEBUG",
+                        f"SHOW CONNECTIONS: {len(result_df)} entries",
+                        event="show_connections",
+                        entry_count=len(result_df),
+                    )
                     return
                 except Exception as e:
-                    styled_print(f"[{self.session_id}]   {S.WARN}  SHOW CONNECTIONS failed: {e}")
+                    self._runtime_log(
+                        "WARN",
+                        f"SHOW CONNECTIONS failed: {e}",
+                        event="show_connections_error",
+                        error_type=type(e).__name__,
+                    )
                     result_df = pd.DataFrame({'error': [str(e)]})
                     send_query_results(self.sock, result_df, self.transaction_status)
                     return
@@ -5827,10 +6839,14 @@ class ClientConnection:
             try:
                 result_df = self.duckdb_conn.execute(query).fetchdf()
                 send_query_results(self.sock, result_df, self.transaction_status)
-                styled_print(f"[{self.session_id}]   {S.OK} SHOW command executed on DuckDB")
+                self._runtime_log("DEBUG", "SHOW command executed on DuckDB", event="show_executed_duckdb")
             except Exception as e:
                 # DuckDB doesn't support this SHOW command - return empty
-                styled_print(f"[{self.session_id}]   {S.INFO}  Unsupported SHOW command, returning empty")
+                self._runtime_log(
+                    "DEBUG",
+                    "Unsupported SHOW command, returning empty",
+                    event="show_unsupported",
+                )
                 result_df = pd.DataFrame({'setting': ['']})
                 send_query_results(self.sock, result_df, self.transaction_status)
 
@@ -5839,9 +6855,14 @@ class ClientConnection:
             error_message = str(e)
             error_detail = f"SHOW command not supported: {query}"
             send_error(self.sock, error_message, detail=error_detail, transaction_status=self.transaction_status)
-            print(f"[{self.session_id}]   ✗ SHOW command error: {error_message}")
+            self._runtime_log(
+                "ERROR",
+                f"SHOW command error: {error_message}",
+                event="show_error",
+                error_type=type(e).__name__,
+            )
 
-    def _handle_begin(self, send_ready=True):
+    def _handle_begin(self, send_ready=True) -> bool:
         """
         Handle BEGIN transaction.
 
@@ -5852,7 +6873,11 @@ class ClientConnection:
         try:
             if self.transaction_status == 'T':
                 # Already in transaction - commit current one first
-                styled_print(f"[{self.session_id}]   {S.INFO}  Already in transaction, auto-committing previous")
+                self._runtime_log(
+                    "DEBUG",
+                    "Already in transaction, auto-committing previous",
+                    event="transaction_begin_autocommit",
+                )
                 self.duckdb_conn.execute("COMMIT")
 
             # Start new transaction
@@ -5862,17 +6887,24 @@ class ClientConnection:
             self.sock.sendall(CommandComplete.encode('BEGIN'))
             if send_ready:
                 self.sock.sendall(ReadyForQuery.encode('T'))  # 'T' = in transaction
-            styled_print(f"[{self.session_id}]   {S.OK} BEGIN transaction")
+            self._runtime_log("DEBUG", "BEGIN transaction", event="transaction_begin")
+            return True
 
         except Exception as e:
-            print(f"[{self.session_id}]   ✗ BEGIN error: {e}")
+            self._runtime_log(
+                "ERROR",
+                f"BEGIN error: {e}",
+                event="transaction_begin_error",
+                error_type=type(e).__name__,
+            )
             if send_ready:
                 send_error(self.sock, str(e))
             else:
                 # In Extended Query, errors are sent but not ReadyForQuery (wait for Sync)
                 self.sock.sendall(ErrorResponse.encode('ERROR', str(e)))
+            return False
 
-    def _handle_commit(self, send_ready=True):
+    def _handle_commit(self, send_ready=True) -> bool:
         """
         Handle COMMIT transaction.
 
@@ -5883,7 +6915,11 @@ class ClientConnection:
         try:
             if self.transaction_status == 'E':
                 # Transaction is in error state - can't commit
-                styled_print(f"[{self.session_id}]   {S.WARN}  Transaction in error state, auto-rolling back")
+                self._runtime_log(
+                    "WARN",
+                    "Transaction in error state, auto-rolling back",
+                    event="transaction_commit_autorollback",
+                )
                 self.duckdb_conn.execute("ROLLBACK")
             elif self.transaction_status == 'T':
                 # Commit active transaction
@@ -5895,16 +6931,23 @@ class ClientConnection:
             self.sock.sendall(CommandComplete.encode('COMMIT'))
             if send_ready:
                 self.sock.sendall(ReadyForQuery.encode('I'))  # 'I' = idle
-            styled_print(f"[{self.session_id}]   {S.OK} COMMIT transaction")
+            self._runtime_log("DEBUG", "COMMIT transaction", event="transaction_commit")
+            return True
 
         except Exception as e:
-            print(f"[{self.session_id}]   ✗ COMMIT error: {e}")
+            self._runtime_log(
+                "ERROR",
+                f"COMMIT error: {e}",
+                event="transaction_commit_error",
+                error_type=type(e).__name__,
+            )
             if send_ready:
                 send_error(self.sock, str(e))
             else:
                 self.sock.sendall(ErrorResponse.encode('ERROR', str(e)))
+            return False
 
-    def _handle_rollback(self, send_ready=True):
+    def _handle_rollback(self, send_ready=True) -> bool:
         """
         Handle ROLLBACK transaction.
 
@@ -5923,16 +6966,23 @@ class ClientConnection:
             self.sock.sendall(CommandComplete.encode('ROLLBACK'))
             if send_ready:
                 self.sock.sendall(ReadyForQuery.encode('I'))  # 'I' = idle
-            styled_print(f"[{self.session_id}]   {S.OK} ROLLBACK transaction")
+            self._runtime_log("DEBUG", "ROLLBACK transaction", event="transaction_rollback")
+            return True
 
         except Exception as e:
-            print(f"[{self.session_id}]   ✗ ROLLBACK error: {e}")
+            self._runtime_log(
+                "ERROR",
+                f"ROLLBACK error: {e}",
+                event="transaction_rollback_error",
+                error_type=type(e).__name__,
+            )
             if send_ready:
                 send_error(self.sock, str(e))
             else:
                 self.sock.sendall(ErrorResponse.encode('ERROR', str(e)))
+            return False
 
-    def _handle_background_query(self, query: str, extended_query_mode: bool = False, send_row_description: bool = True):
+    def _handle_background_query(self, query: str, extended_query_mode: bool = False, send_row_description: bool = True) -> bool:
         """
         Execute a query in the background and return job info immediately.
 
@@ -5976,8 +7026,11 @@ class ClientConnection:
         )
 
         if not internal_query_id:
-            send_error(self.sock, "Failed to initialize background job")
-            return
+            if extended_query_mode:
+                self.sock.sendall(ErrorResponse.encode('ERROR', "Failed to initialize background job"))
+            else:
+                send_error(self.sock, "Failed to initialize background job")
+            return False
 
         session_id = self.session_id
 
@@ -6004,7 +7057,13 @@ class ClientConnection:
                 )
                 set_caller_context(job_id, metadata)
 
-                styled_print(f"[{session_id}] {S.RETRY} Background job {job_id} starting")
+                self._runtime_log(
+                    "INFO",
+                    f"Background job {job_id} starting",
+                    event="background_job_start",
+                    job_id=job_id,
+                    internal_query_id=internal_query_id,
+                )
 
                 # Open fresh in-memory DuckDB connection (no DuckDB persistence).
                 bg_conn = duckdb.connect()
@@ -6087,7 +7146,14 @@ class ClientConnection:
                     )
                     result_df = bg_conn.execute(rewritten).fetchdf()
 
-                styled_print(f"[{session_id}] {S.CHART} Background job {job_id} executed, {len(result_df)} rows")
+                self._runtime_log(
+                    "INFO",
+                    f"Background job {job_id} executed, {len(result_df)} rows",
+                    event="background_job_executed",
+                    job_id=job_id,
+                    internal_query_id=internal_query_id,
+                    row_count=len(result_df),
+                )
 
                 # Materialize results (ClickHouse "query insurance" table) and log location.
                 result_location = None
@@ -6100,9 +7166,23 @@ class ClientConnection:
                             caller_id=job_id,
                         )
                         if result_location and result_location.get('result_table'):
-                            styled_print(f"[{session_id}] {S.SAVE} Background job {job_id} materialized to lars_results.{result_location['result_table']}")
+                            self._runtime_log(
+                                "DEBUG",
+                                f"Background job {job_id} materialized to lars_results.{result_location['result_table']}",
+                                event="background_job_materialized",
+                                job_id=job_id,
+                                internal_query_id=internal_query_id,
+                                result_table=result_location.get("result_table"),
+                            )
                     except Exception as mat_err:
-                        styled_print(f"[{session_id}] {S.WARN}  Background job {job_id} materialization failed: {mat_err}")
+                        self._runtime_log(
+                            "WARN",
+                            f"Background job {job_id} materialization failed: {mat_err}",
+                            event="background_job_materialize_failed",
+                            job_id=job_id,
+                            internal_query_id=internal_query_id,
+                            error_type=type(mat_err).__name__,
+                        )
 
                 # Log completion
                 duration_ms = (time.time() - bg_start) * 1000
@@ -6119,13 +7199,30 @@ class ClientConnection:
                     cache_misses=cache_misses,
                 )
 
-                styled_print(f"[{session_id}] {S.DONE} Background job {job_id} completed: {len(result_df)} rows in {duration_ms:.0f}ms")
+                self._runtime_log(
+                    "INFO",
+                    f"Background job {job_id} completed: {len(result_df)} rows in {duration_ms:.0f}ms",
+                    event="background_job_complete",
+                    job_id=job_id,
+                    internal_query_id=internal_query_id,
+                    row_count=len(result_df),
+                    duration_ms=duration_ms,
+                    result_table=(result_location.get("result_table") if result_location else None),
+                )
 
             except Exception as e:
-                tb_module.print_exc()
+                if os.environ.get("LARS_PG_TRACEBACK", "0").strip().lower() in ("1", "true", "yes", "on"):
+                    tb_module.print_exc()
                 duration_ms = (time.time() - bg_start) * 1000
                 log_query_error(internal_query_id, str(e), duration_ms=duration_ms)
-                styled_print(f"[{session_id}] {S.ERR} Background job {job_id} failed: {e}")
+                self._runtime_log(
+                    "ERROR",
+                    f"Background job {job_id} failed: {e}",
+                    event="background_job_error",
+                    job_id=job_id,
+                    internal_query_id=internal_query_id,
+                    error_type=type(e).__name__,
+                )
 
             finally:
                 if bg_conn:
@@ -6165,7 +7262,15 @@ class ClientConnection:
             send_execute_results(self.sock, job_df, send_row_description=send_row_description)
         else:
             send_query_results(self.sock, job_df, self.transaction_status)
-        styled_print(f"[{self.session_id}] {S.RUN} Background job {job_id} submitted → {full_result_table}")
+        self._runtime_log(
+            "INFO",
+            f"Background job {job_id} submitted → {full_result_table}",
+            event="background_job_submitted",
+            job_id=job_id,
+            internal_query_id=internal_query_id,
+            result_table=full_result_table,
+        )
+        return True
 
     def _handle_explain_query(self, query: str):
         """
@@ -6185,7 +7290,11 @@ class ClientConnection:
         import pandas as pd
         from ..sql_tools.pipeline_parser import has_pipeline_syntax, parse_pipeline_syntax
 
-        styled_print(f"[{self.session_id}] {S.CLIP} EXPLAIN query")
+        self._runtime_log(
+            "DEBUG",
+            "EXPLAIN query",
+            event="explain_query",
+        )
 
         # Get read-only connection to avoid lock conflicts on file-based DBs
         explain_conn, should_close = self._get_readonly_conn()
@@ -6233,10 +7342,19 @@ class ClientConnection:
 
                         result_df = explain_conn.execute(explain_sql).fetchdf()
                         send_query_results(self.sock, result_df, self.transaction_status)
-                        styled_print(f"[{self.session_id}]   {S.OK} Returned pipeline EXPLAIN plan")
+                        self._runtime_log(
+                            "DEBUG",
+                            "Returned pipeline EXPLAIN plan",
+                            event="explain_pipeline_returned",
+                        )
                         return
                     except Exception as e:
-                        styled_print(f"[{self.session_id}]   {S.WARN} Pipeline EXPLAIN failed: {e}")
+                        self._runtime_log(
+                            "WARN",
+                            f"Pipeline EXPLAIN failed: {e}",
+                            event="explain_pipeline_failed",
+                            error_type=type(e).__name__,
+                        )
                         # Fall through to regular EXPLAIN handling
 
             # For non-pipeline queries, use the existing rewriter-based EXPLAIN
@@ -6262,7 +7380,11 @@ class ClientConnection:
                 result_df = _format_native_explain_df(result_df)
 
                 send_query_results(self.sock, result_df, self.transaction_status)
-                styled_print(f"[{self.session_id}]   {S.OK} Returned EXPLAIN plan")
+                self._runtime_log(
+                    "DEBUG",
+                    "Returned EXPLAIN plan",
+                    event="explain_returned",
+                )
             except Exception as e:
                 send_error(self.sock, f"EXPLAIN execution failed: {e}", transaction_status=self.transaction_status)
         finally:
@@ -6272,7 +7394,7 @@ class ClientConnection:
                 except Exception:
                     pass
 
-    def _handle_explain_query_extended(self, query: str, send_row_description: bool = True):
+    def _handle_explain_query_extended(self, query: str, send_row_description: bool = True) -> bool:
         """
         Handle EXPLAIN queries via Extended Query Protocol.
 
@@ -6285,7 +7407,11 @@ class ClientConnection:
         import pandas as pd
         from ..sql_tools.pipeline_parser import has_pipeline_syntax, parse_pipeline_syntax
 
-        styled_print(f"[{self.session_id}] {S.CLIP} EXPLAIN query (Extended)")
+        self._runtime_log(
+            "DEBUG",
+            "EXPLAIN query (Extended)",
+            event="explain_query_extended",
+        )
 
         # Get read-only connection to avoid lock conflicts on file-based DBs
         explain_conn, should_close = self._get_readonly_conn()
@@ -6296,7 +7422,7 @@ class ClientConnection:
             explain_match = re.match(r'EXPLAIN\s*', normalized, re.IGNORECASE)
             if not explain_match:
                 self.sock.sendall(ErrorResponse.encode('ERROR', f"Invalid EXPLAIN syntax: {query[:50]}"))
-                return
+                return False
 
             inner_query = normalized[explain_match.end():].strip()
 
@@ -6327,10 +7453,19 @@ class ClientConnection:
 
                         result_df = pd.DataFrame([{'query_plan': plan_text}])
                         send_execute_results(self.sock, result_df, send_row_description=send_row_description)
-                        styled_print(f"[{self.session_id}]   {S.OK} Returned pipeline EXPLAIN plan (Extended)")
-                        return
+                        self._runtime_log(
+                            "DEBUG",
+                            "Returned pipeline EXPLAIN plan (Extended)",
+                            event="explain_pipeline_returned",
+                        )
+                        return True
                     except Exception as e:
-                        styled_print(f"[{self.session_id}]   {S.WARN} Pipeline EXPLAIN failed: {e}")
+                        self._runtime_log(
+                            "WARN",
+                            f"Pipeline EXPLAIN failed: {e}",
+                            event="explain_pipeline_failed",
+                            error_type=type(e).__name__,
+                        )
                         # Fall through to regular EXPLAIN handling
 
             # For non-pipeline queries (or if pipeline explain failed), use rewriter-based EXPLAIN
@@ -6352,10 +7487,21 @@ class ClientConnection:
                 result_df = _format_native_explain_df(result_df)
 
                 send_execute_results(self.sock, result_df, send_row_description=send_row_description)
-                styled_print(f"[{self.session_id}]   {S.OK} Returned EXPLAIN plan (Extended)")
+                self._runtime_log(
+                    "DEBUG",
+                    "Returned EXPLAIN plan (Extended)",
+                    event="explain_returned",
+                )
+                return True
             except Exception as e:
-                styled_print(f"[{self.session_id}]   {S.WARN} EXPLAIN fallback failed: {e}")
+                self._runtime_log(
+                    "WARN",
+                    f"EXPLAIN fallback failed: {e}",
+                    event="explain_failed",
+                    error_type=type(e).__name__,
+                )
                 self.sock.sendall(ErrorResponse.encode('ERROR', f"EXPLAIN execution failed: {e}"))
+                return False
         finally:
             if should_close and explain_conn:
                 try:
@@ -6363,7 +7509,7 @@ class ClientConnection:
                 except Exception:
                     pass
 
-    def _handle_pipeline_query(self, pipeline, original_query: str, extended_query_mode: bool = False, send_row_description: bool = True):
+    def _handle_pipeline_query(self, pipeline, original_query: str, extended_query_mode: bool = False, send_row_description: bool = True) -> bool:
         """
         Handle queries with THEN/INTO pipeline syntax.
 
@@ -6379,13 +7525,22 @@ class ClientConnection:
         import pandas as pd
         from ..sql_tools.pipeline_executor import execute_pipeline_with_into, PipelineExecutionError
 
-        styled_print(f"[{self.session_id}] {S.PIPELINE} Pipeline query: {len(pipeline.stages)} stages")
-        for stage in pipeline.stages:
-            args_str = f"({', '.join(repr(a) for a in stage.args)})" if stage.args else ""
-            styled_print(f"[{self.session_id}]   {S.RUN} Stage: {stage.name}{args_str}")
+        try:
+            stage_summaries = [
+                {"name": s.name, "args": list(s.args) if getattr(s, "args", None) else []}
+                for s in pipeline.stages
+            ]
+        except Exception:
+            stage_summaries = []
 
-        if pipeline.into_table:
-            styled_print(f"[{self.session_id}]   {S.SAVE} INTO: {pipeline.into_table}")
+        self._runtime_log(
+            "INFO",
+            f"Pipeline query: {len(pipeline.stages)} stages",
+            event="pipeline_start",
+            stage_count=len(pipeline.stages),
+            into_table=pipeline.into_table,
+            stages=stage_summaries[:25],
+        )
 
         try:
             # 1. Execute base SQL with unified rewriting (handles dimension functions, semantic operators, etc.)
@@ -6398,9 +7553,18 @@ class ClientConnection:
                 from ..sql_tools.into_table_rewriter import rewrite_into_tables
                 base_sql, into_changed = rewrite_into_tables(base_sql, results_db=self.results_db_name)
                 if into_changed:
-                    styled_print(f"[{self.session_id}]   {S.LINK} INTO table references rewritten in base SQL")
+                    self._runtime_log(
+                        "DEBUG",
+                        "INTO table references rewritten in base SQL",
+                        event="pipeline_into_rewritten",
+                    )
             except Exception as e:
-                styled_print(f"[{self.session_id}]   {S.WARN}  INTO table rewrite skipped: {e}")
+                self._runtime_log(
+                    "WARN",
+                    f"INTO table rewrite skipped: {e}",
+                    event="pipeline_into_rewrite_skipped",
+                    error_type=type(e).__name__,
+                )
 
             # Deref preprocessing: evaluate @cascade() expressions first
             from ..sql_tools.deref_preprocessor import preprocess_deref_cascades
@@ -6431,7 +7595,11 @@ class ClientConnection:
                 caller_id=getattr(self, '_current_caller_id', None),
             )
 
-            styled_print(f"[{self.session_id}]   {S.QUERY} Executing base: {base_sql[:80]}...")
+            self._runtime_log(
+                "DEBUG",
+                f"Executing base: {base_sql[:200]}{'...' if len(base_sql) > 200 else ''}",
+                event="pipeline_base_execute",
+            )
 
             # Execute base query
             result = self.duckdb_conn.execute(base_sql)
@@ -6439,7 +7607,12 @@ class ClientConnection:
             rows = result.fetchall()
             initial_df = pd.DataFrame(rows, columns=columns)
 
-            styled_print(f"[{self.session_id}]   {S.OK} Base query returned {len(initial_df)} rows")
+            self._runtime_log(
+                "DEBUG",
+                f"Base query returned {len(initial_df)} rows",
+                event="pipeline_base_complete",
+                row_count=len(initial_df),
+            )
 
             # 2. Execute pipeline stages
             final_df = execute_pipeline_with_into(
@@ -6454,23 +7627,50 @@ class ClientConnection:
                 base_into_table=pipeline.base_into_table,
             )
 
-            styled_print(f"[{self.session_id}]   {S.OK} Pipeline complete: {len(final_df)} rows")
+            self._runtime_log(
+                "INFO",
+                f"Pipeline complete: {len(final_df)} rows",
+                event="pipeline_complete",
+                row_count=len(final_df),
+                into_table=pipeline.into_table,
+            )
 
             # 3. Send results to client
             if extended_query_mode:
                 send_execute_results(self.sock, final_df, send_row_description=send_row_description)
             else:
                 send_query_results(self.sock, final_df, self.transaction_status)
+            return True
 
         except PipelineExecutionError as e:
-            styled_print(f"[{self.session_id}]   {S.ERR} Pipeline failed at stage {e.stage_index}: {e.stage_name}")
-            send_error(self.sock, str(e))
+            self._runtime_log(
+                "ERROR",
+                f"Pipeline failed at stage {e.stage_index}: {e.stage_name}",
+                event="pipeline_stage_error",
+                stage_index=e.stage_index,
+                stage_name=e.stage_name,
+            )
+            if extended_query_mode:
+                self.sock.sendall(ErrorResponse.encode('ERROR', str(e)))
+            else:
+                send_error(self.sock, str(e))
+            return False
 
         except Exception as e:
-            import traceback
-            traceback.print_exc()
-            styled_print(f"[{self.session_id}]   {S.ERR} Pipeline error: {e}")
-            send_error(self.sock, f"Pipeline query failed: {e}")
+            if os.environ.get("LARS_PG_TRACEBACK", "0").strip().lower() in ("1", "true", "yes", "on"):
+                import traceback
+                traceback.print_exc()
+            self._runtime_log(
+                "ERROR",
+                f"Pipeline error: {e}",
+                event="pipeline_error",
+                error_type=type(e).__name__,
+            )
+            if extended_query_mode:
+                self.sock.sendall(ErrorResponse.encode('ERROR', f"Pipeline query failed: {e}"))
+            else:
+                send_error(self.sock, f"Pipeline query failed: {e}")
+            return False
 
     def _handle_watch_command(self, query: str, extended_query_mode: bool = False, send_row_description: bool = True):
         """
@@ -6527,8 +7727,15 @@ class ClientConnection:
                 send_error(self.sock, f"Unknown WATCH command: {directive.command}")
 
         except Exception as e:
-            import traceback
-            traceback.print_exc()
+            if os.environ.get("LARS_PG_TRACEBACK", "0").strip().lower() in ("1", "true", "yes", "on"):
+                import traceback
+                traceback.print_exc()
+            self._runtime_log(
+                "ERROR",
+                f"WATCH command failed: {e}",
+                event="watch_command_error",
+                error_type=type(e).__name__,
+            )
             send_error(self.sock, f"WATCH command failed: {e}")
 
     def _create_watch(self, directive, extended_query_mode: bool = False, send_row_description: bool = True):
@@ -6560,7 +7767,13 @@ class ClientConnection:
                 send_execute_results(self.sock, result_df, send_row_description=send_row_description)
             else:
                 send_query_results(self.sock, result_df, self.transaction_status)
-            styled_print(f"[{self.session_id}] {S.DONE} Created watch '{watch.name}'")
+            self._runtime_log(
+                "INFO",
+                f"Created watch '{watch.name}'",
+                event="watch_created",
+                watch_name=watch.name,
+                watch_id=watch.watch_id,
+            )
 
         except Exception as e:
             raise RuntimeError(f"Failed to create watch '{directive.name}': {e}")
@@ -6585,7 +7798,12 @@ class ClientConnection:
                 send_execute_results(self.sock, result_df, send_row_description=send_row_description)
             else:
                 send_query_results(self.sock, result_df, self.transaction_status)
-            styled_print(f"[{self.session_id}] {S.DONE} Dropped watch '{name}'")
+            self._runtime_log(
+                "INFO",
+                f"Dropped watch '{name}'",
+                event="watch_dropped",
+                watch_name=name,
+            )
         else:
             send_error(self.sock, f"Failed to drop watch '{name}'")
 
@@ -6627,7 +7845,12 @@ class ClientConnection:
             send_execute_results(self.sock, result_df, send_row_description=send_row_description)
         else:
             send_query_results(self.sock, result_df, self.transaction_status)
-        styled_print(f"[{self.session_id}] {S.CLIP} Listed {len(watches)} watches")
+        self._runtime_log(
+            "DEBUG",
+            f"Listed {len(watches)} watches",
+            event="watch_listed",
+            watch_count=len(watches),
+        )
 
     def _describe_watch(self, name: str, extended_query_mode: bool = False, send_row_description: bool = True):
         """Show detailed info about a watch."""
@@ -6665,7 +7888,12 @@ class ClientConnection:
             send_execute_results(self.sock, result_df, send_row_description=send_row_description)
         else:
             send_query_results(self.sock, result_df, self.transaction_status)
-        styled_print(f"[{self.session_id}] {S.INFO} Described watch '{name}'")
+        self._runtime_log(
+            "DEBUG",
+            f"Described watch '{name}'",
+            event="watch_described",
+            watch_name=name,
+        )
 
     def _trigger_watch(self, name: str, extended_query_mode: bool = False, send_row_description: bool = True):
         """Force immediate evaluation of a watch."""
@@ -6677,7 +7905,12 @@ class ClientConnection:
             send_error(self.sock, f"Watch '{name}' not found")
             return
 
-        styled_print(f"[{self.session_id}] {S.FAST} Triggering watch '{name}'...")
+        self._runtime_log(
+            "INFO",
+            f"Triggering watch '{name}'...",
+            event="watch_trigger_start",
+            watch_name=name,
+        )
 
         # Run the evaluation synchronously
         from ..watcher import WatchDaemon
@@ -6730,7 +7963,12 @@ class ClientConnection:
                 send_execute_results(self.sock, result_df, send_row_description=send_row_description)
             else:
                 send_query_results(self.sock, result_df, self.transaction_status)
-            styled_print(f"[{self.session_id}] {S.DONE} Triggered watch '{name}'")
+            self._runtime_log(
+                "INFO",
+                f"Triggered watch '{name}'",
+                event="watch_triggered",
+                watch_name=name,
+            )
 
         except Exception as e:
             send_error(self.sock, f"Failed to trigger watch '{name}': {e}")
@@ -6760,7 +7998,14 @@ class ClientConnection:
                     send_execute_results(self.sock, result_df, send_row_description=send_row_description)
                 else:
                     send_query_results(self.sock, result_df, self.transaction_status)
-                styled_print(f"[{self.session_id}] {S.DONE} Watch '{directive.name}' {status}")
+                self._runtime_log(
+                    "INFO",
+                    f"Watch '{directive.name}' {status}",
+                    event="watch_altered",
+                    watch_name=directive.name,
+                    field="enabled",
+                    status=status,
+                )
             else:
                 send_error(self.sock, f"Failed to alter watch '{directive.name}'")
 
@@ -6778,7 +8023,14 @@ class ClientConnection:
                     send_execute_results(self.sock, result_df, send_row_description=send_row_description)
                 else:
                     send_query_results(self.sock, result_df, self.transaction_status)
-                styled_print(f"[{self.session_id}] {S.DONE} Watch '{directive.name}' poll interval set to {directive.set_value}")
+                self._runtime_log(
+                    "INFO",
+                    f"Watch '{directive.name}' poll interval set to {directive.set_value}",
+                    event="watch_altered",
+                    watch_name=directive.name,
+                    field="poll_interval",
+                    value=directive.set_value,
+                )
             else:
                 send_error(self.sock, f"Failed to alter watch '{directive.name}'")
 
@@ -6796,7 +8048,15 @@ class ClientConnection:
         query = msg['query']
         param_types = msg['param_types']
 
-        styled_print(f"[{self.session_id}]   {S.CFG} Parse statement '{stmt_name or '(unnamed)'}': {query[:80]}...")
+        self._runtime_log(
+            "DEBUG",
+            f"Parse statement '{stmt_name or '(unnamed)'}': {query[:200]}{'...' if len(query) > 200 else ''}",
+            event="pgwire_parse",
+            statement_name=stmt_name,
+            param_count=len(param_types),
+            query=query if len(query or "") <= 10_000 else (query[:10_000] + "..."),
+            query_len=len(query or ""),
+        )
 
         try:
             # Rewrite into_ table references to read from ClickHouse
@@ -6812,14 +8072,13 @@ class ClientConnection:
             query = rewrite_lars_syntax(query, duckdb_conn=self.duckdb_conn)
 
             if query != original_query:
-                styled_print(f"[{self.session_id}]      {S.RETRY} Rewrote LARS syntax ({len(original_query)} → {len(query)} chars)")
-                # Debug: for pg_class queries, show the FROM/WHERE/AND structure
-                if 'PG_CLASS' in original_query.upper() and 'RELKIND' in original_query.upper():
-                    print(f"[{self.session_id}]      [DEBUG] ORIGINAL query FROM/WHERE structure:")
-                    for i, line in enumerate(original_query.split('\n'), 1):
-                        line_upper = line.upper().strip()
-                        if any(kw in line_upper for kw in ['FROM PG_', 'WHERE ', 'AND RELNAMESPACE', 'LEFT JOIN', 'LEFT OUTER']):
-                            print(f"[{self.session_id}]        Line {i}: {line.strip()[:100]}")
+                self._runtime_log(
+                    "DEBUG",
+                    f"Rewrote LARS syntax ({len(original_query)} → {len(query)} chars)",
+                    event="rewrite_lars_syntax",
+                    before_len=len(original_query),
+                    after_len=len(query),
+                )
 
             # Store prepared statement
             # We don't actually use DuckDB PREPARE yet - just store the query
@@ -6833,12 +8092,18 @@ class ClientConnection:
             }
 
             # Send ParseComplete
-            print(f"[{self.session_id}] >> SEND ParseComplete")
+            self._runtime_log("DEBUG", "SEND ParseComplete", event="pgwire_send", pgwire_message="ParseComplete")
             self.sock.sendall(ParseComplete.encode())
-            styled_print(f"[{self.session_id}]      {S.OK} Statement prepared ({len(param_types)} parameters)")
+            self._runtime_log(
+                "DEBUG",
+                f"Statement prepared ({len(param_types)} parameters)",
+                event="pgwire_parse_complete",
+                statement_name=stmt_name,
+                param_count=len(param_types),
+            )
 
         except Exception as e:
-            print(f"[{self.session_id}]      ✗ Parse error: {e}")
+            self._runtime_log("ERROR", f"Parse error: {e}", event="pgwire_error", pgwire_message="PARSE")
             # In Extended Query Protocol, don't send ReadyForQuery - wait for Sync
             self.sock.sendall(ErrorResponse.encode('ERROR', f"Parse error: {str(e)}"))
 
@@ -6855,7 +8120,13 @@ class ClientConnection:
         param_formats = msg['param_formats']
         result_formats = msg['result_formats']
 
-        styled_print(f"[{self.session_id}]   {S.LINK} Bind portal '{portal_name or '(unnamed)'}' to statement '{stmt_name or '(unnamed)'}'")
+        self._runtime_log(
+            "DEBUG",
+            f"Bind portal '{portal_name or '(unnamed)'}' to statement '{stmt_name or '(unnamed)'}'",
+            event="pgwire_bind",
+            portal_name=portal_name,
+            statement_name=stmt_name,
+        )
 
         try:
             # Get prepared statement
@@ -6947,12 +8218,19 @@ class ClientConnection:
             }
 
             # Send BindComplete
-            print(f"[{self.session_id}] >> SEND BindComplete")
+            self._runtime_log("DEBUG", "SEND BindComplete", event="pgwire_send", pgwire_message="BindComplete")
             self.sock.sendall(BindComplete.encode())
-            styled_print(f"[{self.session_id}]      {S.OK} Parameters bound ({len(params)} values)")
+            self._runtime_log(
+                "DEBUG",
+                f"Parameters bound ({len(params)} values)",
+                event="pgwire_bind_complete",
+                portal_name=portal_name,
+                statement_name=stmt_name,
+                param_count=len(params),
+            )
 
         except Exception as e:
-            print(f"[{self.session_id}]      ✗ Bind error: {e}")
+            self._runtime_log("ERROR", f"Bind error: {e}", event="pgwire_error", pgwire_message="BIND")
             # In Extended Query Protocol, don't send ReadyForQuery - wait for Sync
             self.sock.sendall(ErrorResponse.encode('ERROR', f"Bind error: {str(e)}"))
 
@@ -6966,7 +8244,13 @@ class ClientConnection:
         describe_type = msg['type']
         name = msg['name']
 
-        styled_print(f"[{self.session_id}]   {S.CLIP} Describe {describe_type} '{name or '(unnamed)'}'")
+        self._runtime_log(
+            "DEBUG",
+            f"Describe {describe_type} '{name or '(unnamed)'}'",
+            event="pgwire_describe",
+            describe_type=describe_type,
+            name=name,
+        )
 
         try:
             if describe_type == 'S':  # Statement
@@ -6976,7 +8260,13 @@ class ClientConnection:
                 stmt = self.prepared_statements[name]
 
                 # Send ParameterDescription
-                print(f"[{self.session_id}] >> SEND ParameterDescription ({len(stmt['param_types'])} params)")
+                self._runtime_log(
+                    "DEBUG",
+                    f"SEND ParameterDescription ({len(stmt['param_types'])} params)",
+                    event="pgwire_send",
+                    pgwire_message="ParameterDescription",
+                    param_count=len(stmt['param_types']),
+                )
                 self.sock.sendall(ParameterDescription.encode(stmt['param_types']))
 
                 # Send NoData for Describe Statement
@@ -6984,10 +8274,17 @@ class ClientConnection:
                 # that column info will be available after Bind (via Describe Portal).
                 # This is the safest approach since we can't reliably determine columns
                 # without actually executing the query with bound parameters.
-                print(f"[{self.session_id}] >> SEND NoData")
+                self._runtime_log("DEBUG", "SEND NoData", event="pgwire_send", pgwire_message="NoData")
                 self.sock.sendall(NoData.encode())
 
-                styled_print(f"[{self.session_id}]      {S.OK} Statement described ({len(stmt['param_types'])} parameters)")
+                self._runtime_log(
+                    "DEBUG",
+                    f"Statement described ({len(stmt['param_types'])} parameters)",
+                    event="pgwire_describe_complete",
+                    describe_type="S",
+                    name=name,
+                    param_count=len(stmt['param_types']),
+                )
 
             elif describe_type == 'P':  # Portal
                 if name not in self.portals:
@@ -7038,7 +8335,12 @@ class ClientConnection:
                 if is_non_select:
                     self.sock.sendall(NoData.encode())
                     portal['row_description_sent'] = False
-                    styled_print(f"[{self.session_id}]      {S.OK} Portal described (NoData - non-SELECT command)")
+                    self._runtime_log(
+                        "DEBUG",
+                        "Portal described (NoData - non-SELECT command)",
+                        event="pgwire_describe_portal",
+                        describe_result="nodata_non_select",
+                    )
                     return
 
                 # BACKGROUND queries - Return job metadata columns
@@ -7061,7 +8363,13 @@ class ClientConnection:
                         self.sock.sendall(RowDescription.encode(columns))
                         portal['row_description_sent'] = True
                         portal['described_columns'] = len(columns)
-                        styled_print(f"[{self.session_id}]      {S.OK} Portal described (BACKGROUND - {len(columns)} columns)")
+                        self._runtime_log(
+                            "DEBUG",
+                            f"Portal described (BACKGROUND - {len(columns)} columns)",
+                            event="pgwire_describe_portal",
+                            describe_result="background",
+                            column_count=len(columns),
+                        )
                         return
 
                 # WATCH commands - Handle reactive SQL subscriptions
@@ -7136,12 +8444,24 @@ class ClientConnection:
                         self.sock.sendall(RowDescription.encode(columns))
                         portal['row_description_sent'] = True
                         portal['described_columns'] = len(columns)
-                        styled_print(f"[{self.session_id}]      {S.OK} Portal described (WATCH {watch_directive.command} - {len(columns)} columns)")
+                        self._runtime_log(
+                            "DEBUG",
+                            f"Portal described (WATCH {watch_directive.command} - {len(columns)} columns)",
+                            event="pgwire_describe_portal",
+                            describe_result="watch",
+                            watch_command=watch_directive.command,
+                            column_count=len(columns),
+                        )
                     else:
                         # Couldn't parse - send NoData
                         self.sock.sendall(NoData.encode())
                         portal['row_description_sent'] = False
-                        styled_print(f"[{self.session_id}]      {S.OK} Portal described (WATCH command - NoData)")
+                        self._runtime_log(
+                            "DEBUG",
+                            "Portal described (WATCH command - NoData)",
+                            event="pgwire_describe_portal",
+                            describe_result="watch_nodata",
+                        )
                     return
 
                 # EXPLAIN queries - return query_plan column without executing the query
@@ -7162,7 +8482,13 @@ class ClientConnection:
                     self.sock.sendall(RowDescription.encode(columns))
                     portal['row_description_sent'] = True
                     portal['described_columns'] = len(columns)
-                    styled_print(f"[{self.session_id}]      {S.OK} Portal described (EXPLAIN - {len(columns)} columns)")
+                    self._runtime_log(
+                        "DEBUG",
+                        f"Portal described (EXPLAIN - {len(columns)} columns)",
+                        event="pgwire_describe_portal",
+                        describe_result="explain",
+                        column_count=len(columns),
+                    )
                     return
 
                 # PIPELINE syntax (THEN/INTO) - Execute pipeline to determine result columns
@@ -7176,10 +8502,18 @@ class ClientConnection:
                 from ..sql_tools.canvas_rewriter import has_canvas_syntax, rewrite_canvas_syntax
                 if has_canvas_syntax(original_query):
                     original_query = rewrite_canvas_syntax(original_query)
-                    styled_print(f"[{self.session_id}]      {S.INFO} CANVAS syntax rewritten (Describe)")
+                    self._runtime_log(
+                        "DEBUG",
+                        "CANVAS syntax rewritten (Describe)",
+                        event="describe_canvas_rewrite",
+                    )
 
                 if has_pipeline_syntax(original_query):
-                    styled_print(f"[{self.session_id}]      {S.PIPELINE} PIPELINE query detected in Describe - executing to determine columns")
+                    self._runtime_log(
+                        "DEBUG",
+                        "PIPELINE query detected in Describe - executing to determine columns",
+                        event="describe_pipeline_detected",
+                    )
                     try:
                         import pandas as pd
                         from ..sql_tools.pipeline_executor import execute_pipeline_with_into
@@ -7260,13 +8594,26 @@ class ClientConnection:
                             self.sock.sendall(RowDescription.encode(desc_columns))
                             portal['row_description_sent'] = True
                             portal['described_columns'] = len(desc_columns)
-                            styled_print(f"[{self.session_id}]      {S.OK} Portal described (PIPELINE - {len(desc_columns)} columns, result cached)")
+                            self._runtime_log(
+                                "DEBUG",
+                                f"Portal described (PIPELINE - {len(desc_columns)} columns, result cached)",
+                                event="pgwire_describe_portal",
+                                describe_result="pipeline",
+                                column_count=len(desc_columns),
+                                result_cached=True,
+                            )
                             return
 
                     except Exception as e:
-                        import traceback
-                        traceback.print_exc()
-                        styled_print(f"[{self.session_id}]      {S.ERR} PIPELINE Describe failed: {e}")
+                        if os.environ.get("LARS_PG_TRACEBACK", "0").strip().lower() in ("1", "true", "yes", "on"):
+                            import traceback
+                            traceback.print_exc()
+                        self._runtime_log(
+                            "WARN",
+                            f"PIPELINE Describe failed: {e}",
+                            event="describe_pipeline_failed",
+                            error_type=type(e).__name__,
+                        )
                         # Fall through to NoData as fallback
                         self.sock.sendall(NoData.encode())
                         portal['row_description_sent'] = False
@@ -7290,7 +8637,13 @@ class ClientConnection:
                     self.sock.sendall(RowDescription.encode(columns))
                     portal['row_description_sent'] = True
                     portal['described_columns'] = len(columns)
-                    styled_print(f"[{self.session_id}]      {S.OK} Portal described (SHOW command - {len(columns)} columns)")
+                    self._runtime_log(
+                        "DEBUG",
+                        f"Portal described (SHOW command - {len(columns)} columns)",
+                        event="pgwire_describe_portal",
+                        describe_result="show",
+                        column_count=len(columns),
+                    )
                 else:
                     # For SELECT queries, try to get column metadata
                     try:
@@ -7353,7 +8706,6 @@ class ClientConnection:
                         if not query_stripped or query_stripped.startswith('--'):
                             self.sock.sendall(NoData.encode())
                             portal['row_description_sent'] = False
-                            styled_print(f"[{self.session_id}]      {S.OK} Portal described (NoData - empty query)")
                             return
 
                         # Handle special catalog tables that need specific column info
@@ -7364,7 +8716,6 @@ class ClientConnection:
                             self.sock.sendall(RowDescription.encode(columns))
                             portal['row_description_sent'] = True
                             portal['described_columns'] = len(columns)
-                            styled_print(f"[{self.session_id}]      {S.OK} Portal described (timezone catalog - {len(columns)} columns)")
                             return
 
                         # pg_roles
@@ -7374,7 +8725,6 @@ class ClientConnection:
                             self.sock.sendall(RowDescription.encode(columns))
                             portal['row_description_sent'] = True
                             portal['described_columns'] = len(columns)
-                            styled_print(f"[{self.session_id}]      {S.OK} Portal described (pg_roles - {len(columns)} columns)")
                             return
 
                         # pg_user - DataGrip checks superuser status
@@ -7384,7 +8734,6 @@ class ClientConnection:
                             self.sock.sendall(RowDescription.encode(columns))
                             portal['row_description_sent'] = True
                             portal['described_columns'] = len(columns)
-                            styled_print(f"[{self.session_id}]      {S.OK} Portal described (pg_user - {len(columns)} columns)")
                             return
 
                         # pg_namespace (schema browser) - provide expected columns
@@ -7412,7 +8761,6 @@ class ClientConnection:
                             self.sock.sendall(RowDescription.encode(columns))
                             portal['row_description_sent'] = True
                             portal['described_columns'] = len(columns)
-                            styled_print(f"[{self.session_id}]      {S.OK} Portal described (pg_namespace - {len(columns)} columns)")
                             return
 
                         # pg_class (table browser) - provide expected columns without executing
@@ -7444,7 +8792,6 @@ class ClientConnection:
                             self.sock.sendall(RowDescription.encode(columns))
                             portal['row_description_sent'] = True
                             portal['described_columns'] = len(columns)
-                            styled_print(f"[{self.session_id}]      {S.OK} Portal described (pg_class table browser - {len(columns)} columns)")
                             return
 
                         # pg_event_trigger - DuckDB doesn't have event triggers
@@ -7454,7 +8801,6 @@ class ClientConnection:
                             self.sock.sendall(RowDescription.encode(columns))
                             portal['row_description_sent'] = True
                             portal['described_columns'] = len(columns)
-                            styled_print(f"[{self.session_id}]      {S.OK} Portal described (pg_event_trigger - {len(columns)} columns)")
                             return
 
                         # Foreign data wrapper tables - DuckDB doesn't have FDW
@@ -7464,7 +8810,6 @@ class ClientConnection:
                             self.sock.sendall(RowDescription.encode(columns))
                             portal['row_description_sent'] = True
                             portal['described_columns'] = len(columns)
-                            styled_print(f"[{self.session_id}]      {S.OK} Portal described (pg_foreign_data_wrapper - {len(columns)} columns)")
                             return
 
                         if 'PG_FOREIGN_SERVER' in query_upper and 'FROM' in query_upper:
@@ -7473,7 +8818,6 @@ class ClientConnection:
                             self.sock.sendall(RowDescription.encode(columns))
                             portal['row_description_sent'] = True
                             portal['described_columns'] = len(columns)
-                            styled_print(f"[{self.session_id}]      {S.OK} Portal described (pg_foreign_server - {len(columns)} columns)")
                             return
 
                         if 'PG_FOREIGN_TABLE' in query_upper and 'FROM' in query_upper:
@@ -7482,7 +8826,6 @@ class ClientConnection:
                             self.sock.sendall(RowDescription.encode(columns))
                             portal['row_description_sent'] = True
                             portal['described_columns'] = len(columns)
-                            styled_print(f"[{self.session_id}]      {S.OK} Portal described (pg_foreign_table - {len(columns)} columns)")
                             return
 
                         # pg_extension - DuckDB doesn't have extensions
@@ -7492,7 +8835,6 @@ class ClientConnection:
                             self.sock.sendall(RowDescription.encode(columns))
                             portal['row_description_sent'] = True
                             portal['described_columns'] = len(columns)
-                            styled_print(f"[{self.session_id}]      {S.OK} Portal described (pg_extension - {len(columns)} columns)")
                             return
 
                         # pg_language - DuckDB doesn't have procedural languages
@@ -7502,7 +8844,6 @@ class ClientConnection:
                             self.sock.sendall(RowDescription.encode(columns))
                             portal['row_description_sent'] = True
                             portal['described_columns'] = len(columns)
-                            styled_print(f"[{self.session_id}]      {S.OK} Portal described (pg_language - {len(columns)} columns)")
                             return
 
                         # pg_cast - DuckDB doesn't have pg_cast
@@ -7512,7 +8853,6 @@ class ClientConnection:
                             self.sock.sendall(RowDescription.encode(columns))
                             portal['row_description_sent'] = True
                             portal['described_columns'] = len(columns)
-                            styled_print(f"[{self.session_id}]      {S.OK} Portal described (pg_cast - {len(columns)} columns)")
                             return
 
                         # pg_collation - DuckDB doesn't have pg_collation
@@ -7522,7 +8862,6 @@ class ClientConnection:
                             self.sock.sendall(RowDescription.encode(columns))
                             portal['row_description_sent'] = True
                             portal['described_columns'] = len(columns)
-                            styled_print(f"[{self.session_id}]      {S.OK} Portal described (pg_collation - {len(columns)} columns)")
                             return
 
                         # pg_inherits - DuckDB doesn't have table inheritance
@@ -7533,7 +8872,6 @@ class ClientConnection:
                             self.sock.sendall(RowDescription.encode(columns))
                             portal['row_description_sent'] = True
                             portal['described_columns'] = len(columns)
-                            styled_print(f"[{self.session_id}]      {S.OK} Portal described (pg_inherits - {len(columns)} columns)")
                             return
 
                         # pg_partitioned_table - DuckDB doesn't have partition metadata
@@ -7543,7 +8881,6 @@ class ClientConnection:
                             self.sock.sendall(RowDescription.encode(columns))
                             portal['row_description_sent'] = True
                             portal['described_columns'] = len(columns)
-                            styled_print(f"[{self.session_id}]      {S.OK} Portal described (pg_partitioned_table - {len(columns)} columns)")
                             return
 
                         # pg_description - DuckDB doesn't have pg_description
@@ -7554,7 +8891,6 @@ class ClientConnection:
                             self.sock.sendall(RowDescription.encode(columns))
                             portal['row_description_sent'] = True
                             portal['described_columns'] = len(columns)
-                            styled_print(f"[{self.session_id}]      {S.OK} Portal described (pg_description - {len(columns)} columns)")
                             return
 
                         # pg_operator - DuckDB doesn't have pg_operator
@@ -7564,7 +8900,6 @@ class ClientConnection:
                             self.sock.sendall(RowDescription.encode(columns))
                             portal['row_description_sent'] = True
                             portal['described_columns'] = len(columns)
-                            styled_print(f"[{self.session_id}]      {S.OK} Portal described (pg_operator - {len(columns)} columns)")
                             return
 
                         # pg_aggregate - DuckDB doesn't have pg_aggregate
@@ -7574,7 +8909,6 @@ class ClientConnection:
                             self.sock.sendall(RowDescription.encode(columns))
                             portal['row_description_sent'] = True
                             portal['described_columns'] = len(columns)
-                            styled_print(f"[{self.session_id}]      {S.OK} Portal described (pg_aggregate - {len(columns)} columns)")
                             return
 
                         # Complex pg_constraint queries with PostgreSQL-specific array functions
@@ -7584,7 +8918,6 @@ class ClientConnection:
                             self.sock.sendall(RowDescription.encode(columns))
                             portal['row_description_sent'] = True
                             portal['described_columns'] = len(columns)
-                            styled_print(f"[{self.session_id}]      {S.OK} Portal described (pg_constraint complex - {len(columns)} columns)")
                             return
 
                         # pg_attribute queries - expand a.* to actual columns
@@ -7612,7 +8945,6 @@ class ClientConnection:
                             self.sock.sendall(RowDescription.encode(columns))
                             portal['row_description_sent'] = True
                             portal['described_columns'] = len(columns)
-                            styled_print(f"[{self.session_id}]      {S.OK} Portal described (pg_attribute - {len(columns)} columns)")
                             return
 
                         # pg_depend queries with regclass casts - return empty result
@@ -7622,7 +8954,6 @@ class ClientConnection:
                             self.sock.sendall(RowDescription.encode(columns))
                             portal['row_description_sent'] = True
                             portal['described_columns'] = len(columns)
-                            styled_print(f"[{self.session_id}]      {S.OK} Portal described (pg_depend - {len(columns)} columns)")
                             return
 
                         # Any query with regclass type casts that DuckDB doesn't support
@@ -7632,7 +8963,6 @@ class ClientConnection:
                             self.sock.sendall(RowDescription.encode(columns))
                             portal['row_description_sent'] = True
                             portal['described_columns'] = len(columns)
-                            styled_print(f"[{self.session_id}]      {S.OK} Portal described (regclass query - {len(columns)} columns)")
                             return
 
                         # Check for missing pg_catalog tables before trying to wrap
@@ -7645,7 +8975,6 @@ class ClientConnection:
                             portal['row_description_sent'] = True
                             portal['described_columns'] = len(columns)
                             portal['missing_table_result'] = missing_result  # Cache for Execute
-                            styled_print(f"[{self.session_id}]      {S.OK} Portal described (missing pg_catalog table - {len(columns)} columns)")
                             return
 
                         # Skill/UDF calls in FROM clause - don't execute during Describe
@@ -7682,13 +9011,17 @@ class ClientConnection:
                                     self.sock.sendall(RowDescription.encode(columns))
                                     portal['row_description_sent'] = True
                                     portal['described_columns'] = len(columns)
-                                    styled_print(f"[{self.session_id}]      {S.OK} Portal described (skill call - {len(columns)} columns, result cached)")
                                 else:
                                     self.sock.sendall(NoData.encode())
                                     portal['row_description_sent'] = False
                                 return
                             except Exception as skill_err:
-                                styled_print(f"[{self.session_id}]      {S.WARN}  Skill describe failed: {skill_err}")
+                                self._runtime_log(
+                                    "WARN",
+                                    f"Skill describe failed: {skill_err}",
+                                    event="describe_skill_failed",
+                                    error_type=type(skill_err).__name__,
+                                )
                                 # Fall through to normal describe logic
 
                         # Wrap query to get schema without returning data
@@ -7714,12 +9047,16 @@ class ClientConnection:
                         self.sock.sendall(RowDescription.encode(columns))
                         portal['row_description_sent'] = True
                         portal['described_columns'] = len(columns)  # Track for Execute validation
-                        styled_print(f"[{self.session_id}]      {S.OK} Portal described ({len(columns)} columns)")
 
                     except Exception as desc_err:
                         # If DuckDB can't parse the query, try to extract columns from the SQL text
                         # This prevents "Received resultset tuples, but no field structure" errors
-                        styled_print(f"[{self.session_id}]      {S.WARN}  Could not describe portal via DuckDB: {str(desc_err)[:100]}")
+                        self._runtime_log(
+                            "WARN",
+                            f"Could not describe portal via DuckDB: {str(desc_err)[:200]}",
+                            event="describe_duckdb_failed",
+                            error_type=type(desc_err).__name__,
+                        )
 
                         # For SELECT queries, try to infer columns from the query text
                         if query_upper.strip().startswith('SELECT'):
@@ -7730,22 +9067,24 @@ class ClientConnection:
                                 self.sock.sendall(RowDescription.encode(columns))
                                 portal['row_description_sent'] = True
                                 portal['described_columns'] = len(columns)  # Track for Execute validation
-                                styled_print(f"[{self.session_id}]      {S.OK} Portal described (inferred {len(columns)} columns from query)")
                             else:
                                 # Can't infer columns - send NoData as last resort
                                 # This may cause issues but is better than crashing
                                 self.sock.sendall(NoData.encode())
                                 portal['row_description_sent'] = False
-                                styled_print(f"[{self.session_id}]      {S.OK} Portal described (NoData - couldn't infer columns)")
                         else:
                             # Non-SELECT queries don't return rows
                             self.sock.sendall(NoData.encode())
                             portal['row_description_sent'] = False
-                            styled_print(f"[{self.session_id}]      {S.OK} Portal described (NoData - non-SELECT)")
 
         except Exception as e:
             error_str = str(e)
-            print(f"[{self.session_id}]      ✗ Describe error: {error_str[:200]}")
+            self._runtime_log(
+                "ERROR",
+                f"Describe error: {error_str[:500]}",
+                event="pgwire_describe_error",
+                error_type=type(e).__name__,
+            )
 
             # Check if this is a "Table does not exist" error for a pg_catalog table
             import re
@@ -7769,7 +9108,12 @@ class ClientConnection:
                     'pg_shdescription', 'pg_stat_activity',
                 }
                 if missing_table in known_missing:
-                    print(f"[{self.session_id}]      → Missing pg_catalog table '{missing_table}' in Describe - sending NoData")
+                    self._runtime_log(
+                        "DEBUG",
+                        f"Missing pg_catalog table '{missing_table}' in Describe - sending NoData",
+                        event="pgwire_describe_missing_pg_catalog_table",
+                        missing_table=missing_table,
+                    )
                     # For Describe, we can just send NoData to indicate no columns
                     self.sock.sendall(NoData.encode())
                     return
@@ -7787,10 +9131,23 @@ class ClientConnection:
         portal_name = msg['portal_name']
         max_rows = msg['max_rows']
 
-        styled_print(f"[{self.session_id}]   {S.EXEC}  Execute portal '{portal_name or '(unnamed)'}' (max_rows={max_rows})")
+        self._runtime_log(
+            "DEBUG",
+            f"Execute portal '{portal_name or '(unnamed)'}' (max_rows={max_rows})",
+            event="pgwire_execute",
+            portal_name=portal_name,
+            max_rows=max_rows,
+        )
 
         # Initialize tracking variables (set properly once we have the portal)
         _query_id, _query_start_time, _caller_id = None, None, None
+        # Ensure these exist for error handling/logging even if portal lookup fails.
+        query = ""
+        original_query = None
+        statement_name = None
+        is_catalog = False
+        execute_start = None
+        error: Exception | None = None
 
         try:
             # Get portal
@@ -7801,6 +9158,27 @@ class ClientConnection:
             query = portal['query']
             params = portal['params']
             original_query = portal.get('original_query')  # For SQL Trail detection
+            statement_name = portal.get('statement_name')
+
+            # Log every executed SQL statement (Extended Query Protocol).
+            # Use original_query when available (before semantic/EXPLAIN rewrites).
+            self.query_count += 1
+            query_for_log = (original_query or query or "").strip()
+            is_catalog = self._is_catalog_query(query_for_log.upper())
+            self._runtime_log(
+                "DEBUG" if is_catalog else "INFO",
+                f"Query #{self.query_count}: {query_for_log[:200]}{'...' if len(query_for_log) > 200 else ''}",
+                event="query_execute",
+                query_count=self.query_count,
+                portal_name=portal_name,
+                statement_name=statement_name,
+                is_catalog=is_catalog,
+                query=query_for_log if len(query_for_log) <= 10_000 else (query_for_log[:10_000] + "..."),
+                query_len=len(query_for_log),
+                param_count=len(params),
+            )
+            import time
+            execute_start = time.time()
 
             # Set up SQL Trail tracking if this is an LARS statement
             # Uses original_query (before rewriting) for accurate detection
@@ -7836,11 +9214,28 @@ class ClientConnection:
                     if is_friendly and limit_value:
                         set_early_termination_hint(_caller_id, limit_value)
                         _early_term_enabled = True
-                        styled_print(f"[{self.session_id}]   {S.CHART} Early termination enabled: LIMIT {limit_value}")
+                        self._runtime_log(
+                            "DEBUG",
+                            f"Early termination enabled: LIMIT {limit_value}",
+                            event="early_termination",
+                            caller_id=_caller_id,
+                            limit=limit_value,
+                        )
                     elif limit_value and reason:
-                        styled_print(f"[{self.session_id}]   {S.CFG} Early termination skipped: {reason}")
+                        self._runtime_log(
+                            "DEBUG",
+                            f"Early termination skipped: {reason}",
+                            event="early_termination",
+                            caller_id=_caller_id,
+                            skipped_reason=reason,
+                            limit=limit_value,
+                        )
             except Exception as et_error:
-                styled_print(f"[{self.session_id}]   {S.WARN}  Early termination check failed: {et_error}")
+                self._runtime_log(
+                    "WARN",
+                    f"Early termination check failed: {et_error}",
+                    event="early_termination_error",
+                )
 
             # Check if Describe already sent RowDescription
             # If so, Execute should NOT send RowDescription again
@@ -7851,7 +9246,12 @@ class ClientConnection:
             if 'missing_table_result' in portal:
                 result_df = portal['missing_table_result']
                 send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
-                styled_print(f"[{self.session_id}]      {S.OK} Missing pg_catalog table - returning cached empty result")
+                self._runtime_log(
+                    "DEBUG",
+                    "Missing pg_catalog table - returning cached empty result",
+                    event="cached_result",
+                    kind="missing_pg_catalog_table",
+                )
                 return
 
             # Check if Describe cached a skill result (to avoid double execution)
@@ -7859,7 +9259,13 @@ class ClientConnection:
                 result_df = portal['skill_result']
                 # Describe already sent RowDescription, so don't send again
                 send_execute_results(self.sock, result_df, send_row_description=False)
-                styled_print(f"[{self.session_id}]      {S.OK} Skill call - returning cached result ({len(result_df)} rows)")
+                self._runtime_log(
+                    "DEBUG",
+                    f"Skill call - returning cached result ({len(result_df)} rows)",
+                    event="cached_result",
+                    kind="skill",
+                    rows=len(result_df),
+                )
                 return
 
             # Check for special PostgreSQL functions and commands
@@ -7867,13 +9273,21 @@ class ClientConnection:
 
             # Empty query - send EmptyQueryResponse
             if not query_upper or query_upper.startswith('--'):
-                print(f"[{self.session_id}]      Empty query detected - sending EmptyQueryResponse")
+                self._runtime_log(
+                    "DEBUG",
+                    "Empty query - sending EmptyQueryResponse",
+                    event="empty_query",
+                )
                 self.sock.sendall(EmptyQueryResponse.encode())
                 return
 
             # SHOW commands - Handle via Extended Query
             if query_upper.startswith('SHOW '):
-                print(f"[{self.session_id}]      Detected SHOW command via Extended Query")
+                self._runtime_log(
+                    "DEBUG",
+                    "SHOW command via Extended Query",
+                    event="show_command",
+                )
                 # Handle SHOW and send results - skip RowDescription if Describe already sent it
                 self._execute_show_and_send_extended(query, send_row_description=send_row_desc)
                 return
@@ -7886,7 +9300,11 @@ class ClientConnection:
                     from ..sql_tools.sql_directives import parse_sql_directives
                     directive, inner_sql = parse_sql_directives(original_query)
                     if directive and directive.directive_type == 'BACKGROUND':
-                        styled_print(f"[{self.session_id}]      Detected BACKGROUND query via Extended Query")
+                        self._runtime_log(
+                            "DEBUG",
+                            "BACKGROUND directive via Extended Query",
+                            event="background_query",
+                        )
                         # Describe Portal already sent RowDescription with job metadata columns,
                         # so Execute only sends DataRows (no RowDescription)
                         self._handle_background_query(inner_sql, extended_query_mode=True, send_row_description=False)
@@ -7908,7 +9326,11 @@ class ClientConnection:
             # WATCH commands - Handle reactive SQL subscriptions via Extended Query
             from ..sql_tools.sql_directives import is_watch_command
             if is_watch_command(query):
-                print(f"[{self.session_id}]      Detected WATCH command via Extended Query")
+                self._runtime_log(
+                    "DEBUG",
+                    "WATCH command via Extended Query",
+                    event="watch_command",
+                )
                 self._handle_watch_command(query, extended_query_mode=True, send_row_description=send_row_desc)
                 return
 
@@ -7919,7 +9341,11 @@ class ClientConnection:
             import re
             explain_check_query = (original_query or query).upper().strip()
             if re.match(r'^EXPLAIN[\s(]', explain_check_query):
-                styled_print(f"[{self.session_id}]      Detected EXPLAIN via Extended Query")
+                self._runtime_log(
+                    "DEBUG",
+                    "EXPLAIN via Extended Query",
+                    event="explain_query",
+                )
                 # Use original_query for explain handling (has EXPLAIN prefix)
                 self._handle_explain_query_extended(original_query or query, send_row_description=send_row_desc)
                 return
@@ -7927,7 +9353,11 @@ class ClientConnection:
             # PIPELINE syntax (THEN/INTO) - Handle post-query result processing via Extended Query
             # Check if Describe already executed the pipeline and cached the result
             if 'pipeline_result' in portal:
-                styled_print(f"[{self.session_id}]      PIPELINE: Using cached result from Describe")
+                self._runtime_log(
+                    "DEBUG",
+                    "PIPELINE cached result (from Describe)",
+                    event="pipeline_cached_result",
+                )
                 cached_df = portal['pipeline_result']
                 # Describe already sent RowDescription, so don't send again
                 send_execute_results(self.sock, cached_df, send_row_description=False)
@@ -7941,18 +9371,30 @@ class ClientConnection:
             from ..sql_tools.canvas_rewriter import has_canvas_syntax, rewrite_canvas_syntax
             if has_canvas_syntax(original_query):
                 original_query = rewrite_canvas_syntax(original_query)
-                styled_print(f"[{self.session_id}]      {S.INFO} CANVAS syntax rewritten (Execute)")
+                self._runtime_log(
+                    "DEBUG",
+                    "CANVAS syntax rewritten (Execute)",
+                    event="canvas_rewrite",
+                )
 
             if has_pipeline_syntax(original_query):
                 pipeline = parse_pipeline_syntax(original_query)
                 if pipeline and pipeline.stages:
-                    styled_print(f"[{self.session_id}]      Detected PIPELINE syntax via Extended Query")
+                    self._runtime_log(
+                        "DEBUG",
+                        "PIPELINE syntax via Extended Query",
+                        event="pipeline_query",
+                    )
                     self._handle_pipeline_query(pipeline, original_query, extended_query_mode=True, send_row_description=send_row_desc)
                     return
 
             # pg_get_keywords() - Return empty result
             if 'PG_GET_KEYWORDS' in query_upper:
-                print(f"[{self.session_id}]      Detected pg_get_keywords() - returning empty")
+                self._runtime_log(
+                    "DEBUG",
+                    "pg_get_keywords() - returning empty",
+                    event="pg_get_keywords",
+                )
                 import pandas as pd
                 send_execute_results(self.sock, pd.DataFrame(columns=['word']), send_row_description=send_row_desc)
                 return
@@ -7960,7 +9402,11 @@ class ClientConnection:
             # current_schemas() - Return PostgreSQL array format (DuckDB returns scalar)
             # This is critical for DataGrip which parses the array to build search path
             if 'CURRENT_SCHEMAS(' in query_upper and 'PG_NAMESPACE' not in query_upper:
-                print(f"[{self.session_id}]      Detected current_schemas() - returning PostgreSQL array format")
+                self._runtime_log(
+                    "DEBUG",
+                    "current_schemas() - returning PostgreSQL array format",
+                    event="current_schemas",
+                )
                 import pandas as pd
                 cols = self._expected_result_columns(query)
                 if cols:
@@ -7981,7 +9427,6 @@ class ClientConnection:
                 else:
                     result_df = pd.DataFrame({'current_schemas': ['{main}']})
                 send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
-                styled_print(f"[{self.session_id}]      {S.OK} current_schemas() → {{main}}")
                 return
 
             # pg_namespace queries for schema browser (Extended Query mode)
@@ -7996,7 +9441,11 @@ class ClientConnection:
             is_acl_query = 'NSPACL' in select_clause or ' ACL' in select_clause or ',ACL' in select_clause or '.ACL' in select_clause
 
             if is_pg_namespace_main and not is_pg_class_main and 'FROM' in query_upper and not is_acl_query:
-                styled_print(f"[{self.session_id}]      {S.CFG} Handling pg_namespace query for schema browser (Extended)...")
+                self._runtime_log(
+                    "DEBUG",
+                    "Handling pg_namespace query for schema browser (Extended)",
+                    event="catalog_pg_namespace_handler",
+                )
                 import pandas as pd
                 try:
                     # Get the columns that Describe promised (or use defaults)
@@ -8019,8 +9468,13 @@ class ClientConnection:
                             seen.add(col)
                             unique_cols.append(col)
                     expected_cols = unique_cols
-
-                    print(f"[{self.session_id}]      Expected columns: {expected_cols}")
+                    self._runtime_log(
+                        "DEBUG",
+                        f"pg_namespace expected columns: {len(expected_cols)}",
+                        event="catalog_pg_namespace_expected_cols",
+                        expected_cols=expected_cols[:200],
+                        expected_col_count=len(expected_cols),
+                    )
 
                     # Get schema data from DuckDB's pg_catalog
                     schema_rows = self.duckdb_conn.execute(
@@ -8086,35 +9540,71 @@ class ClientConnection:
                     if name_col and name_col in result_df.columns:
                         result_df = result_df.sort_values(name_col).reset_index(drop=True)
 
-                    # Debug: show what schemas we found
-                    styled_print(f"[{self.session_id}]      {S.CLIP} Schemas found ({len(result_df)}):")
-                    for _, row in result_df.head(10).iterrows():
-                        display_val = row.get(name_col, row.iloc[0]) if name_col else row.iloc[0]
-                        print(f"[{self.session_id}]         - {display_val}")
+                    try:
+                        top_schemas: list[str] = []
+                        if name_col and name_col in result_df.columns:
+                            top_schemas = [str(v) for v in result_df[name_col].head(10).tolist()]
+                        elif len(result_df.columns) > 0:
+                            top_schemas = [str(v) for v in result_df.iloc[:, 0].head(10).tolist()]
+                        self._runtime_log(
+                            "DEBUG",
+                            f"pg_namespace schemas found: {len(result_df)}",
+                            event="catalog_pg_namespace_schemas",
+                            schema_count=len(result_df),
+                            sample=top_schemas,
+                        )
+                    except Exception:
+                        pass
 
                     # Validate column count before sending
                     actual_send_row_desc = send_row_desc
                     if not send_row_desc and portal_name in self.portals:
                         described_col_count = self.portals[portal_name].get('described_columns')
                         if described_col_count is not None and described_col_count != len(expected_cols):
-                            styled_print(f"[{self.session_id}]      {S.WARN}  pg_namespace column mismatch: described {described_col_count}, returning {len(expected_cols)}")
+                            self._runtime_log(
+                                "WARN",
+                                f"pg_namespace column mismatch: described {described_col_count}, returning {len(expected_cols)}",
+                                event="catalog_column_mismatch",
+                                table="pg_namespace",
+                                described_col_count=described_col_count,
+                                returning_col_count=len(expected_cols),
+                            )
                             actual_send_row_desc = True
                     send_execute_results(self.sock, result_df, send_row_description=actual_send_row_desc)
-                    styled_print(f"[{self.session_id}]      {S.DONE} pg_namespace handled ({len(result_df)} schemas)")
+                    self._runtime_log(
+                        "DEBUG",
+                        f"pg_namespace handled ({len(result_df)} schemas)",
+                        event="catalog_pg_namespace_complete",
+                        schema_count=len(result_df),
+                    )
                     return
                 except Exception as e:
-                    styled_print(f"[{self.session_id}]      {S.WARN}  Could not handle pg_namespace: {e}")
+                    self._runtime_log(
+                        "WARN",
+                        f"Could not handle pg_namespace: {e}",
+                        event="catalog_pg_namespace_failed",
+                        error_type=type(e).__name__,
+                    )
                     # Don't fall through - return empty result with expected columns to prevent mismatch
                     import pandas as pd
                     expected_cols = self._expected_result_columns(query) or ['id', 'state_number', 'name', 'description', 'owner']
                     result_df = pd.DataFrame(columns=expected_cols)
                     send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
-                    styled_print(f"[{self.session_id}]      {S.OK} pg_namespace fallback (empty with {len(expected_cols)} cols)")
+                    self._runtime_log(
+                        "DEBUG",
+                        f"pg_namespace fallback (empty with {len(expected_cols)} cols)",
+                        event="catalog_pg_namespace_fallback",
+                        col_count=len(expected_cols),
+                    )
                     return
 
             # pg_class queries with c.* - Use the bypass logic
             if 'FROM PG_CATALOG.PG_CLASS' in query_upper and 'C.*' in query_upper:
-                print(f"[{self.session_id}]      Detected pg_class c.* query - using safe column bypass")
+                self._runtime_log(
+                    "DEBUG",
+                    "Detected pg_class c.* query - using safe column bypass",
+                    event="catalog_pg_class_bypass",
+                )
                 try:
                     # Extract WHERE clause from original query
                     import re
@@ -8135,7 +9625,12 @@ class ClientConnection:
                     else:
                         where_clause = "c.relkind NOT IN ('i', 'I', 'c')"
 
-                    print(f"[{self.session_id}]         WHERE: {where_clause[:100]}")
+                    self._runtime_log(
+                        "DEBUG",
+                        "pg_class bypass WHERE parsed",
+                        event="catalog_pg_class_bypass_where",
+                        where_preview=where_clause[:500],
+                    )
 
                     # Use information_schema.tables joined with pg_namespace for proper OIDs
                     # DuckDB's pg_catalog.pg_class is EMPTY - doesn't contain user tables
@@ -8150,7 +9645,12 @@ class ClientConnection:
                     # relname -> t.table_name (with or without c. prefix)
                     transformed_where = re.sub(r'\b(c\.)?relname\b', 't.table_name', transformed_where, flags=re.IGNORECASE)
 
-                    print(f"[{self.session_id}]         Transformed WHERE: {transformed_where[:100]}")
+                    self._runtime_log(
+                        "DEBUG",
+                        "pg_class bypass WHERE transformed",
+                        event="catalog_pg_class_bypass_where_transformed",
+                        where_preview=transformed_where[:500],
+                    )
 
                     safe_query = f"""
                         SELECT
@@ -8231,24 +9731,50 @@ class ClientConnection:
                                     # Column not in our synthetic data - fill with NULL/default
                                     projected_data[col] = [None] * len(result_df)
                             result_df = pd.DataFrame(projected_data)
-                            print(f"[{self.session_id}]         Projected to {len(expanded_cols)} columns (from {len(expected_cols)} with * expansion)")
+                            self._runtime_log(
+                                "DEBUG",
+                                f"pg_class bypass projected to {len(expanded_cols)} columns",
+                                event="catalog_pg_class_bypass_projected",
+                                projected_col_count=len(expanded_cols),
+                                expected_col_count=len(expected_cols),
+                            )
 
                     send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
-                    styled_print(f"[{self.session_id}]      {S.OK} pg_class bypass executed ({len(result_df)} rows × {len(result_df.columns)} cols)")
+                    self._runtime_log(
+                        "DEBUG",
+                        f"pg_class bypass executed ({len(result_df)} rows × {len(result_df.columns)} cols)",
+                        event="catalog_pg_class_bypass_complete",
+                        row_count=len(result_df),
+                        col_count=len(result_df.columns),
+                    )
                     return
                 except Exception as e:
-                    print(f"[{self.session_id}]      ✗ Bypass failed: {str(e)[:200]}")
+                    self._runtime_log(
+                        "WARN",
+                        f"pg_class bypass failed: {str(e)[:200]}",
+                        event="catalog_pg_class_bypass_failed",
+                        error_type=type(e).__name__,
+                    )
                     # Don't fall through - return empty result with expected columns
                     import pandas as pd
                     expected_cols = self._expected_result_columns(query) or ['relkind', 'relname', 'oid']
                     result_df = pd.DataFrame(columns=expected_cols)
                     send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
-                    styled_print(f"[{self.session_id}]      {S.OK} pg_class bypass fallback (empty with {len(expected_cols)} cols)")
+                    self._runtime_log(
+                        "DEBUG",
+                        f"pg_class bypass fallback (empty with {len(expected_cols)} cols)",
+                        event="catalog_pg_class_bypass_fallback",
+                        col_count=len(expected_cols),
+                    )
                     return
 
             # pg_attribute queries with a.* - Use information_schema.columns
             if 'FROM PG_CATALOG.PG_ATTRIBUTE' in query_upper and 'A.*' in query_upper:
-                print(f"[{self.session_id}]      Detected pg_attribute a.* query - using safe column bypass")
+                self._runtime_log(
+                    "DEBUG",
+                    "Detected pg_attribute a.* query - using safe column bypass",
+                    event="catalog_pg_attribute_bypass",
+                )
                 try:
                     # Extract WHERE clause
                     import re
@@ -8262,7 +9788,12 @@ class ClientConnection:
                     else:
                         where_clause = "1=1"
 
-                    print(f"[{self.session_id}]         WHERE: {where_clause[:100]}")
+                    self._runtime_log(
+                        "DEBUG",
+                        "pg_attribute bypass WHERE parsed",
+                        event="catalog_pg_attribute_bypass_where",
+                        where_preview=where_clause[:500],
+                    )
 
                     # Transform WHERE clause: a.attrelid -> table OID, a.attnum -> ordinal_position
                     # Also handle c.oid and c.relkind from pg_class join
@@ -8277,7 +9808,12 @@ class ClientConnection:
                     # Remove relkind NOT IN filters since we don't have that info
                     transformed_where = re.sub(r"\s+AND\s+'r'\s+not\s+in\s+\([^)]+\)", '', transformed_where, flags=re.IGNORECASE)
 
-                    print(f"[{self.session_id}]         Transformed WHERE: {transformed_where[:150]}")
+                    self._runtime_log(
+                        "DEBUG",
+                        "pg_attribute bypass WHERE transformed",
+                        event="catalog_pg_attribute_bypass_where_transformed",
+                        where_preview=transformed_where[:500],
+                    )
 
                     # Synthesize pg_attribute data from information_schema.columns
                     # Map DuckDB types to PostgreSQL type OIDs
@@ -8380,26 +9916,53 @@ class ClientConnection:
                                 else:
                                     projected_data[col] = [None] * len(result_df)
                             result_df = pd.DataFrame(projected_data)
-                            print(f"[{self.session_id}]         Projected to {len(expanded_cols)} columns")
+                            self._runtime_log(
+                                "DEBUG",
+                                f"pg_attribute bypass projected to {len(expanded_cols)} columns",
+                                event="catalog_pg_attribute_bypass_projected",
+                                projected_col_count=len(expanded_cols),
+                                expected_col_count=len(expected_cols),
+                            )
 
                     send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
-                    styled_print(f"[{self.session_id}]      {S.OK} pg_attribute bypass executed ({len(result_df)} rows × {len(result_df.columns)} cols)")
+                    self._runtime_log(
+                        "DEBUG",
+                        f"pg_attribute bypass executed ({len(result_df)} rows × {len(result_df.columns)} cols)",
+                        event="catalog_pg_attribute_bypass_complete",
+                        row_count=len(result_df),
+                        col_count=len(result_df.columns),
+                    )
                     return
                 except Exception as e:
-                    print(f"[{self.session_id}]      ✗ pg_attribute bypass failed: {str(e)[:200]}")
-                    import traceback
-                    traceback.print_exc()
+                    self._runtime_log(
+                        "WARN",
+                        f"pg_attribute bypass failed: {str(e)[:200]}",
+                        event="catalog_pg_attribute_bypass_failed",
+                        error_type=type(e).__name__,
+                    )
+                    if os.environ.get("LARS_PG_TRACEBACK", "0").strip().lower() in ("1", "true", "yes", "on"):
+                        import traceback
+                        traceback.print_exc()
                     # Don't fall through - return empty result with expected columns
                     import pandas as pd
                     expected_cols = self._expected_result_columns(query) or ['relname', 'attname', 'attnum']
                     result_df = pd.DataFrame(columns=expected_cols)
                     send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
-                    styled_print(f"[{self.session_id}]      {S.OK} pg_attribute bypass fallback (empty with {len(expected_cols)} cols)")
+                    self._runtime_log(
+                        "DEBUG",
+                        f"pg_attribute bypass fallback (empty with {len(expected_cols)} cols)",
+                        event="catalog_pg_attribute_bypass_fallback",
+                        col_count=len(expected_cols),
+                    )
                     return
 
             # Strip regclass/regtype/regproc casts from ANY other pg_catalog query
             if 'PG_CATALOG' in query_upper and ('::REGCLASS' in query_upper or '::REGTYPE' in query_upper or '::REGPROC' in query_upper or '::OID' in query_upper):
-                print(f"[{self.session_id}]      Detected pg_catalog query with type casts - stripping")
+                self._runtime_log(
+                    "DEBUG",
+                    "Detected pg_catalog query with type casts - stripping",
+                    event="catalog_type_cast_strip",
+                )
 
                 # FIRST: Rewrite pg_inherits subqueries BEFORE stripping type casts
                 # This prevents malformed queries when type casts are removed from complex subqueries
@@ -8432,15 +9995,31 @@ class ClientConnection:
                         described_col_count = self.portals[portal_name].get('described_columns')
                         actual_col_count = len(result_df.columns)
                         if described_col_count is not None and described_col_count != actual_col_count:
-                            styled_print(f"[{self.session_id}]      {S.WARN}  COLUMN MISMATCH (type cast stripping)!")
-                            print(f"[{self.session_id}]         Described: {described_col_count}, Actual: {actual_col_count}")
-                            print(f"[{self.session_id}]         Columns: {list(result_df.columns)}")
+                            self._runtime_log(
+                                "WARN",
+                                "COLUMN MISMATCH (type cast stripping)",
+                                event="catalog_column_mismatch",
+                                described_col_count=described_col_count,
+                                actual_col_count=actual_col_count,
+                                actual_columns=list(result_df.columns)[:200],
+                            )
                             actual_send_row_desc = True  # Resend RowDescription to fix mismatch
                     send_execute_results(self.sock, result_df, send_row_description=actual_send_row_desc)
-                    styled_print(f"[{self.session_id}]      {S.OK} Catalog query executed after stripping type casts ({len(result_df)} rows × {len(result_df.columns)} cols)")
+                    self._runtime_log(
+                        "DEBUG",
+                        f"Catalog query executed after stripping type casts ({len(result_df)} rows × {len(result_df.columns)} cols)",
+                        event="catalog_type_cast_strip_complete",
+                        row_count=len(result_df),
+                        col_count=len(result_df.columns),
+                    )
                     return
                 except Exception as e:
-                    print(f"[{self.session_id}]      ✗ Even after stripping, query failed: {str(e)[:100]}")
+                    self._runtime_log(
+                        "WARN",
+                        f"Catalog query failed after stripping type casts: {str(e)[:200]}",
+                        event="catalog_type_cast_strip_failed",
+                        error_type=type(e).__name__,
+                    )
                     # ALWAYS return empty result - don't fall through to avoid cascading errors
                     expected_cols = self._expected_result_columns(query)
                     if not expected_cols:
@@ -8452,8 +10031,13 @@ class ClientConnection:
                     if not send_row_desc and portal_name in self.portals:
                         described_col_count = self.portals[portal_name].get('described_columns')
                         if described_col_count is not None and described_col_count != len(expected_cols):
-                            styled_print(f"[{self.session_id}]      {S.WARN}  COLUMN MISMATCH in fallback!")
-                            print(f"[{self.session_id}]         Described: {described_col_count}, Inferred: {len(expected_cols)}")
+                            self._runtime_log(
+                                "WARN",
+                                "COLUMN MISMATCH in fallback (type cast stripping)",
+                                event="catalog_column_mismatch",
+                                described_col_count=described_col_count,
+                                inferred_col_count=len(expected_cols),
+                            )
                             # Adjust columns to match described count
                             if described_col_count > len(expected_cols):
                                 # Add placeholder columns
@@ -8462,34 +10046,61 @@ class ClientConnection:
                             else:
                                 # Truncate to described count
                                 expected_cols = expected_cols[:described_col_count]
-                            print(f"[{self.session_id}]         Adjusted to: {len(expected_cols)} cols")
+                            self._runtime_log(
+                                "DEBUG",
+                                f"Fallback columns adjusted to described count: {len(expected_cols)}",
+                                event="catalog_column_mismatch_adjusted",
+                                adjusted_col_count=len(expected_cols),
+                            )
                     result_df = pd.DataFrame(columns=expected_cols)
                     send_execute_results(self.sock, result_df, send_row_description=actual_send_row_desc)
-                    styled_print(f"[{self.session_id}]      {S.OK} Type cast query fallback (empty with {len(expected_cols)} cols)")
-                    styled_print(f"[{self.session_id}]      {S.WARN}  ZERO ROWS (fallback) for: {query[:200]}...")
+                    self._runtime_log(
+                        "DEBUG",
+                        f"Type cast query fallback (empty with {len(expected_cols)} cols)",
+                        event="catalog_type_cast_strip_fallback",
+                        col_count=len(expected_cols),
+                    )
                     return
 
             # Check if this is a SET or RESET command
             if query_upper.startswith('SET ') or query_upper.startswith('RESET '):
                 # Handle SET commands via Extended Query Protocol
-                print(f"[{self.session_id}]      Detected SET/RESET via Extended Query")
+                self._runtime_log(
+                    "DEBUG",
+                    "SET/RESET via Extended Query",
+                    event="set_reset",
+                )
                 self._execute_set_command(query)
                 # Send CommandComplete (SET commands don't return rows!)
                 self.sock.sendall(CommandComplete.encode('SET'))
-                styled_print(f"[{self.session_id}]      {S.OK} SET/RESET handled")
                 return
 
             # Check if this is a transaction command
             if query_upper in ['BEGIN', 'BEGIN TRANSACTION', 'BEGIN WORK', 'START TRANSACTION']:
-                print(f"[{self.session_id}]      Detected BEGIN via Extended Query")
+                self._runtime_log(
+                    "DEBUG",
+                    "BEGIN via Extended Query",
+                    event="transaction",
+                    command="BEGIN",
+                )
                 self._handle_begin(send_ready=False)  # Extended Query - wait for Sync
                 return
             elif query_upper in ['COMMIT', 'COMMIT TRANSACTION', 'COMMIT WORK', 'END', 'END TRANSACTION']:
-                print(f"[{self.session_id}]      Detected COMMIT via Extended Query")
+                self._runtime_log(
+                    "DEBUG",
+                    "COMMIT via Extended Query",
+                    event="transaction",
+                    command="COMMIT",
+                )
                 self._handle_commit(send_ready=False)  # Extended Query - wait for Sync
                 return
             elif query_upper in ['ROLLBACK', 'ROLLBACK TRANSACTION', 'ROLLBACK WORK', 'ABORT']:
-                print(f"[{self.session_id}]      Detected ROLLBACK via Extended Query")
+                self._runtime_log(
+                    "DEBUG",
+                    "ROLLBACK via Extended Query",
+                    event="transaction",
+                    command="ROLLBACK",
+                )
                 self._handle_rollback(send_ready=False)  # Extended Query - wait for Sync
                 return
 
@@ -8497,11 +10108,21 @@ class ClientConnection:
             # This UNION includes branches over tables DuckDB doesn't implement (pg_collation, pg_operator, etc.),
             # but DataGrip still expects rows from pg_class/pg_type/pg_proc. Build those parts explicitly.
             if self._is_datagrip_pg_class_table_browser_union(query_upper):
-                print(f"[{self.session_id}]      Handling pg_class table browser UNION (DataGrip)...")
+                self._runtime_log(
+                    "DEBUG",
+                    "Handling pg_class table browser UNION (DataGrip)",
+                    event="catalog_datagrip_pg_class_union",
+                )
                 result_df = self._build_datagrip_pg_class_table_browser_union_result(query, params)
                 self._validate_custom_handler_columns(portal_name, len(result_df.columns), 'pg_class table browser UNION')
                 send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
-                styled_print(f"[{self.session_id}]      {S.OK} pg_class table browser UNION handled ({len(result_df)} rows × {len(result_df.columns)} cols)")
+                self._runtime_log(
+                    "DEBUG",
+                    f"pg_class table browser UNION handled ({len(result_df)} rows × {len(result_df.columns)} cols)",
+                    event="catalog_datagrip_pg_class_union_complete",
+                    row_count=len(result_df),
+                    col_count=len(result_df.columns),
+                )
                 return
 
             # Convert PostgreSQL placeholders ($1, $2, ...) to DuckDB placeholders (?)
@@ -8534,8 +10155,14 @@ class ClientConnection:
             }
             duckdb_query = preprocess_deref_cascades(duckdb_query, deref_context)
 
-            print(f"[{self.session_id}]      Converted query: {duckdb_query[:80]}...")
-            print(f"[{self.session_id}]      Parameters: {params}")
+            self._runtime_log(
+                "DEBUG",
+                "Execute query prepared for DuckDB",
+                event="execute_query_prepared",
+                duckdb_query_preview=(duckdb_query[:500] if duckdb_query else ""),
+                duckdb_query_len=len(duckdb_query or ""),
+                param_count=len(params),
+            )
 
             # DDL/DML commands - Execute without returning rows
             # These commands don't return result sets, only CommandComplete
@@ -8568,12 +10195,16 @@ class ClientConnection:
                 else:
                     command_tag = words[0] if words else "OK"
 
-                styled_print(f"[{self.session_id}]      Detected DDL/DML command: {command_tag}")
+                self._runtime_log(
+                    "INFO",
+                    f"DDL/DML command: {command_tag}",
+                    event="ddl_dml",
+                    command_tag=command_tag,
+                )
                 # Execute without fetching results
                 self.duckdb_conn.execute(duckdb_query, params)
                 # Send only CommandComplete - no RowDescription or DataRows
                 self.sock.sendall(CommandComplete.encode(command_tag))
-                styled_print(f"[{self.session_id}]      {S.OK} DDL/DML executed, sent CommandComplete({command_tag})")
                 return
 
             # Handle special catalog queries that need actual data (not just empty results)
@@ -8581,7 +10212,11 @@ class ClientConnection:
 
             # pg_timezone_names / pg_timezone_abbrevs - return common timezones
             if 'PG_TIMEZONE_NAMES' in query_upper or 'PG_TIMEZONE_ABBREVS' in query_upper:
-                print(f"[{self.session_id}]      Handling timezone catalog query...")
+                self._runtime_log(
+                    "DEBUG",
+                    "Handling timezone catalog query",
+                    event="catalog_timezone",
+                )
                 cols = self._expected_result_columns(query) or ['name', 'is_dst']
                 rows = [
                     {'name': 'UTC', 'is_dst': False, 'abbrev': 'UTC', 'utc_offset': '00:00:00'},
@@ -8593,12 +10228,15 @@ class ClientConnection:
                 ]
                 result_df = pd.DataFrame([{c: r.get(c, None) for c in cols} for r in rows])
                 send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
-                styled_print(f"[{self.session_id}]      {S.OK} Timezone catalog handled ({len(result_df)} rows)")
                 return
 
             # pg_roles - return current user as a role
             if 'PG_ROLES' in query_upper and 'FROM' in query_upper:
-                print(f"[{self.session_id}]      Handling pg_roles query...")
+                self._runtime_log(
+                    "DEBUG",
+                    "Handling pg_roles query",
+                    event="catalog_pg_roles",
+                )
                 cols = self._expected_result_columns(query) or ['oid', 'rolname', 'rolsuper']
                 # Validate column count matches Describe
                 self._validate_custom_handler_columns(portal_name, len(cols), 'pg_roles')
@@ -8617,12 +10255,22 @@ class ClientConnection:
                 }
                 result_df = pd.DataFrame([{c: base.get(c, None) for c in cols}])
                 send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
-                styled_print(f"[{self.session_id}]      {S.OK} pg_roles handled ({len(result_df)} rows, {len(cols)} cols)")
+                self._runtime_log(
+                    "DEBUG",
+                    f"pg_roles handled ({len(result_df)} rows, {len(cols)} cols)",
+                    event="catalog_pg_roles_complete",
+                    row_count=len(result_df),
+                    col_count=len(cols),
+                )
                 return
 
             # pg_user - return current user info (DataGrip checks superuser status)
             if 'PG_USER' in query_upper and 'FROM' in query_upper and 'PG_USER_MAPPINGS' not in query_upper:
-                print(f"[{self.session_id}]      Handling pg_user query...")
+                self._runtime_log(
+                    "DEBUG",
+                    "Handling pg_user query",
+                    event="catalog_pg_user",
+                )
                 cols = self._expected_result_columns(query) or ['usename', 'usesuper']
                 # Validate column count matches Describe
                 self._validate_custom_handler_columns(portal_name, len(cols), 'pg_user')
@@ -8640,151 +10288,205 @@ class ClientConnection:
                 }
                 result_df = pd.DataFrame([{c: base.get(c, None) for c in cols}])
                 send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
-                styled_print(f"[{self.session_id}]      {S.OK} pg_user handled ({len(result_df)} rows, {len(cols)} cols)")
+                self._runtime_log(
+                    "DEBUG",
+                    f"pg_user handled ({len(result_df)} rows, {len(cols)} cols)",
+                    event="catalog_pg_user_complete",
+                    row_count=len(result_df),
+                    col_count=len(cols),
+                )
                 return
 
             # pg_event_trigger - return empty result (DuckDB doesn't have event triggers)
             if 'PG_EVENT_TRIGGER' in query_upper and 'FROM' in query_upper:
-                print(f"[{self.session_id}]      Handling pg_event_trigger query...")
+                self._runtime_log(
+                    "DEBUG",
+                    "Handling pg_event_trigger query (empty)",
+                    event="catalog_pg_event_trigger",
+                )
                 cols = self._expected_result_columns(query) or ['oid', 'evtname', 'evtevent', 'evtowner', 'evtfoid', 'evtenabled', 'evttags']
                 result_df = pd.DataFrame(columns=cols)
                 send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
-                styled_print(f"[{self.session_id}]      {S.OK} pg_event_trigger handled (empty)")
                 return
 
             # Foreign data wrapper tables - return empty results (DuckDB doesn't have FDW)
             if 'PG_FOREIGN_DATA_WRAPPER' in query_upper and 'FROM' in query_upper:
-                print(f"[{self.session_id}]      Handling pg_foreign_data_wrapper query...")
+                self._runtime_log(
+                    "DEBUG",
+                    "Handling pg_foreign_data_wrapper query (empty)",
+                    event="catalog_pg_foreign_data_wrapper",
+                )
                 cols = self._expected_result_columns(query) or ['oid', 'fdwname', 'fdwowner']
                 result_df = pd.DataFrame(columns=cols)
                 send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
-                styled_print(f"[{self.session_id}]      {S.OK} pg_foreign_data_wrapper handled (empty)")
                 return
 
             if 'PG_FOREIGN_SERVER' in query_upper and 'FROM' in query_upper:
-                print(f"[{self.session_id}]      Handling pg_foreign_server query...")
+                self._runtime_log(
+                    "DEBUG",
+                    "Handling pg_foreign_server query (empty)",
+                    event="catalog_pg_foreign_server",
+                )
                 cols = self._expected_result_columns(query) or ['oid', 'srvname', 'srvowner']
                 result_df = pd.DataFrame(columns=cols)
                 send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
-                styled_print(f"[{self.session_id}]      {S.OK} pg_foreign_server handled (empty)")
                 return
 
             if 'PG_FOREIGN_TABLE' in query_upper and 'FROM' in query_upper:
-                print(f"[{self.session_id}]      Handling pg_foreign_table query...")
+                self._runtime_log(
+                    "DEBUG",
+                    "Handling pg_foreign_table query (empty)",
+                    event="catalog_pg_foreign_table",
+                )
                 cols = self._expected_result_columns(query) or ['ftrelid', 'ftserver', 'ftoptions']
                 result_df = pd.DataFrame(columns=cols)
                 send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
-                styled_print(f"[{self.session_id}]      {S.OK} pg_foreign_table handled (empty)")
                 return
 
             # pg_extension - return empty result (DuckDB doesn't have extensions)
             if 'PG_EXTENSION' in query_upper and 'FROM' in query_upper:
-                print(f"[{self.session_id}]      Handling pg_extension query...")
+                self._runtime_log(
+                    "DEBUG",
+                    "Handling pg_extension query (empty)",
+                    event="catalog_pg_extension",
+                )
                 cols = self._expected_result_columns(query) or ['oid', 'extname', 'extowner', 'extnamespace']
                 result_df = pd.DataFrame(columns=cols)
                 send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
-                styled_print(f"[{self.session_id}]      {S.OK} pg_extension handled (empty)")
                 return
 
             # pg_language - return empty result (DuckDB doesn't have procedural languages)
             if 'PG_LANGUAGE' in query_upper and 'FROM' in query_upper:
-                print(f"[{self.session_id}]      Handling pg_language query...")
+                self._runtime_log(
+                    "DEBUG",
+                    "Handling pg_language query (empty)",
+                    event="catalog_pg_language",
+                )
                 cols = self._expected_result_columns(query) or ['oid', 'lanname', 'lanowner']
                 result_df = pd.DataFrame(columns=cols)
                 send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
-                styled_print(f"[{self.session_id}]      {S.OK} pg_language handled (empty)")
                 return
 
             # pg_cast - return empty result (DuckDB doesn't have pg_cast)
             if 'PG_CAST' in query_upper and 'FROM' in query_upper:
-                print(f"[{self.session_id}]      Handling pg_cast query...")
+                self._runtime_log(
+                    "DEBUG",
+                    "Handling pg_cast query (empty)",
+                    event="catalog_pg_cast",
+                )
                 cols = self._expected_result_columns(query) or ['oid', 'castsource', 'casttarget', 'castfunc', 'castcontext', 'castmethod']
                 result_df = pd.DataFrame(columns=cols)
                 send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
-                styled_print(f"[{self.session_id}]      {S.OK} pg_cast handled (empty)")
                 return
 
             # pg_collation - return empty result (DuckDB doesn't have pg_collation)
             if self._primary_from_table(query_upper) == 'PG_COLLATION':
-                print(f"[{self.session_id}]      Handling pg_collation query...")
+                self._runtime_log(
+                    "DEBUG",
+                    "Handling pg_collation query (empty)",
+                    event="catalog_pg_collation",
+                )
                 cols = self._expected_result_columns(query) or ['oid', 'collname', 'collnamespace', 'collowner']
                 result_df = pd.DataFrame(columns=cols)
                 send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
-                styled_print(f"[{self.session_id}]      {S.OK} pg_collation handled (empty)")
                 return
 
             # pg_inherits - return empty result (DuckDB doesn't have table inheritance)
             # Only match if pg_inherits is the main table, not just a LEFT JOIN in a pg_class query
             if 'PG_INHERITS' in query_upper and 'PG_CLASS' not in query_upper:
-                print(f"[{self.session_id}]      Handling pg_inherits query...")
+                self._runtime_log(
+                    "DEBUG",
+                    "Handling pg_inherits query (empty)",
+                    event="catalog_pg_inherits",
+                )
                 cols = self._expected_result_columns(query) or ['inhrelid', 'inhparent', 'inhseqno']
                 result_df = pd.DataFrame(columns=cols)
                 send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
-                styled_print(f"[{self.session_id}]      {S.OK} pg_inherits handled (empty)")
                 return
 
             # pg_partitioned_table - return empty result (DuckDB doesn't have partition metadata)
             if 'PG_PARTITIONED_TABLE' in query_upper:
-                print(f"[{self.session_id}]      Handling pg_partitioned_table query...")
+                self._runtime_log(
+                    "DEBUG",
+                    "Handling pg_partitioned_table query (empty)",
+                    event="catalog_pg_partitioned_table",
+                )
                 cols = self._expected_result_columns(query) or ['partrelid', 'partstrat', 'partnatts']
                 result_df = pd.DataFrame(columns=cols)
                 send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
-                styled_print(f"[{self.session_id}]      {S.OK} pg_partitioned_table handled (empty)")
                 return
 
             # pg_description - return empty result (DuckDB doesn't have pg_description)
             # This catches UNION queries where pg_description is the main FROM table
             if 'FROM PG_CATALOG.PG_DESCRIPTION' in query_upper or 'FROM PG_DESCRIPTION' in query_upper:
-                print(f"[{self.session_id}]      Handling pg_description query (main FROM table)...")
+                self._runtime_log(
+                    "DEBUG",
+                    "Handling pg_description query (empty)",
+                    event="catalog_pg_description",
+                )
                 cols = self._expected_result_columns(query) or ['id', 'sub_ids', 'kind', 'description']
                 result_df = pd.DataFrame(columns=cols)
                 send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
-                styled_print(f"[{self.session_id}]      {S.OK} pg_description handled (empty)")
                 return
 
             # pg_operator - return empty result (DuckDB doesn't have pg_operator)
             if self._primary_from_table(query_upper) == 'PG_OPERATOR':
-                print(f"[{self.session_id}]      Handling pg_operator query...")
+                self._runtime_log(
+                    "DEBUG",
+                    "Handling pg_operator query (empty)",
+                    event="catalog_pg_operator",
+                )
                 cols = self._expected_result_columns(query) or ['oid', 'oprname', 'oprnamespace', 'oprowner']
                 result_df = pd.DataFrame(columns=cols)
                 send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
-                styled_print(f"[{self.session_id}]      {S.OK} pg_operator handled (empty)")
                 return
 
             # pg_aggregate - return empty result (DuckDB doesn't have pg_aggregate)
             if 'PG_AGGREGATE' in query_upper:
-                print(f"[{self.session_id}]      Handling pg_aggregate query...")
+                self._runtime_log(
+                    "DEBUG",
+                    "Handling pg_aggregate query (empty)",
+                    event="catalog_pg_aggregate",
+                )
                 cols = self._expected_result_columns(query) or ['aggfnoid', 'aggkind', 'aggnumdirectargs']
                 result_df = pd.DataFrame(columns=cols)
                 send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
-                styled_print(f"[{self.session_id}]      {S.OK} pg_aggregate handled (empty)")
                 return
 
             # Complex pg_constraint queries with PostgreSQL-specific array functions
             if 'PG_CONSTRAINT' in query_upper and ('CONEXCLOP' in query_upper or 'UNNEST' in query_upper or 'REGOPER' in query_upper):
-                print(f"[{self.session_id}]      Handling complex pg_constraint query...")
+                self._runtime_log(
+                    "DEBUG",
+                    "Handling pg_constraint query (complex, empty)",
+                    event="catalog_pg_constraint_complex",
+                )
                 cols = self._expected_result_columns(query) or ['oid', 'conname', 'connamespace', 'contype']
                 result_df = pd.DataFrame(columns=cols)
                 send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
-                styled_print(f"[{self.session_id}]      {S.OK} pg_constraint (complex) handled (empty)")
                 return
 
             # pg_depend queries with regclass casts - return empty result
             if 'PG_DEPEND' in query_upper and ('REGCLASS' in query_upper or 'REFOBJID' in query_upper):
-                print(f"[{self.session_id}]      Handling pg_depend query (regclass)...")
+                self._runtime_log(
+                    "DEBUG",
+                    "Handling pg_depend query (empty)",
+                    event="catalog_pg_depend",
+                )
                 cols = self._expected_result_columns(query) or ['dependent_id', 'owner_id', 'refobjsubid']
                 result_df = pd.DataFrame(columns=cols)
                 send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
-                styled_print(f"[{self.session_id}]      {S.OK} pg_depend handled (empty)")
                 return
 
             # Any query with regclass type casts that DuckDB doesn't support
             if '::REGCLASS' in query_upper or 'REGCLASS' in query_upper:
-                print(f"[{self.session_id}]      Handling regclass query...")
+                self._runtime_log(
+                    "DEBUG",
+                    "Handling regclass query (empty)",
+                    event="catalog_regclass",
+                )
                 cols = self._expected_result_columns(query) or ['result']
                 result_df = pd.DataFrame(columns=cols)
                 send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
-                styled_print(f"[{self.session_id}]      {S.OK} regclass query handled (empty)")
                 return
 
             # pg_settings - augment DuckDB's pg_settings with PostgreSQL-specific settings
@@ -8821,19 +10523,32 @@ class ClientConnection:
                             }])
 
                     send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
-                    styled_print(f"[{self.session_id}]      {S.OK} pg_settings handled ({len(result_df)} rows)")
+                    self._runtime_log(
+                        "DEBUG",
+                        f"pg_settings handled ({len(result_df)} rows)",
+                        event="catalog_pg_settings_complete",
+                        row_count=len(result_df),
+                    )
                     return
                 except Exception as e:
-                    print(f"[{self.session_id}]      pg_settings handler failed: {e}")
+                    self._runtime_log(
+                        "WARN",
+                        f"pg_settings handler failed: {e}",
+                        event="catalog_pg_settings_failed",
+                        error_type=type(e).__name__,
+                    )
                     # Fall through to normal execution
 
             # Handle queries with missing pg_catalog tables (DataGrip introspection)
             missing_table_result = self._handle_missing_pg_catalog_tables(query_upper, duckdb_query)
             if missing_table_result is not None:
                 send_execute_results(self.sock, missing_table_result, send_row_description=send_row_desc)
-                styled_print(f"[{self.session_id}]      {S.OK} Missing pg_catalog table handled (empty result)")
-                if len(missing_table_result) == 0:
-                    styled_print(f"[{self.session_id}]      {S.WARN}  ZERO ROWS (missing pg_catalog handler) for: {query[:200]}...")
+                self._runtime_log(
+                    "DEBUG",
+                    f"Missing pg_catalog table handled (empty result, {len(missing_table_result)} rows)",
+                    event="catalog_missing_pg_catalog_table",
+                    row_count=len(missing_table_result),
+                )
                 return
 
             # Lazy attach configured sources for Extended Query Protocol too
@@ -8861,28 +10576,29 @@ class ClientConnection:
                 described_col_count = portal.get('described_columns')
                 if described_col_count is not None and described_col_count != actual_col_count:
                     # Log the query that caused the mismatch for debugging
-                    styled_print(f"[{self.session_id}]      {S.WARN}  COLUMN MISMATCH DETECTED!")
-                    print(f"[{self.session_id}]         Query: {query[:200]}...")
-                    print(f"[{self.session_id}]         Described: {described_col_count} cols, Actual: {actual_col_count} cols")
-                    print(f"[{self.session_id}]         Actual columns: {list(result_df.columns)}")
+                    self._runtime_log(
+                        "WARN",
+                        "COLUMN MISMATCH DETECTED",
+                        event="catalog_column_mismatch",
+                        described_col_count=described_col_count,
+                        actual_col_count=actual_col_count,
+                        actual_columns=list(result_df.columns)[:200],
+                        query_preview=(query[:500] if query else ""),
+                    )
                     actual_send_row_desc = True
 
             # Send results - only include RowDescription if Describe didn't already send it
             send_execute_results(self.sock, result_df, send_row_description=actual_send_row_desc)
 
-            # Debug: log column counts for tracking ArrayIndexOutOfBounds issues
-            desc_count = described_col_count if described_col_count is not None else '?'
-            if not actual_send_row_desc:
-                styled_print(f"[{self.session_id}]      {S.OK} Executed, {len(result_df)} rows × {actual_col_count} cols (desc: {desc_count}, row_desc=skip)")
-            else:
-                styled_print(f"[{self.session_id}]      {S.OK} Executed, {len(result_df)} rows × {actual_col_count} cols (row_desc=sent)")
-
             # CRITICAL DEBUG: Log 0-row results - DataGrip may expect data from these queries
-            if len(result_df) == 0:
-                styled_print(f"[{self.session_id}]      {S.WARN}  ZERO ROWS returned for query (first 300 chars):")
-                print(f"[{self.session_id}]         {query[:300]}...")
-                # Also log the rewritten query
-                print(f"[{self.session_id}]         Rewritten (first 200 chars): {duckdb_query[:200]}...")
+            if len(result_df) == 0 and is_catalog:
+                self._runtime_log(
+                    "DEBUG",
+                    "ZERO ROWS returned for catalog query",
+                    event="catalog_zero_rows",
+                    query_preview=(query[:500] if query else ""),
+                    duckdb_query_preview=(duckdb_query[:500] if duckdb_query else ""),
+                )
 
             # Auto-materialize for query insurance (Extended Query Protocol)
             _result_location = self._maybe_materialize_result(
@@ -8901,14 +10617,26 @@ class ClientConnection:
                     from lars.sql_tools.early_termination import clear_early_termination_hint
                     stats = clear_early_termination_hint(_caller_id)
                     if stats:
-                        # Show processed vs matches for debugging
-                        styled_print(f"[{self.session_id}]   {S.OK} Early termination: processed {stats.get('processed_count', 0)} rows, found {stats.get('match_count', 0)} matches (target: {stats.get('limit_hint', 0)})")
+                        self._runtime_log(
+                            "DEBUG",
+                            "Early termination stats",
+                            event="early_termination_stats",
+                            processed_count=stats.get("processed_count", 0),
+                            match_count=stats.get("match_count", 0),
+                            limit_hint=stats.get("limit_hint", 0),
+                        )
                 except Exception:
                     pass  # Non-fatal
 
         except Exception as e:
+            error = e
             error_str = str(e)
-            print(f"[{self.session_id}]      ✗ Execute error: {error_str[:200]}")
+            self._runtime_log(
+                "ERROR",
+                f"Execute error: {error_str[:200]}",
+                event="pgwire_error",
+                pgwire_message="EXECUTE",
+            )
 
             # Check if this is a "Table does not exist" error for a pg_catalog table
             # These are common during introspection and should return empty results, not errors
@@ -8934,7 +10662,12 @@ class ClientConnection:
                     'pg_shdescription', 'pg_stat_activity',
                 }
                 if missing_table in known_missing:
-                    print(f"[{self.session_id}]      → Missing pg_catalog table '{missing_table}' - returning empty result")
+                    self._runtime_log(
+                        "INFO",
+                        f"Missing pg_catalog table '{missing_table}' - returning empty result",
+                        event="pg_catalog_missing_table",
+                        table=missing_table,
+                    )
                     # Try to infer expected columns from the query
                     expected_cols = self._expected_result_columns(query)
                     if not expected_cols:
@@ -8943,8 +10676,7 @@ class ClientConnection:
                     import pandas as pd
                     result_df = pd.DataFrame(columns=expected_cols)
                     send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
-                    styled_print(f"[{self.session_id}]      {S.OK} Missing table fallback (empty with {len(expected_cols)} cols)")
-                    styled_print(f"[{self.session_id}]      {S.WARN}  ZERO ROWS (missing table: {missing_table}) for: {query[:200]}...")
+                    error = None
                     return
 
             # Mark transaction as errored
@@ -8964,6 +10696,26 @@ class ClientConnection:
 
             # Log query error for SQL Trail (Extended Query Protocol)
             self._error_query_tracking(_query_id, _query_start_time, e)
+        finally:
+            try:
+                if execute_start is not None:
+                    import time
+                    duration_ms = (time.time() - execute_start) * 1000.0
+                    self._runtime_log(
+                        "DEBUG" if is_catalog else "INFO",
+                        f"Query #{self.query_count} complete ({duration_ms:.1f} ms)",
+                        event="query_complete",
+                        query_count=self.query_count,
+                        portal_name=portal_name,
+                        statement_name=statement_name,
+                        is_catalog=is_catalog,
+                        duration_ms=duration_ms,
+                        ok=(error is None),
+                        error_type=(type(error).__name__ if error else None),
+                        error_message=(str(error)[:500] if error else None),
+                    )
+            except Exception:
+                pass
 
     def _handle_close(self, msg: dict):
         """
@@ -8975,23 +10727,34 @@ class ClientConnection:
         close_type = msg['type']
         name = msg['name']
 
-        styled_print(f"[{self.session_id}]   {S.DEL}  Close {close_type} '{name or '(unnamed)'}'")
+        self._runtime_log(
+            "DEBUG",
+            f"Close {close_type} '{name or '(unnamed)'}'",
+            event="pgwire_close",
+            close_type=close_type,
+            name=name,
+        )
 
         try:
             if close_type == 'S':  # Statement
                 if name in self.prepared_statements:
                     del self.prepared_statements[name]
-                    styled_print(f"[{self.session_id}]      {S.OK} Statement closed")
+                    self._runtime_log("DEBUG", "Statement closed", event="pgwire_close_complete", close_type="S", name=name)
             elif close_type == 'P':  # Portal
                 if name in self.portals:
                     del self.portals[name]
-                    styled_print(f"[{self.session_id}]      {S.OK} Portal closed")
+                    self._runtime_log("DEBUG", "Portal closed", event="pgwire_close_complete", close_type="P", name=name)
 
             # Send CloseComplete
             self.sock.sendall(CloseComplete.encode())
 
         except Exception as e:
-            print(f"[{self.session_id}]      ✗ Close error: {e}")
+            self._runtime_log(
+                "WARN",
+                f"Close error: {e}",
+                event="pgwire_close_error",
+                error_type=type(e).__name__,
+            )
             # In Extended Query Protocol, don't send ReadyForQuery - wait for Sync
             self.sock.sendall(ErrorResponse.encode('ERROR', f"Close error: {str(e)}"))
 
@@ -9001,7 +10764,12 @@ class ClientConnection:
 
         Sends ReadyForQuery with current transaction status.
         """
-        styled_print(f"[{self.session_id}]   {S.RETRY} Sync (transaction_status={self.transaction_status})")
+        self._runtime_log(
+            "DEBUG",
+            f"Sync (transaction_status={self.transaction_status})",
+            event="pgwire_sync",
+            transaction_status=self.transaction_status,
+        )
 
         # Send ReadyForQuery with current transaction status
         self.sock.sendall(ReadyForQuery.encode(self.transaction_status))
@@ -9026,6 +10794,15 @@ class ClientConnection:
 
         # Initialize activity tracking
         self._last_activity = time.time()
+        self._runtime_log(
+            "INFO",
+            "Connection opened",
+            event="connection_open",
+            addr=str(self.addr),
+            idle_timeout=self.idle_timeout,
+            socket_fd=getattr(self.sock, "fileno", lambda: None)(),
+            active_connections=(self.server.get_active_count() if self.server else None),
+        )
 
         try:
             # Set socket timeout for idle detection (if enabled)
@@ -9033,31 +10810,114 @@ class ClientConnection:
                 self.sock.settimeout(self.idle_timeout)
 
             # Step 0: Check for SSL request (common - psql tries SSL first)
-            first_message = PostgresMessage.read_startup_message(self.sock)
+            try:
+                first_message = PostgresMessage.read_startup_message(self.sock)
+            except PostgresProtocolError as e:
+                msg_type_chr = None
+                try:
+                    msg_type_chr = chr(e.msg_type) if e.msg_type is not None else None
+                except Exception:
+                    msg_type_chr = None
+                self._runtime_log(
+                    "WARN",
+                    f"Startup protocol error: {e}",
+                    event="pgwire_protocol_error",
+                    phase="startup",
+                    msg_type=e.msg_type,
+                    msg_type_chr=msg_type_chr,
+                    length=e.length,
+                    payload_length=e.payload_length,
+                )
+                try:
+                    self.sock.sendall(
+                        ErrorResponse.encode(
+                            'FATAL',
+                            'Protocol error',
+                            detail=str(e),
+                            sqlstate='08P01',  # protocol_violation
+                        )
+                    )
+                except Exception:
+                    pass
+                return
             if not first_message:
-                print(f"[{self.addr}] ✗ Failed to read initial message")
+                self._runtime_log(
+                    "WARN",
+                    "Failed to read initial message",
+                    event="startup_read_failed",
+                    addr=str(self.addr),
+                )
                 return
 
             # CancelRequest uses a different startup code on a separate connection.
             # We don't support cancelling server-side execution, but we should handle
             # it gracefully without crashing the startup path.
             if first_message.get('cancel_request'):
-                print(f"[{self.addr}] CancelRequest received - closing (not supported)")
+                self._runtime_log(
+                    "INFO",
+                    "CancelRequest received - closing (not supported)",
+                    event="cancel_request",
+                    addr=str(self.addr),
+                )
                 return
 
             # Handle SSL request
             if first_message.get('ssl_request'):
-                print(f"[{self.addr}] SSL requested - rejecting (not supported in v1)")
+                self._runtime_log(
+                    "INFO",
+                    "SSL requested - rejecting (not supported in v1)",
+                    event="ssl_rejected",
+                    addr=str(self.addr),
+                )
                 # Send 'N' to indicate SSL not supported
                 self.sock.sendall(b'N')
 
                 # Now read the REAL startup message (client will retry without SSL)
-                startup = PostgresMessage.read_startup_message(self.sock)
+                try:
+                    startup = PostgresMessage.read_startup_message(self.sock)
+                except PostgresProtocolError as e:
+                    msg_type_chr = None
+                    try:
+                        msg_type_chr = chr(e.msg_type) if e.msg_type is not None else None
+                    except Exception:
+                        msg_type_chr = None
+                    self._runtime_log(
+                        "WARN",
+                        f"Startup protocol error: {e}",
+                        event="pgwire_protocol_error",
+                        phase="startup",
+                        msg_type=e.msg_type,
+                        msg_type_chr=msg_type_chr,
+                        length=e.length,
+                        payload_length=e.payload_length,
+                    )
+                    try:
+                        self.sock.sendall(
+                            ErrorResponse.encode(
+                                'FATAL',
+                                'Protocol error',
+                                detail=str(e),
+                                sqlstate='08P01',  # protocol_violation
+                            )
+                        )
+                    except Exception:
+                        pass
+                    return
                 if not startup:
-                    print(f"[{self.addr}] ✗ Failed to read startup after SSL rejection")
+                    self._runtime_log(
+                        "WARN",
+                        "Failed to read startup after SSL rejection",
+                        event="startup_read_failed",
+                        addr=str(self.addr),
+                    )
                     return
                 if startup.get('cancel_request'):
-                    print(f"[{self.addr}] CancelRequest received after SSL rejection - closing (not supported)")
+                    self._runtime_log(
+                        "INFO",
+                        "CancelRequest received after SSL rejection - closing (not supported)",
+                        event="cancel_request",
+                        addr=str(self.addr),
+                    )
                     return
             else:
                 # No SSL request - this IS the startup message
@@ -9106,7 +10966,40 @@ class ClientConnection:
                     msg_type, payload = PostgresMessage.read_message(self.sock)
                 except socket.timeout:
                     # Idle timeout - disconnect client
-                    styled_print(f"[{self.session_id}] {S.WARN} Idle timeout ({self.idle_timeout}s) - disconnecting")
+                    self._runtime_log(
+                        "INFO",
+                        f"Idle timeout ({self.idle_timeout}s) - disconnecting",
+                        event="idle_timeout",
+                        idle_timeout=self.idle_timeout,
+                    )
+                    break
+                except PostgresProtocolError as e:
+                    msg_type_chr = None
+                    try:
+                        msg_type_chr = chr(e.msg_type) if e.msg_type is not None else None
+                    except Exception:
+                        msg_type_chr = None
+                    self._runtime_log(
+                        "WARN",
+                        f"Protocol error: {e}",
+                        event="pgwire_protocol_error",
+                        phase="message",
+                        msg_type=e.msg_type,
+                        msg_type_chr=msg_type_chr,
+                        length=e.length,
+                        payload_length=e.payload_length,
+                    )
+                    try:
+                        self.sock.sendall(
+                            ErrorResponse.encode(
+                                'FATAL',
+                                'Protocol error',
+                                detail=str(e),
+                                sqlstate='08P01',  # protocol_violation
+                            )
+                        )
+                    except Exception:
+                        pass
                     break
 
                 # Update activity timestamp
@@ -9114,7 +11007,7 @@ class ClientConnection:
 
                 if msg_type is None:
                     # Connection closed by client
-                    print(f"[{self.session_id}] Connection closed by client")
+                    self._runtime_log("INFO", "Connection closed by client", event="connection_closed")
                     break
 
                 if msg_type == MessageType.QUERY:
@@ -9125,27 +11018,51 @@ class ClientConnection:
 
                 elif msg_type == MessageType.TERMINATE:
                     # Client requested clean disconnect
-                    print(f"[{self.session_id}] Client requested termination")
+                    self._runtime_log("INFO", "Client requested termination", event="terminate")
                     break
 
                 # Extended Query Protocol
                 elif msg_type == MessageType.PARSE:
-                    print(f"[{self.session_id}] << RECV Parse ({len(payload)} bytes)")
+                    self._runtime_log(
+                        "DEBUG",
+                        f"RECV Parse ({len(payload)} bytes)",
+                        event="pgwire_recv",
+                        pgwire_message="PARSE",
+                        payload_bytes=len(payload),
+                    )
                     msg = ParseMessage.decode(payload)
                     self._handle_parse(msg)
 
                 elif msg_type == MessageType.BIND:
-                    print(f"[{self.session_id}] << RECV Bind ({len(payload)} bytes)")
+                    self._runtime_log(
+                        "DEBUG",
+                        f"RECV Bind ({len(payload)} bytes)",
+                        event="pgwire_recv",
+                        pgwire_message="BIND",
+                        payload_bytes=len(payload),
+                    )
                     msg = BindMessage.decode(payload)
                     self._handle_bind(msg)
 
                 elif msg_type == MessageType.DESCRIBE:
-                    print(f"[{self.session_id}] << RECV Describe ({len(payload)} bytes)")
+                    self._runtime_log(
+                        "DEBUG",
+                        f"RECV Describe ({len(payload)} bytes)",
+                        event="pgwire_recv",
+                        pgwire_message="DESCRIBE",
+                        payload_bytes=len(payload),
+                    )
                     msg = DescribeMessage.decode(payload)
                     self._handle_describe(msg)
 
                 elif msg_type == MessageType.EXECUTE:
-                    print(f"[{self.session_id}] << RECV Execute ({len(payload)} bytes)")
+                    self._runtime_log(
+                        "DEBUG",
+                        f"RECV Execute ({len(payload)} bytes)",
+                        event="pgwire_recv",
+                        pgwire_message="EXECUTE",
+                        payload_bytes=len(payload),
+                    )
                     msg = ExecuteMessage.decode(payload)
                     self._handle_execute(msg)
 
@@ -9164,7 +11081,17 @@ class ClientConnection:
 
                 else:
                     # Unknown message type
-                    styled_print(f"[{self.session_id}] {S.WARN} Unknown message type: {msg_type} ({chr(msg_type) if 32 <= msg_type <= 126 else '?'})")
+                    try:
+                        ascii_preview = chr(msg_type) if 32 <= msg_type <= 126 else "?"
+                    except Exception:
+                        ascii_preview = "?"
+                    self._runtime_log(
+                        "WARN",
+                        f"Unknown message type: {msg_type} ({ascii_preview})",
+                        event="pgwire_unknown_message_type",
+                        msg_type=int(msg_type),
+                        ascii=ascii_preview,
+                    )
                     send_error(
                         self.sock,
                         f"Unsupported message type: {msg_type}",
@@ -9172,8 +11099,15 @@ class ClientConnection:
                     )
 
         except Exception as e:
-            print(f"[{self.session_id}] ✗ Connection error: {e}")
-            traceback.print_exc()
+            self._runtime_log(
+                "ERROR",
+                f"Connection error: {e}",
+                event="connection_error",
+                error_type=type(e).__name__,
+            )
+            # Keep traceback for interactive debugging, but avoid flooding stdout in steady-state.
+            if os.environ.get("LARS_PG_TRACEBACK", "0").strip().lower() in ("1", "true", "yes", "on"):
+                traceback.print_exc()
 
         finally:
             # Step 5: Cleanup
@@ -9190,30 +11124,51 @@ class ClientConnection:
         if self.server:
             self.server.unregister_connection(self)
             active_count = self.server.get_active_count()
-            print(f"[{self.session_id}] 🧹 Cleaning up ({self.query_count} queries executed, {active_count} active connections remaining)")
+            self._runtime_log(
+                "INFO",
+                f"Cleaning up ({self.query_count} queries executed, {active_count} active connections remaining)",
+                event="cleanup",
+                query_count=self.query_count,
+                active_connections=active_count,
+                pooled=self._is_pooled_connection,
+            )
         else:
-            print(f"[{self.session_id}] 🧹 Cleaning up ({self.query_count} queries executed)")
+            self._runtime_log(
+                "INFO",
+                f"Cleaning up ({self.query_count} queries executed)",
+                event="cleanup",
+                query_count=self.query_count,
+                pooled=self._is_pooled_connection,
+            )
 
         # 1. Try to rollback any open transaction to leave DuckDB in clean state
         if self.duckdb_conn:
             try:
                 self.duckdb_conn.execute("ROLLBACK")
-                styled_print(f"[{self.session_id}]   {S.OK} Transaction rolled back")
+                self._runtime_log("DEBUG", "Transaction rolled back", event="duckdb_rollback")
             except Exception as e:
                 error_msg = str(e).lower()
                 # "no transaction is active" is NORMAL - not an error
                 if "no transaction" in error_msg:
                     # This is fine - no transaction was active
-                    styled_print(f"[{self.session_id}]   {S.OK} No active transaction (clean state)")
+                    self._runtime_log("DEBUG", "No active transaction (clean state)", event="duckdb_rollback")
                 else:
                     # Unknown error - log and continue
-                    styled_print(f"[{self.session_id}]   {S.WARN} Rollback warning: {e}")
+                    self._runtime_log("WARN", f"Rollback warning: {e}", event="duckdb_rollback")
 
             if self._is_pooled_connection:
                 try:
                     from ..sql_tools.connection_pool import return_to_pool, refill_pool
-                    return_to_pool(self.duckdb_conn)
+                    duckdb_conn_obj_id = id(self.duckdb_conn)
+                    returned = return_to_pool(self.duckdb_conn)
                     self.duckdb_conn = None
+                    self._runtime_log(
+                        "DEBUG",
+                        "Returned DuckDB connection to pool" if returned else "Discarded DuckDB connection (pool disabled/full)",
+                        event="duckdb_pool_return",
+                        returned=returned,
+                        duckdb_conn_obj_id=duckdb_conn_obj_id,
+                    )
                     refill_pool()
                 except Exception:
                     try:
@@ -9224,7 +11179,14 @@ class ClientConnection:
             else:
                 # Each pgwire client owns its DuckDB session; close it on disconnect.
                 try:
+                    duckdb_conn_obj_id = id(self.duckdb_conn)
                     self.duckdb_conn.close()
+                    self._runtime_log(
+                        "DEBUG",
+                        "Closed DuckDB connection",
+                        event="duckdb_close",
+                        duckdb_conn_obj_id=duckdb_conn_obj_id,
+                    )
                 except Exception:
                     pass
                 self.duckdb_conn = None

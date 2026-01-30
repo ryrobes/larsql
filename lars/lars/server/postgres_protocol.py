@@ -18,6 +18,23 @@ import socket
 from typing import Tuple, Optional, List, Any
 
 
+class PostgresProtocolError(Exception):
+    """Raised when a client sends an invalid or unsupported PostgreSQL wire message."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        msg_type: int | None = None,
+        length: int | None = None,
+        payload_length: int | None = None,
+    ):
+        super().__init__(message)
+        self.msg_type = msg_type
+        self.length = length
+        self.payload_length = payload_length
+
+
 class MessageType:
     """PostgreSQL message type codes (single-byte identifiers)."""
     # Client → Server
@@ -48,7 +65,10 @@ class PostgresMessage:
     """Base class for PostgreSQL wire protocol messages."""
 
     # Defensive cap to prevent pathological memory allocation on bogus lengths.
-    _MAX_MESSAGE_BYTES = int(os.getenv("LARS_PG_MAX_MESSAGE_BYTES", str(64 * 1024 * 1024)))
+    try:
+        _MAX_MESSAGE_BYTES = int(os.getenv("LARS_PG_MAX_MESSAGE_BYTES", str(64 * 1024 * 1024)))
+    except Exception:
+        _MAX_MESSAGE_BYTES = 64 * 1024 * 1024
 
     @staticmethod
     def _recv_exact(sock, nbytes: int) -> Optional[bytes]:
@@ -61,13 +81,15 @@ class PostgresMessage:
         if nbytes <= 0:
             return b""
 
-        chunks = bytearray()
-        while len(chunks) < nbytes:
-            chunk = sock.recv(nbytes - len(chunks))
-            if not chunk:
+        buf = bytearray(nbytes)
+        view = memoryview(buf)
+        offset = 0
+        while offset < nbytes:
+            n = sock.recv_into(view[offset:], nbytes - offset)
+            if n == 0:
                 return None
-            chunks.extend(chunk)
-        return bytes(chunks)
+            offset += n
+        return bytes(buf)
 
     @staticmethod
     def read_message(sock) -> Tuple[Optional[int], bytes]:
@@ -95,14 +117,21 @@ class PostgresMessage:
 
             length = struct.unpack('!I', length_bytes)[0]
             if length < 4:
-                raise ValueError(f"Invalid message length: {length} (must be >= 4)")
+                raise PostgresProtocolError(
+                    f"Invalid message length: {length} (must be >= 4)",
+                    msg_type=msg_type,
+                    length=length,
+                )
 
             # Length includes the 4 bytes of the length field itself
             # So payload length = length - 4
             payload_length = length - 4
             if payload_length > PostgresMessage._MAX_MESSAGE_BYTES:
-                raise ValueError(
-                    f"Message too large: {payload_length} bytes (max {PostgresMessage._MAX_MESSAGE_BYTES})"
+                raise PostgresProtocolError(
+                    f"Message too large: {payload_length} bytes (max {PostgresMessage._MAX_MESSAGE_BYTES})",
+                    msg_type=msg_type,
+                    length=length,
+                    payload_length=payload_length,
                 )
 
             # Read payload
@@ -118,9 +147,13 @@ class PostgresMessage:
         except socket.timeout:
             # Let the server handle idle timeouts.
             raise
+        except OSError:
+            # Treat as clean disconnect.
+            return None, b""
+        except PostgresProtocolError:
+            raise
         except Exception as e:
-            print(f"[Protocol] Error reading message: {e}")
-            return None, b''
+            raise PostgresProtocolError(f"Error reading message: {e}") from e
 
     @staticmethod
     def read_startup_message(sock) -> Optional[dict]:
@@ -145,11 +178,16 @@ class PostgresMessage:
 
             length = struct.unpack('!I', length_bytes)[0]
             if length < 8:
-                raise ValueError(f"Invalid startup message length: {length} (must be >= 8)")
+                raise PostgresProtocolError(
+                    f"Invalid startup message length: {length} (must be >= 8)",
+                    length=length,
+                )
             payload_length = length - 4
             if payload_length > PostgresMessage._MAX_MESSAGE_BYTES:
-                raise ValueError(
-                    f"Startup message too large: {payload_length} bytes (max {PostgresMessage._MAX_MESSAGE_BYTES})"
+                raise PostgresProtocolError(
+                    f"Startup message too large: {payload_length} bytes (max {PostgresMessage._MAX_MESSAGE_BYTES})",
+                    length=length,
+                    payload_length=payload_length,
                 )
 
             # Read entire payload
@@ -203,9 +241,12 @@ class PostgresMessage:
         except socket.timeout:
             # Let the server handle idle timeouts.
             raise
-        except Exception as e:
-            print(f"[Protocol] Error reading startup: {e}")
+        except OSError:
             return None
+        except PostgresProtocolError:
+            raise
+        except Exception as e:
+            raise PostgresProtocolError(f"Error reading startup: {e}") from e
 
     @staticmethod
     def build_message(msg_type: int, payload: bytes) -> bytes:
@@ -301,7 +342,6 @@ class PasswordMessage:
             return None
 
         if msg_type != MessageType.PASSWORD:
-            print(f"[Protocol] Expected PasswordMessage (p), got: {chr(msg_type) if msg_type else 'None'}")
             return None
 
         return PasswordMessage.decode(payload)

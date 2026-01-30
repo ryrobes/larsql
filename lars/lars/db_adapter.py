@@ -87,11 +87,20 @@ def _is_missing_table_error(error: Exception) -> tuple[bool, str | None]:
     # "Unknown table expression identifier 'unified_logs'"
 
     if "doesn't exist" in err_str or "does not exist" in err_str:
-        # Try to extract table name - pattern: "table database.tablename doesn't"
-        # or just "table tablename doesn't"
-        match = re.search(r"table\s+(?:\w+\.)?(\w+)\s+doesn", err_str)
+        # Try to extract table name from common ClickHouse patterns.
+        #
+        # Examples:
+        # - "Table lars.unified_logs doesn't exist"
+        # - "Table lars.unified_logs does not exist"
+        # - "Table `lars`.`unified_logs` doesn't exist"
+        # - "Table `lars`.`unified_logs` does not exist"
+        match = re.search(
+            r"table\s+(?:`?(\w+)`?\.)?`?(\w+)`?\s+does(?:n't| not)\s+exist",
+            err_str,
+        )
         if match:
-            return True, match.group(1)
+            # group(2) is the table name; group(1) is optional database
+            return True, match.group(2)
         return True, None
 
     if "unknown table" in err_str:

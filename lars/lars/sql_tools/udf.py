@@ -2873,13 +2873,12 @@ def register_clickhouse_scan_udfs(connection: duckdb.DuckDBPyConnection, existin
         """
         db = _get_clickhouse_client()
         if db is None:
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-                json_module.dump([{"error": "ClickHouse not available"}], f)
-                return f.name
+            raise RuntimeError("ClickHouse not available")
 
         try:
             # Sanitize table name (basic protection)
             safe_table = table_name.replace(';', '').replace('--', '')
+
             query = f"SELECT * FROM {safe_table} LIMIT {int(limit)}"
 
             rows = db.query(query, output_format="dict")
@@ -2896,9 +2895,15 @@ def register_clickhouse_scan_udfs(connection: duckdb.DuckDBPyConnection, existin
 
         except Exception as e:
             logger.error(f"[clickhouse_scan] Query failed: {e}")
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-                json_module.dump([{"error": str(e)}], f)
-                return f.name
+            # INTO tables live in ClickHouse databases prefixed with `lars_results`.
+            # Missing INTO tables are user-space artifacts, not a core schema-init issue.
+            from ..db_adapter import SchemaNotInitializedError
+            if isinstance(e, SchemaNotInitializedError) and safe_table.strip().lower().startswith("lars_results"):
+                raise RuntimeError(
+                    f"INTO table not found in ClickHouse: {safe_table} "
+                    f"(did you run `... THEN ... INTO <name>` in this database namespace?)"
+                ) from e
+            raise
 
     def clickhouse_query_1(sql: str) -> str:
         """
@@ -2912,9 +2917,7 @@ def register_clickhouse_scan_udfs(connection: duckdb.DuckDBPyConnection, existin
         """
         db = _get_clickhouse_client()
         if db is None:
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-                json_module.dump([{"error": "ClickHouse not available"}], f)
-                return f.name
+            raise RuntimeError("ClickHouse not available")
 
         try:
             rows = db.query(sql, output_format="dict")
@@ -2931,9 +2934,7 @@ def register_clickhouse_scan_udfs(connection: duckdb.DuckDBPyConnection, existin
 
         except Exception as e:
             logger.error(f"[clickhouse_query] Query failed: {e}")
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-                json_module.dump([{"error": str(e)}], f)
-                return f.name
+            raise
 
     # Register UDFs
     safe_create_function(connection, "clickhouse_scan_1", clickhouse_scan_1, existing,

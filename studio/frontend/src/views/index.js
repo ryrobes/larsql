@@ -82,6 +82,14 @@ export const views = {
     enabled: true,
   },
 
+  'runtime-logs': {
+    component: lazy(() => import('./runtime-logs/RuntimeLogsView')),
+    icon: 'mdi:clipboard-text-outline',
+    label: 'Runtime Logs',
+    position: 'top',
+    enabled: true,
+  },
+
   explore: {
     component: lazy(() => import('./explore/ExploreView')),
     icon: 'mdi:rabbit',

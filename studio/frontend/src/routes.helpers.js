@@ -22,6 +22,9 @@ export const ROUTES = {
   // Console
   CONSOLE: '/console',
 
+  // Runtime Logs - pgwire/server operational logs
+  RUNTIME_LOGS: '/runtime-logs',
+
   // Outputs
   OUTPUTS: '/outputs',
 
@@ -110,6 +113,7 @@ export function getViewFromPath(pathname) {
     '': 'cascades',
     'studio': 'studio',
     'console': 'console',
+    'runtime-logs': 'runtime-logs',
     'outputs': 'outputs',
     'receipts': 'receipts',
     'training': 'training',
@@ -151,6 +155,7 @@ export function getRouteForView(viewId) {
     'cascades': ROUTES.HOME,
     'studio': ROUTES.STUDIO,
     'console': ROUTES.CONSOLE,
+    'runtime-logs': ROUTES.RUNTIME_LOGS,
     'outputs': ROUTES.OUTPUTS,
     'receipts': ROUTES.RECEIPTS,
     'training': ROUTES.TRAINING,

@@ -25,6 +25,7 @@ const ViewLoading = () => (
 const CascadesView = lazy(() => import('./views/cascades/CascadesView'));
 const StudioPage = lazy(() => import('./studio/StudioPage'));
 const ConsoleView = lazy(() => import('./views/console/ConsoleView'));
+const RuntimeLogsView = lazy(() => import('./views/runtime-logs/RuntimeLogsView'));
 const OutputsView = lazy(() => import('./views/outputs/OutputsView'));
 const ReceiptsView = lazy(() => import('./views/receipts/ReceiptsView'));
 const TrainingView = lazy(() => import('./views/training/TrainingView'));
@@ -93,6 +94,12 @@ export const router = createBrowserRouter([
       {
         path: 'console',
         element: withSuspense(ConsoleView),
+      },
+
+      // Runtime Logs - pgwire/server operational logs
+      {
+        path: 'runtime-logs',
+        element: withSuspense(RuntimeLogsView),
       },
 
       // Outputs

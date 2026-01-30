@@ -940,6 +940,27 @@ def execute_pipeline_stages(
     for idx, stage in enumerate(stages):
         log.info(f"[pipeline] Executing stage {idx + 1}/{len(stages)}: {stage.name}")
 
+        # Handle MUTE - terminal stage that suppresses output and returns a 1-row status table
+        if stage.name.upper() == "MUTE":
+            if stage.args:
+                raise PipelineExecutionError(
+                    stage_name=stage.name,
+                    stage_index=idx,
+                    inner_error=ValueError("MUTE does not accept arguments"),
+                )
+            if idx != len(stages) - 1:
+                raise PipelineExecutionError(
+                    stage_name=stage.name,
+                    stage_index=idx,
+                    inner_error=ValueError("MUTE must be the final pipeline stage"),
+                )
+            return pd.DataFrame([{
+                "status": "ok",
+                "rows": int(len(current_df)),
+                "columns": int(len(current_df.columns)),
+                "muted": True,
+            }])
+
         # Handle PASS - no-op stage that just passes data through
         # Useful for: SELECT ... THEN PASS INTO my_table (just want to save, no transform)
         # Note: INTO handling for PASS is done in execute_pipeline_with_into, not here
@@ -1485,8 +1506,53 @@ def execute_pipeline_with_into(
     current_df = initial_df
     previous_stage: Optional[str] = None
 
+    # Collect any INTO targets for status reporting (used by terminal MUTE).
+    # Keep order stable while deduping.
+    into_tables_for_status: list[str] = []
+    def _add_into_table(name: Optional[str]) -> None:
+        if not name:
+            return
+        if name not in into_tables_for_status:
+            into_tables_for_status.append(name)
+
+    _add_into_table(base_into_table)
+    for s in stages:
+        _add_into_table(getattr(s, "into_table", None))
+    _add_into_table(into_table)
+
     for idx, stage in enumerate(stages):
         log.info(f"[pipeline] Executing stage {idx + 1}/{len(stages)}: {stage.name}")
+
+        # Handle MUTE - terminal stage that suppresses output and returns a 1-row status table.
+        # Can be combined with INTO on this stage:
+        #   SELECT ... THEN MUTE INTO my_table;
+        # Or used after another stage that materializes:
+        #   SELECT ... THEN PASS INTO my_table THEN MUTE;
+        if stage.name.upper() == "MUTE":
+            if stage.args:
+                raise PipelineExecutionError(
+                    stage_name=stage.name,
+                    stage_index=idx,
+                    inner_error=ValueError("MUTE does not accept arguments"),
+                )
+            if idx != len(stages) - 1:
+                raise PipelineExecutionError(
+                    stage_name=stage.name,
+                    stage_index=idx,
+                    inner_error=ValueError("MUTE must be the final pipeline stage"),
+                )
+            # If MUTE has an INTO, materialize the current table before returning status.
+            if stage.into_table and duckdb_conn is not None:
+                _save_to_table(duckdb_conn, current_df, stage.into_table, results_db=results_db)
+
+            return pd.DataFrame([{
+                "status": "ok",
+                "rows": int(len(current_df)),
+                "columns": int(len(current_df.columns)),
+                "results_db": results_db,
+                "into_tables": json.dumps(into_tables_for_status),
+                "muted": True,
+            }])
 
         # Handle CHOOSE stages specially
         if isinstance(stage, ChooseStage) or getattr(stage, 'stage_type', None) == 'choose':

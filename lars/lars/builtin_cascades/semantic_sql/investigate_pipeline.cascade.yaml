@@ -1,0 +1,147 @@
+cascade_id: pipeline_investigate
+internal: true
+description: |
+  PIPELINE cascade for investigative analysis of query results.
+
+  Unlike ANALYZE (which summarizes what it's given), INVESTIGATE can:
+  - See the original SQL query that produced the data
+  - Introspect other tables in the database via sql_search
+  - Run follow-up queries via smart_sql_run to chase leads
+  - Provide evidence-backed findings with the queries that support them
+
+  Used with THEN INVESTIGATE syntax:
+      SELECT * FROM churned_customers
+      THEN INVESTIGATE 'why did they leave?'
+
+  The agent will explore related data to answer the question, not just
+  describe the input dataset.
+
+inputs_schema:
+  prompt: User's investigation question
+  _table: Query results as JSON records
+  _table_columns: List of column names
+  _table_row_count: Number of rows
+  _pipeline_context: Execution context including original_query
+
+sql_function:
+  name: INVESTIGATE
+  description: Investigative analysis - explores related data to answer questions
+  args:
+    - name: prompt
+      type: VARCHAR
+    - name: _table
+      type: TABLE
+  returns: TABLE
+  shape: PIPELINE
+  operators:
+    - 'THEN INVESTIGATE {{ prompt }}'
+    - 'THEN INVESTIGATE({{ prompt }})'
+  cache: false
+
+cells:
+  - name: investigate
+    model: anthropic/claude-sonnet-4
+    skills:
+      - sql_search       # Introspect available tables/columns
+      - smart_sql_run    # Run follow-up queries
+    rules:
+      max_turns: 8       # Allow investigation loops
+    instructions: |
+      You are a senior data analyst conducting an investigation. Your job is not just to
+      describe the data you're given, but to INVESTIGATE the question by exploring related data.
+
+      ## USER QUESTION
+      {{ input.prompt }}
+
+      ## ORIGINAL SQL QUERY (what produced this data)
+      ```sql
+      {{ input._pipeline_context.original_query }}
+      ```
+
+      ## INPUT DATA ({{ input._table_row_count }} rows)
+      Columns: {{ input._table_columns | join(', ') }}
+
+      {% if input._table_row_count <= 50 %}
+      {{ input._table | tojson }}
+      {% else %}
+      [First 50 rows shown]
+      {{ input._table[:50] | tojson }}
+      {% endif %}
+
+      ## YOUR TASK
+
+      1. **Understand** the question and the data you've been given
+      2. **Explore** - Use `sql_search` to discover related tables that might help answer the question
+      3. **Investigate** - Use `smart_sql_run` to query related data and chase leads
+      4. **Synthesize** - Combine your findings into evidence-backed insights
+
+      ## TOOLS
+
+      - `sql_search("description of what you're looking for")` - Find relevant tables/columns
+      - `smart_sql_run("SELECT ...")` - Execute SQL queries to gather evidence
+
+      ## INVESTIGATION STRATEGY
+
+      - Look for RELATED data: if analyzing churned customers, check their support tickets,
+        billing history, usage patterns, etc.
+      - Look for COMPARISONS: how do these records differ from the general population?
+      - Look for PATTERNS: what do the records have in common?
+      - Look for CAUSES: what events preceded the outcome?
+
+      ## OUTPUT FORMAT
+
+      After your investigation, return your findings as JSON with this structure:
+      ```json
+      {
+        "data": [
+          {
+            "finding": "Direct answer to the question",
+            "category": "answer",
+            "evidence": "Based on query: SELECT ... which showed ...",
+            "confidence": "high|medium|low"
+          },
+          {
+            "finding": "A pattern or insight discovered",
+            "category": "pattern",
+            "evidence": "Cross-referenced with table X showing ...",
+            "confidence": "high|medium|low"
+          },
+          {
+            "finding": "Recommended action based on findings",
+            "category": "recommendation",
+            "evidence": "Given the pattern above, ...",
+            "confidence": "high|medium|low"
+          }
+        ]
+      }
+      ```
+
+      Include 3-8 findings. The first should directly answer the user's question.
+      Each finding should cite the evidence (queries run, data found) that supports it.
+
+    output_schema:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+            required:
+              - finding
+              - category
+              - evidence
+            properties:
+              finding:
+                type: string
+                description: The insight or conclusion
+              category:
+                type: string
+                enum: ["answer", "pattern", "correlation", "outlier", "cause", "recommendation"]
+              evidence:
+                type: string
+                description: The data/queries that support this finding
+              confidence:
+                type: string
+                enum: ["high", "medium", "low"]
