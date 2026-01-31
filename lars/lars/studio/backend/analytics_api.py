@@ -152,7 +152,7 @@ def get_cost_timeline():
                 SUM(tokens_out) as tokens_out
             FROM unified_logs
             WHERE {where_clause} AND role = 'assistant'
-            GROUP BY time_bucket, effective_model
+            GROUP BY time_bucket, COALESCE(model_requested, replaceRegexpOne(model, '-\\d{{8}}.*$', ''))
             ORDER BY time_bucket DESC
             LIMIT {limit * 10}
         """

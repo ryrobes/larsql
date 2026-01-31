@@ -166,10 +166,28 @@ def get_catalog():
                 # Detect Ollama models by provider
                 is_ollama = provider.lower() in ('ollama', 'local')
                 # Check image capabilities from modalities
-                input_mods = row.get('input_modalities', []) or []
-                output_mods = row.get('output_modalities', []) or []
-                can_input_images = 'image' in input_mods
-                can_output_images = 'image' in output_mods
+                # Convert to list to handle numpy arrays from DuckDB
+                # Note: must convert BEFORE any truthiness checks to avoid numpy ambiguity
+                input_mods = row.get('input_modalities')
+                output_mods = row.get('output_modalities')
+                # Convert numpy arrays first
+                if hasattr(input_mods, 'tolist'):
+                    input_mods = input_mods.tolist()
+                if hasattr(output_mods, 'tolist'):
+                    output_mods = output_mods.tolist()
+                # Handle None/empty
+                if input_mods is None:
+                    input_mods = []
+                if output_mods is None:
+                    output_mods = []
+                # Handle strings
+                if isinstance(input_mods, str):
+                    input_mods = [input_mods]
+                if isinstance(output_mods, str):
+                    output_mods = [output_mods]
+                # Now safe to check
+                can_input_images = 'image' in input_mods if len(input_mods) > 0 else False
+                can_output_images = 'image' in output_mods if len(output_mods) > 0 else False
 
                 # Separate Ollama into its own category
                 if is_ollama:

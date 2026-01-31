@@ -101,7 +101,7 @@ export function useQueryExplain({ editorValue, editorRef, monacoRef, database, l
 
       // Process queries with limited concurrency (matches panel execution)
       // This prevents overwhelming the server with EXPLAIN requests
-      const MAX_CONCURRENT = 4;
+      const MAX_CONCURRENT = 10;  // Browser may cap at 6 for HTTP/1.1
       const EXPLAIN_TIMEOUT_MS = 15000;
 
       // Helper to process a single query and update state progressively

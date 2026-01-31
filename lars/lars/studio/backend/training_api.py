@@ -6,9 +6,26 @@ Works with the universal training system - mark any cascade execution as trainab
 """
 
 import logging
+import math
 from flask import Blueprint, request, jsonify
 from lars.db_adapter import get_db
 from lars.training_system import mark_as_trainable, get_training_stats
+
+
+def _sanitize_for_json(data):
+    """
+    Sanitize data for JSON serialization.
+    Converts NaN/Inf floats to None (null in JSON).
+    """
+    if isinstance(data, list):
+        return [_sanitize_for_json(item) for item in data]
+    elif isinstance(data, dict):
+        return {k: _sanitize_for_json(v) for k, v in data.items()}
+    elif isinstance(data, float):
+        if math.isnan(data) or math.isinf(data):
+            return None
+        return data
+    return data
 
 logger = logging.getLogger(__name__)
 training_bp = Blueprint('training', __name__)
@@ -111,12 +128,15 @@ def get_training_examples():
                         return val.decode('utf-8', errors='ignore')
                     return str(val)
 
-                # Convert to float safely
+                # Convert to float safely, handling NaN/Inf
                 def safe_float(val, default=None):
                     if val is None:
                         return default
                     try:
-                        return float(val)
+                        f = float(val)
+                        if math.isnan(f) or math.isinf(f):
+                            return default
+                        return f
                     except (ValueError, TypeError):
                         return default
 
@@ -221,7 +241,7 @@ def get_stats():
         stats = get_training_stats(cascade_id=cascade_id, cell_name=cell_name)
 
         return jsonify({
-            'stats': stats,
+            'stats': _sanitize_for_json(stats),
             'total_rows': len(stats)
         })
 
@@ -481,7 +501,10 @@ def get_session_logs():
             if val is None:
                 return default
             try:
-                return float(val)
+                f = float(val)
+                if math.isnan(f) or math.isinf(f):
+                    return default
+                return f
             except (ValueError, TypeError):
                 return default
 

@@ -228,6 +228,23 @@ def _expand_semantic_aliases(udf_types: List[str]) -> List[str]:
     return sorted(expanded)
 
 
+def get_query_fingerprint(sql: str) -> str:
+    """
+    Get just the fingerprint hash for a SQL query.
+    
+    Convenience wrapper around fingerprint_query() for cases
+    where only the hash is needed (e.g., result storage paths).
+    
+    Args:
+        sql: Raw SQL query string
+        
+    Returns:
+        16-character fingerprint hash
+    """
+    fingerprint, _, _ = fingerprint_query(sql)
+    return fingerprint
+
+
 def fingerprint_query(sql: str) -> Tuple[str, str, List[str]]:
     """
     Normalize SQL query to a fingerprint and extract UDF types.
@@ -515,7 +532,7 @@ def log_query_complete(
     Update query log with completion data.
 
     Called after query execution finishes (successfully or with error).
-    Uses ClickHouse ALTER TABLE UPDATE for in-place modification.
+    Uses standard SQL UPDATE.
 
     NOTE: Cost/token data is NOT set here. Cost data arrives asynchronously
     via the cost worker (~3-5s after LLM calls complete). The API queries
@@ -546,7 +563,7 @@ def log_query_complete(
         # NOTE: We intentionally do NOT set cost/token fields here.
         # They remain NULL in sql_query_log - the API derives them from
         # unified_logs via live aggregation or the mv_sql_query_costs MV.
-        updates = [f"status = '{status}'", "completed_at = now64(6)"]
+        updates = [f"status = '{status}'", "completed_at = current_timestamp"]
 
         if duration_ms is not None:
             updates.append(f"duration_ms = {duration_ms}")
@@ -591,11 +608,11 @@ def log_query_complete(
 
         set_clause = ', '.join(updates)
 
+        # Use standard UPDATE (DuckDB-compatible, not ClickHouse ALTER TABLE UPDATE)
         db.execute(f"""
-            ALTER TABLE sql_query_log
-            UPDATE {set_clause}
+            UPDATE sql_query_log
+            SET {set_clause}
             WHERE query_id = '{query_id}'
-            SETTINGS mutations_sync = 1
         """)
 
         logger.debug(f"SQL Trail: Completed query {query_id[:8]} ({status})")
@@ -633,7 +650,7 @@ def log_query_error(
 
         updates = [
             "status = 'error'",
-            "completed_at = now64(6)",
+            "completed_at = current_timestamp",
             f"error_message = '{safe_msg}'"
         ]
         if duration_ms is not None:
@@ -641,11 +658,11 @@ def log_query_error(
 
         set_clause = ', '.join(updates)
 
+        # Use standard UPDATE (DuckDB-compatible, not ClickHouse ALTER TABLE UPDATE)
         db.execute(f"""
-            ALTER TABLE sql_query_log
-            UPDATE {set_clause}
+            UPDATE sql_query_log
+            SET {set_clause}
             WHERE query_id = '{query_id}'
-            SETTINGS mutations_sync = 1
         """)
 
         logger.debug(f"SQL Trail: Query {query_id[:8]} error: {error_message[:50]}")
@@ -699,11 +716,11 @@ def cleanup_orphaned_sql_queries(max_age_minutes: int = 15) -> int:
         # Mark each orphaned query as killed
         for query_id, caller_id, started_at in orphaned:
             try:
+                # Use standard UPDATE (DuckDB-compatible)
                 db.execute(f"""
-                    ALTER TABLE sql_query_log
-                    UPDATE status = 'killed', completed_at = now64(6)
+                    UPDATE sql_query_log
+                    SET status = 'killed', completed_at = now()
                     WHERE query_id = '{query_id}'
-                    SETTINGS mutations_sync = 1
                 """)
                 logger.info(f"SQL Trail: Marked orphaned query {query_id[:8]} (caller={caller_id}) as killed")
             except Exception as e:
@@ -794,8 +811,8 @@ def increment_llm_call(caller_id: Optional[str]):
         db = get_db()
 
         db.execute(f"""
-            ALTER TABLE sql_query_log
-            UPDATE llm_calls_count = llm_calls_count + 1
+            UPDATE sql_query_log
+            SET llm_calls_count = llm_calls_count + 1
             WHERE caller_id = '{caller_id}'
         """)
 

@@ -1043,7 +1043,7 @@ def remove_tag(tag_id):
 
         # Delete the tag assignment
         delete_query = f"""
-            ALTER TABLE output_tags DELETE WHERE tag_id = '{tag_id}'
+            DELETE FROM output_tags WHERE tag_id = '{tag_id}'
         """
         db.execute(delete_query)
 

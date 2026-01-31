@@ -1916,8 +1916,12 @@ def _fetch_vertex_models_from_db():
         models = []
         for row in rows:
             # Use actual modality arrays from database
-            input_mods = row.get('input_modalities', []) or ['text']
-            output_mods = row.get('output_modalities', []) or ['text']
+            # Note: DuckDB returns arrays as numpy arrays, can't use `arr or default`
+            # because numpy array truthiness is ambiguous for multi-element arrays
+            raw_input = row.get('input_modalities')
+            raw_output = row.get('output_modalities')
+            input_mods = list(raw_input) if raw_input is not None and len(raw_input) else ['text']
+            output_mods = list(raw_output) if raw_output is not None and len(raw_output) else ['text']
 
             # Build modality string for display
             modality = f"{','.join(input_mods)}->{','.join(output_mods)}"
@@ -1933,8 +1937,8 @@ def _fetch_vertex_models_from_db():
                 },
                 'architecture': {
                     'modality': modality,
-                    'input_modalities': input_mods if input_mods else ['text'],
-                    'output_modalities': output_mods if output_mods else ['text'],
+                    'input_modalities': input_mods,
+                    'output_modalities': output_mods,
                 },
                 'top_provider': {
                     'is_moderated': False,
@@ -2003,9 +2007,12 @@ def _fetch_bedrock_models_from_db():
         models = []
         for row in rows:
             # Use actual modality arrays from database
-            input_mods = row.get('input_modalities', []) or ['text']
-            output_mods = row.get('output_modalities', []) or ['text']
-            tier = row.get('tier', 'standard') or 'standard'
+            # Note: DuckDB returns arrays as numpy arrays, can't use `arr or default`
+            raw_input = row.get('input_modalities')
+            raw_output = row.get('output_modalities')
+            input_mods = list(raw_input) if raw_input is not None and len(raw_input) else ['text']
+            output_mods = list(raw_output) if raw_output is not None and len(raw_output) else ['text']
+            tier = row.get('tier') or 'standard'
 
             # Build modality string for display
             modality = f"{','.join(input_mods)}->{','.join(output_mods)}"
@@ -2021,8 +2028,8 @@ def _fetch_bedrock_models_from_db():
                 },
                 'architecture': {
                     'modality': modality,
-                    'input_modalities': input_mods if input_mods else ['text'],
-                    'output_modalities': output_mods if output_mods else ['text'],
+                    'input_modalities': input_mods,
+                    'output_modalities': output_mods,
                 },
                 'top_provider': {
                     'is_moderated': True,  # Bedrock has content moderation

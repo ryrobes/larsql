@@ -842,8 +842,7 @@ class EphemeralRagManager:
 
         for rag_id in rag_ids:
             try:
-                # Use ALTER TABLE DELETE for ClickHouse
-                self.db.execute(f"ALTER TABLE rag_chunks DELETE WHERE rag_id = '{rag_id}'")
+                self.db.execute(f"DELETE FROM rag_chunks WHERE rag_id = '{rag_id}'")
                 logger.debug(f"[Ephemeral-RAG] Cleaned up: {rag_id}")
             except Exception as e:
                 logger.warning(f"[Ephemeral-RAG] Cleanup failed for {rag_id}: {e}")

@@ -200,8 +200,7 @@ def delete_watch(name: str) -> bool:
         return False
 
     try:
-        # Use ALTER TABLE DELETE for ClickHouse
-        db.execute(f"ALTER TABLE lars.watches DELETE WHERE name = '{name}'")
+        db.execute(f"DELETE FROM watches WHERE name = '{name}'")
         return True
     except Exception as e:
         log.error(f"[watcher] Failed to delete watch '{name}': {e}")

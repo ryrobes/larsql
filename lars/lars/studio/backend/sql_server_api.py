@@ -236,36 +236,26 @@ def _sanitize_for_json(data: list[dict]) -> list[dict]:
     ]
 
 
-def _execute_via_pgwire(
+def _execute_pgwire_blocking(
     query: str,
     database: str,
-    output_format: str,
     pgwire_port: int,
-    start_time: float,
     username: str = None,
     password: str = None,
 ):
     """
-    Execute SQL query via PGwire server using psycopg.
-
-    This is the preferred execution path when running with multiple workers,
-    as PGwire handles all LARS features internally and avoids DuckDB file locking.
-
-    Args:
-        query: SQL query to execute
-        database: Database name ('memory', 'workspace', etc.)
-        output_format: Response format ('records', 'json', 'csv')
-        pgwire_port: Port of PGwire server
-        start_time: Request start time for timing
-        username: Username for PGwire authentication
-        password: Password or API key for PGwire authentication
-
+    Internal blocking psycopg execution - runs in thread pool.
+    
+    Returns raw query results for the caller to format.
+    
     Returns:
-        Flask JSON response
+        Tuple of (columns, rows, rowcount) where:
+        - columns: list of column names (empty for non-SELECT)
+        - rows: list of tuples (empty for non-SELECT)
+        - rowcount: affected row count for DML statements
     """
     import psycopg
 
-    # Connect to PGwire with credentials passed through from Flask auth
     conn = psycopg.connect(
         host='localhost',
         port=pgwire_port,
@@ -281,53 +271,104 @@ def _execute_via_pgwire(
 
             # Handle non-SELECT queries (CREATE, INSERT, etc.)
             if cur.description is None:
-                execution_time = (time.time() - start_time) * 1000
-                return jsonify({
-                    "success": True,
-                    "columns": [],
-                    "data": [],
-                    "row_count": cur.rowcount if cur.rowcount >= 0 else 0,
-                    "database": database,
-                    "execution_time_ms": round(execution_time, 2),
-                    "via": "pgwire",
-                })
+                return [], [], cur.rowcount if cur.rowcount >= 0 else 0
 
             columns = [desc[0] for desc in cur.description]
             rows = cur.fetchall()
-
-            # Convert to list of dicts
-            data = [dict(zip(columns, row)) for row in rows]
-
-            # Sanitize for JSON
-            data = _sanitize_for_json(data)
-
-            execution_time = (time.time() - start_time) * 1000
-
-            response = {
-                "success": True,
-                "columns": columns,
-                "row_count": len(data),
-                "database": database,
-                "execution_time_ms": round(execution_time, 2),
-                "via": "pgwire",
-            }
-
-            if output_format == 'csv':
-                import io
-                import csv
-                output = io.StringIO()
-                if data:
-                    writer = csv.DictWriter(output, fieldnames=columns)
-                    writer.writeheader()
-                    writer.writerows(data)
-                response["data"] = output.getvalue()
-            else:
-                response["data"] = data
-
-            return jsonify(response)
-
+            return columns, rows, len(rows)
     finally:
         conn.close()
+
+
+def _execute_via_pgwire(
+    query: str,
+    database: str,
+    output_format: str,
+    pgwire_port: int,
+    start_time: float,
+    username: str = None,
+    password: str = None,
+):
+    """
+    Execute SQL query via PGwire server using psycopg.
+
+    This is the preferred execution path when running with multiple workers,
+    as PGwire handles all LARS features internally and avoids DuckDB file locking.
+    
+    Runs psycopg operations in a thread pool to avoid blocking gevent.
+
+    Args:
+        query: SQL query to execute
+        database: Database name ('memory', 'workspace', etc.)
+        output_format: Response format ('records', 'json', 'csv')
+        pgwire_port: Port of PGwire server
+        start_time: Request start time for timing
+        username: Username for PGwire authentication
+        password: Password or API key for PGwire authentication
+
+    Returns:
+        Flask JSON response
+    """
+    from concurrent.futures import ThreadPoolExecutor
+    
+    # Use a module-level thread pool for psycopg operations
+    # This allows gevent to yield while psycopg blocks at C level
+    if not hasattr(_execute_via_pgwire, '_thread_pool'):
+        _execute_via_pgwire._thread_pool = ThreadPoolExecutor(
+            max_workers=20, 
+            thread_name_prefix='pgwire'
+        )
+    
+    # Run blocking psycopg operations in thread pool
+    future = _execute_via_pgwire._thread_pool.submit(
+        _execute_pgwire_blocking,
+        query, database, pgwire_port, username, password
+    )
+    columns, rows, rowcount = future.result()
+    
+    # Handle non-SELECT queries (CREATE, INSERT, etc.)
+    if not columns:
+        execution_time = (time.time() - start_time) * 1000
+        return jsonify({
+            "success": True,
+            "columns": [],
+            "data": [],
+            "row_count": rowcount,
+            "database": database,
+            "execution_time_ms": round(execution_time, 2),
+            "via": "pgwire",
+        })
+
+    # Convert to list of dicts
+    data = [dict(zip(columns, row)) for row in rows]
+
+    # Sanitize for JSON
+    data = _sanitize_for_json(data)
+
+    execution_time = (time.time() - start_time) * 1000
+
+    response = {
+        "success": True,
+        "columns": columns,
+        "row_count": len(data),
+        "database": database,
+        "execution_time_ms": round(execution_time, 2),
+        "via": "pgwire",
+    }
+
+    if output_format == 'csv':
+        import io
+        import csv
+        output = io.StringIO()
+        if data:
+            writer = csv.DictWriter(output, fieldnames=columns)
+            writer.writeheader()
+            writer.writerows(data)
+        response["data"] = output.getvalue()
+    else:
+        response["data"] = data
+
+    return jsonify(response)
 
 
 def _split_sql_statements(sql: str) -> list[str]:

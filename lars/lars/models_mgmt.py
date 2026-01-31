@@ -1351,14 +1351,11 @@ def refresh_models(skip_verification: bool = False, workers: int = 10):
 
         rows.append(row)
 
-    # Step 4: Truncate existing data and insert fresh models
-    console.print(f"[cyan]Replacing models in ClickHouse...[/cyan]")
+    # Step 4: Insert fresh models (dedup view handles duplicates by model_id)
+    console.print(f"[cyan]Inserting models...[/cyan]")
 
     try:
-        # Truncate table to avoid duplicates
-        db.execute("TRUNCATE TABLE openrouter_models")
-
-        # Insert fresh data
+        # Insert fresh data - dedup config shows latest version per model_id
         db.insert_rows("openrouter_models", rows)
         console.print(f"[green][OK][/green] Successfully inserted {len(rows)} models")
     except Exception as e:

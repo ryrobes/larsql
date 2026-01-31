@@ -249,7 +249,7 @@ class ClientConnection:
             pooled_conn = None
             try:
                 from ..sql_tools.connection_pool import get_pooled_connection
-                pooled_conn = get_pooled_connection(timeout=0.1)
+                pooled_conn = get_pooled_connection(timeout=2.0)  # Wait up to 2s for pooled conn
             except ImportError:
                 pooled_conn = None
             except Exception as e:
@@ -1959,11 +1959,13 @@ class ClientConnection:
         """
         Auto-materialize LARS query results for "query insurance".
 
-        Creates an ACTUAL TABLE in ClickHouse for each result set:
-        - Result table: lars_results.r_<caller_id>
-        - Log entry: lars_results.query_results (metadata/index)
+        Stores results as parquet files organized by query fingerprint:
+            $LARS_ROOT/data/results/{query_fingerprint}/{caller_id}.parquet
 
-        This gives full columnar benefits - results are queryable with SQL!
+        This enables:
+        - Historical query results grouped by "same" query shape
+        - Deterministic file paths (derivable from sql_query_log)
+        - UI integration for viewing past runs in /sql-trail
 
         Args:
             query: The original SQL query
@@ -1972,17 +1974,41 @@ class ClientConnection:
             caller_id: Optional caller_id for linking to sql_query_log
 
         Returns:
-            Dict with result location info if materialized:
-            {
-                'stored_in': 'clickhouse',
-                'result_table': 'r_abc123',
-                'caller_id': caller_id,
-                'query_id': query_id,
-                'row_count': N,
-                'column_count': N
-            }
-            Returns None if not materialized.
+            Dict with result location info if materialized, None otherwise.
         """
+        if result_df is None or len(result_df) == 0:
+            return None
+        
+        if not caller_id:
+            return None
+        
+        try:
+            # Get query fingerprint
+            from ..sql_trail import get_query_fingerprint
+            query_fingerprint = get_query_fingerprint(query)
+            
+            if not query_fingerprint:
+                return None
+            
+            # Store the result
+            from ..result_store import store_result
+            return store_result(
+                df=result_df,
+                query_fingerprint=query_fingerprint,
+                caller_id=caller_id,
+                query_preview=query[:200] if query else "",
+            )
+            
+        except Exception as e:
+            # Non-blocking - log and continue
+            self._runtime_log(
+                "DEBUG",
+                f"Result materialization failed: {e}",
+                event="result_store_error",
+            )
+            return None
+        
+        # --- Original implementation below (kept for reference) ---
         import json
         import re
         from datetime import datetime
@@ -11485,6 +11511,7 @@ def start_postgres_server(
     listen_backlog=1024,
     max_connections=0,
     idle_timeout=0,
+    pool_size=16,
 ):
     """
     Start LARS PostgreSQL wire protocol server.
@@ -11496,6 +11523,7 @@ def start_postgres_server(
         listen_backlog: Socket listen backlog (default: 1024)
         max_connections: Maximum concurrent connections (0 = unlimited)
         idle_timeout: Disconnect idle clients after N seconds (0 = no timeout)
+        pool_size: Number of pre-warmed DuckDB connections (default: 16)
 
     Example:
         # Start server
@@ -11511,6 +11539,25 @@ def start_postgres_server(
          Apple
         (1 row)
     """
+    import os
+    import time
+    
+    # Set pool size before initializing (connection_pool reads from env)
+    os.environ['LARS_POOL_SIZE'] = str(pool_size)
+    
+    # Pre-warm the connection pool
+    try:
+        from ..sql_tools.connection_pool import initialize_pool, pool_status
+        print(f"[pool] Warming {pool_size} connections in background...")
+        initialize_pool()
+        
+        # Wait briefly for some connections to warm, then report status
+        time.sleep(0.5)
+        status = pool_status()
+        print(f"[pool] Status: {status['size']} ready, warming={'yes' if status['warming'] else 'done'}")
+    except Exception as e:
+        print(f"[warn] Connection pool initialization failed: {e}")
+    
     server = LARSPostgresServer(
         host=host,
         port=port,

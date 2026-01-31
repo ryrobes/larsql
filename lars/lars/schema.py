@@ -873,7 +873,41 @@ SETTINGS index_granularity = 8192;
 # Purpose: capture high-volume runtime logs (e.g. pgwire chatter) without spamming stdout.
 # This is NOT `unified_logs` (which is used for message/cascade execution records).
 
+# DuckDB-compatible version (used by runtime_event_logger)
 RUNTIME_EVENT_LOG_SCHEMA = """
+CREATE TABLE IF NOT EXISTS runtime_event_log (
+    event_id UUID DEFAULT gen_random_uuid(),
+    timestamp TIMESTAMPTZ DEFAULT now(),
+    timestamp_iso VARCHAR,
+    connection_id VARCHAR DEFAULT '',
+
+    -- Classification
+    source VARCHAR,                             -- e.g. 'pgwire', 'studio_backend', 'runner'
+    level VARCHAR,                              -- DEBUG/INFO/WARN/ERROR
+    event VARCHAR DEFAULT '',                   -- short machine-readable event name
+
+    -- Message
+    message VARCHAR,
+    extra_json VARCHAR DEFAULT '{}',
+
+    -- Common context
+    session_id VARCHAR,
+    query_id VARCHAR,
+    caller_id VARCHAR,
+
+    -- Auth / client context
+    user_name VARCHAR,
+    auth_user_id VARCHAR,
+    database_name VARCHAR,
+    results_db VARCHAR,
+    application_name VARCHAR,
+    client_addr VARCHAR,
+    thread_id BIGINT DEFAULT 0
+);
+"""
+
+# Legacy ClickHouse version (kept for reference)
+RUNTIME_EVENT_LOG_SCHEMA_CLICKHOUSE = """
 CREATE TABLE IF NOT EXISTS runtime_event_log (
     event_id UUID DEFAULT generateUUIDv4(),
     timestamp DateTime64(6) DEFAULT now64(6),

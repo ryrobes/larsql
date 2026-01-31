@@ -1141,140 +1141,80 @@ def _save_to_table(
     results_db: str = "lars_results",
 ) -> None:
     """
-    Save DataFrame to ClickHouse and create a view in DuckDB.
+    Save DataFrame to parquet for cross-session visibility.
 
-    This enables cross-session visibility:
-    - Data persists in ClickHouse (<results_db> schema)
-    - Each DuckDB session gets a view pointing to clickhouse_scan()
-    - No locking issues since ClickHouse handles concurrent access
+    Storage: $LARS_ROOT/data/user/<results_db>/into_<name>/data.parquet
+    
+    Cross-session access: The into_table_rewriter detects `into_*` references
+    and rewrites them to read_parquet() calls - no views or sync needed.
+    
+    Current session: Views are created for immediate use without rewriting.
 
     Args:
-        duckdb_conn: DuckDB connection for creating the view
+        duckdb_conn: DuckDB connection (views created for current session)
         df: DataFrame to save
-        table_name: Logical name for the table (stored as into_<name> in ClickHouse)
-        results_db: ClickHouse database for INTO tables (e.g., "lars_results_default")
+        table_name: Logical name for the table (stored as into_<name>)
+        results_db: Results namespace (e.g., "lars_results_memory")
     """
     import re
-    import json
+    import os
+    from pathlib import Path
 
-    log.info(f"[pipeline] Saving {len(df)} rows to ClickHouse + view: {table_name}")
+    log.info(f"[pipeline] Saving {len(df)} rows to parquet + view: {table_name}")
 
     if df is None or len(df) == 0:
         log.warning(f"[pipeline] Skipping save: empty DataFrame")
         return
 
     try:
-        # Sanitize table name for ClickHouse
+        # Sanitize table name
         safe_name = re.sub(r'[^a-zA-Z0-9_]', '_', table_name)
-        ch_table_name = f"into_{safe_name}"
+        parquet_table_name = f"into_{safe_name}"
 
-        # === Step 1: Save to ClickHouse ===
-        from ..db_adapter import get_db
-        db = get_db()
+        # === Step 1: Save to parquet file ===
+        from ..lars_db import get_lars_db
+        lars_db = get_lars_db()
+        
+        # Create directory structure: $LARS_ROOT/data/user/<results_db>/<table>/
+        table_dir = lars_db.root / "user" / results_db / parquet_table_name
+        table_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Write as single parquet file (replace existing)
+        parquet_path = table_dir / "data.parquet"
+        
+        # Remove old file if exists
+        if parquet_path.exists():
+            parquet_path.unlink()
+        
+        # Write DataFrame to parquet
+        df.to_parquet(parquet_path, index=False)
+        
+        log.info(f"[pipeline] Saved {len(df)} rows to parquet: {parquet_path}")
 
-        # Build column definitions
-        columns = list(df.columns)
-        sanitized_columns = [_sanitize_column_name_for_ch(c) for c in columns]
-        column_types = [_pandas_dtype_to_clickhouse(df[col].dtype) for col in columns]
-
-        # Create column spec
-        column_defs = []
-        for san_col, ch_type in zip(sanitized_columns, column_types):
-            column_defs.append(f"`{san_col}` Nullable({ch_type})")
-        columns_sql = ",\n    ".join(column_defs)
-
-        # Ensure results database exists
-        db.execute(f"CREATE DATABASE IF NOT EXISTS {results_db}")
-
-        # Drop existing table
-        drop_sql = f"DROP TABLE IF EXISTS {results_db}.{ch_table_name}"
-        db.execute(drop_sql)
-
-        # Create the table
-        create_sql = f"""
-            CREATE TABLE {results_db}.{ch_table_name} (
-                {columns_sql}
-            )
-            ENGINE = MergeTree()
-            ORDER BY tuple()
-        """
-        db.execute(create_sql)
-
-        # Insert data in batches
-        if len(df) > 0:
-            col_names = ", ".join([f"`{c}`" for c in sanitized_columns])
-
-            # Prepare rows
-            rows_to_insert = []
-            for _, row in df.iterrows():
-                row_values = []
-                for val in row:
-                    if val is None or (hasattr(val, '__class__') and val.__class__.__name__ == 'NaT'):
-                        row_values.append(None)
-                    elif hasattr(val, 'isoformat'):
-                        row_values.append(val.isoformat())
-                    elif isinstance(val, bytes):
-                        row_values.append(val.hex())
-                    elif hasattr(val, 'item'):  # numpy types
-                        try:
-                            row_values.append(val.item())
-                        except ValueError:
-                            row_values.append(val.tolist() if hasattr(val, 'tolist') else list(val))
-                    else:
-                        row_values.append(val)
-                rows_to_insert.append(tuple(row_values))
-
-            # Format values for INSERT
-            def format_value(v):
-                if v is None:
-                    return 'NULL'
-                elif isinstance(v, str):
-                    return "'" + v.replace("\\", "\\\\").replace("'", "''").replace("%", "%%") + "'"
-                elif isinstance(v, bool):
-                    return '1' if v else '0'
-                elif isinstance(v, (int, float)):
-                    return str(v)
-                elif isinstance(v, (dict, list)):
-                    return "'" + json.dumps(v).replace("\\", "\\\\").replace("'", "''").replace("%", "%%") + "'"
-                else:
-                    return "'" + str(v).replace("\\", "\\\\").replace("'", "''").replace("%", "%%") + "'"
-
-            # Insert in batches
-            batch_size = 1000
-            for i in range(0, len(rows_to_insert), batch_size):
-                batch = rows_to_insert[i:i + batch_size]
-                values_strs = []
-                for row_tuple in batch:
-                    row_str = "(" + ", ".join(format_value(v) for v in row_tuple) + ")"
-                    values_strs.append(row_str)
-
-                insert_sql = f"INSERT INTO {results_db}.{ch_table_name} ({col_names}) VALUES {', '.join(values_strs)}"
-                db.execute(insert_sql)
-
-        log.info(f"[pipeline] Saved {len(df)} rows to ClickHouse: {results_db}.{ch_table_name}")
-
-        # === Step 2: Create view in DuckDB session ===
+        # === Step 2: Create views in current DuckDB session for immediate use ===
+        # Note: Cross-session access is handled by into_table_rewriter -> read_parquet()
         if duckdb_conn is not None:
-            view_name = ch_table_name  # Expose as into_* inside DuckDB session for convenience
-
-            # Drop any existing table or view with this name
-            try:
-                duckdb_conn.execute(f"DROP TABLE IF EXISTS {view_name}")
-            except Exception:
-                pass
-            try:
-                duckdb_conn.execute(f"DROP VIEW IF EXISTS {view_name}")
-            except Exception:
-                pass
-
-            # Create view that reads from ClickHouse via clickhouse_scan_1
-            # (clickhouse_scan_1 is the 1-arg version registered in udf.py)
-            view_sql = f"""
-                CREATE VIEW {view_name} AS
-                SELECT * FROM read_json_auto(clickhouse_scan_1('{results_db}.{ch_table_name}'))
-            """
-            duckdb_conn.execute(view_sql)
-            log.info(f"[pipeline] Created view: {view_name} -> clickhouse_scan('{results_db}.{ch_table_name}')")
+            # Create simple unqualified views for this session
+            # into_xxx - the standard INTO table name
+            # xxx - user-friendly alias without prefix
+            for view_name in [parquet_table_name, safe_name]:
+                try:
+                    duckdb_conn.execute(f"DROP VIEW IF EXISTS {view_name}")
+                except Exception:
+                    pass
+                try:
+                    duckdb_conn.execute(f"DROP TABLE IF EXISTS {view_name}")
+                except Exception:
+                    pass
+                try:
+                    duckdb_conn.execute(f"""
+                        CREATE VIEW {view_name} AS
+                        SELECT * FROM read_parquet('{parquet_path}')
+                    """)
+                except Exception as view_err:
+                    log.debug(f"[pipeline] View {view_name} skipped: {view_err}")
+            
+            log.info(f"[pipeline] Created session views: {parquet_table_name}, {safe_name} -> {parquet_path}")
 
     except Exception as e:
         log.error(f"[pipeline] Failed to save to ClickHouse/create view for {table_name}: {e}")
@@ -1331,14 +1271,15 @@ def _pandas_dtype_to_clickhouse(dtype) -> str:
 
 def sync_into_tables(duckdb_conn: Any, results_db: str = "lars_results") -> int:
     """
-    Sync INTO tables from ClickHouse as views in the DuckDB session.
+    Sync INTO tables from parquet files as views in the DuckDB session.
 
-    Call this on session start to make all INTO tables visible.
-    Discovers tables in <results_db> schema with 'into_' prefix and creates
-    views pointing to clickhouse_scan_1().
+    Optional utility - the into_table_rewriter handles cross-session access
+    automatically via read_parquet(). This function can be called to make
+    INTO tables visible without rewriting (e.g., for tab completion).
 
     Args:
         duckdb_conn: DuckDB connection to create views in
+        results_db: Results namespace (e.g., "lars_results_memory")
 
     Returns:
         Number of views created
@@ -1347,50 +1288,53 @@ def sync_into_tables(duckdb_conn: Any, results_db: str = "lars_results") -> int:
         return 0
 
     try:
-        from ..db_adapter import get_db
-        db = get_db()
-
-        # Query ClickHouse for tables with 'into_' prefix
-        # Note: %% escapes the % for Python string formatting used by ClickHouse driver
-        result = db.execute(f"""
-            SELECT name
-            FROM system.tables
-            WHERE database = '{results_db}'
-            AND name LIKE 'into_%%'
-        """)
-
-        if result is None:
+        from ..lars_db import get_lars_db
+        
+        lars_db = get_lars_db()
+        
+        # Scan parquet directory for into_* tables
+        results_dir = lars_db.root / "user" / results_db
+        
+        if not results_dir.exists():
             return 0
 
         count = 0
-        for row in result:
-            ch_table_name = row[0]  # e.g., 'into_my_analysis'
-            view_name = ch_table_name  # Keep into_* prefix in DuckDB session
+        for table_dir in results_dir.iterdir():
+            if not table_dir.is_dir():
+                continue
+            if not table_dir.name.startswith('into_'):
+                continue
+                
+            parquet_path = table_dir / "data.parquet"
+            if not parquet_path.exists():
+                continue
+            
+            view_name = table_dir.name  # e.g., 'into_my_analysis'
 
             try:
-                # Drop existing table/view
-                try:
-                    duckdb_conn.execute(f"DROP TABLE IF EXISTS {view_name}")
-                except Exception:
-                    pass
+                # Drop existing view/table
                 try:
                     duckdb_conn.execute(f"DROP VIEW IF EXISTS {view_name}")
                 except Exception:
                     pass
+                try:
+                    duckdb_conn.execute(f"DROP TABLE IF EXISTS {view_name}")
+                except Exception:
+                    pass
 
-                # Create view
-                view_sql = f"""
+                # Create view pointing to parquet file
+                duckdb_conn.execute(f"""
                     CREATE VIEW {view_name} AS
-                    SELECT * FROM read_json_auto(clickhouse_scan_1('{results_db}.{ch_table_name}'))
-                """
-                duckdb_conn.execute(view_sql)
+                    SELECT * FROM read_parquet('{parquet_path}')
+                """)
+                
                 count += 1
-                log.debug(f"[pipeline] Synced INTO table: {view_name} -> {results_db}.{ch_table_name}")
+                log.debug(f"[pipeline] Synced INTO table: {view_name} -> {parquet_path}")
             except Exception as e:
-                log.warning(f"[pipeline] Failed to sync INTO table {ch_table_name}: {e}")
+                log.warning(f"[pipeline] Failed to sync INTO table {view_name}: {e}")
 
         if count > 0:
-            log.info(f"[pipeline] Synced {count} INTO table(s) from ClickHouse")
+            log.info(f"[pipeline] Synced {count} INTO table(s) from parquet")
 
         return count
 

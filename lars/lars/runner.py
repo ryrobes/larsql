@@ -5803,13 +5803,18 @@ If no tools are needed, return an empty array: []
 
                 # Format winners for inclusion in prompt
                 winner_examples = []
-                from datetime import datetime
-                now = datetime.now()
+                from datetime import datetime, timezone
+                now = datetime.now(timezone.utc)
 
                 for i, w in enumerate(winners, 1):
                     # Calculate age
                     if w['timestamp']:
-                        age = now - w['timestamp']
+                        # Handle both tz-aware and tz-naive timestamps
+                        ts = w['timestamp']
+                        if hasattr(ts, 'tzinfo') and ts.tzinfo is None:
+                            # tz-naive, assume UTC
+                            ts = ts.replace(tzinfo=timezone.utc)
+                        age = now - ts
                         if age.days == 0:
                             time_info = "today"
                         elif age.days == 1:

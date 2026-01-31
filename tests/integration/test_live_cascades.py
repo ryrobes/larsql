@@ -133,10 +133,15 @@ class TestLiveCascades:
 
         # Import here to avoid import errors when LLM not available
         from lars import run_cascade
+        import shutil
 
         # Get test inputs
         cascade_name = cascade_file.stem
         test_input = TEST_INPUTS.get(cascade_name, {})
+        
+        # Skip Clojure-dependent cascades if Babashka not installed
+        if cascade_name == "test_data_cascade" and not shutil.which("bb"):
+            pytest.skip("Babashka (bb) not installed - required for Clojure step")
 
         print(f"\n{'='*60}")
         print(f"Running: {cascade_name}")
@@ -252,10 +257,16 @@ class TestDeterministicOnly:
         Run the polyglot data cascade (SQL, Python, JS, Clojure).
         No LLM required.
         """
+        import shutil
+        
         cascade_file = INTEGRATION_DIR / "test_data_cascade.yaml"
 
         if not cascade_file.exists():
             pytest.skip("test_data_cascade.yaml not found")
+        
+        # Skip if Babashka (bb) not installed - required for Clojure step
+        if not shutil.which("bb"):
+            pytest.skip("Babashka (bb) not installed - required for Clojure step")
 
         from lars import run_cascade
 

@@ -1,9 +1,9 @@
 """
-Session State Management - ClickHouse-Native Durable Execution Coordination.
+Session State Management - DuckDB/Parquet Durable Execution Coordination.
 
-This module provides centralized session state tracking using ClickHouse as the
-coordination database. It replaces JSON file-based state tracking with a robust,
-queryable, cross-process coordination system.
+This module provides centralized session state tracking using DuckDB + Parquet
+as the persistence layer. It replaces JSON file-based state tracking with a 
+robust, queryable, cross-process coordination system.
 
 Key features:
 - Cross-process visibility (any CLI can see any session's state)
@@ -13,8 +13,8 @@ Key features:
 - Full queryability for UI dashboards
 
 Architecture:
-    ClickHouse is truth - all coordination state lives in CH, survives any process death.
-    No central server required - CLI works standalone, coordination via CH polling.
+    Parquet files are truth - all coordination state lives there, survives any process death.
+    No external server required - CLI works standalone, coordination via file polling.
     HTTP callbacks for acceleration - optional low-latency notifications (existing pattern).
     Polling for reliability - guaranteed delivery even if callbacks fail.
 """
@@ -244,15 +244,13 @@ class SessionStateManager:
             self._ensure_table_exists()
 
     def _ensure_table_exists(self):
-        """Ensure the session_state table exists in ClickHouse."""
-        try:
-            from .db_adapter import get_db
-            from .schema import get_schema
-            db = get_db()
-            ddl = get_schema("session_state")
-            db.execute(ddl)
-        except Exception as e:
-            print(f"[SessionState] Warning: Could not ensure table exists: {e}")
+        """Ensure the session_state table exists.
+        
+        With DuckDB/Parquet storage, tables are created automatically
+        when data is first written. This is a no-op.
+        """
+        # No-op: tables auto-created on first write with parquet storage
+        pass
 
     # =========================================================================
     # Write Operations

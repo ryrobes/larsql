@@ -23,6 +23,32 @@ from typing import Dict, List, Optional, Any
 
 logger = logging.getLogger(__name__)
 
+import math
+
+def _safe_float(val, default=0.0):
+    """Convert value to float, handling None, NaN, and Inf safely."""
+    if val is None:
+        return default
+    try:
+        f = float(val)
+        if math.isnan(f) or math.isinf(f):
+            return default
+        return f
+    except (TypeError, ValueError):
+        return default
+
+def _safe_int(val, default=0):
+    """Convert value to int, handling None and invalid values safely."""
+    if val is None:
+        return default
+    try:
+        f = float(val)
+        if math.isnan(f) or math.isinf(f):
+            return default
+        return int(f)
+    except (TypeError, ValueError):
+        return default
+
 from .config import LARS_ROOT
 
 
@@ -988,11 +1014,11 @@ def _analyze_cells(session_id: str, db, cascade_id: str, genus_hash: str,
                 'tool': None,  # Would need to query cell_config
                 'model': cell.get('primary_model'),
 
-                # Raw metrics
-                'cell_cost': float(cell['cell_cost'] or 0),
-                'cell_duration_ms': float(cell['cell_duration_ms'] or 0),
-                'cell_tokens_in': int(cell['tokens_in'] or 0),
-                'cell_tokens_out': int(cell['tokens_out'] or 0),
+                # Raw metrics (use _safe_float to handle NaN from SQL aggregates)
+                'cell_cost': _safe_float(cell.get('cell_cost')),
+                'cell_duration_ms': _safe_float(cell.get('cell_duration_ms')),
+                'cell_tokens_in': _safe_int(cell.get('tokens_in')),
+                'cell_tokens_out': _safe_int(cell.get('tokens_out')),
                 'cell_tokens': cell_tokens,
                 'message_count': int(cell['message_count'] or 0),
                 'turn_count': int(turn_count),
@@ -1016,11 +1042,11 @@ def _analyze_cells(session_id: str, db, cascade_id: str, genus_hash: str,
                 'is_cost_outlier': abs(cell_z_scores['cost']) > 2,
                 'is_duration_outlier': abs(cell_z_scores['duration']) > 2,
 
-                # Efficiency (handle None values)
-                'cost_per_turn': float((cell['cell_cost'] or 0) / turn_count if turn_count > 0 else 0),
-                'cost_per_token': float((cell['cell_cost'] or 0) / cell_tokens if cell_tokens > 0 else 0),
-                'tokens_per_turn': float(cell_tokens / turn_count if turn_count > 0 else 0),
-                'duration_per_turn': float((cell['cell_duration_ms'] or 0) / turn_count if turn_count > 0 else 0),
+                # Efficiency (handle None/NaN values)
+                'cost_per_turn': _safe_float(_safe_float(cell.get('cell_cost')) / turn_count if turn_count > 0 else 0),
+                'cost_per_token': _safe_float(_safe_float(cell.get('cell_cost')) / cell_tokens if cell_tokens > 0 else 0),
+                'tokens_per_turn': _safe_float(cell_tokens / turn_count if turn_count > 0 else 0),
+                'duration_per_turn': _safe_float(_safe_float(cell.get('cell_duration_ms')) / turn_count if turn_count > 0 else 0),
 
                 # Cascade context
                 'cascade_total_cost': cascade_total_cost,
@@ -1131,10 +1157,11 @@ def _compute_cell_baselines(db, cascade_id: str, cell_name: str, species_hash: s
 
     try:
         # Global baseline (all runs of this cell)
+        # Filter isfinite() to exclude NaN/Inf values
         global_query = f"""
             SELECT
-                if(isNaN(AVG(cell_cost)), 0, AVG(cell_cost)) as avg_cost,
-                if(isNaN(AVG(cell_duration_ms)), 0, AVG(cell_duration_ms)) as avg_duration,
+                COALESCE(AVG(cell_cost) FILTER (WHERE isfinite(cell_cost)), 0) as avg_cost,
+                COALESCE(AVG(cell_duration_ms) FILTER (WHERE isfinite(cell_duration_ms)), 0) as avg_duration,
                 COUNT(*) as run_count
             FROM cell_analytics
             WHERE cascade_id = '{cascade_id}'
@@ -1145,9 +1172,9 @@ def _compute_cell_baselines(db, cascade_id: str, cell_name: str, species_hash: s
 
         if global_result and global_result[0]:
             baselines['global'] = {
-                'avg_cost': float(global_result[0].get('avg_cost', 0) or 0),
-                'avg_duration': float(global_result[0].get('avg_duration', 0) or 0),
-                'run_count': int(global_result[0].get('run_count', 0) or 0),
+                'avg_cost': _safe_float(global_result[0].get('avg_cost')),
+                'avg_duration': _safe_float(global_result[0].get('avg_duration')),
+                'run_count': _safe_int(global_result[0].get('run_count')),
             }
 
     except Exception as e:
@@ -1155,13 +1182,14 @@ def _compute_cell_baselines(db, cascade_id: str, cell_name: str, species_hash: s
 
     try:
         # Species baseline (same species_hash - exact config)
+        # Filter isfinite() to exclude NaN/Inf values that break stddev_pop
         if species_hash and species_hash != '':
             species_query = f"""
                 SELECT
-                    if(isNaN(AVG(cell_cost)), 0, AVG(cell_cost)) as avg_cost,
-                    if(isNaN(stddevPop(cell_cost)), 0, stddevPop(cell_cost)) as stddev_cost,
-                    if(isNaN(AVG(cell_duration_ms)), 0, AVG(cell_duration_ms)) as avg_duration,
-                    if(isNaN(stddevPop(cell_duration_ms)), 0, stddevPop(cell_duration_ms)) as stddev_duration,
+                    COALESCE(AVG(cell_cost) FILTER (WHERE isfinite(cell_cost)), 0) as avg_cost,
+                    COALESCE(stddev_pop(cell_cost) FILTER (WHERE isfinite(cell_cost)), 0) as stddev_cost,
+                    COALESCE(AVG(cell_duration_ms) FILTER (WHERE isfinite(cell_duration_ms)), 0) as avg_duration,
+                    COALESCE(stddev_pop(cell_duration_ms) FILTER (WHERE isfinite(cell_duration_ms)), 0) as stddev_duration,
                     COUNT(*) as run_count
                 FROM cell_analytics
                 WHERE species_hash = '{species_hash}'
@@ -1171,11 +1199,11 @@ def _compute_cell_baselines(db, cascade_id: str, cell_name: str, species_hash: s
 
             if species_result and species_result[0]:
                 baselines['species'] = {
-                    'avg_cost': float(species_result[0].get('avg_cost', 0) or 0),
-                    'stddev_cost': float(species_result[0].get('stddev_cost', 0) or 0),
-                    'avg_duration': float(species_result[0].get('avg_duration', 0) or 0),
-                    'stddev_duration': float(species_result[0].get('stddev_duration', 0) or 0),
-                    'run_count': int(species_result[0].get('run_count', 0) or 0),
+                    'avg_cost': _safe_float(species_result[0].get('avg_cost')),
+                    'stddev_cost': _safe_float(species_result[0].get('stddev_cost')),
+                    'avg_duration': _safe_float(species_result[0].get('avg_duration')),
+                    'stddev_duration': _safe_float(species_result[0].get('stddev_duration')),
+                    'run_count': _safe_int(species_result[0].get('run_count')),
                 }
 
     except Exception as e:
@@ -1499,10 +1527,17 @@ def _analyze_context_relevance(session_id: str, cascade_id: str, cell_name: str,
             invocation_metadata=parent_metadata  # Inherit metadata
         )
 
-        result = runner.run(input_data={
-            'output_content': output_content,
-            'context_messages': context_messages,
-        })
+        try:
+            result = runner.run(input_data={
+                'output_content': output_content,
+                'context_messages': context_messages,
+            })
+        except RuntimeError as e:
+            if "shutdown" in str(e).lower():
+                # Interpreter is shutting down, skip analysis gracefully
+                logger.debug(f"Relevance analysis skipped (shutdown in progress): {cell_name}")
+                return
+            raise
 
         if not result:
             logger.warning(f"Relevance analysis returned no result for {cell_name}")
@@ -1582,33 +1617,47 @@ def _analyze_context_relevance(session_id: str, cascade_id: str, cell_name: str,
 
         logger.debug(f"[Relevance] Parsed {len(relevance_scores)} scores from LLM output")
 
-        updated_count = 0
+        # Parquet-backed storage is append-only - fetch existing rows, merge updates, re-insert
+        # Build a map of hash prefix -> updates
+        updates_by_hash = {}
         for score_data in relevance_scores:
-            ctx_hash = score_data.get('hash', '')
-            score = score_data.get('score', 0)
-            reason = score_data.get('reason', '')
-
-            logger.debug(f"[Relevance]   Updating hash={ctx_hash} score={score}")
-
-            # Match by hash prefix (analysis returns 8 chars, DB has full hash)
-            update_query = f"""
-                ALTER TABLE cell_context_breakdown
-                UPDATE
-                    relevance_score = {score},
-                    relevance_reasoning = '{reason.replace("'", "''")}',
-                    relevance_analysis_cost = {analysis_cost / len(relevance_scores)},
-                    relevance_analyzed_at = toDateTime('{current_time.strftime('%Y-%m-%d %H:%M:%S')}'),
-                    relevance_analysis_session = '{analysis_session_id}'
-                WHERE session_id = '{session_id}'
-                  AND cell_name = '{cell_name}'
-                  AND startsWith(context_message_hash, '{ctx_hash[:8]}')
-            """
-
+            ctx_hash = score_data.get('hash', '')[:8]  # Use 8-char prefix
+            updates_by_hash[ctx_hash] = {
+                'relevance_score': score_data.get('score', 0),
+                'relevance_reasoning': score_data.get('reason', ''),
+                'relevance_analysis_cost': analysis_cost / len(relevance_scores),
+                'relevance_analyzed_at': current_time,
+                'relevance_analysis_session': analysis_session_id,
+            }
+        
+        # Fetch existing rows that need updating
+        fetch_query = f"""
+            SELECT *
+            FROM cell_context_breakdown
+            WHERE session_id = '{session_id}'
+              AND cell_name = '{cell_name}'
+              AND relevance_score IS NULL
+        """
+        existing_rows = db.query(fetch_query)
+        
+        # Merge updates and re-insert as new rows (append-only pattern)
+        updated_rows = []
+        for row in existing_rows:
+            hash_prefix = row.get('context_message_hash', '')[:8]
+            if hash_prefix in updates_by_hash:
+                # Merge update into row
+                updated_row = dict(row)
+                updated_row.update(updates_by_hash[hash_prefix])
+                updated_rows.append(updated_row)
+        
+        updated_count = 0
+        if updated_rows:
             try:
-                db.query(update_query)
-                updated_count += 1
+                db.insert_rows('cell_context_breakdown', updated_rows)
+                updated_count = len(updated_rows)
+                logger.debug(f"[Relevance] Appended {updated_count} updated rows")
             except Exception as e:
-                logger.warning(f"[Relevance] Failed to update hash {ctx_hash}: {e}")
+                logger.warning(f"[Relevance] Failed to insert updated rows: {e}")
 
         # Verify updates worked
         verify_query = f"""
@@ -1668,7 +1717,14 @@ def _create_context_breakdown(session_id: str, cell_name: str, cell_index: int,
         breakdown_rows = []
 
         for msg in messages:
-            context_hashes = msg['context_hashes'] or []
+            # Handle context_hashes which may be a numpy/pyarrow array or None
+            raw_hashes = msg.get('context_hashes')
+            if raw_hashes is None:
+                context_hashes = []
+            elif hasattr(raw_hashes, 'tolist'):
+                context_hashes = raw_hashes.tolist()  # numpy/pyarrow array
+            else:
+                context_hashes = list(raw_hashes) if raw_hashes else []
             
             if not context_hashes:
                 continue

@@ -8,16 +8,48 @@ DuckDB file locking issue when running with multiple Gunicorn workers.
 Architecture:
     Browser → Flask Workers (N) → psycopg → PGwire Server (1) → DuckDB
                                             ↑ single process, no lock conflicts
+
+Note: psycopg3 blocks at the C level (libpq), which doesn't yield to gevent.
+We use a thread pool to run psycopg operations in real threads, allowing
+gevent to continue handling other requests while waiting for database I/O.
 """
 
 import os
 import socket
 import time
 import logging
-from typing import Optional, Tuple, Any, Dict, List
+from typing import Optional, Tuple, Any, Dict, List, Callable, TypeVar
 from contextlib import contextmanager
+from concurrent.futures import ThreadPoolExecutor
 
 log = logging.getLogger(__name__)
+
+# Thread pool for psycopg operations (psycopg3 blocks at C level, not gevent-friendly)
+# Size matches typical Gunicorn worker count - each worker may have concurrent requests
+_psycopg_thread_pool: Optional[ThreadPoolExecutor] = None
+
+T = TypeVar('T')
+
+
+def _get_thread_pool() -> ThreadPoolExecutor:
+    """Get or create the thread pool for psycopg operations."""
+    global _psycopg_thread_pool
+    if _psycopg_thread_pool is None:
+        # Pool size: enough for concurrent requests across all greenlets
+        # 20 threads should handle typical Studio concurrency
+        _psycopg_thread_pool = ThreadPoolExecutor(max_workers=20, thread_name_prefix='psycopg')
+    return _psycopg_thread_pool
+
+
+def _run_in_thread(fn: Callable[..., T], *args, **kwargs) -> T:
+    """
+    Run a blocking function in a thread pool thread.
+    
+    This allows gevent to yield while psycopg blocks on I/O.
+    """
+    pool = _get_thread_pool()
+    future = pool.submit(fn, *args, **kwargs)
+    return future.result()  # This will block the greenlet but not the gevent hub
 
 # Default PGwire port (same as `lars serve sql`)
 DEFAULT_PGWIRE_PORT = 15432
@@ -145,6 +177,49 @@ def get_pgwire_connection(
         conn.close()
 
 
+def _execute_sql_blocking(
+    query: str,
+    database: str,
+    port: int,
+    username: Optional[str],
+    password: Optional[str],
+) -> Tuple[List[str], List[Dict[str, Any]]]:
+    """
+    Internal blocking implementation - runs in thread pool.
+    
+    All psycopg operations (connect, execute, fetch) happen here,
+    isolated in a real thread so gevent can yield.
+    """
+    import psycopg
+    
+    conn = psycopg.connect(
+        host='localhost',
+        port=port,
+        dbname=database,
+        user=username or 'lars',
+        password=password or '',
+        autocommit=True,
+    )
+    
+    try:
+        with conn.cursor() as cur:
+            cur.execute(query)
+
+            # Handle non-SELECT queries (CREATE, INSERT, etc.)
+            if cur.description is None:
+                return [], []
+
+            columns = [desc[0] for desc in cur.description]
+            rows = cur.fetchall()
+
+            # Convert to list of dicts
+            data = [dict(zip(columns, row)) for row in rows]
+
+            return columns, data
+    finally:
+        conn.close()
+
+
 def execute_sql_via_pgwire(
     query: str,
     database: str = 'memory',
@@ -154,6 +229,8 @@ def execute_sql_via_pgwire(
 ) -> Tuple[List[str], List[Dict[str, Any]]]:
     """
     Execute SQL query via PGwire and return results.
+    
+    Runs psycopg operations in a thread pool to avoid blocking gevent.
 
     Args:
         query: SQL query to execute
@@ -169,21 +246,17 @@ def execute_sql_via_pgwire(
         RuntimeError: If PGwire is not available
         Exception: SQL execution errors
     """
-    with get_pgwire_connection(database, port, username, password) as conn:
-        with conn.cursor() as cur:
-            cur.execute(query)
+    if port is None:
+        port = get_pgwire_port()
 
-            # Handle non-SELECT queries (CREATE, INSERT, etc.)
-            if cur.description is None:
-                return [], []
+    if port is None:
+        raise RuntimeError("PGwire server not available")
 
-            columns = [desc[0] for desc in cur.description]
-            rows = cur.fetchall()
-
-            # Convert to list of dicts
-            data = [dict(zip(columns, row)) for row in rows]
-
-            return columns, data
+    # Run blocking psycopg operations in thread pool
+    return _run_in_thread(
+        _execute_sql_blocking,
+        query, database, port, username, password
+    )
 
 
 def execute_sql_via_pgwire_df(

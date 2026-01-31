@@ -472,7 +472,12 @@ def ensure_rag_index(
 
         # Delete old chunks for this doc (if updating)
         if prev:
-            db.execute(f"ALTER TABLE rag_chunks DELETE WHERE rag_id = '{rag_id}' AND doc_id = '{prev['doc_id']}'")
+            # DuckDB tables are views over parquet (append-only) - skip DELETE
+            # ChromaDB is the source of truth for RAG vectors
+            try:
+                db.execute(f"DELETE FROM rag_chunks WHERE rag_id = '{rag_id}' AND doc_id = '{prev['doc_id']}'")
+            except Exception:
+                pass  # Parquet-backed views don't support DELETE
             if embedding_dim_used:
                 delete_by_doc_id(embed_model, int(embedding_dim_used), rag_id, str(prev["doc_id"]))
 
@@ -538,8 +543,15 @@ def ensure_rag_index(
     if removed_paths:
         for rel_path in removed_paths:
             prev = prev_by_path[rel_path]
-            db.execute(f"ALTER TABLE rag_chunks DELETE WHERE rag_id = '{rag_id}' AND doc_id = '{prev['doc_id']}'")
-            db.execute(f"ALTER TABLE rag_manifests DELETE WHERE rag_id = '{rag_id}' AND doc_id = '{prev['doc_id']}'")
+            # DuckDB tables are views over parquet (append-only) - skip DELETE
+            try:
+                db.execute(f"DELETE FROM rag_chunks WHERE rag_id = '{rag_id}' AND doc_id = '{prev['doc_id']}'")
+            except Exception:
+                pass
+            try:
+                db.execute(f"DELETE FROM rag_manifests WHERE rag_id = '{rag_id}' AND doc_id = '{prev['doc_id']}'")
+            except Exception:
+                pass
             if expected_dim:
                 delete_by_doc_id(embed_model, int(expected_dim), rag_id, str(prev["doc_id"]))
 
@@ -614,8 +626,15 @@ def delete_rag_index(rag_id: str):
             )
     except Exception:
         pass
-    db.execute(f"ALTER TABLE rag_chunks DELETE WHERE rag_id = '{rag_id}'")
-    db.execute(f"ALTER TABLE rag_manifests DELETE WHERE rag_id = '{rag_id}'")
+    # DuckDB tables are views over parquet (append-only) - skip DELETE
+    try:
+        db.execute(f"DELETE FROM rag_chunks WHERE rag_id = '{rag_id}'")
+    except Exception:
+        pass
+    try:
+        db.execute(f"DELETE FROM rag_manifests WHERE rag_id = '{rag_id}'")
+    except Exception:
+        pass
     console.print(f"[yellow]Deleted RAG index: {rag_id}[/yellow]")
 
 

@@ -6,7 +6,7 @@ Tracks the "caller" that initiated a cascade execution, enabling:
 - Debugging: "What spawned this session?"
 - Analytics: Usage by origin (SQL vs UI vs CLI)
 
-Uses ClickHouse Memory table as the authoritative store for cross-thread access.
+Uses SQLite scratch DB as the authoritative store for cross-thread access.
 ContextVars and thread-local are kept for fast local access within the same thread.
 """
 
@@ -22,7 +22,7 @@ log = logging.getLogger(__name__)
 # ============================================================================
 # Context Variables (Thread-Safe within single thread/coroutine)
 # ============================================================================
-# These provide fast access within the same thread - ClickHouse is the fallback
+# These provide fast access within the same thread - scratch is the fallback
 
 _caller_id: ContextVar[Optional[str]] = ContextVar('caller_id', default=None)
 _invocation_metadata: ContextVar[Optional[Dict]] = ContextVar('invocation_metadata', default=None)
@@ -39,37 +39,41 @@ _duckdb_attachments_registry: Dict[str, List[Tuple[str, str]]] = {}  # connectio
 
 
 # ============================================================================
-# ClickHouse Operations
+# Scratch DB Operations
 # ============================================================================
 
-def _get_db():
-    """Get database adapter, returns None if unavailable."""
+def _get_scratch_conn():
+    """Get SQLite scratch connection, returns None if unavailable."""
     try:
-        from .db_adapter import get_db
-        return get_db()
+        from .scratch_db import get_param_connection
+        return get_param_connection()
     except Exception:
         return None
 
 
-def _write_context_to_clickhouse(connection_id: str, caller_id: str, metadata: Dict[str, Any]):
-    """Write caller context to ClickHouse Memory table."""
-    db = _get_db()
-    if not db:
+def _write_context_to_scratch(connection_id: str, caller_id: str, metadata: Dict[str, Any]):
+    """Write caller context to scratch.caller_context table."""
+    conn = _get_scratch_conn()
+    if not conn:
         return
 
     try:
-        db.insert_rows('caller_context_active', [{
-            'connection_id': connection_id,
-            'caller_id': caller_id,
-            'metadata_json': json.dumps(metadata) if metadata else '{}',
-        }])
+        import time
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO caller_context (connection_id, caller_id, metadata_json, created_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            (connection_id, caller_id, json.dumps(metadata) if metadata else '{}', time.time())
+        )
+        conn.commit()
     except Exception as e:
-        log.debug(f"[caller_context] Failed to write to ClickHouse: {e}")
+        log.debug(f"[caller_context] Failed to write to scratch: {e}")
 
 
-def _read_context_from_clickhouse(connection_id: str | None = None) -> Optional[Tuple[str, Dict]]:
+def _read_context_from_scratch(connection_id: str | None = None) -> Optional[Tuple[str, Dict]]:
     """
-    Read caller context from ClickHouse Memory table.
+    Read caller context from scratch.caller_context table.
 
     Args:
         connection_id: Specific connection to look up, or None for most recent
@@ -77,31 +81,26 @@ def _read_context_from_clickhouse(connection_id: str | None = None) -> Optional[
     Returns:
         (caller_id, metadata) tuple or None if not found
     """
-    db = _get_db()
-    if not db:
+    conn = _get_scratch_conn()
+    if not conn:
         return None
 
     try:
         if connection_id:
-            result = db.query(f"""
-                SELECT caller_id, metadata_json
-                FROM caller_context_active
-                WHERE connection_id = '{connection_id}'
-                LIMIT 1
-            """)
+            cursor = conn.execute(
+                "SELECT caller_id, metadata_json FROM caller_context WHERE connection_id = ?",
+                (connection_id,)
+            )
         else:
             # Fallback: get most recent entry (for UDF threads without connection_id)
-            result = db.query("""
-                SELECT caller_id, metadata_json
-                FROM caller_context_active
-                ORDER BY created_at DESC
-                LIMIT 1
-            """)
+            cursor = conn.execute(
+                "SELECT caller_id, metadata_json FROM caller_context ORDER BY created_at DESC LIMIT 1"
+            )
 
-        if result and len(result) > 0:
-            row = result[0]
-            caller_id = row.get('caller_id')
-            metadata_json = row.get('metadata_json', '{}')
+        row = cursor.fetchone()
+        if row:
+            caller_id = row[0] if isinstance(row, tuple) else row['caller_id']
+            metadata_json = row[1] if isinstance(row, tuple) else row['metadata_json']
             try:
                 metadata = json.loads(metadata_json) if metadata_json else {}
             except Exception:
@@ -109,24 +108,32 @@ def _read_context_from_clickhouse(connection_id: str | None = None) -> Optional[
             return (caller_id, metadata)
 
     except Exception as e:
-        log.debug(f"[caller_context] Failed to read from ClickHouse: {e}")
+        log.debug(f"[caller_context] Failed to read from scratch: {e}")
 
     return None
 
 
-def _clear_context_from_clickhouse(connection_id: str):
+def _clear_context_from_scratch(connection_id: str):
     """
-    Clear caller context from ClickHouse.
+    Clear caller context from scratch DB.
 
-    Note: We use ReplacingMergeTree with TTL, so explicit deletion isn't needed.
-    - ReplacingMergeTree dedupes entries with same connection_id (newer wins)
-    - TTL auto-cleans entries older than 1 hour
-    - This function is now a no-op, kept for API compatibility
+    Unlike scratch with TTL, we explicitly delete old entries.
+    Also cleans up entries older than 1 hour on each call.
     """
-    # No-op: ReplacingMergeTree + TTL handles cleanup automatically
-    # Old entries with same connection_id get replaced on insert
-    # Stale entries (no new insert) get TTL'd after 1 hour
-    pass
+    conn = _get_scratch_conn()
+    if not conn:
+        return
+
+    try:
+        import time
+        # Delete the specific connection
+        conn.execute("DELETE FROM caller_context WHERE connection_id = ?", (connection_id,))
+        # Also clean up stale entries (older than 1 hour)
+        one_hour_ago = time.time() - 3600
+        conn.execute("DELETE FROM caller_context WHERE created_at < ?", (one_hour_ago,))
+        conn.commit()
+    except Exception as e:
+        log.debug(f"[caller_context] Failed to clear from scratch: {e}")
 
 
 # ============================================================================
@@ -188,12 +195,12 @@ def clear_duckdb_attachments(connection_id: str):
 
 def set_caller_context(caller_id: str, metadata: Dict[str, Any], connection_id: str | None = None):
     """
-    Set caller context for current thread AND ClickHouse (cross-thread access).
+    Set caller context for current thread AND scratch (cross-thread access).
 
     Stores in:
     1. ContextVar (fast access within same thread/coroutine)
     2. Thread-local (backup for same thread)
-    3. ClickHouse Memory table (authoritative cross-thread store)
+    3. scratch.caller_context (authoritative cross-thread store)
 
     Args:
         caller_id: Unique identifier for the caller (e.g., 'sql-clever-fox-abc123')
@@ -215,22 +222,22 @@ def set_caller_context(caller_id: str, metadata: Dict[str, Any], connection_id: 
     _thread_local.caller_id = caller_id
     _thread_local.invocation_metadata = metadata
 
-    # 3. Write to ClickHouse (authoritative cross-thread store)
+    # 3. Write to scratch (authoritative cross-thread store)
     if connection_id:
-        _write_context_to_clickhouse(connection_id, caller_id, metadata)
+        _write_context_to_scratch(connection_id, caller_id, metadata)
 
 
 def get_caller_id(connection_id: str | None = None) -> Optional[str]:
     """
-    Get current caller_id, trying local storage first then ClickHouse.
+    Get current caller_id, trying local storage first then scratch.
 
     Priority order:
     1. ContextVar (same thread/coroutine) - fastest
     2. Thread-local (same thread) - fast
-    3. ClickHouse Memory table (cross-thread) - authoritative
+    3. scratch.caller_context (cross-thread) - authoritative
 
     Args:
-        connection_id: Optional connection ID for ClickHouse lookup
+        connection_id: Optional connection ID for scratch lookup
 
     Returns:
         caller_id or None if not set
@@ -248,8 +255,8 @@ def get_caller_id(connection_id: str | None = None) -> Optional[str]:
     except AttributeError:
         pass
 
-    # 3. Fall back to ClickHouse (cross-thread authoritative store)
-    result = _read_context_from_clickhouse(connection_id)
+    # 3. Fall back to scratch (cross-thread authoritative store)
+    result = _read_context_from_scratch(connection_id)
     if result:
         return result[0]
 
@@ -261,7 +268,7 @@ def get_invocation_metadata(connection_id: str | None = None) -> Optional[Dict]:
     Get current invocation metadata from context.
 
     Args:
-        connection_id: Optional connection ID for ClickHouse lookup
+        connection_id: Optional connection ID for scratch lookup
 
     Returns:
         metadata dict or None if not set
@@ -279,8 +286,8 @@ def get_invocation_metadata(connection_id: str | None = None) -> Optional[Dict]:
     except AttributeError:
         pass
 
-    # Fall back to ClickHouse
-    result = _read_context_from_clickhouse(connection_id)
+    # Fall back to scratch
+    result = _read_context_from_scratch(connection_id)
     if result:
         return result[1]
 
@@ -292,7 +299,7 @@ def get_caller_context(connection_id: str | None = None) -> tuple[Optional[str],
     Get both caller_id and metadata in one call.
 
     Args:
-        connection_id: Optional connection ID for ClickHouse lookup
+        connection_id: Optional connection ID for scratch lookup
 
     Returns:
         (caller_id, metadata) tuple
@@ -313,8 +320,8 @@ def get_caller_context(connection_id: str | None = None) -> tuple[Optional[str],
     except AttributeError:
         pass
 
-    # Fall back to ClickHouse
-    result = _read_context_from_clickhouse(connection_id)
+    # Fall back to scratch
+    result = _read_context_from_scratch(connection_id)
     if result:
         return result
 
@@ -326,7 +333,7 @@ def clear_caller_context(connection_id: str | None = None):
     Clear caller context from all storage layers.
 
     Args:
-        connection_id: Connection ID to clear from ClickHouse
+        connection_id: Connection ID to clear from scratch
 
     Useful for cleanup after execution or in test fixtures.
     """
@@ -341,9 +348,9 @@ def clear_caller_context(connection_id: str | None = None):
     except AttributeError:
         pass
 
-    # Clear from ClickHouse
+    # Clear from scratch
     if connection_id:
-        _clear_context_from_clickhouse(connection_id)
+        _clear_context_from_scratch(connection_id)
 
 
 def has_caller_context() -> bool:

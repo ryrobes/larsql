@@ -280,8 +280,8 @@ def create_sql_file():
                 {f"'{safe_desc}'" if description else 'NULL'},
                 '{safe_database}',
                 {1 if is_favorite else 0},
-                now64(3),
-                now64(3)
+                current_timestamp,
+                current_timestamp
             )
         """
 
@@ -351,7 +351,7 @@ def update_sql_file(file_id: str):
 
         # Preserve original created_at
         created_at = current.get('created_at')
-        created_at_sql = f"toDateTime64('{created_at.isoformat()}', 3)" if hasattr(created_at, 'isoformat') else 'now64(3)'
+        created_at_sql = f"'{created_at.isoformat()}'::TIMESTAMP" if hasattr(created_at, 'isoformat') else 'current_timestamp'
 
         update_query = f"""
             INSERT INTO hyper_sql_files (id, name, sql, description, database, is_favorite, created_at, updated_at)
@@ -363,7 +363,7 @@ def update_sql_file(file_id: str):
                 '{safe_database}',
                 {1 if is_favorite else 0},
                 {created_at_sql},
-                now64(3)
+                current_timestamp
             )
         """
 
@@ -402,8 +402,7 @@ def delete_sql_file(file_id: str):
         if not existing:
             return jsonify({'error': 'File not found'}), 404
 
-        # Delete using ALTER TABLE DELETE (lightweight delete)
-        delete_query = f"ALTER TABLE hyper_sql_files DELETE WHERE id = '{safe_id}'"
+        delete_query = f"DELETE FROM hyper_sql_files WHERE id = '{safe_id}'"
         db.execute(delete_query)
 
         return jsonify({
@@ -448,7 +447,7 @@ def toggle_favorite(file_id: str):
 
         # Preserve original created_at
         created_at = current.get('created_at')
-        created_at_sql = f"toDateTime64('{created_at.isoformat()}', 3)" if hasattr(created_at, 'isoformat') else 'now64(3)'
+        created_at_sql = f"'{created_at.isoformat()}'::TIMESTAMP" if hasattr(created_at, 'isoformat') else 'current_timestamp'
 
         # Insert new row with toggled favorite
         update_query = f"""
@@ -461,7 +460,7 @@ def toggle_favorite(file_id: str):
                 '{safe_database}',
                 {1 if new_favorite else 0},
                 {created_at_sql},
-                now64(3)
+                current_timestamp
             )
         """
 

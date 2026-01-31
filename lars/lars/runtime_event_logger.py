@@ -15,7 +15,7 @@ from .stdlib_queue import Queue as StdlibQueue
 
 class RuntimeEventLogger:
     """
-    Async, fire-and-forget runtime event logger to ClickHouse.
+    Async, fire-and-forget runtime event logger to DuckDB/Parquet.
 
     This is intended for high-volume operational logs (e.g., pgwire chatter) that
     would otherwise spam stdout. It writes to the `runtime_event_log` table.
@@ -96,7 +96,7 @@ class RuntimeEventLogger:
 
         try:
             now = datetime.now(timezone.utc)
-            timestamp = now.replace(tzinfo=None)  # ClickHouse DateTime64 expects naive datetime
+            timestamp = now  # DuckDB TIMESTAMPTZ handles timezone-aware datetimes
             timestamp_iso = now.isoformat()
 
             message = message or ""
@@ -141,10 +141,10 @@ class RuntimeEventLogger:
         except Exception:
             pass
         try:
-            # Best-effort cleanup. In CHDB mode this releases the file lock.
-            if self._client is not None and hasattr(self._client, "client"):
+            # Best-effort cleanup for DuckDB connections.
+            if self._client is not None and hasattr(self._client, "close"):
                 try:
-                    self._client.client.disconnect()
+                    self._client.close()
                 except Exception:
                     pass
         except Exception:
@@ -166,7 +166,7 @@ class RuntimeEventLogger:
                 return None
 
         try:
-            # Use the main DB adapter so this works for ClickHouse server and CHDB.
+            # Use the main DB adapter (DuckDB/Parquet backend).
             from .db_adapter import get_db_adapter
 
             db = get_db_adapter()
@@ -179,30 +179,8 @@ class RuntimeEventLogger:
             except TypeError:
                 db.execute(RUNTIME_EVENT_LOG_SCHEMA)
 
-            # Keep table schema forward-compatible even if migrations haven't run yet.
-            try:
-                db.execute(
-                    "ALTER TABLE runtime_event_log "
-                    "ADD COLUMN IF NOT EXISTS connection_id String DEFAULT '' AFTER timestamp_iso",
-                    log_query=False,
-                )
-                db.execute(
-                    "ALTER TABLE runtime_event_log "
-                    "ADD INDEX IF NOT EXISTS idx_connection connection_id TYPE bloom_filter GRANULARITY 1",
-                    log_query=False,
-                )
-            except TypeError:
-                try:
-                    db.execute(
-                        "ALTER TABLE runtime_event_log "
-                        "ADD COLUMN IF NOT EXISTS connection_id String DEFAULT '' AFTER timestamp_iso"
-                    )
-                    db.execute(
-                        "ALTER TABLE runtime_event_log "
-                        "ADD INDEX IF NOT EXISTS idx_connection connection_id TYPE bloom_filter GRANULARITY 1"
-                    )
-                except Exception:
-                    pass
+            # Note: ClickHouse-specific ALTER TABLE and bloom_filter indexes removed.
+            # DuckDB schema includes connection_id column by default.
 
             self._client = db
             self._connect_failures = 0
@@ -295,11 +273,7 @@ class RuntimeEventLogger:
                 client.insert_rows("runtime_event_log", batch, columns=list(cols))
         except Exception as e:
             # Don't disable permanently; this is best-effort logging.
-            try:
-                if hasattr(client, "client") and hasattr(client.client, "disconnect"):
-                    client.client.disconnect()
-            except Exception:
-                pass
+            # Reset client on error so we retry table creation next time.
             self._client = None
             self._last_error = str(e)
             self._last_error_at = time.time()

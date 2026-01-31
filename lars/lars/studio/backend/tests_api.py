@@ -869,7 +869,7 @@ def execute_tests(tests: List[TestDefinition], run_id: str, options: Dict[str, A
     final_status = 'passed' if failed_count == 0 and error_count == 0 else 'failed'
 
     db.execute("""
-        ALTER TABLE test_runs UPDATE
+        UPDATE test_runs SET
             completed_at = %(completed_at)s,
             duration_ms = %(duration_ms)s,
             status = %(status)s,

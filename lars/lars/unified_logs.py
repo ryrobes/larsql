@@ -207,9 +207,10 @@ class UnifiedLogger:
         headers = {"Authorization": f"Bearer {api_key}"}
         url = f"https://openrouter.ai/api/v1/generation?id={request_id}"
 
-        # Retry schedule: immediate, then 1s, 2s, 3s, 5s, 10s delays
-        # OpenRouter can take 10-15s to index generation data
-        wait_times = [0, 1, 2, 3, 5, 10]
+        # Retry schedule: immediate, then quick retries
+        # OpenRouter usually indexes within 1-2s, longer waits waste time
+        # If generation lookup API is down (404s), fail fast
+        wait_times = [0, 1, 2]
 
         last_was_404 = False
 
@@ -579,7 +580,7 @@ class UnifiedLogger:
         try:
             from .db_adapter import get_db
             db = get_db()
-            db.insert_rows('unified_logs', [row])
+            db.insert_rows('unified_logs_base', [row])
         except Exception as e:
             print(f"[Unified Log] INSERT error: {e}")
 

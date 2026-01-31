@@ -267,8 +267,8 @@ class Config(BaseModel):
     provider_api_key: Optional[str] = Field(
         default_factory=lambda: os.getenv("OPENROUTER_API_KEY")
     )
-    #default_model: str = Field(default="x-ai/grok-4.1-fast")
-    default_model: str = Field(default="arcee-ai/trinity-large-preview:free")
+    default_model: str = Field(default="x-ai/grok-4.1-fast")
+    #default_model: str = Field(default="arcee-ai/trinity-large-preview:free")
 
     # Default embedding model (used by RAG and Agent.embed())
     default_embed_model: str = Field(
@@ -422,7 +422,7 @@ class Config(BaseModel):
         description="CHDB storage path (directory/file). Used when db_mode=chdb or auto fallback.",
     )
     chroma_path: str = Field(
-        default_factory=lambda: os.getenv("LARS_CHROMA_PATH", os.path.join(_LARS_ROOT, "chroma")),
+        default_factory=lambda: os.getenv("LARS_CHROMA_PATH", os.path.join(_LARS_ROOT, "data", "chroma")),
         description="Chroma persistence directory for vector/RAG storage.",
     )
 
@@ -586,10 +586,10 @@ class Config(BaseModel):
     # =========================================================================
     # Deprecated Settings (kept for backward compatibility)
     # =========================================================================
-    # These are ignored but kept to avoid breaking code that references them
+    # DEPRECATED: ClickHouse removed. Always returns False (uses DuckDB/Parquet instead)
     use_clickhouse_server: bool = Field(
-        default=True,
-        description="DEPRECATED: ClickHouse is now always enabled. This field is ignored."
+        default=False,
+        description="DEPRECATED: ClickHouse removed. Now uses DuckDB/Parquet for persistence."
     )
 
     model_config = ConfigDict(env_prefix="LARS_")
@@ -708,29 +708,26 @@ def set_clickhouse(
 
 def get_clickhouse_url() -> str:
     """
-    Get ClickHouse connection URL for display/debugging.
+    Get database connection URL for display/debugging.
 
     Returns:
-        URL string like "clickhouse://user@host:port/database"
+        URL string showing DuckDB/Parquet data path
     """
     c = _global_config
-    return f"clickhouse://{c.clickhouse_user}@{c.clickhouse_host}:{c.clickhouse_port}/{c.clickhouse_database}"
+    return f"duckdb+parquet://{c.data_dir}"
 
 
 def get_chdb_url() -> str:
     """
-    Get CHDB "connection URL" for display/debugging.
+    Get database "connection URL" for display/debugging.
+    
+    DEPRECATED: Now returns DuckDB/Parquet path.
 
     Returns:
-        URL string like "chdb:///abs/path/to/lars.chdb"
+        URL string showing data directory
     """
     c = _global_config
-    # Use a URL-ish prefix for readability; this is not a standard DSN.
-    path = c.chdb_path
-    if not path.startswith("/"):
-        # Make relative paths explicit.
-        path = os.path.abspath(path)
-    return f"chdb://{path}"
+    return f"duckdb+parquet://{c.data_dir}"
 
 
 def set_vertex_provider(

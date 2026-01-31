@@ -39,7 +39,8 @@
     "zustand": "^5.0.9"
   },
   "devDependencies": {
-    "@mermaid-js/mermaid-cli": "^10.6.1"
+    "@mermaid-js/mermaid-cli": "^10.6.1",
+    "baseline-browser-mapping": "^2.9.19"
   },
   "scripts": {
     "start": "PORT=5550 react-scripts start",

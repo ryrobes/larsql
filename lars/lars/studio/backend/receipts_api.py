@@ -103,7 +103,7 @@ def get_overview():
                 SUM(cost) as total_cost_sum,
                 COUNT(DISTINCT session_id) as session_count
             FROM unified_logs
-            WHERE timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+            WHERE timestamp >= '{current_start.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP
               AND cost > 0
               AND role = 'assistant'
         """
@@ -120,7 +120,7 @@ def get_overview():
                 countIf(is_cost_outlier OR is_duration_outlier) as outlier_count,
                 AVG(total_duration_ms) as avg_duration_ms
             FROM cascade_analytics
-            WHERE created_at >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+            WHERE created_at >= '{current_start.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP
         """
 
         kpis_result = db.query(kpis_query)
@@ -140,8 +140,8 @@ def get_overview():
                 SUM(cost) as total_cost_sum,
                 COUNT(DISTINCT session_id) as session_count
             FROM unified_logs
-            WHERE timestamp >= toDateTime('{prev_start.strftime('%Y-%m-%d %H:%M:%S')}')
-              AND timestamp < toDateTime('{prev_end.strftime('%Y-%m-%d %H:%M:%S')}')
+            WHERE timestamp >= '{prev_start.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP
+              AND timestamp < '{prev_end.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP
               AND cost > 0
               AND role = 'assistant'
         """
@@ -153,8 +153,8 @@ def get_overview():
                 AVG(total_cost) as avg_cost,
                 AVG(context_cost_pct) as avg_context_pct
             FROM cascade_analytics
-            WHERE created_at >= toDateTime('{prev_start.strftime('%Y-%m-%d %H:%M:%S')}')
-              AND created_at < toDateTime('{prev_end.strftime('%Y-%m-%d %H:%M:%S')}')
+            WHERE created_at >= '{prev_start.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP
+              AND created_at < '{prev_end.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP
         """
 
         prev_result = db.query(prev_query)
@@ -238,7 +238,7 @@ def get_alerts():
                 is_duration_outlier,
                 created_at
             FROM cascade_analytics
-            WHERE created_at >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+            WHERE created_at >= '{current_start.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP
               AND (is_cost_outlier = true OR is_duration_outlier = true)
             ORDER BY ABS(cost_z_score) DESC
             LIMIT 20
@@ -281,7 +281,7 @@ def get_alerts():
                 context_depth_max,
                 created_at
             FROM cell_analytics
-            WHERE created_at >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+            WHERE created_at >= '{current_start.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP
               AND context_cost_pct > 60
             ORDER BY context_cost_pct DESC
             LIMIT 20
@@ -337,15 +337,15 @@ def _generate_insights(db, days: int) -> list:
         outliers_query = f"""
             SELECT
                 ca.session_id,
-                cascade_id,
-                cell_name,
-                cost_z_score,
-                total_cost,
-                cluster_avg_cost,
-                input_category
+                ca.cascade_id,
+                cell.cell_name,
+                ca.cost_z_score,
+                ca.total_cost,
+                ca.cluster_avg_cost,
+                ca.input_category
             FROM cascade_analytics ca
             LEFT JOIN cell_analytics cell ON ca.session_id = cell.session_id
-            WHERE ca.created_at >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+            WHERE ca.created_at >= '{current_start.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP
               AND ca.is_cost_outlier = true
             ORDER BY ABS(ca.cost_z_score) DESC
             LIMIT 3
@@ -383,7 +383,7 @@ def _generate_insights(db, days: int) -> list:
                 context_cost_estimated,
                 cell_cost
             FROM cell_analytics
-            WHERE created_at >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+            WHERE created_at >= '{current_start.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP
               AND context_cost_pct > 70
             ORDER BY context_cost_pct DESC
             LIMIT 3
@@ -426,7 +426,7 @@ def _generate_insights(db, days: int) -> list:
                 ul.content_json
             FROM cell_context_breakdown ccb
             LEFT JOIN unified_logs ul ON ccb.context_message_hash = ul.content_hash
-            WHERE ccb.created_at >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+            WHERE ccb.created_at >= '{current_start.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP
               AND ccb.relevance_score IS NOT NULL
               AND ccb.relevance_score < 30
               AND ccb.context_message_pct > 15
@@ -481,7 +481,7 @@ def _generate_insights(db, days: int) -> list:
                 ul.content_json
             FROM cell_context_breakdown ccb
             LEFT JOIN unified_logs ul ON ccb.context_message_hash = ul.content_hash
-            WHERE ccb.created_at >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+            WHERE ccb.created_at >= '{current_start.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP
               AND ccb.relevance_score IS NOT NULL
               AND ccb.context_message_role = 'system'
               AND ccb.relevance_score < 40
@@ -533,7 +533,7 @@ def _generate_insights(db, days: int) -> list:
                 context_message_pct,
                 relevance_score
             FROM cell_context_breakdown
-            WHERE created_at >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+            WHERE created_at >= '{current_start.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP
               AND relevance_score IS NOT NULL
               AND relevance_score > 80
               AND context_message_pct > 30
@@ -603,7 +603,7 @@ def get_context_breakdown():
         current_start = datetime.now() - timedelta(days=days)
 
         # Build WHERE clause
-        where_clauses = [f"created_at >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')"]
+        where_clauses = [f"created_at >= '{current_start.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP"]
         if session_id:
             where_clauses.append(f"session_id = '{session_id}'")
         if cascade_id:
@@ -657,7 +657,7 @@ def get_context_breakdown():
                 ccb.session_id = w.session_id
                 AND ccb.cell_name = w.cell_name
                 AND ccb.take_index = w.take_index
-            WHERE ccb.created_at >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+            WHERE ccb.created_at >= '{current_start.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP
                 {f"AND ccb.session_id = '{session_id}'" if session_id else ''}
                 {f"AND ccb.cascade_id = '{cascade_id}'" if cascade_id else ''}
                 {f"AND ccb.cell_name = '{cell_name}'" if cell_name else ''}
@@ -675,20 +675,40 @@ def get_context_breakdown():
             # when multiple LLM calls in a cell use the same context message)
             seen_hashes = set()
             unique_messages = []
-            for msg_tuple in row.get('messages', []):
-                msg_hash = msg_tuple[0]
+            for msg_item in row.get('messages', []):
+                # Handle both tuple (ClickHouse) and dict/struct (DuckDB) formats
+                if isinstance(msg_item, dict):
+                    msg_hash = msg_item.get('context_message_hash') or msg_item.get('hash', '')
+                    source_cell = msg_item.get('source_cell', '')
+                    role = msg_item.get('role', '')
+                    tokens = msg_item.get('context_message_tokens', 0) or msg_item.get('tokens', 0)
+                    cost = msg_item.get('context_message_cost', 0) or msg_item.get('cost', 0)
+                    pct = msg_item.get('context_message_pct', 0) or msg_item.get('pct', 0)
+                    relevance_score = msg_item.get('relevance_score')
+                    relevance_reason = msg_item.get('relevance_reasoning') or msg_item.get('relevance_reason')
+                else:
+                    # Tuple format (legacy)
+                    msg_hash = msg_item[0] if len(msg_item) > 0 else ''
+                    source_cell = msg_item[1] if len(msg_item) > 1 else ''
+                    role = msg_item[2] if len(msg_item) > 2 else ''
+                    tokens = msg_item[3] if len(msg_item) > 3 else 0
+                    cost = msg_item[4] if len(msg_item) > 4 else 0
+                    pct = msg_item[5] if len(msg_item) > 5 else 0
+                    relevance_score = msg_item[6] if len(msg_item) > 6 else None
+                    relevance_reason = msg_item[7] if len(msg_item) > 7 else None
+                
                 if msg_hash in seen_hashes:
                     continue  # Skip duplicate
                 seen_hashes.add(msg_hash)
                 unique_messages.append({
                     'hash': msg_hash,
-                    'source_cell': msg_tuple[1],
-                    'role': msg_tuple[2],
-                    'tokens': int(msg_tuple[3]),
-                    'cost': safe_float(msg_tuple[4]),
-                    'pct': safe_float(msg_tuple[5]),  # Will be recalculated below
-                    'relevance_score': safe_float(msg_tuple[6]) if len(msg_tuple) > 6 and msg_tuple[6] is not None else None,
-                    'relevance_reason': msg_tuple[7] if len(msg_tuple) > 7 else None,
+                    'source_cell': source_cell,
+                    'role': role,
+                    'tokens': int(tokens or 0),
+                    'cost': safe_float(cost),
+                    'pct': safe_float(pct),  # Will be recalculated below
+                    'relevance_score': safe_float(relevance_score) if relevance_score is not None else None,
+                    'relevance_reason': relevance_reason,
                 })
 
             # Recalculate percentages so they sum to 100% within this cell
@@ -792,7 +812,7 @@ def get_time_series():
                 SUM(cost) as cost_sum,
                 COUNT(DISTINCT session_id) as run_count
             FROM unified_logs
-            WHERE timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+            WHERE timestamp >= '{current_start.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP
               AND cost > 0
               AND role = 'assistant'
             GROUP BY bucket
@@ -808,7 +828,7 @@ def get_time_series():
                 SUM(total_context_cost_estimated) as context_cost_sum,
                 AVG(context_cost_pct) as avg_context_pct
             FROM cascade_analytics
-            WHERE created_at >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+            WHERE created_at >= '{current_start.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP
             GROUP BY bucket
         """
         context_results = db.query(context_query)
@@ -872,7 +892,7 @@ def get_by_cascade():
         total_query = f"""
             SELECT SUM(cost) as grand_total
             FROM unified_logs
-            WHERE timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+            WHERE timestamp >= '{current_start.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP
               AND cost > 0
               AND role = 'assistant'
         """
@@ -887,7 +907,7 @@ def get_by_cascade():
                 COUNT(DISTINCT session_id) as run_count,
                 SUM(cost) / COUNT(DISTINCT session_id) as avg_cost
             FROM unified_logs
-            WHERE timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+            WHERE timestamp >= '{current_start.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP
               AND cost > 0
               AND role = 'assistant'
               AND cascade_id IS NOT NULL
@@ -906,7 +926,7 @@ def get_by_cascade():
                 countIf(is_cost_outlier) as outlier_count,
                 AVG(context_cost_pct) as avg_context_pct
             FROM cascade_analytics
-            WHERE created_at >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+            WHERE created_at >= '{current_start.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP
             GROUP BY cascade_id
         """
         outlier_results = db.query(outlier_query)
@@ -962,7 +982,7 @@ def get_by_model():
         total_query = f"""
             SELECT SUM(cost) as grand_total
             FROM unified_logs
-            WHERE timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+            WHERE timestamp >= '{current_start.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP
               AND cost > 0
               AND role = 'assistant'
         """
@@ -978,12 +998,12 @@ def get_by_model():
                 COUNT(*) as call_count,
                 SUM(tokens_in + tokens_out) as tokens_sum
             FROM unified_logs
-            WHERE timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+            WHERE timestamp >= '{current_start.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP
               AND cost > 0
               AND role = 'assistant'
               AND model IS NOT NULL
               AND model != ''
-            GROUP BY model
+            GROUP BY COALESCE(nullIf(model_requested, ''), model)
             ORDER BY cost_sum DESC
         """
 
@@ -1053,7 +1073,7 @@ def get_top_expensive():
                 take_count,
                 created_at
             FROM cascade_analytics
-            WHERE created_at >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+            WHERE created_at >= '{current_start.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP
             ORDER BY total_cost DESC
             LIMIT {limit}
         """
@@ -1130,7 +1150,7 @@ def get_context_breakdown_by_cascade():
         current_start = datetime.now() - timedelta(days=days)
 
         # Build WHERE clause
-        where_clauses = [f"created_at >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')"]
+        where_clauses = [f"created_at >= '{current_start.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP"]
         if cascade_filter:
             where_clauses.append(f"cascade_id = '{cascade_filter}'")
         where_sql = ' AND '.join(where_clauses)
@@ -1139,7 +1159,7 @@ def get_context_breakdown_by_cascade():
         all_cascades_query = f"""
             SELECT DISTINCT cascade_id
             FROM cell_context_breakdown
-            WHERE created_at >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+            WHERE created_at >= '{current_start.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP
             ORDER BY cascade_id
         """
         all_cascades_result = db.query(all_cascades_query)
@@ -1295,7 +1315,7 @@ def get_context_efficiency():
                 -- Medium value cost (30 <= relevance < 70)
                 SUM(CASE WHEN relevance_score >= 30 AND relevance_score < 70 THEN context_message_cost_estimated ELSE 0 END) as medium_value_cost
             FROM cell_context_breakdown
-            WHERE created_at >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+            WHERE created_at >= '{current_start.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP
               AND relevance_score IS NOT NULL
         """
 
@@ -1306,7 +1326,7 @@ def get_context_efficiency():
         total_query = f"""
             SELECT COUNT(*) as total_count
             FROM cell_context_breakdown
-            WHERE created_at >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+            WHERE created_at >= '{current_start.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP
         """
         total_result = db.query(total_query)
         total_count = int(total_result[0]['total_count']) if total_result else 0
@@ -1320,8 +1340,8 @@ def get_context_efficiency():
                 SUM(relevance_score * context_message_cost_estimated) /
                     NULLIF(SUM(context_message_cost_estimated), 0) as weighted_avg_relevance
             FROM cell_context_breakdown
-            WHERE created_at >= toDateTime('{prev_start.strftime('%Y-%m-%d %H:%M:%S')}')
-              AND created_at < toDateTime('{prev_end.strftime('%Y-%m-%d %H:%M:%S')}')
+            WHERE created_at >= '{prev_start.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP
+              AND created_at < '{prev_end.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP
               AND relevance_score IS NOT NULL
         """
 
@@ -1342,7 +1362,7 @@ def get_context_efficiency():
                 COUNT(*) as count,
                 AVG(relevance_score) as avg_relevance
             FROM cell_context_breakdown
-            WHERE created_at >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+            WHERE created_at >= '{current_start.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP
               AND relevance_score IS NOT NULL
             GROUP BY tier
             ORDER BY tier
@@ -1425,7 +1445,7 @@ def get_by_cell():
         current_start = datetime.now() - timedelta(days=days)
 
         # Build WHERE clause
-        where_clauses = [f"created_at >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')"]
+        where_clauses = [f"created_at >= '{current_start.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP"]
         if cascade_id:
             where_clauses.append(f"cascade_id = '{cascade_id}'")
         where_sql = ' AND '.join(where_clauses)

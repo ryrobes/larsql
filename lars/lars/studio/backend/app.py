@@ -72,6 +72,20 @@ CASCADE_EXTENSIONS = ('json', 'yaml', 'yml')
 app = Flask(__name__, static_folder=None)  # Disable default /static - we serve from React build
 CORS(app)
 
+# Custom JSON provider to handle numpy arrays (DuckDB returns these for array columns)
+from flask.json.provider import DefaultJSONProvider
+import json
+
+class NumpyJSONProvider(DefaultJSONProvider):
+    @staticmethod
+    def default(obj):
+        if hasattr(obj, 'tolist'):
+            return obj.tolist()
+        return DefaultJSONProvider.default(obj)
+
+app.json_provider_class = NumpyJSONProvider
+app.json = NumpyJSONProvider(app)
+
 # Configure logging to suppress HTTP 200 responses
 import logging
 class NoSuccessFilter(logging.Filter):
@@ -441,7 +455,7 @@ def detect_and_mark_orphaned_cascades():
 
         # Insert to ClickHouse
         if killed_records:
-            db.insert_rows('unified_logs', killed_records)
+            db.insert_rows('unified_logs_base', killed_records)
             print(f"⚠️  Marked {len(killed_records)} orphaned cascade(s) as killed")
             for row in orphaned:
                 print(f"   - {row['session_id']} (cascade: {row['cascade_id']}, last activity: {row['last_activity']})")
@@ -564,11 +578,13 @@ def get_db_connection():
 
 
 def get_available_columns():
-    """Get list of available columns in the unified_logs table."""
+    """Get list of available columns in the unified_logs view."""
     try:
         db = get_db()
-        result = db.query("DESCRIBE TABLE unified_logs")
-        return [row['name'] for row in result]
+        # unified_logs is now a view with enriched cost data
+        result = db.query("DESCRIBE unified_logs")
+        # DESCRIBE returns column_name, column_type, etc.
+        return [row.get('column_name') or row.get('name') for row in result]
     except:
         return []
 
@@ -875,7 +891,7 @@ def get_cascade_definitions():
                     FROM (
                         SELECT
                             ca.cascade_id,
-                            argMax(cell_name, cell_cost_pct) as cell_name
+                            argMax(cel.cell_name, cel.cell_cost_pct) as cell_name
                         FROM cascade_analytics ca
                         JOIN cell_analytics cel ON ca.session_id = cel.session_id
                         WHERE ca.cascade_id IS NOT NULL AND ca.cascade_id != ''
@@ -2375,7 +2391,7 @@ def get_session_detail(session_id):
         result = conn.execute(query, [session_id]).fetchall()
 
         # Get column names
-        columns = conn.execute("SELECT name FROM system.columns WHERE table = 'unified_logs' AND database = currentDatabase()").fetchall()
+        columns = conn.execute("DESCRIBE unified_logs").fetchall()
         column_names = [col[0] for col in columns]
 
         # Convert to list of dicts
@@ -2803,7 +2819,7 @@ def dump_session(session_id):
             return jsonify({'error': 'Session not found'}), 404
 
         # Get column names
-        columns = conn.execute("SELECT name FROM system.columns WHERE table = 'unified_logs' AND database = currentDatabase()").fetchall()
+        columns = conn.execute("DESCRIBE unified_logs").fetchall()
         column_names = [col[0] for col in columns]
 
         # Convert to list of dicts
@@ -4415,6 +4431,27 @@ def playground_session_stream(session_id):
     The UI should poll this endpoint every ~750ms while execution is running,
     then stop once session_complete is true.
     """
+    import math
+    
+    def safe_float(val, default=0.0):
+        """Convert to float, returning default for None/NaN/Inf."""
+        if val is None:
+            return default
+        try:
+            f = float(val)
+            if math.isnan(f) or math.isinf(f):
+                return default
+            return f
+        except (ValueError, TypeError):
+            return default
+    
+    def safe_int(val, default=0):
+        """Convert to int, returning default for None/NaN/Inf."""
+        f = safe_float(val, None)
+        if f is None:
+            return default
+        return int(f)
+    
     try:
         conn = get_db_connection()
 
@@ -4460,7 +4497,7 @@ def playground_session_stream(session_id):
                 context_hashes,
                 estimated_tokens
             FROM unified_logs
-            WHERE (startsWith(session_id, '{session_id}') OR parent_session_id = '{session_id}')
+            WHERE (startsWith(session_id, '{session_id}') OR CAST(parent_session_id AS VARCHAR) = '{session_id}')
               AND timestamp > '{after}'
             ORDER BY timestamp ASC
             LIMIT {limit + 1}
@@ -4482,20 +4519,14 @@ def playground_session_stream(session_id):
             if row.get('timestamp_iso') and hasattr(row['timestamp_iso'], 'isoformat'):
                 row['timestamp_iso'] = row['timestamp_iso'].isoformat()
 
-            # Convert ClickHouse numeric types to native Python floats/ints
-            # ClickHouse returns Float64/Decimal objects that don't serialize properly
-            numeric_fields = ['duration_ms', 'cost', 'tokens_in', 'tokens_out', 'total_tokens']
+            # Convert numeric types to native Python floats/ints (handle NaN)
+            numeric_fields = ['duration_ms', 'cost', 'tokens_in', 'tokens_out', 'total_tokens', 'estimated_tokens']
             for field in numeric_fields:
                 if row.get(field) is not None:
-                    try:
-                        # Convert to float, then to int if it's a whole number (for tokens)
-                        val = float(row[field])
-                        if field in ['tokens_in', 'tokens_out', 'total_tokens']:
-                            row[field] = int(val) if val == int(val) else val
-                        else:
-                            row[field] = val
-                    except (ValueError, TypeError):
-                        row[field] = None
+                    if field in ['tokens_in', 'tokens_out', 'total_tokens', 'estimated_tokens']:
+                        row[field] = safe_int(row[field], None)
+                    else:
+                        row[field] = safe_float(row[field], None)
 
         # Determine cursor (timestamp of last row)
         cursor = after
@@ -4577,7 +4608,7 @@ def playground_session_stream(session_id):
               AND cost > 0
         """
         cost_result = db.query(cost_query)
-        total_cost = float(cost_result[0]['total'] or 0) if cost_result and cost_result[0].get('total') else 0
+        total_cost = safe_float(cost_result[0].get('total')) if cost_result else 0
 
         # Fetch cascade_analytics data (pre-computed offline)
         # This provides context-aware comparisons (vs cluster avg, outlier status, etc.)
@@ -4606,17 +4637,17 @@ def playground_session_stream(session_id):
                 row = ca_result[0]
                 cascade_analytics = {
                     'input_category': row.get('input_category'),
-                    'cost_z_score': float(row.get('cost_z_score', 0) or 0),
-                    'duration_z_score': float(row.get('duration_z_score', 0) or 0),
+                    'cost_z_score': safe_float(row.get('cost_z_score')),
+                    'duration_z_score': safe_float(row.get('duration_z_score')),
                     'is_cost_outlier': bool(row.get('is_cost_outlier', False)),
                     'is_duration_outlier': bool(row.get('is_duration_outlier', False)),
-                    'cluster_avg_cost': float(row.get('cluster_avg_cost', 0) or 0),
-                    'cluster_avg_duration': float(row.get('cluster_avg_duration', 0) or 0),
-                    'cluster_run_count': int(row.get('cluster_run_count', 0) or 0),
-                    'context_cost_pct': float(row.get('context_cost_pct', 0) or 0),
-                    'total_context_cost_estimated': float(row.get('total_context_cost_estimated', 0) or 0),
-                    'cost_per_message': float(row.get('cost_per_message', 0) or 0),
-                    'tokens_per_message': float(row.get('tokens_per_message', 0) or 0),
+                    'cluster_avg_cost': safe_float(row.get('cluster_avg_cost')),
+                    'cluster_avg_duration': safe_float(row.get('cluster_avg_duration')),
+                    'cluster_run_count': safe_int(row.get('cluster_run_count')),
+                    'context_cost_pct': safe_float(row.get('context_cost_pct')),
+                    'total_context_cost_estimated': safe_float(row.get('total_context_cost_estimated')),
+                    'cost_per_message': safe_float(row.get('cost_per_message')),
+                    'tokens_per_message': safe_float(row.get('tokens_per_message')),
                 }
         except Exception as e:
             print(f"[session-stream] Could not fetch cascade_analytics: {e}")
@@ -4649,19 +4680,19 @@ def playground_session_stream(session_id):
                 cell_name = row.get('cell_name')
                 if cell_name:
                     cell_analytics[cell_name] = {
-                        'cell_cost': float(row.get('cell_cost', 0) or 0),
-                        'cell_duration_ms': float(row.get('cell_duration_ms', 0) or 0),
-                        'cost_z_score': float(row.get('cost_z_score', 0) or 0),
-                        'duration_z_score': float(row.get('duration_z_score', 0) or 0),
+                        'cell_cost': safe_float(row.get('cell_cost')),
+                        'cell_duration_ms': safe_float(row.get('cell_duration_ms')),
+                        'cost_z_score': safe_float(row.get('cost_z_score')),
+                        'duration_z_score': safe_float(row.get('duration_z_score')),
                         'is_cost_outlier': bool(row.get('is_cost_outlier', False)),
                         'is_duration_outlier': bool(row.get('is_duration_outlier', False)),
-                        'species_avg_cost': float(row.get('species_avg_cost', 0) or 0),
-                        'species_avg_duration': float(row.get('species_avg_duration', 0) or 0),
-                        'species_run_count': int(row.get('species_run_count', 0) or 0),
-                        'cell_cost_pct': float(row.get('cell_cost_pct', 0) or 0),
-                        'cell_duration_pct': float(row.get('cell_duration_pct', 0) or 0),
-                        'cost_per_turn': float(row.get('cost_per_turn', 0) or 0),
-                        'tokens_per_turn': float(row.get('tokens_per_turn', 0) or 0),
+                        'species_avg_cost': safe_float(row.get('species_avg_cost')),
+                        'species_avg_duration': safe_float(row.get('species_avg_duration')),
+                        'species_run_count': safe_int(row.get('species_run_count')),
+                        'cell_cost_pct': safe_float(row.get('cell_cost_pct')),
+                        'cell_duration_pct': safe_float(row.get('cell_duration_pct')),
+                        'cost_per_turn': safe_float(row.get('cost_per_turn')),
+                        'tokens_per_turn': safe_float(row.get('tokens_per_turn')),
                     }
         except Exception as e:
             print(f"[session-stream] Could not fetch cell_analytics: {e}")
@@ -4838,9 +4869,8 @@ def cancel_cascade():
 
             if checkpoints_deleted > 0:
                 print(f"[cancel-cascade] Deleting {checkpoints_deleted} pending checkpoint(s)")
-                # Delete pending checkpoints (ALTER DELETE is async in ClickHouse)
                 db.execute(f"""
-                    ALTER TABLE checkpoints DELETE
+                    DELETE FROM checkpoints
                     WHERE session_id = '{session_id}' AND status = 'pending'
                 """)
                 print(f"[cancel-cascade] Checkpoints deletion initiated")
@@ -6594,7 +6624,7 @@ def get_research_session_api(research_session_id):
             return jsonify({'error': 'Research session not found'}), 404
 
         # Get column names
-        columns = conn.execute("SELECT name FROM system.columns WHERE table = 'research_sessions'").fetchall()
+        columns = conn.execute("DESCRIBE research_sessions").fetchall()
         column_names = [col[0] for col in columns]
 
         session = dict(zip(column_names, result))
@@ -6663,7 +6693,7 @@ def branch_research_session_api():
             return jsonify({'error': 'Parent session not found'}), 404
 
         # Get column names
-        columns = conn.execute("SELECT name FROM system.columns WHERE table = 'research_sessions'").fetchall()
+        columns = conn.execute("DESCRIBE research_sessions").fetchall()
         column_names = [col[0] for col in columns]
         parent_session_dict = dict(zip(column_names, parent_result))
         conn.close()
@@ -6824,7 +6854,7 @@ def save_research_session_api():
 
         # Get column names for entries
         entries_columns = conn.execute(
-            "SELECT name FROM system.columns WHERE table = 'unified_logs'"
+            "DESCRIBE unified_logs"
         ).fetchall()
         entries_column_names = [col[0] for col in entries_columns]
 

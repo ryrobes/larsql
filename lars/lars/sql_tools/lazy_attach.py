@@ -324,6 +324,9 @@ class LazyAttachManager:
                     needed_jsonl_tables.setdefault(prefix, set()).add(parts[1])
                 elif cfg.type == "clickhouse" and len(parts) >= 2:
                     needed_clickhouse_tables.setdefault(prefix, set()).add(parts[1])
+                elif cfg.type == "native":
+                    # Native DuckDB - tables already exist, no attachment needed
+                    pass
                 else:
                     needed_catalogs.add(prefix)
             else:
@@ -342,6 +345,9 @@ class LazyAttachManager:
                     continue
                 if cfg.type == "clickhouse":
                     # Not enough info to know which table; skip
+                    continue
+                if cfg.type == "native":
+                    # Native DuckDB - tables already exist, skip
                     continue
                 needed_catalogs.add(prefix)
             else:
@@ -789,6 +795,11 @@ class LazyAttachManager:
             return
         if cfg.type == "clickhouse":
             self._attach_clickhouse(cfg)
+            return
+        if cfg.type == "native":
+            # Native DuckDB - tables already exist as parquet-backed views
+            # No attachment needed
+            print(f"  └─ Native DuckDB: {cfg.connection_name} (tables already available)")
             return
         # csv_folder, jsonl_folder, and markdown_folder are handled via schema/table materialization (not catalog attach)
         if cfg.type == "csv_folder":

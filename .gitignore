@@ -30,3 +30,6 @@ research_dbs/market_research.duckdb.wal
 .tmp_*
 .playwright-mcp
 chdb
+data
+.venv
+

@@ -266,12 +266,8 @@ class ArtifactEventHandler(FileSystemEventHandler):
             "change_type": 'update'
         }])
 
-        # Deactivate old versions
-        if latest:
-            db.execute(f"""
-                ALTER TABLE artifact_registry UPDATE is_active = false
-                WHERE artifact_id = '{artifact_id}' AND artifact_type = '{self.artifact_type}' AND version < {next_version}
-            """)
+        # Note: With DuckDB/Parquet append-only model, old version deactivation is
+        # handled automatically by the dedup view (latest version per PK wins).
 
         # Update in-memory registry
         self.registry.update_cache(artifact_id, self.artifact_type, parsed)
@@ -362,12 +358,8 @@ class ArtifactEventHandler(FileSystemEventHandler):
                 "change_type": 'update'
             }])
 
-            # Deactivate old versions
-            if latest:
-                db.execute(f"""
-                    ALTER TABLE artifact_registry UPDATE is_active = false
-                    WHERE artifact_id = '{artifact_id}' AND artifact_type = 'skill' AND version < {next_version}
-                """)
+            # Note: With DuckDB/Parquet append-only model, old version deactivation is
+            # handled automatically by the dedup view (latest version per PK wins).
 
             # Update in-memory registry
             skill_def = {

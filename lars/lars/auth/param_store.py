@@ -4,7 +4,9 @@ Parameter Store - User-Scoped Key-Value Storage
 Provides persistent parameter storage for @param_get/@param_set operations,
 scoped by user_id and database_name.
 
-Uses ClickHouse-backed storage (Memory engine) for cross-worker consistency.
+Uses SQLite scratch database (/dev/shm/lars_scratch.db) for fast, cross-process
+key-value storage. The scratch DB is RAM-backed (tmpfs) and shared across all
+connections.
 
 Usage:
     from lars.auth.param_store import get_param_store
@@ -18,6 +20,11 @@ Usage:
     # Array values (for multi-select)
     store.set_array('user123', 'mydb', 'selected_depts', ['HR', 'Sales'])
     values = store.get_array('user123', 'mydb', 'selected_depts')
+    
+SQL Access (via DuckDB):
+    -- Scratch DB is auto-attached as 'scratch' schema
+    SELECT * FROM scratch.kv WHERE user_id = '...' AND key = 'cat';
+    INSERT OR REPLACE INTO scratch.kv (user_id, database, key, value) VALUES (...);
 """
 
 import json
@@ -32,26 +39,18 @@ log = logging.getLogger(__name__)
 
 class ParamStore:
     """
-    ClickHouse-backed parameter store.
+    SQLite-backed parameter store using scratch DB.
 
     Parameters are scoped by (user_id, database_name, param_name) and stored in
-    ClickHouse (Memory engine). Reads always go to ClickHouse to avoid the
-    cross-process staleness issues of in-memory caching.
+    the scratch SQLite database. Provides fast, cross-process access via WAL mode.
     """
 
     _instance = None
     _lock = threading.Lock()
 
-    # ClickHouse connection (lazy initialized)
-    _db = None
-    _db_initialized = False
-    _table_ensured = False
-
-    # In-process fallback store when ClickHouse is unavailable.
-    # NOTE: This is not used as a cache when ClickHouse is available, to avoid
-    # cross-process staleness issues. It's only a "no ClickHouse" fallback.
-    _fallback_store: Dict[Tuple[str, str, str], Tuple[Optional[str], List[str], str, float]] = {}
-    _fallback_lock = threading.Lock()
+    # SQLite connection (lazy initialized)
+    _conn = None
+    _conn_initialized = False
 
     # Per-key locks for read/modify/write operations (e.g., multi-select toggles).
     _param_locks: Dict[Tuple[str, str, str], threading.Lock] = {}
@@ -71,32 +70,23 @@ class ParamStore:
             cls._instance = cls()
         return cls._instance
 
-    def _get_db(self):
-        """Lazily initialize ClickHouse connection."""
-        if not self._db_initialized:
+    def _get_conn(self):
+        """Get SQLite connection to scratch DB."""
+        if self._conn is not None:
+            return self._conn
+        
+        if not self._conn_initialized:
             try:
-                from ..db_adapter import get_db
-                self._db = get_db()
-                self._db_initialized = True
-                self._ensure_table()
+                from ..scratch_db import get_param_connection
+                self._conn = get_param_connection()
+                self._conn_initialized = True
+                log.debug("[ParamStore] Connected to scratch DB")
             except Exception as e:
-                log.warning(f"[ParamStore] ClickHouse not available: {e}")
-                self._db = None
-                self._db_initialized = True
-        return self._db
-
-    def _ensure_table(self):
-        """Ensure the param_store table exists."""
-        if self._table_ensured or not self._db:
-            return
-
-        try:
-            # Table is created via migration 044_param_store.sql
-            self._db.query("SELECT 1 FROM param_store LIMIT 0")
-            self._table_ensured = True
-            log.debug("[ParamStore] Table verified")
-        except Exception as e:
-            log.warning(f"[ParamStore] Table not found, run migrations: {e}")
+                log.warning(f"[ParamStore] Scratch DB not available: {e}")
+                self._conn = None
+                self._conn_initialized = True
+        
+        return self._conn
 
     @staticmethod
     def _make_key(user_id: str, database_name: str, param_name: str) -> Tuple[str, str, str]:
@@ -111,30 +101,6 @@ class ParamStore:
                 lock = threading.Lock()
                 self._param_locks[key] = lock
             return lock
-
-    def _fallback_get(self, key: Tuple[str, str, str]) -> Optional[Tuple[Optional[str], List[str], str, float]]:
-        with self._fallback_lock:
-            return self._fallback_store.get(key)
-
-    def _fallback_set(self, key: Tuple[str, str, str], value: Optional[str], values_array: List[str], ptype: str):
-        now = time.time()
-        with self._fallback_lock:
-            self._fallback_store[key] = (value, values_array, ptype, now)
-
-    def _fallback_clear_session(self, user_id: str, database_name: str):
-        with self._fallback_lock:
-            keys_to_delete = [
-                k for k in self._fallback_store
-                if k[0] == user_id and k[1] == database_name
-            ]
-            for k in keys_to_delete:
-                del self._fallback_store[k]
-
-    def _fallback_clear_all(self, user_id: str):
-        with self._fallback_lock:
-            keys_to_delete = [k for k in self._fallback_store if k[0] == user_id]
-            for k in keys_to_delete:
-                del self._fallback_store[k]
 
     # =========================================================================
     # Single Value Operations (for @param_set / @param_get)
@@ -159,21 +125,35 @@ class ParamStore:
         Returns:
             Parameter value or default
         """
-        key = self._make_key(user_id, database_name, param_name)
+        conn = self._get_conn()
+        if not conn:
+            return default
 
-        l2_result = self._get_l2(user_id, database_name, param_name)
-        if l2_result is not None:
-            value, _values_array, ptype, _updated_at = l2_result
-            if ptype == 'null':
-                return default
-            if ptype == 'array':
-                # If the key is currently an array param, scalar reads treat it as unset.
-                return default
-            log.debug(f"[ParamStore] Hit: {param_name} = {value!r}")
-            return value if value is not None else default
+        try:
+            cursor = conn.execute(
+                """
+                SELECT value FROM kv
+                WHERE user_id = ? AND database = ? AND key = ?
+                """,
+                (user_id, database_name, param_name)
+            )
+            row = cursor.fetchone()
+            
+            if row:
+                value = row[0] if isinstance(row, tuple) else row['value']
+                # Check if it's a JSON array (stored as string)
+                if value and value.startswith('['):
+                    # This is an array param, scalar reads treat it as unset
+                    return default
+                log.debug(f"[ParamStore] Hit: {param_name} = {value!r}")
+                return value if value is not None else default
+            
+            log.debug(f"[ParamStore] Miss: {param_name} = default {default!r}")
+            return default
 
-        log.debug(f"[ParamStore] Miss: {param_name} = default {default!r}")
-        return default
+        except Exception as e:
+            log.debug(f"[ParamStore] Get error: {e}")
+            return default
 
     def set(
         self,
@@ -191,29 +171,41 @@ class ParamStore:
             database_name: Database name
             param_name: Parameter name
             value: Value to set (None clears the param)
-            ttl_seconds: Optional TTL in seconds
+            ttl_seconds: Optional TTL in seconds (not implemented for SQLite)
 
         Returns:
             The value that was set
         """
-        key = self._make_key(user_id, database_name, param_name)
+        conn = self._get_conn()
+        if not conn:
+            return value
 
-        # Clearing uses a tombstone row (ptype='null') to avoid "eventual delete" races
-        # and to guarantee read-your-writes semantics even if the underlying engine
-        # delays DELETE visibility.
-        ptype = 'null' if value is None else 'string'
-        self._set_l2_sync(
-            user_id,
-            database_name,
-            param_name,
-            value=value,
-            values_array=[],
-            param_type=ptype,
-            ttl_seconds=ttl_seconds,
-        )
+        try:
+            now = time.time()
+            
+            if value is None:
+                # Delete the param
+                conn.execute(
+                    "DELETE FROM kv WHERE user_id = ? AND database = ? AND key = ?",
+                    (user_id, database_name, param_name)
+                )
+            else:
+                # Insert or replace
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO kv (user_id, database, key, value, updated_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (user_id, database_name, param_name, value, now)
+                )
+            
+            conn.commit()
+            log.debug(f"[ParamStore] Set: {param_name} = {value!r}")
+            return value
 
-        log.debug(f"[ParamStore] Set: {param_name} = {value!r}")
-        return value
+        except Exception as e:
+            log.debug(f"[ParamStore] Set error: {e}")
+            return value
 
     # =========================================================================
     # Array Value Operations (for @params_set / @params_get - multi-select)
@@ -236,15 +228,32 @@ class ParamStore:
         Returns:
             List of values (empty if not set)
         """
-        l2_result = self._get_l2(user_id, database_name, param_name)
-        if l2_result is not None:
-            _value, values_array, ptype, _updated_at = l2_result
-            if ptype == 'array':
-                return values_array
-            # Treat scalar/null as empty selection for array reads.
+        conn = self._get_conn()
+        if not conn:
             return []
 
-        return []
+        try:
+            cursor = conn.execute(
+                """
+                SELECT value FROM kv
+                WHERE user_id = ? AND database = ? AND key = ?
+                """,
+                (user_id, database_name, param_name)
+            )
+            row = cursor.fetchone()
+            
+            if row:
+                value = row[0] if isinstance(row, tuple) else row['value']
+                if value and value.startswith('['):
+                    return json.loads(value)
+                # Scalar value, return empty for array reads
+                return []
+            
+            return []
+
+        except Exception as e:
+            log.debug(f"[ParamStore] Get array error: {e}")
+            return []
 
     def set_array(
         self,
@@ -266,17 +275,28 @@ class ParamStore:
         Returns:
             The values that were set
         """
-        self._set_l2_sync(
-            user_id,
-            database_name,
-            param_name,
-            value=None,
-            values_array=values,
-            param_type='array',
-            ttl_seconds=ttl_seconds,
-        )
+        conn = self._get_conn()
+        if not conn:
+            return values
 
-        return values
+        try:
+            now = time.time()
+            json_value = json.dumps(values)
+            
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO kv (user_id, database, key, value, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (user_id, database_name, param_name, json_value, now)
+            )
+            conn.commit()
+            
+            return values
+
+        except Exception as e:
+            log.debug(f"[ParamStore] Set array error: {e}")
+            return values
 
     def toggle_array_value(
         self,
@@ -312,154 +332,6 @@ class ParamStore:
             return self.set_array(user_id, database_name, param_name, current)
 
     # =========================================================================
-    # L2 (ClickHouse) Operations
-    # =========================================================================
-
-    def _get_l2(
-        self,
-        user_id: str,
-        database_name: str,
-        param_name: str
-    ) -> Optional[Tuple[Optional[str], List[str], str, float]]:
-        """Get from L2 (ClickHouse Memory table) - uses ORDER BY for latest value."""
-        db = self._get_db()
-        if not db:
-            key = self._make_key(user_id, database_name, param_name)
-            return self._fallback_get(key)
-
-        try:
-            # Memory engine: no FINAL needed, just ORDER BY updated_at DESC to get latest.
-            rows = db.query(
-                """
-                SELECT param_value, param_values, param_type, updated_at
-                FROM param_store
-                WHERE user_id = %(user_id)s
-                  AND database_name = %(database_name)s
-                  AND param_name = %(param_name)s
-                ORDER BY updated_at DESC
-                LIMIT 1
-                """,
-                {
-                    "user_id": user_id,
-                    "database_name": database_name,
-                    "param_name": param_name,
-                }
-            )
-
-            if rows and len(rows) > 0:
-                row = rows[0]
-                if isinstance(row, dict):
-                    value = row.get('param_value')
-                    values_array = row.get('param_values', [])
-                    ptype = row.get('param_type', 'string')
-                    updated_at_raw = row.get('updated_at')
-                else:
-                    value = row[0]
-                    values_array = row[1] if len(row) > 1 else []
-                    ptype = row[2] if len(row) > 2 else 'string'
-                    updated_at_raw = row[3] if len(row) > 3 else None
-
-                updated_at = updated_at_raw.timestamp() if hasattr(updated_at_raw, 'timestamp') else time.time()
-                return (value, values_array or [], ptype or 'string', updated_at)
-
-            return None
-
-        except Exception as e:
-            log.debug(f"[ParamStore] L2 get error: {e}")
-            return None
-
-    def _set_l2_sync(
-        self,
-        user_id: str,
-        database_name: str,
-        param_name: str,
-        value: Optional[str],
-        values_array: List[str],
-        param_type: str,
-        ttl_seconds: Optional[int] = None
-    ):
-        """Set in L2 (ClickHouse Memory table) synchronously.
-
-        Strategy: append-only INSERT with updated_at ordering.
-        Reads use ORDER BY updated_at DESC LIMIT 1, so duplicates are harmless and
-        this avoids transient "missing between DELETE and INSERT" windows.
-        """
-        db = self._get_db()
-        if not db:
-            key = self._make_key(user_id, database_name, param_name)
-            self._fallback_set(key, value, values_array, param_type)
-            return
-
-        try:
-            now = datetime.now()
-            row = {
-                'user_id': user_id,
-                'database_name': database_name,
-                'param_name': param_name,
-                'param_value': value if value is not None else '',
-                'param_type': param_type,
-                'param_values': values_array,
-                'created_at': now,
-                'updated_at': now,
-            }
-
-            db.insert_rows('param_store', [row])
-            log.debug(f"[ParamStore] L2 set (sync): {param_name}")
-
-        except Exception as e:
-            log.debug(f"[ParamStore] L2 set error: {e}")
-
-    def _set_l2_async(
-        self,
-        user_id: str,
-        database_name: str,
-        param_name: str,
-        value: Optional[str],
-        values_array: List[str],
-        ttl_seconds: Optional[int] = None
-    ):
-        """Set in L2 (ClickHouse) asynchronously (deprecated, use _set_l2_sync for param operations)."""
-        def _write():
-            inferred_type = 'array' if value is None else 'string'
-            self._set_l2_sync(
-                user_id,
-                database_name,
-                param_name,
-                value=value,
-                values_array=values_array,
-                param_type=inferred_type,
-                ttl_seconds=ttl_seconds,
-            )
-
-        threading.Thread(target=_write, daemon=True).start()
-
-    def _delete_l2(self, user_id: str, database_name: str, param_name: str):
-        """Delete from L2 (async)."""
-        def _delete():
-            db = self._get_db()
-            if not db:
-                return
-
-            try:
-                db.execute(
-                    """
-                    ALTER TABLE param_store DELETE
-                    WHERE user_id = %(user_id)s
-                      AND database_name = %(database_name)s
-                      AND param_name = %(param_name)s
-                    """,
-                    {
-                        "user_id": user_id,
-                        "database_name": database_name,
-                        "param_name": param_name,
-                    }
-                )
-            except Exception as e:
-                log.debug(f"[ParamStore] L2 delete error: {e}")
-
-        threading.Thread(target=_delete, daemon=True).start()
-
-    # =========================================================================
     # Utility Methods
     # =========================================================================
 
@@ -476,117 +348,79 @@ class ParamStore:
         """
         result = {}
 
-        # Get params from L2 (Memory engine: use subquery to get latest per param_name)
-        db = self._get_db()
-        if not db:
-            # Fallback mode: return the in-process store for this user/database
-            with self._fallback_lock:
-                for (uid, dbname, pname), (value, values, ptype, _ts) in self._fallback_store.items():
-                    if uid != user_id or dbname != database_name:
-                        continue
-                    if ptype == 'null':
-                        continue
-                    if ptype == 'array':
-                        result[pname] = values or []
-                    else:
-                        result[pname] = value
+        conn = self._get_conn()
+        if not conn:
             return result
 
-        if db:
-            try:
-                rows = db.query(
-                    """
-                    SELECT param_name, param_value, param_values, param_type
-                    FROM param_store
-                    WHERE user_id = %(user_id)s
-                      AND database_name = %(database_name)s
-                      AND (user_id, database_name, param_name, updated_at) IN (
-                          SELECT user_id, database_name, param_name, max(updated_at)
-                          FROM param_store
-                          WHERE user_id = %(user_id)s
-                            AND database_name = %(database_name)s
-                          GROUP BY user_id, database_name, param_name
-                      )
-                    """,
-                    {"user_id": user_id, "database_name": database_name}
-                )
+        try:
+            cursor = conn.execute(
+                """
+                SELECT key, value FROM kv
+                WHERE user_id = ? AND database = ?
+                """,
+                (user_id, database_name)
+            )
+            
+            for row in cursor.fetchall():
+                key = row[0] if isinstance(row, tuple) else row['key']
+                value = row[1] if isinstance(row, tuple) else row['value']
+                
+                # Parse JSON arrays
+                if value and value.startswith('['):
+                    try:
+                        result[key] = json.loads(value)
+                    except json.JSONDecodeError:
+                        result[key] = value
+                else:
+                    result[key] = value
 
-                for row in rows:
-                    if isinstance(row, dict):
-                        name = row.get('param_name')
-                        value = row.get('param_value')
-                        values = row.get('param_values', [])
-                        ptype = row.get('param_type', 'string')
-                    else:
-                        name = row[0]
-                        value = row[1]
-                        values = row[2] if len(row) > 2 else []
-                        ptype = row[3] if len(row) > 3 else 'string'
+            return result
 
-                    if ptype == 'null':
-                        continue
-                    if ptype == 'array':
-                        result[name] = values or []
-                    else:
-                        result[name] = value
-
-            except Exception as e:
-                log.debug(f"[ParamStore] L2 list error: {e}")
-
-        return result
+        except Exception as e:
+            log.debug(f"[ParamStore] List error: {e}")
+            return result
 
     def clear_session(self, user_id: str, database_name: str):
         """Clear all parameters for a user/database."""
-        # Clear L2
-        db = self._get_db()
-        if not db:
-            self._fallback_clear_session(user_id, database_name)
+        conn = self._get_conn()
+        if not conn:
             return
 
         try:
-            db.execute(
-                """
-                ALTER TABLE param_store DELETE
-                WHERE user_id = %(user_id)s
-                  AND database_name = %(database_name)s
-                """,
-                {"user_id": user_id, "database_name": database_name}
+            conn.execute(
+                "DELETE FROM kv WHERE user_id = ? AND database = ?",
+                (user_id, database_name)
             )
+            conn.commit()
         except Exception as e:
             log.debug(f"[ParamStore] Clear session error: {e}")
 
     def clear_all(self, user_id: str):
         """Clear all parameters for a user across all databases."""
-        # Clear L2
-        db = self._get_db()
-        if not db:
-            self._fallback_clear_all(user_id)
+        conn = self._get_conn()
+        if not conn:
             return
 
         try:
-            db.execute(
-                "ALTER TABLE param_store DELETE WHERE user_id = %(user_id)s",
-                {"user_id": user_id}
-            )
+            conn.execute("DELETE FROM kv WHERE user_id = ?", (user_id,))
+            conn.commit()
         except Exception as e:
             log.debug(f"[ParamStore] Clear all error: {e}")
 
     def get_stats(self) -> Dict[str, Any]:
         """Get param store statistics."""
         stats = {
-            'l1_entries': 0,
-            'l1_max_size': 0,
-            'l2_available': False,
-            'l2_entries': 0,
+            'backend': 'sqlite_scratch',
+            'path': '/dev/shm/lars_scratch.db',
+            'entries': 0,
         }
 
-        db = self._get_db()
-        if db:
+        conn = self._get_conn()
+        if conn:
             try:
-                rows = db.query("SELECT count() as cnt FROM param_store")
-                if rows:
-                    stats['l2_available'] = True
-                    stats['l2_entries'] = rows[0].get('cnt', 0) if isinstance(rows[0], dict) else rows[0][0]
+                cursor = conn.execute("SELECT COUNT(*) FROM kv")
+                row = cursor.fetchone()
+                stats['entries'] = row[0] if row else 0
             except Exception as e:
                 log.debug(f"[ParamStore] Stats error: {e}")
 
@@ -609,6 +443,8 @@ def reset_param_store() -> None:
     """Reset param store (for testing)."""
     global _param_store
     ParamStore._instance = None
+    ParamStore._conn = None
+    ParamStore._conn_initialized = False
     _param_store = None
 
 

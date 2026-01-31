@@ -38,9 +38,12 @@ sessions_bp = Blueprint('sessions', __name__)
 def sanitize_for_json(obj):
     """Recursively sanitize an object for JSON serialization.
 
-    Converts NaN/Infinity to None, bytes to placeholder string.
+    Converts NaN/Infinity to None, bytes to placeholder string, numpy arrays to lists.
     """
     import math
+    # Handle numpy arrays (DuckDB returns these for array columns)
+    if hasattr(obj, 'tolist'):
+        return sanitize_for_json(obj.tolist())
     if isinstance(obj, float):
         if math.isnan(obj) or math.isinf(obj):
             return None
@@ -49,7 +52,7 @@ def sanitize_for_json(obj):
         return f"<binary data: {len(obj)} bytes>"
     elif isinstance(obj, dict):
         return {k: sanitize_for_json(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
+    elif isinstance(obj, (list, tuple)):
         return [sanitize_for_json(item) for item in obj]
     return obj
 
@@ -150,11 +153,10 @@ def _enrich_sessions_with_metrics(sessions: list) -> list:
                 }
 
         # Query for distinct models used per session
-        # Uses ClickHouse's groupArray(DISTINCT ...) to avoid correlated subqueries
         models_query = f"""
             SELECT
                 session_id,
-                groupArray(DISTINCT model) as models
+                array_agg(DISTINCT model) as models
             FROM unified_logs
             WHERE session_id IN ('{session_ids_str}')
                 AND model IS NOT NULL
@@ -169,7 +171,13 @@ def _enrich_sessions_with_metrics(sessions: list) -> list:
         for row in models_result:
             sid = row.get('session_id')
             if sid:
-                models_map[sid] = row.get('models', [])
+                # DuckDB returns numpy arrays - convert to list and filter nulls
+                models_raw = row.get('models')
+                if models_raw is not None:
+                    models_list = list(models_raw) if hasattr(models_raw, '__iter__') and not isinstance(models_raw, str) else []
+                    models_map[sid] = [m for m in models_list if m is not None and m != '']
+                else:
+                    models_map[sid] = []
 
         # Build metrics map
         metrics_map = {}
@@ -401,7 +409,9 @@ def _check_is_zombie(session: SessionState) -> bool:
         heartbeat = heartbeat.replace(tzinfo=timezone.utc)
 
     elapsed = (now - heartbeat).total_seconds()
-    return elapsed > session.heartbeat_lease_seconds
+    # Handle None lease_seconds (default to 300s = 5 min)
+    lease_seconds = session.heartbeat_lease_seconds or 300
+    return elapsed > lease_seconds
 
 
 # Descriptions for known virtual cascades (matches app.py VIRTUAL_CASCADE_DESCRIPTIONS)
@@ -440,9 +450,9 @@ def _include_virtual_sessions(existing_sessions: list, cascade_id_filter: str | 
                 MAX(timestamp) as updated_at,
                 SUM(cost) as total_cost,
                 COUNT(*) as message_count,
-                groupArray(DISTINCT model) as models
+                array_agg(DISTINCT model) as models
             FROM unified_logs
-            WHERE timestamp > now() - INTERVAL 7 DAY
+            WHERE timestamp > current_timestamp - INTERVAL '7 days'
             {cascade_filter}
             GROUP BY session_id, cascade_id
             ORDER BY started_at DESC
@@ -491,7 +501,7 @@ def _include_virtual_sessions(existing_sessions: list, cascade_id_filter: str | 
                 'total_cost': float(row.get('total_cost', 0) or 0),
                 'total_duration_ms': 0,  # Not available for virtual sessions
                 'message_count': int(row.get('message_count', 0) or 0),
-                'models': row.get('models', []),
+                'models': [m for m in (row.get('models') or []) if m],  # Filter nulls
                 # Flags for UI
                 'is_dynamic': True,
                 'description': description,
@@ -807,14 +817,14 @@ def get_console_kpis():
         db = get_db()
 
         # 24h cost + trend
-        # IMPORTANT: Query unified_logs directly to include ALL costs (including in-progress sessions)
-        # cascade_analytics only has completed sessions, which misses long-running cascades like Calliope
+        # IMPORTANT: Query lars_system.logs which has costs merged from the costs table
+        # (costs arrive async from OpenRouter, stored in separate costs table, merged via view)
         cost_24h_query = """
             SELECT
-                SUM(cost) as total,
+                COALESCE(SUM(cost), 0) as total,
                 COUNT(DISTINCT session_id) as session_count
             FROM unified_logs
-            WHERE timestamp > now() - INTERVAL 1 DAY
+            WHERE timestamp > current_timestamp - INTERVAL '1 days'
               AND cost > 0
               AND role = 'assistant'
         """
@@ -825,10 +835,10 @@ def get_console_kpis():
 
         cost_prev_24h_query = """
             SELECT
-                SUM(cost) as total,
+                COALESCE(SUM(cost), 0) as total,
                 COUNT(DISTINCT session_id) as session_count
             FROM unified_logs
-            WHERE timestamp BETWEEN now() - INTERVAL 2 DAY AND now() - INTERVAL 1 DAY
+            WHERE timestamp BETWEEN current_timestamp - INTERVAL '2 days' AND current_timestamp - INTERVAL '1 days'
               AND cost > 0
               AND role = 'assistant'
         """
@@ -843,7 +853,7 @@ def get_console_kpis():
             SELECT COUNT(*) as count
             FROM cascade_analytics
             WHERE is_cost_outlier = true
-                AND created_at > now() - INTERVAL 1 DAY
+                AND created_at > current_timestamp - INTERVAL '1 days'
         """
         outlier_result = db.query(outlier_query)
         outlier_count = int(outlier_result[0]['count']) if len(outlier_result) > 0 else 0
@@ -854,7 +864,7 @@ def get_console_kpis():
                 SUM(total_context_cost_estimated) as total_context,
                 SUM(total_cost) as total_cost
             FROM cascade_analytics
-            WHERE created_at > now() - INTERVAL 1 DAY
+            WHERE created_at > current_timestamp - INTERVAL '1 days'
         """
         context_stats_result = db.query(context_stats_query)
         context_stats = context_stats_result[0] if len(context_stats_result) > 0 else {'total_context': 0, 'total_cost': 0}
@@ -864,7 +874,7 @@ def get_console_kpis():
                 SUM(total_context_cost_estimated) as total_context,
                 SUM(total_cost) as total_cost
             FROM cascade_analytics
-            WHERE created_at BETWEEN now() - INTERVAL 2 DAY AND now() - INTERVAL 1 DAY
+            WHERE created_at BETWEEN current_timestamp - INTERVAL '2 days' AND current_timestamp - INTERVAL '1 days'
         """
         context_prev_result = db.query(context_prev_query)
         context_prev = context_prev_result[0] if len(context_prev_result) > 0 else {'total_context': 0, 'total_cost': 0}
@@ -879,21 +889,32 @@ def get_console_kpis():
                 cell_name,
                 AVG(cell_cost_pct) as avg_pct
             FROM cell_analytics
-            WHERE created_at > now() - INTERVAL 1 DAY
+            WHERE created_at > current_timestamp - INTERVAL '1 days'
             GROUP BY cell_name
             ORDER BY avg_pct DESC
             LIMIT 1
         """
         bottleneck_result = db.query(bottleneck_query)
 
+        # Helper to safely convert to float (handles None, NaN, etc.)
+        import math
+        def safe_float(val, default=0.0):
+            if val is None:
+                return default
+            try:
+                f = float(val)
+                return default if math.isnan(f) else f
+            except (TypeError, ValueError):
+                return default
+        
         return jsonify({
-            'total_cost_24h': float(cost_24h['total']) if cost_24h['total'] is not None else 0.0,
-            'cost_trend': f"{'↑' if cost_trend_pct > 0 else '↓'} {abs(cost_trend_pct):.1f}%",
+            'total_cost_24h': safe_float(cost_24h.get('total')),
+            'cost_trend': f"{'↑' if cost_trend_pct > 0 else '↓'} {abs(safe_float(cost_trend_pct)):.1f}%",
             'outlier_count': outlier_count,
-            'avg_context_pct': float(avg_context_pct),
-            'context_trend': f"{'↑' if context_trend_pct > 0 else '↓'} {abs(context_trend_pct):.1f}pp",  # pp = percentage points
+            'avg_context_pct': safe_float(avg_context_pct),
+            'context_trend': f"{'↑' if context_trend_pct > 0 else '↓'} {abs(safe_float(context_trend_pct)):.1f}pp",  # pp = percentage points
             'top_bottleneck_cell': bottleneck_result[0]['cell_name'] if len(bottleneck_result) > 0 else 'N/A',
-            'top_bottleneck_pct': float(bottleneck_result[0]['avg_pct']) if len(bottleneck_result) > 0 else 0.0
+            'top_bottleneck_pct': safe_float(bottleneck_result[0].get('avg_pct')) if len(bottleneck_result) > 0 else 0.0
         })
 
     except Exception as e:

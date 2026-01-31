@@ -1,6 +1,27 @@
-from typing import List, Dict, Any, Optional, Union, Literal
-from pydantic import BaseModel, Field
+from typing import List, Dict, Any, Optional, Union, Literal, Annotated
+from pydantic import BaseModel, Field, BeforeValidator
 from enum import Enum
+
+
+# =============================================================================
+# Template-Aware Types for Jinja2 Dynamic Values
+# =============================================================================
+# LARS cascade configs support Jinja2 templates like {{ input.max_turns }}.
+# These types allow template strings to pass through validation while still
+# validating literal values.
+
+def _allow_jinja_template(v):
+    """Pass through Jinja2 templates, otherwise return as-is for normal validation."""
+    if isinstance(v, str) and '{{' in v:
+        return v  # Template string - skip type coercion
+    return v
+
+# Use these instead of plain int/float/bool for fields that accept templates:
+TemplateInt = Annotated[Union[int, str], BeforeValidator(_allow_jinja_template)]
+TemplateFloat = Annotated[Union[float, str], BeforeValidator(_allow_jinja_template)]
+TemplateBool = Annotated[Union[bool, str], BeforeValidator(_allow_jinja_template)]
+TemplateOptionalInt = Annotated[Optional[Union[int, str]], BeforeValidator(_allow_jinja_template)]
+TemplateOptionalFloat = Annotated[Optional[Union[float, str]], BeforeValidator(_allow_jinja_template)]
 
 
 # ===== Human-in-the-Loop (HITL) Configuration =====
@@ -157,8 +178,8 @@ class BrowserConfig(BaseModel):
 
 
 class RuleConfig(BaseModel):
-    max_turns: Optional[int] = None
-    max_attempts: Optional[int] = None
+    max_turns: TemplateOptionalInt = None
+    max_attempts: TemplateOptionalInt = None
     # loop_until can be:
     #   - string: Name of validator tool/cascade (e.g., "my_validator")
     #   - dict: Inline polyglot validator (e.g., {"python": "result = {...}"})
@@ -198,10 +219,10 @@ class WardsConfig(BaseModel):
     turn: List[WardConfig] = Field(default_factory=list)  # Optional per-turn validation
 
 class ReforgeConfig(BaseModel):
-    steps: int = 1  # Number of refinement iterations
+    steps: TemplateInt = 1  # Number of refinement iterations
     honing_prompt: str  # Additional refinement instructions
-    factor_per_step: int = 2  # Takes per reforge step
-    mutate: bool = False  # Apply built-in variation strategies
+    factor_per_step: TemplateInt = 2  # Takes per reforge step
+    mutate: TemplateBool = False  # Apply built-in variation strategies
     evaluator_override: Optional[str] = None  # Custom evaluator for refinement steps
     threshold: Optional[WardConfig] = None  # Early stopping validation (ward-like)
 
@@ -1677,7 +1698,7 @@ class InlineValidatorConfig(BaseModel):
     """
     instructions: str  # The validation instructions (required)
     model: Optional[str] = None  # Model to use, defaults to cheap/fast model
-    max_turns: int = 1  # Usually validators are single-turn
+    max_turns: TemplateInt = 1  # Usually validators are single-turn
 
 
 class CascadeConfig(BaseModel):

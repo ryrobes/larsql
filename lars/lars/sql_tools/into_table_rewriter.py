@@ -1,42 +1,90 @@
 """
 INTO Table Rewriter - JIT rewriting of into_ table references.
 
-Tables created with `... INTO my_table` are stored in ClickHouse as
-`<results_db>.into_my_table` (default: `lars_results`).
+Tables created with `... INTO my_table` are persisted as parquet files in:
+    $LARS_ROOT/data/user/<results_db>/into_<name>/data.parquet
 
 This rewriter detects references to `into_*` in table positions (FROM, JOIN)
-and rewrites them to read from ClickHouse via clickhouse_scan_1().
+and rewrites them to read directly from parquet.
 
 Example:
     Input:  SELECT * FROM into_sales WHERE category = 'Electronics'
-    Output: SELECT * FROM read_json_auto(clickhouse_scan_1('lars_results.into_sales')) AS into_sales WHERE category = 'Electronics'
+    Output: SELECT * FROM read_parquet('/path/to/data/user/lars_results/into_sales/data.parquet') AS into_sales WHERE category = 'Electronics'
 
 Token-aware: never rewrites inside strings or comments.
+No views or session state needed - works across all connections.
 """
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
-from typing import List, Tuple
+from pathlib import Path
+from typing import List, Tuple, Optional
 import logging
 
 log = logging.getLogger(__name__)
 
+# Cache LARS_ROOT to avoid repeated lookups
+_lars_root: Optional[Path] = None
+
+
+def _get_lars_root() -> Path:
+    """Get LARS_ROOT path, cached for efficiency."""
+    global _lars_root
+    if _lars_root is None:
+        try:
+            from ..lars_db import get_lars_db
+            _lars_root = get_lars_db().root
+        except Exception:
+            # Fallback to env var or current dir
+            _lars_root = Path(os.environ.get('LARS_ROOT', '.'))
+    return _lars_root
+
+
+def _get_parquet_path(results_db: str, table_name: str) -> Optional[Path]:
+    """
+    Get path to parquet file for an INTO table.
+    
+    Returns None if file doesn't exist.
+    
+    Path structure: $LARS_ROOT/data/user/{results_db}/into_{name}/data.parquet
+    Note: _get_lars_root() returns $LARS_ROOT/data already
+    """
+    root = _get_lars_root()
+    # INTO tables are stored with into_ prefix in the filename
+    if not table_name.startswith('into_'):
+        parquet_name = f"into_{table_name}"
+    else:
+        parquet_name = table_name
+    
+    # root is $LARS_ROOT/data, so path is: root/user/{results_db}/{table}/data.parquet
+    parquet_path = root / "user" / results_db / parquet_name / "data.parquet"
+    
+    if parquet_path.exists():
+        return parquet_path
+    return None
+
 
 @dataclass(frozen=True)
 class _Token:
-    typ: str  # ws, ident, punct, string, comment_line, comment_block
+    typ: str  # ws, ident, punct, string, comment_line, comment_block, other
     text: str
 
 
 def rewrite_into_tables(sql: str, results_db: str = "lars_results") -> Tuple[str, bool]:
     """
-    Rewrite into_ table references to read from ClickHouse.
+    Rewrite into_ table references to read directly from parquet files.
+
+    This approach:
+    - Reads directly from parquet (no views needed)
+    - Works across sessions (no sync required)
+    - Falls back gracefully if file doesn't exist
 
     Args:
         sql: Input SQL query
-        results_db: ClickHouse database containing the into_* tables
-                    (e.g., "lars_results_default", "lars_results_team1")
+        results_db: Results database namespace (e.g., "lars_results_memory")
+                    Maps to: $LARS_ROOT/data/user/{results_db}/
 
     Returns:
         Tuple of (rewritten_sql, changed)
@@ -55,7 +103,6 @@ def rewrite_into_tables(sql: str, results_db: str = "lars_results") -> Tuple[str
     TABLE_KEYWORDS = {'FROM', 'JOIN', 'INNER', 'LEFT', 'RIGHT', 'OUTER', 'CROSS', 'FULL', 'INTO'}
 
     # Track if we're in a position where a table reference is expected
-    # We look for: FROM <table>, JOIN <table>, etc.
     prev_keyword = None
 
     while i < len(tokens):
@@ -80,13 +127,22 @@ def rewrite_into_tables(sql: str, results_db: str = "lars_results") -> Tuple[str
 
             # Check if this is an into_ table reference in a table position
             if tok.text.lower().startswith('into_') and prev_keyword in ('FROM', 'JOIN', 'INNER', 'LEFT', 'RIGHT', 'OUTER', 'CROSS', 'FULL'):
-                # Rewrite: into_xxx -> read_json_auto(clickhouse_scan_1('<results_db>.into_xxx')) AS into_xxx
                 table_name = tok.text
-                ch_table = f"{results_db}.{table_name}"
-                rewritten = f"read_json_auto(clickhouse_scan_1('{ch_table}')) AS {table_name}"
-                out_tokens.append(_Token("other", rewritten))
-                changed = True
-                log.debug(f"[into_rewriter] Rewrote {table_name} -> clickhouse_scan_1('{ch_table}')")
+                
+                # Check if parquet file exists
+                parquet_path = _get_parquet_path(results_db, table_name)
+                
+                if parquet_path:
+                    # Rewrite to read_parquet() - direct file access
+                    rewritten = f"read_parquet('{parquet_path}') AS {table_name}"
+                    out_tokens.append(_Token("other", rewritten))
+                    changed = True
+                    log.debug(f"[into_rewriter] Rewrote {table_name} -> read_parquet('{parquet_path}')")
+                else:
+                    # File doesn't exist - leave as-is (will error with helpful message)
+                    log.warning(f"[into_rewriter] INTO table not found: {table_name} (checked {results_db})")
+                    out_tokens.append(tok)
+                
                 i += 1
                 prev_keyword = None
                 continue
@@ -117,6 +173,45 @@ def rewrite_into_tables(sql: str, results_db: str = "lars_results") -> Tuple[str
 
     sql_out = "".join(t.text for t in out_tokens)
     return sql_out, True
+
+
+def list_into_tables(results_db: str = "lars_results") -> List[dict]:
+    """
+    List all INTO tables available in a results database.
+    
+    Returns list of dicts with:
+        - name: Table name (e.g., 'into_shared_sales')
+        - path: Full parquet path
+        - size_bytes: File size
+        - modified: Last modified time
+    """
+    root = _get_lars_root()
+    # root is $LARS_ROOT/data
+    results_dir = root / "user" / results_db
+    
+    if not results_dir.exists():
+        return []
+    
+    tables = []
+    for table_dir in results_dir.iterdir():
+        if not table_dir.is_dir():
+            continue
+        if not table_dir.name.startswith('into_'):
+            continue
+            
+        parquet_path = table_dir / "data.parquet"
+        if not parquet_path.exists():
+            continue
+        
+        stat = parquet_path.stat()
+        tables.append({
+            'name': table_dir.name,
+            'path': str(parquet_path),
+            'size_bytes': stat.st_size,
+            'modified': stat.st_mtime,
+        })
+    
+    return tables
 
 
 def _tokenize(sql: str) -> List[_Token]:

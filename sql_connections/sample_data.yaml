@@ -1,0 +1,40 @@
+# =============================================================================
+# Sample Data Connection
+# =============================================================================
+# A DuckDB database with customers, orders, products, and support tickets.
+# Use this to test lars's SQL features and semantic operators.
+#
+# To create the sample database, run:
+#   duckdb data/sample.duckdb < data/create_sample_db.sql
+#
+# Or use the setup script:
+#   python -c "import duckdb; conn = duckdb.connect('data/sample.duckdb'); conn.execute(open('data/create_sample_db.sql').read())"
+#
+# Then crawl the schema:
+#   lars sql crawl
+#
+# Tables included:
+#   - customers: B2B SaaS customer records
+#   - products: Product catalog with descriptions
+#   - orders: Transaction history
+#   - support_tickets: Support interactions with text
+#   - activities: User activity logs
+#
+# Views included:
+#   - customer_revenue: Revenue by customer
+#   - monthly_revenue: Monthly revenue trends
+#   - product_performance: Product sales metrics
+#   - ticket_summary: Support ticket analytics
+#
+# Query examples:
+#   SELECT * FROM sample_data.customers WHERE industry = 'Technology';
+#   SELECT * FROM sample_data.customer_revenue ORDER BY total_revenue DESC;
+# =============================================================================
+
+connection_name: sample_data
+type: duckdb
+database: ./data/sample.duckdb
+enabled: true
+read_only: true
+sample_row_limit: 100
+distinct_value_threshold: 50

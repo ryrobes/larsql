@@ -205,10 +205,10 @@ def update_metric_usage(metric_name: str):
 
     db.execute(
         """
-        ALTER TABLE promoted_metrics
-        UPDATE
+        UPDATE promoted_metrics
+        SET
             total_usage_count = total_usage_count + 1,
-            last_used_at = now64()
+            last_used_at = now()
         WHERE metric_name = %(name)s
         """,
         {"name": metric_name.upper()},
@@ -221,8 +221,8 @@ def deprecate_metric(metric_name: str, reason: str = "") -> bool:
 
     db.execute(
         """
-        ALTER TABLE promoted_metrics
-        UPDATE status = 'deprecated'
+        UPDATE promoted_metrics
+        SET status = 'deprecated'
         WHERE metric_name = %(name)s
         """,
         {"name": metric_name.upper()},

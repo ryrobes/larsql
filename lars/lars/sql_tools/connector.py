@@ -178,6 +178,11 @@ class DatabaseConnector:
         elif config.type == "clickhouse":
             self._attach_clickhouse(config, alias)
 
+        elif config.type == "native":
+            # Native DuckDB - tables already exist as parquet-backed views
+            # No attachment needed, just mark as attached
+            print(f"  └─ Native DuckDB: {alias} (tables already available)")
+
         else:
             raise ValueError(f"Unsupported database type: {config.type}")
 
@@ -1117,15 +1122,14 @@ class DatabaseConnector:
             self.conn.execute(f"CREATE SCHEMA IF NOT EXISTS {alias};")
 
             # Get list of tables in the database.
-            # Filter out internal ClickHouse tables (.inner* are MV backing tables).
+            # Use DuckDB information_schema for table listing
             tables_rows = db.query(
-                "SELECT name FROM system.tables WHERE database = %(db)s ORDER BY name",
-                {"db": database},
+                "SELECT table_name as name FROM information_schema.tables WHERE table_schema = 'main' ORDER BY table_name",
                 log_query=False,
             )
             table_names = [
                 row.get("name") for row in (tables_rows or [])
-                if row and row.get("name") and not row["name"].startswith(".inner")
+                if row and row.get("name") and not row["name"].startswith("_")
             ]
 
             view_count = 0

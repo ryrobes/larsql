@@ -142,8 +142,14 @@ def _attach_shared_tables(conn: duckdb.DuckDBPyConnection) -> None:
 
 
 def _attach_external_databases(conn: duckdb.DuckDBPyConnection) -> None:
-    """Attach configured external databases."""
+    """Attach configured external databases (if LARS_POOL_ATTACH_ALL is set)."""
     try:
+        # Skip heavy attach_all during pool warming by default
+        # External DBs will be lazily attached when first referenced
+        if os.environ.get('LARS_POOL_ATTACH_ALL', '0').lower() not in ('1', 'true', 'yes'):
+            log.debug("[pool] Skipping external DB attach (lazy attach enabled)")
+            return
+            
         from .lazy_attach import LazyAttachManager
         from .config import load_sql_connections
 
@@ -222,7 +228,7 @@ def initialize_pool() -> None:
     thread.start()
 
 
-def get_pooled_connection(timeout: float = 0.1) -> Optional[duckdb.DuckDBPyConnection]:
+def get_pooled_connection(timeout: float = 1.0) -> Optional[duckdb.DuckDBPyConnection]:
     """
     Get a pre-warmed connection from the pool.
 

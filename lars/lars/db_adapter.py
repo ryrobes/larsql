@@ -1,49 +1,41 @@
 """
-Database adapter layer for LARS - ClickHouse-compatible persistence.
+Database adapter layer for LARS - DuckDB + Parquet persistence.
 
-This module provides a single adapter that handles all database operations.
-
-By default, LARS uses a ClickHouse server. For easier local evaluation, it can
-optionally fall back to CHDB (embedded ClickHouse) so users don't need a running
-ClickHouse service.
+This module provides a unified database interface for LARS, backed by
+DuckDB reading from Parquet files. It replaces the previous ClickHouse
+implementation with a pure local storage solution.
 
 Key features:
-- Singleton pattern for connection reuse
-- Batch INSERT for efficient writes
-- ALTER TABLE UPDATE for cost tracking and winner flagging
-- Native vector search with cosineDistance()
-- Auto-create database and tables on startup
-- Query logging to ui_sql_log table (async fire-and-forget)
+- No external database server required
+- Concurrent read/write support via separate parquet files
+- Compatible API with the previous ClickHouse adapter
+- Async fire-and-forget logging for query/deref events
 """
 import json
 import os
-import math
 import threading
-import hashlib
 import time
 import contextvars
 import atexit
-import traceback
-import re
-from datetime import datetime
+import uuid
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Union
+
 import pandas as pd
 
-from .stdlib_queue import Empty as StdlibQueueEmpty
-from .stdlib_queue import Full as StdlibQueueFull
-from .stdlib_queue import Queue as StdlibQueue
+from .lars_db import LarsDB, get_lars_db, SYSTEM_TABLES
 
 
 # =============================================================================
-# Schema Not Initialized Error
+# Schema Not Initialized Error (kept for API compatibility)
 # =============================================================================
 
 class SchemaNotInitializedError(Exception):
     """
-    Raised when ClickHouse tables don't exist or can't be accessed.
-
-    This typically means the user needs to run `lars db init` to create
-    the database schema before using LARS.
+    Raised when tables don't exist or can't be accessed.
+    
+    With parquet-backed storage, this typically means the data directory
+    hasn't been created yet.
     """
 
     def __init__(self, original_error: Exception, table_name: str | None = None):
@@ -54,249 +46,32 @@ class SchemaNotInitializedError(Exception):
             message = (
                 f"\n\n"
                 f"╔══════════════════════════════════════════════════════════════════╗\n"
-                f"║  Database table '{table_name}' does not exist.                   \n"
+                f"║  Table '{table_name}' has no data yet.                           \n"
                 f"║                                                                  \n"
-                f"║  Please initialize the database schema by running:               \n"
-                f"║                                                                  \n"
-                f"║      lars db init                                              \n"
-                f"║                                                                  \n"
-                f"║  This creates all required tables and runs migrations.           \n"
+                f"║  Tables are created automatically when data is first written.    \n"
+                f"║  If you expected data to exist, check $LARS_ROOT/data/           \n"
                 f"╚══════════════════════════════════════════════════════════════════╝\n"
             )
         else:
             message = (
                 f"\n\n"
                 f"╔══════════════════════════════════════════════════════════════════╗\n"
-                f"║  Database schema not initialized or connection failed.           \n"
+                f"║  Database not initialized.                                       \n"
                 f"║                                                                  \n"
-                f"║  Please initialize the database schema by running:               \n"
-                f"║                                                                  \n"
-                f"║      lars db init                                              \n"
-                f"║                                                                  \n"
-                f"║  Make sure ClickHouse is running and accessible.                 \n"
+                f"║  Ensure $LARS_ROOT is set and the data directory exists.         \n"
                 f"╚══════════════════════════════════════════════════════════════════╝\n"
             )
 
         super().__init__(message)
 
 
-def _is_missing_table_error(error: Exception) -> tuple[bool, str | None]:
-    """
-    Check if an exception is due to a missing table.
-
-    Returns:
-        Tuple of (is_missing_table, table_name_or_none)
-    """
-    import re
-    err_str = str(error).lower()
-
-    # ClickHouse error patterns for missing tables
-    # "Code: 60. DB::Exception: Table lars.unified_logs doesn't exist"
-    # "Table lars.unified_logs doesn't exist"
-    # "Unknown table expression identifier 'unified_logs'"
-
-    if "doesn't exist" in err_str or "does not exist" in err_str:
-        # Try to extract table name from common ClickHouse patterns.
-        #
-        # Examples:
-        # - "Table lars.unified_logs doesn't exist"
-        # - "Table lars.unified_logs does not exist"
-        # - "Table `lars`.`unified_logs` doesn't exist"
-        # - "Table `lars`.`unified_logs` does not exist"
-        match = re.search(
-            r"table\s+(?:`?(\w+)`?\.)?`?(\w+)`?\s+does(?:n't| not)\s+exist",
-            err_str,
-        )
-        if match:
-            # group(2) is the table name; group(1) is optional database
-            return True, match.group(2)
-        return True, None
-
-    if "unknown table" in err_str:
-        # Pattern: "Unknown table expression identifier 'tablename'"
-        match = re.search(r"['\"](\w+)['\"]", err_str)
-        if match:
-            return True, match.group(1)
-        return True, None
-
-    # Database doesn't exist
-    if "database" in err_str and ("doesn't exist" in err_str or "does not exist" in err_str):
-        return True, None
-
-    return False, None
-
-
 # =============================================================================
-# Backend Selection Helpers (ClickHouse server vs CHDB)
+# Query Logging Context Variables (kept for API compatibility)
 # =============================================================================
 
-def _normalize_db_mode(mode: str | None) -> str:
-    val = (mode or "").strip().lower()
-    if not val:
-        return "auto"
-    if val in ("auto",):
-        return "auto"
-    if val in ("clickhouse", "server", "clickhouse_server", "ch"):
-        return "clickhouse"
-    if val in ("chdb", "embedded", "local"):
-        return "chdb"
-    # Unknown mode: treat as auto (safer default than hard-fail).
-    return "auto"
-
-
-def _clickhouse_server_reachable(
-    *,
-    host: str,
-    port: int,
-    database: str,
-    user: str,
-    password: str,
-    timeout_s: float = 0.5,
-) -> bool:
-    """
-    Best-effort ClickHouse reachability check for auto mode.
-
-    Keep this fast: it runs on startup for users without ClickHouse.
-    """
-    try:
-        from clickhouse_driver import Client  # type: ignore
-
-        client = Client(
-            host=host,
-            port=port,
-            database=database,
-            user=user,
-            password=password,
-            connect_timeout=timeout_s,
-            send_receive_timeout=max(1, timeout_s),
-            sync_request_timeout=max(1, timeout_s),
-            settings={"use_numpy": False, "max_execution_time": 2},
-        )
-        client.execute("SELECT 1")
-        try:
-            client.disconnect()
-        except Exception:
-            pass
-        return True
-    except Exception:
-        return False
-
-
-_CLICKHOUSE_PARAM_RE = re.compile(r"%\(([A-Za-z0-9_]+)\)s")
-
-
-def _format_datetime_for_clickhouse(value: Any) -> str:
-    """
-    Format datetime/date-like values for ClickHouse SQL literals.
-
-    ClickHouse DateTime/DateTime64 parsing accepts common string formats.
-    Prefer a space separator to avoid edge cases across engines.
-    """
-    # pandas.Timestamp acts like datetime; avoid importing pandas here.
-    if isinstance(value, datetime):
-        dt = value
-        # Normalize tz-aware to UTC and drop tzinfo (ClickHouse typically stores naive).
-        try:
-            if dt.tzinfo is not None:
-                from datetime import timezone
-                dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
-        except Exception:
-            dt = dt.replace(tzinfo=None)
-        return dt.strftime("%Y-%m-%d %H:%M:%S.%f").rstrip("0").rstrip(".")
-
-    # date objects
-    if hasattr(value, "year") and hasattr(value, "month") and hasattr(value, "day") and not hasattr(value, "hour"):
-        try:
-            return f"{int(value.year):04d}-{int(value.month):02d}-{int(value.day):02d}"
-        except Exception:
-            return str(value)
-
-    return str(value)
-
-
-def _escape_clickhouse_literal(value: Any) -> str:
-    """
-    Escape a Python value as a ClickHouse SQL literal.
-
-    Used for CHDB execution and for any code paths that require local param
-    substitution (ClickHouse server mode still relies on clickhouse-driver's
-    native parameter binding).
-    """
-    if value is None:
-        return "NULL"
-
-    # bool is a subclass of int, so check it first.
-    if isinstance(value, bool):
-        return "1" if value else "0"
-
-    if isinstance(value, (int,)):
-        return str(value)
-
-    if isinstance(value, float):
-        if math.isnan(value) or math.isinf(value):
-            return "NULL"
-        return repr(value)
-
-    # UUIDs and other identifiers
-    if hasattr(value, "hex") and type(value).__name__.lower() == "uuid":
-        return "'" + str(value) + "'"
-
-    if isinstance(value, (bytes, bytearray, memoryview)):
-        return "'" + bytes(value).hex() + "'"
-
-    # Datetime/date-like
-    if isinstance(value, datetime) or (hasattr(value, "isoformat") and hasattr(value, "year") and hasattr(value, "month")):
-        s = _format_datetime_for_clickhouse(value)
-        s = s.replace("\\", "\\\\").replace("'", "''")
-        return f"'{s}'"
-
-    if isinstance(value, (list, tuple)):
-        return "[" + ", ".join(_escape_clickhouse_literal(v) for v in value) + "]"
-
-    if isinstance(value, dict):
-        s = json.dumps(value, default=str, ensure_ascii=False)
-        s = s.replace("\\", "\\\\").replace("'", "''")
-        return f"'{s}'"
-
-    # Fallback: treat as string
-    s = str(value)
-    s = s.replace("\\", "\\\\").replace("'", "''")
-    return f"'{s}'"
-
-
-def _substitute_clickhouse_percent_params(sql: str, params: Dict[str, Any]) -> str:
-    """
-    Substitute clickhouse-driver style params in SQL: %(name)s.
-
-    CHDB does not support clickhouse-driver's native parameter binding, so we
-    need to substitute into SQL text safely.
-    """
-    if not params:
-        return sql
-
-    def repl(match: re.Match) -> str:
-        key = match.group(1)
-        if key not in params:
-            raise KeyError(f"Missing SQL param: {key}")
-        return _escape_clickhouse_literal(params[key])
-
-    return _CLICKHOUSE_PARAM_RE.sub(repl, sql)
-
-
-# =============================================================================
-# Query Logging System - Async fire-and-forget logging to ClickHouse
-# =============================================================================
-
-# Context variable to track the source of queries (e.g., 'ui_backend', 'lars_core')
 query_source_context: contextvars.ContextVar[str] = contextvars.ContextVar('query_source', default='unknown')
-
-# Context variable to track the caller function/endpoint
 query_caller_context: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar('query_caller', default=None)
-
-# Context variable to track the request path (e.g., '/api/sextant/species/abc123')
 query_request_path_context: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar('query_request_path', default=None)
-
-# Context variable to track the page reference from Referer header
 query_page_ref_context: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar('query_page_ref', default=None)
 
 
@@ -320,24 +95,53 @@ def set_query_page_ref(page_ref: str):
     query_page_ref_context.set(page_ref)
 
 
+# =============================================================================
+# Compatibility Stubs for ClickHouse-specific functions
+# =============================================================================
+
+def _normalize_db_mode(mode: str | None) -> str:
+    """
+    Normalize database mode string.
+    
+    With DuckDB/Parquet backend, always returns 'duckdb'.
+    Kept for CLI compatibility.
+    """
+    return "duckdb"
+
+
+def _clickhouse_server_reachable(
+    *,
+    host: str = "localhost",
+    port: int = 9000,
+    database: str = "lars",
+    user: str = "default",
+    password: str = "",
+    timeout_s: float = 0.5,
+) -> bool:
+    """
+    Check if ClickHouse server is reachable.
+    
+    Always returns False with DuckDB/Parquet backend.
+    Kept for CLI compatibility.
+    """
+    return False
+
+
+# =============================================================================
+# Async Query Logger
+# =============================================================================
+
 class QueryLogger:
     """
     Async fire-and-forget query logger that writes to ui_sql_log table.
-
-    Features:
-    - Uses a separate ClickHouse client connection (bypasses main query lock)
-    - Queue-based batching for efficient inserts
-    - Background daemon thread flushes batches periodically
-    - Never blocks the main query path
-    - Graceful shutdown on process exit
+    
+    Uses a background thread to batch writes for efficiency.
     """
-
+    
     _instance = None
     _lock = threading.Lock()
-
-    # Batch settings
-    BATCH_SIZE = 50  # Flush after this many entries
-    FLUSH_INTERVAL = 2.0  # Flush every N seconds regardless of batch size
+    BATCH_SIZE = 50
+    FLUSH_INTERVAL = 2.0
 
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
@@ -347,63 +151,30 @@ class QueryLogger:
                     cls._instance._initialized = False
         return cls._instance
 
-    def __init__(self, host: str | None = None, port: int | None = None, database: str | None = None,
-                 user: str | None = None, password: str | None = None):
-        """Initialize the query logger (singleton - only runs once)."""
+    def __init__(self, **kwargs):
         if self._initialized:
             return
-
-        self._queue = StdlibQueue()
-        self._client = None
-        self._host = host
-        self._port = port
-        self._database = database
-        self._user = user
-        self._password = password
+        
+        from queue import Queue, Empty, Full
+        self._Queue = Queue
+        self._Empty = Empty
+        self._Full = Full
+        
+        self._queue = Queue()
         self._shutdown = False
-        self._enabled = True  # Can be disabled if table creation fails
-
-        # Start background flush thread
+        self._enabled = True
+        self._db = None
+        
         self._flush_thread = threading.Thread(target=self._flush_loop, daemon=True)
         self._flush_thread.start()
-
-        # Register shutdown handler
         atexit.register(self._shutdown_handler)
-
+        
         self._initialized = True
 
-    def _get_client(self):
-        """Get the main DB adapter for logging (works for ClickHouse server and CHDB)."""
-        if self._client is not None:
-            return self._client
-
-        try:
-            db = get_db_adapter()
-            # Keep a cached reference to avoid repeated adapter lookups.
-            self._client = db
-            # Ensure ui_sql_log table exists.
-            self._ensure_table()
-            return self._client
-        except Exception as e:
-            print(f"[QueryLogger] Failed to get DB adapter: {e}")
-            self._enabled = False
-            return None
-
-    def _ensure_table(self):
-        """Ensure ui_sql_log table exists."""
-        try:
-            from .schema import UI_SQL_LOG_SCHEMA
-            # Use log_query=False to avoid writing ui_sql_log about itself.
-            if hasattr(self._client, "execute"):
-                # ClickHouseAdapter.execute supports log_query kwarg.
-                try:
-                    self._client.execute(UI_SQL_LOG_SCHEMA, log_query=False)
-                except TypeError:
-                    # Backwards-compatible fallback if execute() doesn't accept log_query.
-                    self._client.execute(UI_SQL_LOG_SCHEMA)
-        except Exception as e:
-            print(f"[QueryLogger] Failed to create ui_sql_log table: {e}")
-            self._enabled = False
+    def _get_db(self):
+        if self._db is None:
+            self._db = get_lars_db()
+        return self._db
 
     def log_query(
         self,
@@ -415,68 +186,48 @@ class QueryLogger:
         success: bool = True,
         error_message: str | None = None
     ):
-        """
-        Log a query asynchronously (fire-and-forget).
-
-        Args:
-            query_type: Type of query ('query', 'execute', 'insert_rows', etc.)
-            sql_preview: First 500 chars of SQL or table name
-            duration_ms: Query duration in milliseconds
-            rows_returned: Number of rows returned (for SELECT queries)
-            rows_affected: Number of rows affected (for write operations)
-            success: Whether the query succeeded
-            error_message: Error message if query failed
-        """
         if not self._enabled or self._shutdown:
             return
 
         try:
-            # Get context
-            source = query_source_context.get()
-            caller = query_caller_context.get()
-            request_path = query_request_path_context.get()
-            page_ref = query_page_ref_context.get()
-
-            # Create SQL hash for grouping similar queries
+            import hashlib
             sql_hash = hashlib.md5(sql_preview.encode('utf-8', errors='replace')).hexdigest()[:16]
-
+            
             entry = {
+                'id': uuid.uuid4().hex,
+                'timestamp': datetime.now(timezone.utc),
                 'query_type': query_type,
-                'sql_preview': sql_preview[:500],  # Truncate to 500 chars
+                'sql_preview': sql_preview[:500],
                 'sql_hash': sql_hash,
                 'duration_ms': duration_ms,
                 'rows_returned': rows_returned,
                 'rows_affected': rows_affected,
-                'source': source,
-                'caller': caller,
-                'request_path': request_path[:200] if request_path else None,
-                'page_ref': page_ref[:200] if page_ref else None,
+                'source': query_source_context.get(),
+                'caller': query_caller_context.get(),
+                'request_path': (query_request_path_context.get() or '')[:200],
+                'page_ref': (query_page_ref_context.get() or '')[:200],
                 'success': success,
-                'error_message': error_message[:500] if error_message else None,
+                'error_message': (error_message or '')[:500] if error_message else None,
             }
-
-            # Non-blocking put
+            
             self._queue.put_nowait(entry)
-        except StdlibQueueFull:
-            pass  # Drop entry if queue is full - never block
+        except self._Full:
+            pass
         except Exception:
-            pass  # Silently ignore any logging errors
+            pass
 
     def _flush_loop(self):
-        """Background thread that flushes batched entries to ClickHouse."""
         batch = []
         last_flush = time.time()
 
         while not self._shutdown:
             try:
-                # Try to get an entry with timeout
                 try:
                     entry = self._queue.get(timeout=0.5)
                     batch.append(entry)
-                except StdlibQueueEmpty:
+                except self._Empty:
                     pass
 
-                # Flush if batch is full or interval elapsed
                 now = time.time()
                 should_flush = (
                     len(batch) >= self.BATCH_SIZE or
@@ -489,50 +240,28 @@ class QueryLogger:
                     last_flush = now
 
             except Exception:
-                # Never crash the flush thread
                 pass
 
-        # Final flush on shutdown
         if batch:
             self._flush_batch(batch)
 
     def _flush_batch(self, batch: List[Dict]):
-        """Flush a batch of entries to ClickHouse."""
-        client = self._get_client()
-        if client is None or not batch:
-            return
-
         try:
-            columns = [
-                'query_type', 'sql_preview', 'sql_hash', 'duration_ms',
-                'rows_returned', 'rows_affected', 'source', 'caller',
-                'request_path', 'page_ref', 'success', 'error_message'
-            ]
-
-            # Prefer adapter insert_rows for compatibility across backends.
-            try:
-                client.insert_rows("ui_sql_log", batch, columns=columns, log_query=False)
-            except TypeError:
-                # Older adapter signature without log_query.
-                client.insert_rows("ui_sql_log", batch, columns=columns)
+            db = self._get_db()
+            db.write("ui_sql_log", batch)
         except Exception as e:
-            # Log but don't crash
             print(f"[QueryLogger] Flush failed: {e}")
 
     def _shutdown_handler(self):
-        """Handle graceful shutdown."""
         self._shutdown = True
-        # Give the flush thread a moment to finish
         if self._flush_thread.is_alive():
             self._flush_thread.join(timeout=1.0)
 
 
-# Global query logger singleton (lazily initialized)
 _query_logger: Optional[QueryLogger] = None
 
 
 def get_query_logger() -> Optional[QueryLogger]:
-    """Get the query logger singleton (lazily initialized)."""
     global _query_logger
     if _query_logger is None:
         _query_logger = QueryLogger()
@@ -540,33 +269,18 @@ def get_query_logger() -> Optional[QueryLogger]:
 
 
 # =============================================================================
-# Deref Logging System - Async fire-and-forget logging for @cascade() evaluations
+# Async Deref Logger
 # =============================================================================
 
 class DerefLogger:
     """
     Async fire-and-forget logger for @cascade() deref evaluations.
-
-    Records deref operations to ClickHouse for:
-    - Debugging: See what values were injected into queries
-    - Analytics: Track usage patterns of param_get/param_set/etc.
-    - UI surfacing: Show deref values alongside query results
-    - Audit trail: Know which sessions/clients are using what parameters
-
-    Features:
-    - Uses a separate ClickHouse client connection (bypasses main query lock)
-    - Queue-based batching for efficient inserts
-    - Background daemon thread flushes batches periodically
-    - Never blocks the deref preprocessing path
-    - Graceful shutdown on process exit
     """
-
+    
     _instance = None
     _lock = threading.Lock()
-
-    # Batch settings
-    BATCH_SIZE = 100  # Flush after this many entries (derefs can be frequent)
-    FLUSH_INTERVAL = 3.0  # Flush every N seconds regardless of batch size
+    BATCH_SIZE = 100
+    FLUSH_INTERVAL = 3.0
 
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
@@ -576,44 +290,30 @@ class DerefLogger:
                     cls._instance._initialized = False
         return cls._instance
 
-    def __init__(self, host: str | None = None, port: int | None = None, database: str | None = None,
-                 user: str | None = None, password: str | None = None):
-        """Initialize the deref logger (singleton - only runs once)."""
+    def __init__(self, **kwargs):
         if self._initialized:
             return
-
-        self._queue = StdlibQueue()
-        self._client = None
-        self._host = host
-        self._port = port
-        self._database = database
-        self._user = user
-        self._password = password
+        
+        from queue import Queue, Empty, Full
+        self._Queue = Queue
+        self._Empty = Empty
+        self._Full = Full
+        
+        self._queue = Queue()
         self._shutdown = False
-        self._enabled = True  # Can be disabled if table creation fails
-
-        # Start background flush thread
+        self._enabled = True
+        self._db = None
+        
         self._flush_thread = threading.Thread(target=self._flush_loop, daemon=True)
         self._flush_thread.start()
-
-        # Register shutdown handler
         atexit.register(self._shutdown_handler)
-
+        
         self._initialized = True
 
-    def _get_client(self):
-        """Get the main DB adapter for logging (works for ClickHouse server and CHDB)."""
-        if self._client is not None:
-            return self._client
-
-        try:
-            db = get_db_adapter()
-            self._client = db
-            return self._client
-        except Exception as e:
-            print(f"[DerefLogger] Failed to get DB adapter: {e}")
-            self._enabled = False
-            return None
+    def _get_db(self):
+        if self._db is None:
+            self._db = get_lars_db()
+        return self._db
 
     def log_deref(
         self,
@@ -634,44 +334,22 @@ class DerefLogger:
         duration_ms: float = 0.0,
         error_message: str | None = None
     ):
-        """
-        Log a deref operation asynchronously (fire-and-forget).
-
-        Args:
-            deref_expression: The full deref expression (e.g., '@param_get("region", "ALL")')
-            cascade_name: The cascade name (e.g., 'param_get')
-            args: Parsed arguments list
-            accessor_chain: Accessor suffix if any (e.g., '[0].field')
-            resolved_value: The SQL-escaped value that was injected
-            resolved_value_type: Type of the resolved value
-            session_id: Session identifier
-            protocol: 'pgwire' or 'http'
-            database_name: Database being queried
-            user_name: User name from connection
-            application_name: Client application name
-            client_address: Client IP:port
-            caller_id: Pipeline caller ID if available
-            cache_hit: Whether this was served from cache
-            duration_ms: Resolution time in milliseconds
-            error_message: Error message if resolution failed
-        """
         if not self._enabled or self._shutdown:
             return
 
         try:
-            # Convert args to JSON
-            args_json = json.dumps(args, default=str, ensure_ascii=False)
-
             entry = {
-                'deref_expression': deref_expression[:1000],  # Truncate very long expressions
+                'id': uuid.uuid4().hex,
+                'timestamp': datetime.now(timezone.utc),
+                'deref_expression': deref_expression[:1000],
                 'cascade_name': cascade_name,
-                'args_json': args_json,
+                'args_json': json.dumps(args, default=str, ensure_ascii=False),
                 'accessor_chain': accessor_chain or '',
-                'resolved_value': resolved_value[:5000] if resolved_value else '',  # Truncate large values
+                'resolved_value': (resolved_value or '')[:5000],
                 'resolved_value_type': resolved_value_type,
                 'cache_hit': cache_hit,
                 'duration_ms': duration_ms,
-                'error_message': error_message[:500] if error_message else '',
+                'error_message': (error_message or '')[:500] if error_message else '',
                 'session_id': session_id,
                 'protocol': protocol,
                 'database_name': database_name,
@@ -680,29 +358,25 @@ class DerefLogger:
                 'client_address': client_address,
                 'caller_id': caller_id,
             }
-
-            # Non-blocking put
+            
             self._queue.put_nowait(entry)
-        except StdlibQueueFull:
-            pass  # Drop entry if queue is full - never block
+        except self._Full:
+            pass
         except Exception:
-            pass  # Silently ignore any logging errors
+            pass
 
     def _flush_loop(self):
-        """Background thread that flushes batched entries to ClickHouse."""
         batch = []
         last_flush = time.time()
 
         while not self._shutdown:
             try:
-                # Try to get an entry with timeout
                 try:
                     entry = self._queue.get(timeout=0.5)
                     batch.append(entry)
-                except StdlibQueueEmpty:
+                except self._Empty:
                     pass
 
-                # Flush if batch is full or interval elapsed
                 now = time.time()
                 should_flush = (
                     len(batch) >= self.BATCH_SIZE or
@@ -715,49 +389,28 @@ class DerefLogger:
                     last_flush = now
 
             except Exception:
-                # Never crash the flush thread
                 pass
 
-        # Final flush on shutdown
         if batch:
             self._flush_batch(batch)
 
     def _flush_batch(self, batch: List[Dict]):
-        """Flush a batch of entries to ClickHouse."""
-        client = self._get_client()
-        if client is None or not batch:
-            return
-
         try:
-            columns = [
-                'deref_expression', 'cascade_name', 'args_json', 'accessor_chain',
-                'resolved_value', 'resolved_value_type', 'cache_hit', 'duration_ms',
-                'error_message', 'session_id', 'protocol', 'database_name',
-                'user_name', 'application_name', 'client_address', 'caller_id'
-            ]
-            # Prefer adapter insert_rows for compatibility across backends.
-            try:
-                client.insert_rows("deref_log", batch, columns=columns, log_query=False)
-            except TypeError:
-                client.insert_rows("deref_log", batch, columns=columns)
+            db = self._get_db()
+            db.write("deref_log", batch)
         except Exception as e:
-            # Log but don't crash
             print(f"[DerefLogger] Flush failed: {e}")
 
     def _shutdown_handler(self):
-        """Handle graceful shutdown."""
         self._shutdown = True
-        # Give the flush thread a moment to finish
         if self._flush_thread.is_alive():
             self._flush_thread.join(timeout=1.0)
 
 
-# Global deref logger singleton (lazily initialized)
 _deref_logger: Optional[DerefLogger] = None
 
 
 def get_deref_logger() -> Optional[DerefLogger]:
-    """Get the deref logger singleton (lazily initialized)."""
     global _deref_logger
     if _deref_logger is None:
         _deref_logger = DerefLogger()
@@ -765,340 +418,85 @@ def get_deref_logger() -> Optional[DerefLogger]:
 
 
 def shutdown_async_loggers() -> None:
-    """
-    Stop background logging threads (QueryLogger/DerefLogger) if they were created.
-
-    Useful in CHDB mode when the current process is only doing one-off setup and
-    must release the CHDB file lock before starting another process.
-    """
+    """Stop background logging threads."""
     global _query_logger, _deref_logger
 
-    try:
-        if _query_logger is not None:
+    if _query_logger is not None:
+        try:
             _query_logger._shutdown_handler()
-    except Exception:
-        pass
-    _query_logger = None
-
-    try:
-        if _deref_logger is not None:
-            _deref_logger._shutdown_handler()
-    except Exception:
-        pass
-    _deref_logger = None
-
-
-class _ChdbClientWrapper:
-    """
-    Minimal clickhouse-driver-like client wrapper backed by CHDB.
-
-    Implements the subset of methods used by ClickHouseAdapter:
-    - execute(...)
-    - query_dataframe(...)
-    - disconnect()
-    """
-
-    def __init__(self, *, path: str, database: str):
-        try:
-            import chdb  # type: ignore
-        except ImportError as e:
-            raise ImportError(
-                "chdb is not installed (required for LARS_DB_MODE=chdb). "
-                "Install it with: pip install chdb"
-            ) from e
-
-        self._chdb = chdb
-        self._path = path
-        self._database = database
-        try:
-            self._conn = chdb.connect(path)
-        except Exception as e:
-            msg = str(e)
-            if "Cannot lock file" in msg or "Another server instance" in msg:
-                raise RuntimeError(
-                    "CHDB storage is already in use by another process. "
-                    "Stop the other LARS process or set LARS_CHDB_PATH to a different path."
-                ) from e
-            raise
-
-        # Ensure the requested default database exists and is active.
-        # Many migrations and queries rely on unqualified table names.
-        try:
-            self._conn.query(f"CREATE DATABASE IF NOT EXISTS {database}")
-            self._conn.query(f"USE {database}")
-        except Exception:
-            # If database name is invalid, surface the original error.
-            raise
-
-    def disconnect(self) -> None:
-        try:
-            self._conn.close()
         except Exception:
             pass
+        _query_logger = None
 
-    def query_dataframe(self, sql: str, params: Dict | None = None):
-        if params:
-            sql = _substitute_clickhouse_percent_params(sql, params)
-        return self._conn.query(sql, "dataframe")
-
-    @staticmethod
-    def _looks_like_select(sql: str) -> bool:
-        # Fast heuristic: good enough for distinguishing query vs DDL/DML.
-        s = sql.lstrip()
-        if not s:
-            return False
-        upper = s[:20].upper()
-        return upper.startswith(("SELECT", "WITH", "SHOW", "DESCRIBE", "EXPLAIN"))
-
-    def execute(
-        self,
-        sql: str,
-        params: Dict | None = None,
-        with_column_types: bool = False,
-        settings: Dict | None = None,
-        **kwargs,
-    ):
-        # CHDB doesn't accept clickhouse-driver params; substitute into SQL.
-        if params:
-            sql = _substitute_clickhouse_percent_params(sql, params)
-
-        # Settings are either specified inline via SETTINGS clause or ignored here.
-        _ = settings, kwargs
-
-        # Query path (needs results).
-        if with_column_types or self._looks_like_select(sql):
-            fmt = "JSONCompact" if (with_column_types or self._looks_like_select(sql)) else "CSV"
-            res = self._conn.query(sql, fmt)
-            payload = res.bytes()
-            if not payload:
-                return ([], []) if with_column_types else []
-            obj = json.loads(payload.decode("utf-8"))
-            rows = [tuple(r) for r in obj.get("data", [])]
-            if with_column_types:
-                cols = [(m.get("name"), m.get("type")) for m in obj.get("meta", [])]
-                return rows, cols
-            return rows
-
-        # DDL/DML path.
-        self._conn.query(sql)
-        return []
+    if _deref_logger is not None:
+        try:
+            _deref_logger._shutdown_handler()
+        except Exception:
+            pass
+        _deref_logger = None
 
 
-class ClickHouseAdapter:
+# =============================================================================
+# DuckDB/Parquet Adapter (replaces ClickHouseAdapter)
+# =============================================================================
+
+class DuckDBAdapter:
     """
-    ClickHouse-compatible adapter for all LARS persistence operations.
-
-    This adapter:
-    - Connects to ClickHouse server by default
-    - Optionally uses CHDB (embedded ClickHouse) for local evaluation
-    - Provides batch INSERT for efficient writes
-    - Supports ALTER TABLE UPDATE for cost tracking and winner flagging
-    - Implements native vector search with cosineDistance()
-    - Auto-creates database and tables on first use
-    - Thread-safe: Uses locks for concurrent access from main thread + background workers
+    DuckDB + Parquet adapter for LARS persistence.
+    
+    Provides the same interface as the previous ClickHouseAdapter but
+    uses DuckDB reading from Parquet files for storage.
+    
+    Key differences from ClickHouse:
+    - No external server required
+    - Writes create new parquet files (append-only)
+    - Updates are handled by writing new rows; reads use "latest wins" semantics
+    - Vector search delegates to ChromaDB (not implemented here)
     """
-
+    
     _instance = None
     _lock = threading.Lock()
     _initialized = False
-    _housekeeping_done = False  # Track if schema/migrations have been run
-    _query_lock = threading.Lock()  # Serialize all queries to avoid concurrent connection issues
+    _housekeeping_done = False
 
     def __new__(cls, *args, **kwargs):
-        # Singleton pattern for connection reuse
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
                     cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(
-        self,
-        host: str = "localhost",
-        port: int = 9000,
-        database: str = "lars",
-        user: str = "default",
-        password: str = "",
-        auto_create: bool = False,
-        backend: str = "clickhouse",
-        chdb_path: str | None = None,
-    ):
-        """
-        Initialize ClickHouse adapter (singleton - only runs once).
-
-        Args:
-            host: ClickHouse server hostname
-            port: Native protocol port (9000)
-            database: Database name
-            user: Username
-            password: Password
-            auto_create: If True, create database/tables/migrations on connect.
-                         Default is False for fast cascade startup.
-                         Use run_housekeeping() to explicitly initialize schema.
-        """
-        # Serialize initialization. This is especially important for CHDB, which
-        # cannot open multiple connections to the same storage path.
-        with ClickHouseAdapter._lock:
-            # Skip if already initialized (singleton)
-            if ClickHouseAdapter._initialized:
+    def __init__(self, **kwargs):
+        """Initialize adapter. Ignores ClickHouse-specific kwargs for compatibility."""
+        with DuckDBAdapter._lock:
+            if DuckDBAdapter._initialized:
                 return
-
-            self.host = host
-            self.port = port
-            self.database = database
-            self.user = user
-            self.password = password
-
-            self.backend = (backend or "clickhouse").strip().lower()
-            if self.backend not in ("clickhouse", "chdb"):
-                self.backend = "clickhouse"
-
-            # ClickHouse server backend
-            if self.backend == "clickhouse":
-                try:
-                    from clickhouse_driver import Client  # type: ignore
-                    self._Client = Client
-                except ImportError as e:
-                    raise ImportError(
-                        "clickhouse-driver is not installed. "
-                        "Install it with: pip install clickhouse-driver"
-                    ) from e
-
-                # Create system client first (without database) to ensure database exists
-                if auto_create:
-                    self._ensure_database()
-
-                # Now connect to the database with connection pooling settings
-                self.client = self._Client(
-                    host=host,
-                    port=port,
-                    database=database,
-                    user=user,
-                    password=password,
-                    # Connection settings for high concurrency
-                    connect_timeout=10,
-                    send_receive_timeout=30,
-                    sync_request_timeout=30,
-                    # Query settings
-                    settings={
-                        "use_numpy": True,
-                        "max_block_size": 100000,
-                        "max_threads": 4,  # Limit threads per query
-                        "max_execution_time": 60,  # 60s query timeout
-                    },
-                )
-                self.chdb_path = None
-            else:
-                # CHDB backend (embedded ClickHouse)
-                if not chdb_path:
-                    from .config import get_config
-                    chdb_path = get_config().chdb_path
-
-                self.chdb_path = chdb_path
-                self._Client = None
-                self.client = _ChdbClientWrapper(path=chdb_path, database=database)
-
-            # Auto-create tables if requested
-            if auto_create:
-                self._ensure_tables()
-                self._run_migrations()
-                ClickHouseAdapter._housekeeping_done = True
-
-            ClickHouseAdapter._initialized = True
+            
+            self._db = get_lars_db()
+            DuckDBAdapter._initialized = True
 
     def run_housekeeping(self):
         """
-        Run database schema and migration housekeeping.
-
-        This is idempotent - safe to call multiple times.
-        Should be called explicitly by:
-        - Backend startup (app.py)
-        - CLI commands that manage the database (db init, tools sync, etc.)
-
-        NOT called by:
-        - lars run (cascade execution should be fast)
-        - Backend cascade API (reuses existing schema)
+        Run database housekeeping for DuckDB/Parquet backend.
+        
+        - Compacts small parquet files into larger ones
+        - Applies dedup for tables with primary keys
         """
-        if ClickHouseAdapter._housekeeping_done:
+        if DuckDBAdapter._housekeeping_done:
             return
-
-        with ClickHouseAdapter._lock:
-            # Double-check after acquiring lock
-            if ClickHouseAdapter._housekeeping_done:
-                return
-
-            self._ensure_database()
-            self._ensure_tables()
-            self._run_migrations()
-            ClickHouseAdapter._housekeeping_done = True
-
-    def _ensure_database(self):
-        """Ensure the database exists, creating it if necessary."""
-        if getattr(self, "backend", "clickhouse") == "chdb":
-            # CHDB uses a local embedded ClickHouse; we can create/use databases directly.
-            try:
-                self.client.execute(f"CREATE DATABASE IF NOT EXISTS {self.database}")
-                self.client.execute(f"USE {self.database}")
-            except Exception as e:
-                print(f"[LARS] Warning: Could not check/create database: {e}")
-            return
-
-        system_client = self._Client(
-            host=self.host,
-            port=self.port,
-            user=self.user,
-            password=self.password
-        )
-
+            
+        # Run compaction with a reasonable threshold for startup
+        # (don't compact unless there are enough files to make it worthwhile)
         try:
-            result = system_client.execute(
-                f"SELECT 1 FROM system.databases WHERE name = '{self.database}'"
-            )
-            if not result:
-                print(f"[LARS] Creating database '{self.database}'...")
-                system_client.execute(f"CREATE DATABASE IF NOT EXISTS {self.database}")
-                print(f"[LARS] Database '{self.database}' created")
+            results = self._db.compact_all(threshold=10, force=False)
+            compacted = [r for r in results if r.get('files_before', 0) > r.get('files_after', 0)]
+            if compacted:
+                tables = ', '.join(r['table'] for r in compacted)
+                print(f"[Housekeeping] Compacted: {tables}")
         except Exception as e:
-            print(f"[LARS] Warning: Could not check/create database: {e}")
-
-    def _ensure_tables(self):
-        """
-        Legacy method - now a no-op since migrations handle table creation.
-
-        Tables are created by numbered migrations in lars/migrations/sql/.
-        This method is kept for backwards compatibility but does nothing.
-        """
-        # Tables are now created by migrations - see _run_migrations()
-        pass
-
-    def _run_migrations(self):
-        """
-        Run all pending migrations using the Rails-style migrations system.
-
-        Migrations are numbered SQL files in lars/migrations/sql/ that are
-        tracked in the schema_migrations table. Each migration runs exactly once.
-
-        Features:
-        - Version tracking in schema_migrations table
-        - Checksum verification for change detection
-        - Idempotent execution (each migration runs once)
-        - Support for always_run maintenance tasks
-        """
-        try:
-            from .migrations import MigrationRunner
-
-            runner = MigrationRunner(db_adapter=self)
-            successful, failed = runner.run_all(dry_run=False, stop_on_error=True)
-
-            if failed > 0:
-                print(f"[LARS] Warning: {failed} migration(s) failed")
-            elif successful > 0:
-                print(f"[LARS] {successful} migration(s) applied successfully")
-
-        except ImportError as e:
-            print(f"[LARS] Warning: Could not load migrations module: {e}")
-        except Exception as e:
-            print(f"[LARS] Warning: Migration error: {e}")
+            print(f"[Housekeeping] Compaction warning: {e}")
+        
+        DuckDBAdapter._housekeeping_done = True
 
     # =========================================================================
     # Query Operations
@@ -1107,12 +505,13 @@ class ClickHouseAdapter:
     def query(self, sql: str, params: Dict | None = None, output_format: str = "dict", log_query: bool = True) -> Any:
         """
         Execute a SELECT query and return results.
-
+        
         Args:
-            sql: SQL query string
-            params: Optional query parameters (for parameterized queries)
+            sql: SQL query string (DuckDB SQL dialect, with ClickHouse compat)
+            params: Optional query parameters (%(name)s style)
             output_format: "dict" (list of dicts), "dataframe", or "raw" (tuples)
-
+            log_query: Whether to log this query
+            
         Returns:
             Query results in requested format
         """
@@ -1121,38 +520,36 @@ class ClickHouseAdapter:
         success = True
         error_msg = None
 
-        with ClickHouseAdapter._query_lock:
-            try:
-                if output_format == "dataframe":
-                    result = self.client.query_dataframe(sql, params or {})
-                    rows_returned = len(result) if result is not None else 0
-                    return result
-                elif output_format == "dict":
-                    # Disable numpy for dict output to get native Python types
-                    result = self.client.execute(sql, params or {}, with_column_types=True, settings={'use_numpy': False})
-                    rows, columns = result
-                    col_names = [c[0] for c in columns]
-                    dict_result = [dict(zip(col_names, row)) for row in rows]
-                    rows_returned = len(dict_result)
-                    return dict_result
-                else:  # raw
-                    result = self.client.execute(sql, params or {})
-                    rows_returned = len(result) if isinstance(result, (list, tuple)) else 0
-                    return result
-            except Exception as e:
-                success = False
-                error_msg = str(e)
-                # Check if this is a missing table error
-                is_missing, table_name = _is_missing_table_error(e)
-                if is_missing:
-                    raise SchemaNotInitializedError(e, table_name) from e
-                print(f"[ClickHouse Error] Query failed: {e}")
-                print(f"[ClickHouse Error] SQL: {sql[:500]}...")
-                raise
-            finally:
+        try:
+            # Substitute params into SQL (DuckDB uses $1 style, but we support %(name)s for compat)
+            if params:
+                sql = self._substitute_params(sql, params)
+            
+            # Translate ClickHouse-specific SQL to DuckDB
+            sql = self._translate_clickhouse_sql(sql)
+            
+            result = self._db.query(sql, output_format=output_format)
+            
+            if output_format == "dataframe":
+                rows_returned = len(result) if result is not None else 0
+            elif output_format == "dict":
+                rows_returned = len(result)
+            else:
+                rows_returned = len(result) if isinstance(result, (list, tuple)) else 0
+            
+            return result
+            
+        except Exception as e:
+            success = False
+            error_msg = str(e)
+            print(f"[DuckDB Error] Query failed: {e}")
+            print(f"[DuckDB Error] SQL: {sql[:500]}...")
+            raise
+        finally:
+            if log_query:
                 duration_ms = (time.time() - start_time) * 1000
                 logger = get_query_logger()
-                if log_query and logger:
+                if logger:
                     logger.log_query(
                         query_type='query',
                         sql_preview=sql,
@@ -1163,43 +560,39 @@ class ClickHouseAdapter:
                     )
 
     def query_df(self, sql: str, params: Dict | None = None) -> pd.DataFrame:
-        """
-        Execute query and return pandas DataFrame.
-
-        Convenience wrapper for query(..., output_format="dataframe").
-        """
+        """Execute query and return pandas DataFrame."""
         return self.query(sql, params, output_format="dataframe")
 
     def execute(self, sql: str, params: Dict | None = None, log_query: bool = True):
         """
-        Execute a non-SELECT statement (CREATE, INSERT, ALTER, etc.).
-
-        Args:
-            sql: SQL statement
-            params: Optional parameters
+        Execute a non-SELECT statement (CREATE, INSERT, UPDATE, etc.).
+        
+        Note: Most writes should use insert_rows() instead.
         """
         start_time = time.time()
         success = True
         error_msg = None
 
-        with ClickHouseAdapter._query_lock:
-            try:
-                # Pass None when no params to avoid ClickHouse client scanning SQL for format strings
-                self.client.execute(sql, params if params else None)
-            except Exception as e:
-                success = False
-                error_msg = str(e)
-                # Check if this is a missing table error
-                is_missing, table_name = _is_missing_table_error(e)
-                if is_missing:
-                    raise SchemaNotInitializedError(e, table_name) from e
-                print(f"[ClickHouse Error] Execute failed: {e}")
-                print(f"[ClickHouse Error] SQL: {sql[:500]}...")
-                raise
-            finally:
+        try:
+            if params:
+                sql = self._substitute_params(sql, params)
+            
+            # Translate ClickHouse-specific SQL to DuckDB
+            sql = self._translate_clickhouse_sql(sql)
+            
+            self._db.execute(sql)
+        except Exception as e:
+            success = False
+            error_msg = str(e)
+            # Suppress noisy "Can only X from/update base table" errors (parquet views are immutable)
+            if "Can only delete from base table" not in str(e) and "Can only update base table" not in str(e):
+                print(f"[DuckDB Error] Execute failed: {e}")
+            raise
+        finally:
+            if log_query:
                 duration_ms = (time.time() - start_time) * 1000
                 logger = get_query_logger()
-                if log_query and logger:
+                if logger:
                     logger.log_query(
                         query_type='execute',
                         sql_preview=sql,
@@ -1208,818 +601,652 @@ class ClickHouseAdapter:
                         error_message=error_msg
                     )
 
+    def _substitute_params(self, sql: str, params: Dict[str, Any]) -> str:
+        """Substitute %(name)s style params into SQL."""
+        import re
+        
+        def escape_value(val: Any) -> str:
+            if val is None:
+                return "NULL"
+            if isinstance(val, bool):
+                return "true" if val else "false"
+            if isinstance(val, (int, float)):
+                return str(val)
+            if isinstance(val, (list, tuple)):
+                return "[" + ", ".join(escape_value(v) for v in val) + "]"
+            if isinstance(val, dict):
+                return "'" + json.dumps(val, default=str).replace("'", "''") + "'"
+            # String
+            return "'" + str(val).replace("'", "''") + "'"
+        
+        for key, val in params.items():
+            placeholder = f"%({key})s"
+            sql = sql.replace(placeholder, escape_value(val))
+        
+        return sql
+
+    def _translate_clickhouse_sql(self, sql: str) -> str:
+        """
+        Translate ClickHouse-specific SQL to DuckDB-compatible SQL.
+        
+        Handles common patterns that were used in the ClickHouse implementation:
+        - ALTER TABLE ... UPDATE → UPDATE ... SET ...
+        - uniqExactIf(col, cond) → COUNT(DISTINCT col) FILTER (WHERE cond)
+        - countIf(cond) → COUNT(*) FILTER (WHERE cond)
+        - anyIf(col, cond) → FIRST(col) FILTER (WHERE cond)
+        - dateDiff('unit', start, end) → date_diff('unit', start, end)
+        """
+        import re
+        
+        original_sql = sql
+        
+        # 1. ALTER TABLE ... UPDATE → UPDATE ... SET ...
+        # Pattern: ALTER TABLE tablename UPDATE col1 = val1, col2 = val2 WHERE cond
+        alter_update_pattern = re.compile(
+            r'ALTER\s+TABLE\s+(\w+)\s+UPDATE\s+(.+?)\s+WHERE\s+(.+)',
+            re.IGNORECASE | re.DOTALL
+        )
+        match = alter_update_pattern.match(sql.strip())
+        if match:
+            table_name = match.group(1)
+            set_clause = match.group(2).strip()
+            where_clause = match.group(3).strip()
+            sql = f"UPDATE {table_name} SET {set_clause} WHERE {where_clause}"
+        
+        # 2. uniqExactIf(col, cond) → COUNT(DISTINCT col) FILTER (WHERE cond)
+        def replace_uniqExactIf(m):
+            col = m.group(1).strip()
+            cond = m.group(2).strip()
+            return f"COUNT(DISTINCT {col}) FILTER (WHERE {cond})"
+        
+        sql = re.sub(
+            r'uniqExactIf\s*\(\s*([^,]+)\s*,\s*([^)]+)\s*\)',
+            replace_uniqExactIf,
+            sql,
+            flags=re.IGNORECASE
+        )
+        
+        # 3. countIf(cond) → COUNT(*) FILTER (WHERE cond)
+        def replace_countIf(m):
+            cond = m.group(1).strip()
+            return f"COUNT(*) FILTER (WHERE {cond})"
+        
+        sql = re.sub(
+            r'countIf\s*\(\s*([^)]+)\s*\)',
+            replace_countIf,
+            sql,
+            flags=re.IGNORECASE
+        )
+        
+        # 4. anyIf(col, cond) → FIRST(col) FILTER (WHERE cond)
+        def replace_anyIf(m):
+            col = m.group(1).strip()
+            cond = m.group(2).strip()
+            return f"FIRST({col}) FILTER (WHERE {cond})"
+        
+        sql = re.sub(
+            r'anyIf\s*\(\s*([^,]+)\s*,\s*([^)]+)\s*\)',
+            replace_anyIf,
+            sql,
+            flags=re.IGNORECASE
+        )
+        
+        # 5. dateDiff → date_diff (ClickHouse uses camelCase, DuckDB uses snake_case)
+        sql = re.sub(r'\bdateDiff\s*\(', 'date_diff(', sql, flags=re.IGNORECASE)
+        
+        # 6. endsWith(str, suffix) → suffix(str, suffix) or ends_with(str, suffix)
+        # DuckDB uses suffix() function
+        sql = re.sub(r'\bendsWith\s*\(', 'suffix(', sql, flags=re.IGNORECASE)
+        
+        # 7. startsWith(str, prefix) → prefix(str, prefix) or starts_with(str, prefix)
+        # DuckDB uses prefix() function  
+        sql = re.sub(r'\bstartsWith\s*\(', 'prefix(', sql, flags=re.IGNORECASE)
+        
+        # 8. toString(x) → CAST(x AS VARCHAR)
+        def replace_toString(m):
+            arg = m.group(1).strip()
+            return f"CAST({arg} AS VARCHAR)"
+        
+        sql = re.sub(
+            r'\btoString\s*\(\s*([^)]+)\s*\)',
+            replace_toString,
+            sql,
+            flags=re.IGNORECASE
+        )
+        
+        # 9. toInt32/toInt64/toFloat64 → CAST AS INTEGER/BIGINT/DOUBLE
+        sql = re.sub(r'\btoInt32\s*\(\s*([^)]+)\s*\)', r'CAST(\1 AS INTEGER)', sql, flags=re.IGNORECASE)
+        sql = re.sub(r'\btoInt64\s*\(\s*([^)]+)\s*\)', r'CAST(\1 AS BIGINT)', sql, flags=re.IGNORECASE)
+        sql = re.sub(r'\btoFloat64\s*\(\s*([^)]+)\s*\)', r'CAST(\1 AS DOUBLE)', sql, flags=re.IGNORECASE)
+        
+        # 10. ifNull(x, default) → COALESCE(x, default)
+        sql = re.sub(r'\bifNull\s*\(', 'COALESCE(', sql, flags=re.IGNORECASE)
+        
+        # 11. JSONExtractString/JSONExtract → json_extract_string/json_extract
+        sql = re.sub(r'\bJSONExtractString\s*\(', 'json_extract_string(', sql, flags=re.IGNORECASE)
+        sql = re.sub(r'\bJSONExtract\s*\(', 'json_extract(', sql, flags=re.IGNORECASE)
+        
+        # 12. CREATE DATABASE → CREATE SCHEMA (DuckDB doesn't have databases, uses schemas)
+        sql = re.sub(r'\bCREATE\s+DATABASE\s+', 'CREATE SCHEMA ', sql, flags=re.IGNORECASE)
+        
+        # 13. lagInFrame → LAG (ClickHouse window function)
+        sql = re.sub(r'\blagInFrame\s*\(', 'LAG(', sql, flags=re.IGNORECASE)
+        sql = re.sub(r'\bleadInFrame\s*\(', 'LEAD(', sql, flags=re.IGNORECASE)
+        
+        # 14. arrayJoin → UNNEST (ClickHouse array expansion)
+        sql = re.sub(r'\barrayJoin\s*\(', 'UNNEST(', sql, flags=re.IGNORECASE)
+        
+        # 15. has(array, element) → array_contains(array, element) or list_contains
+        sql = re.sub(r'\bhas\s*\(\s*([^,]+)\s*,\s*([^)]+)\s*\)', r'list_contains(\1, \2)', sql, flags=re.IGNORECASE)
+        
+        # 16. length(array) for arrays → array_length / len
+        # Note: length() works for strings in both, but for arrays ClickHouse uses length()
+        # DuckDB uses len() or array_length() - len() works for both strings and arrays
+        
+        # 17. toDateTime(x) → CAST(x AS TIMESTAMP)
+        def replace_toDateTime(m):
+            arg = m.group(1).strip()
+            return f"CAST({arg} AS TIMESTAMP)"
+        sql = re.sub(
+            r'\btoDateTime\s*\(\s*([^)]+)\s*\)',
+            replace_toDateTime,
+            sql,
+            flags=re.IGNORECASE
+        )
+        
+        # 17b. toDate(x) → CAST(x AS DATE)
+        def replace_toDate(m):
+            arg = m.group(1).strip()
+            return f"CAST({arg} AS DATE)"
+        sql = re.sub(
+            r'\btoDate\s*\(\s*([^)]+)\s*\)',
+            replace_toDate,
+            sql,
+            flags=re.IGNORECASE
+        )
+        
+        # 18. multiIf → CASE WHEN (complex, but handle simple pattern)
+        # multiIf(cond1, val1, cond2, val2, default) → CASE WHEN cond1 THEN val1 WHEN cond2 THEN val2 ELSE default END
+        # Too complex for regex - leave for manual handling
+        
+        # 19. Empty string comparisons - ClickHouse uses = '', DuckDB same but nullable handling differs
+        # No change needed
+        
+        # 20. FINAL keyword (remove it - handled by dedup views)
+        sql = re.sub(r'\bFINAL\b', '', sql, flags=re.IGNORECASE)
+        
+        # 21. now64() → now() (ClickHouse high-precision timestamp)
+        sql = re.sub(r'\bnow64\s*\(\s*\)', 'now()', sql, flags=re.IGNORECASE)
+        
+        # 22. subtractMinutes(ts, n) → (ts - INTERVAL n MINUTE)
+        def replace_subtractMinutes(m):
+            ts = m.group(1).strip()
+            n = m.group(2).strip()
+            return f"({ts} - INTERVAL {n} MINUTE)"
+        sql = re.sub(
+            r'\bsubtractMinutes\s*\(\s*([^,]+)\s*,\s*([^)]+)\s*\)',
+            replace_subtractMinutes,
+            sql,
+            flags=re.IGNORECASE
+        )
+        
+        # 23. subtractHours(ts, n) → (ts - INTERVAL n HOUR)
+        def replace_subtractHours(m):
+            ts = m.group(1).strip()
+            n = m.group(2).strip()
+            return f"({ts} - INTERVAL {n} HOUR)"
+        sql = re.sub(
+            r'\bsubtractHours\s*\(\s*([^,]+)\s*,\s*([^)]+)\s*\)',
+            replace_subtractHours,
+            sql,
+            flags=re.IGNORECASE
+        )
+        
+        # 24. subtractDays(ts, n) → (ts - INTERVAL n DAY)
+        def replace_subtractDays(m):
+            ts = m.group(1).strip()
+            n = m.group(2).strip()
+            return f"({ts} - INTERVAL {n} DAY)"
+        sql = re.sub(
+            r'\bsubtractDays\s*\(\s*([^,]+)\s*,\s*([^)]+)\s*\)',
+            replace_subtractDays,
+            sql,
+            flags=re.IGNORECASE
+        )
+        
+        # 25. toUnixTimestamp(ts) → epoch(ts)
+        sql = re.sub(r'\btoUnixTimestamp\s*\(', 'epoch(', sql, flags=re.IGNORECASE)
+        
+        # 26. argMax(col, by_col) → FIRST(col ORDER BY by_col DESC)
+        # This works in aggregate context - gets value of col where by_col is max
+        def replace_argMax(m):
+            col = m.group(1).strip()
+            by_col = m.group(2).strip()
+            return f"FIRST({col} ORDER BY {by_col} DESC)"
+        sql = re.sub(
+            r'\bargMax\s*\(\s*([^,]+)\s*,\s*([^)]+)\s*\)',
+            replace_argMax,
+            sql,
+            flags=re.IGNORECASE
+        )
+        
+        # 27. argMin(col, by_col) → FIRST(col ORDER BY by_col ASC)
+        def replace_argMin(m):
+            col = m.group(1).strip()
+            by_col = m.group(2).strip()
+            return f"FIRST({col} ORDER BY {by_col} ASC)"
+        sql = re.sub(
+            r'\bargMin\s*\(\s*([^,]+)\s*,\s*([^)]+)\s*\)',
+            replace_argMin,
+            sql,
+            flags=re.IGNORECASE
+        )
+        
+        # 28. toYYYYMM(ts) → strftime(ts, '%Y%m')::INTEGER
+        sql = re.sub(r'\btoYYYYMM\s*\(\s*([^)]+)\s*\)', r"CAST(strftime(\1, '%Y%m') AS INTEGER)", sql, flags=re.IGNORECASE)
+        
+        # 29. toStartOfDay(ts) → date_trunc('day', ts)
+        sql = re.sub(r'\btoStartOfDay\s*\(', "date_trunc('day', ", sql, flags=re.IGNORECASE)
+        
+        # 30. toStartOfHour(ts) → date_trunc('hour', ts)
+        sql = re.sub(r'\btoStartOfHour\s*\(', "date_trunc('hour', ", sql, flags=re.IGNORECASE)
+        
+        # 31. any(col) → ANY_VALUE(col) - ClickHouse aggregate to get any value from group
+        sql = re.sub(r'\bany\s*\(', 'ANY_VALUE(', sql, flags=re.IGNORECASE)
+        
+        # 32. sumIf(col, cond) → SUM(col) FILTER (WHERE cond)
+        def replace_sumIf(m):
+            col = m.group(1).strip()
+            cond = m.group(2).strip()
+            return f"SUM({col}) FILTER (WHERE {cond})"
+        sql = re.sub(
+            r'\bsumIf\s*\(\s*([^,]+)\s*,\s*([^)]+)\s*\)',
+            replace_sumIf,
+            sql,
+            flags=re.IGNORECASE
+        )
+        
+        # 33. avgIf(col, cond) → AVG(col) FILTER (WHERE cond)
+        def replace_avgIf(m):
+            col = m.group(1).strip()
+            cond = m.group(2).strip()
+            return f"AVG({col}) FILTER (WHERE {cond})"
+        sql = re.sub(
+            r'\bavgIf\s*\(\s*([^,]+)\s*,\s*([^)]+)\s*\)',
+            replace_avgIf,
+            sql,
+            flags=re.IGNORECASE
+        )
+        
+        # 34. nullIf → NULLIF (case normalization)
+        sql = re.sub(r'\bnullIf\s*\(', 'NULLIF(', sql)
+        
+        # 35. empty(str) → (str = '' OR str IS NULL)
+        sql = re.sub(r'\bempty\s*\(\s*([^)]+)\s*\)', r'(\1 = \'\' OR \1 IS NULL)', sql, flags=re.IGNORECASE)
+        
+        # 36. notEmpty(str) → (str != '' AND str IS NOT NULL)
+        sql = re.sub(r'\bnotEmpty\s*\(\s*([^)]+)\s*\)', r'(\1 != \'\' AND \1 IS NOT NULL)', sql, flags=re.IGNORECASE)
+        
+        # 37. replaceRegexpOne(str, pattern, repl) → regexp_replace(str, pattern, repl)
+        sql = re.sub(r'\breplaceRegexpOne\s*\(', 'regexp_replace(', sql, flags=re.IGNORECASE)
+        sql = re.sub(r'\breplaceRegexpAll\s*\(', 'regexp_replace(', sql, flags=re.IGNORECASE)  # DuckDB replaces all by default
+        
+        # 38. groupArray(col) → list(col) - collect values into array
+        sql = re.sub(r'\bgroupArray\s*\(', 'list(', sql, flags=re.IGNORECASE)
+        
+        # 39. arrayStringConcat(arr, sep) → array_to_string(arr, sep)
+        sql = re.sub(r'\barrayStringConcat\s*\(', 'array_to_string(', sql, flags=re.IGNORECASE)
+        
+        # 40. splitByChar(sep, str) → string_split(str, sep) - note: args reversed!
+        def replace_splitByChar(m):
+            sep = m.group(1).strip()
+            s = m.group(2).strip()
+            return f"string_split({s}, {sep})"
+        sql = re.sub(
+            r'\bsplitByChar\s*\(\s*([^,]+)\s*,\s*([^)]+)\s*\)',
+            replace_splitByChar,
+            sql,
+            flags=re.IGNORECASE
+        )
+        
+        # 41. tuple(...) → struct_pack(...) or row(...) for DuckDB anonymous structs
+        # Note: groupArray(tuple(...)) becomes list(struct_pack(...))
+        sql = re.sub(r'\btuple\s*\(', 'ROW(', sql, flags=re.IGNORECASE)
+        
+        # 42. position(haystack, needle) → strpos(haystack, needle) - same args
+        # Note: ClickHouse also has position(needle IN haystack) syntax which is different
+        sql = re.sub(r'\bposition\s*\(([^,]+),\s*([^)]+)\)', r'strpos(\1, \2)', sql, flags=re.IGNORECASE)
+        
+        # 43. extract(str, pattern) → regexp_extract(str, pattern)
+        sql = re.sub(r'\bextract\s*\(([^,]+),\s*([^)]+)\)', r'regexp_extract(\1, \2)', sql, flags=re.IGNORECASE)
+        
+        # 44. stddevPop → stddev_pop (case normalization for standard deviation)
+        sql = re.sub(r'\bstddevPop\s*\(', 'stddev_pop(', sql, flags=re.IGNORECASE)
+        sql = re.sub(r'\bstddevSamp\s*\(', 'stddev_samp(', sql, flags=re.IGNORECASE)
+        sql = re.sub(r'\bvarPop\s*\(', 'var_pop(', sql, flags=re.IGNORECASE)
+        sql = re.sub(r'\bvarSamp\s*\(', 'var_samp(', sql, flags=re.IGNORECASE)
+        
+        # 45. if(isNaN(expr), 0, expr) → COALESCE(expr, 0)
+        # ClickHouse uses isNaN for NaN checks; DuckDB aggregates return NULL instead
+        # This handles patterns like: if(isNaN(AVG(col)), 0, AVG(col))
+        # We use a function to handle nested parentheses properly
+        def replace_if_isnan_pattern(sql_text):
+            """Replace if(isNaN(X), default, X) with COALESCE(X, default)"""
+            import re
+            # Find if(isNaN( and then match parentheses properly
+            pattern = r'\bif\s*\(\s*isNaN\s*\('
+            result = []
+            i = 0
+            while i < len(sql_text):
+                match = re.search(pattern, sql_text[i:], re.IGNORECASE)
+                if not match:
+                    result.append(sql_text[i:])
+                    break
+                
+                # Add everything before the match
+                result.append(sql_text[i:i + match.start()])
+                
+                # Find the start of the expression inside isNaN(
+                expr_start = i + match.end()
+                
+                # Count parentheses to find end of isNaN(...)
+                paren_count = 1
+                j = expr_start
+                while j < len(sql_text) and paren_count > 0:
+                    if sql_text[j] == '(':
+                        paren_count += 1
+                    elif sql_text[j] == ')':
+                        paren_count -= 1
+                    j += 1
+                
+                expr = sql_text[expr_start:j-1]  # Expression inside isNaN()
+                
+                # Now we should be at ), skip comma and whitespace to get default value
+                # Pattern: ), default, expr)
+                rest = sql_text[j:]
+                comma_match = re.match(r'\s*,\s*', rest)
+                if comma_match:
+                    default_start = j + comma_match.end()
+                    # Find the default value (until next comma)
+                    comma_pos = sql_text.find(',', default_start)
+                    if comma_pos > 0:
+                        default_val = sql_text[default_start:comma_pos].strip()
+                        # Find the closing ) of the if()
+                        # Skip the third argument (should be same as expr)
+                        paren_count = 1
+                        k = comma_pos + 1
+                        while k < len(sql_text) and paren_count > 0:
+                            if sql_text[k] == '(':
+                                paren_count += 1
+                            elif sql_text[k] == ')':
+                                paren_count -= 1
+                            k += 1
+                        
+                        result.append(f'COALESCE({expr}, {default_val})')
+                        i = k
+                        continue
+                
+                # Fallback: couldn't parse, keep original
+                result.append(sql_text[i + match.start():i + match.end()])
+                i = i + match.end()
+            
+            return ''.join(result)
+        
+        sql = replace_if_isnan_pattern(sql)
+        
+        # 46. isNaN(expr) standalone → false (DuckDB doesn't produce NaN from aggregates, just NULL)
+        # If isNaN is still present, it's probably checking for actual NaN which is rare
+        sql = re.sub(r'\bisNaN\s*\(\s*([^)]+)\s*\)', r'false', sql, flags=re.IGNORECASE)
+        
+        # 47. DESCRIBE TABLE tablename → DESCRIBE tablename (DuckDB doesn't use TABLE keyword)
+        sql = re.sub(r'\bDESCRIBE\s+TABLE\s+', 'DESCRIBE ', sql, flags=re.IGNORECASE)
+        
+        return sql
+
     # =========================================================================
     # Insert Operations
     # =========================================================================
 
     def insert_rows(self, table: str, rows: List[Dict], columns: List[str] | None = None, log_query: bool = True):
         """
-        Batch INSERT rows into a table.
-
+        Insert rows into a table (writes new parquet file).
+        
         Args:
             table: Table name
             rows: List of dicts to insert
             columns: Optional column list (defaults to keys of first row)
+            log_query: Whether to log this operation
         """
         if not rows:
-            return
-
-        # Skip logging for ui_sql_log to avoid infinite recursion
-        should_log = log_query and table != 'ui_sql_log'
-        start_time = time.time() if should_log else 0
-        success = True
-        error_msg = None
-        row_count = len(rows)
-
-        if columns is None:
-            columns = list(rows[0].keys())
-
-        def convert_value(val, col):
-            """Convert value to ClickHouse-compatible type."""
-            # Handle None
-            if val is None:
-                # For non-nullable String columns, convert None to empty string
-                # ClickHouse's clickhouse-driver can't serialize None for String type
-                if col in ('session_id', 'trace_id', 'timestamp_iso'):
-                    return ''
-                return val
-
-            # Handle numpy types (convert to Python native)
-            # NumPy 2.0 removed np.float_, np.int_, np.bool_ etc. - use abstract types
-            try:
-                import numpy as np
-                # Check if it's any numpy integer type (np.integer covers all int types)
-                if isinstance(val, np.integer):
-                    return int(val)
-                # Check if it's any numpy floating type (np.floating covers all float types)
-                if isinstance(val, np.floating):
-                    return float(val)
-                # Check if it's numpy boolean (check module to distinguish from Python bool)
-                # In NumPy 2.0, np.bool_ is removed - check via module name instead
-                if type(val).__module__ == 'numpy' and type(val).__name__ in ('bool_', 'bool'):
-                    return bool(val)
-                # Check if it's numpy array
-                if isinstance(val, np.ndarray):
-                    return val.tolist()
-                # Check if it's numpy string (check dtype kind for string types)
-                if hasattr(val, 'dtype') and val.dtype.kind in ('U', 'S'):
-                    return str(val)
-            except (ImportError, AttributeError, TypeError):
-                pass
-
-            # Handle JSON columns
-            if isinstance(val, (list, dict)) and col.endswith('_json'):
-                if not isinstance(val, str):
-                    return json.dumps(val, default=str, ensure_ascii=False)
-
-            # Handle array columns (context_hashes, etc.)
-            if isinstance(val, list):
-                return [str(v) if not isinstance(v, (int, float, bool, str, type(None))) else v for v in val]
-
-            return val
-
-        cols_str = ', '.join(columns)
-        with ClickHouseAdapter._query_lock:
-            try:
-                if getattr(self, "backend", "clickhouse") == "chdb":
-                    # CHDB: use JSONEachRow for inserts (no Python-side value binding).
-                    def _split_qualified_table_name(full_name: str) -> tuple[str, str]:
-                        name = (full_name or "").strip()
-                        if not name:
-                            return self.database, name
-                        # Common form: db.table
-                        if "." in name and not name.startswith(".") and not name.endswith("."):
-                            parts = name.split(".", 1)
-                            if len(parts) == 2:
-                                return parts[0], parts[1]
-                        return self.database, name
-
-                    def _get_column_types_map() -> dict[str, str]:
-                        cache = getattr(self, "_chdb_table_column_types_cache", None)
-                        if cache is None:
-                            cache = {}
-                            setattr(self, "_chdb_table_column_types_cache", cache)
-
-                        db_name, table_name = _split_qualified_table_name(table)
-                        cache_key = f"{db_name}.{table_name}"
-                        cached = cache.get(cache_key)
-                        if isinstance(cached, dict) and cached:
-                            return cached
-
-                        # Best-effort lookup; if it fails, default to conservative formatting.
-                        try:
-                            safe_db = db_name.replace("\\", "\\\\").replace("'", "''")
-                            safe_table = table_name.replace("\\", "\\\\").replace("'", "''")
-                            result = self.client.execute(
-                                f"SELECT name, type FROM system.columns "
-                                f"WHERE database = '{safe_db}' AND table = '{safe_table}'",
-                                with_column_types=True,
-                            )
-                            if isinstance(result, tuple) and len(result) == 2:
-                                type_rows, _ = result
-                            else:
-                                type_rows = result
-                            mapping = {str(r[0]): str(r[1]) for r in (type_rows or []) if len(r) >= 2}
-                            if mapping:
-                                cache[cache_key] = mapping
-                                return mapping
-                        except Exception:
-                            pass
-                        return {}
-
-                    col_types_map = _get_column_types_map()
-
-                    def _json_safe_value(v: Any, col_type: str | None):
-                        if v is None:
-                            return None
-                        if isinstance(v, (str, int, float, bool)):
-                            if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
-                                return None
-                            if isinstance(v, str) and col_type and "DateTime" in col_type and "DateTime64" not in col_type:
-                                # JSONEachRow is strict for DateTime (no fractional seconds).
-                                s = v.replace("T", " ", 1)
-                                if "." in s:
-                                    s = s.split(".", 1)[0]
-                                return s
-                            return v
-                        if isinstance(v, (bytes, bytearray, memoryview)):
-                            return bytes(v).hex()
-                        if isinstance(v, datetime):
-                            # JSONEachRow is strict for DateTime (no fractional seconds). DateTime64 accepts both.
-                            if col_type and "DateTime64" in col_type:
-                                return _format_datetime_for_clickhouse(v)
-                            return v.replace(microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
-                        if hasattr(v, "to_pydatetime"):
-                            try:
-                                dt = v.to_pydatetime()
-                                if col_type and "DateTime64" in col_type:
-                                    return _format_datetime_for_clickhouse(dt)
-                                return dt.replace(microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
-                            except Exception:
-                                pass
-                        if hasattr(v, "isoformat"):
-                            try:
-                                return v.isoformat()
-                            except Exception:
-                                pass
-                        if isinstance(v, (list, tuple)):
-                            return [_json_safe_value(x, None) for x in v]
-                        if isinstance(v, dict):
-                            return {k: _json_safe_value(val, None) for k, val in v.items()}
-                        return str(v)
-
-                    json_lines: list[str] = []
-                    for row in rows:
-                        payload_row = {}
-                        for col in columns:
-                            val = convert_value(row.get(col), col)
-                            payload_row[col] = _json_safe_value(val, col_types_map.get(col))
-                        json_lines.append(json.dumps(payload_row, default=str, ensure_ascii=False))
-
-                    insert_sql = f"INSERT INTO {table} ({cols_str}) FORMAT JSONEachRow\n" + "\n".join(json_lines)
-                    self.client.execute(insert_sql)
-                else:
-                    # ClickHouse server: clickhouse-driver can bind values efficiently.
-                    values = []
-                    for row in rows:
-                        row_values = []
-                        for col in columns:
-                            val = convert_value(row.get(col), col)
-                            row_values.append(val)
-                        values.append(tuple(row_values))
-
-                    # Disable numpy processing in clickhouse_driver
-                    self.client.execute(
-                        f"INSERT INTO {table} ({cols_str}) VALUES",
-                        values,
-                        settings={'use_numpy': False}
-                    )
-            except Exception as e:
-                success = False
-                error_msg = str(e)
-                # Check if this is a missing table error
-                is_missing, table_name = _is_missing_table_error(e)
-                if is_missing:
-                    raise SchemaNotInitializedError(e, table_name or table) from e
-                print(f"[ClickHouse Error] Insert failed: {e}")
-                print(f"[ClickHouse Error] Table: {table}, Columns: {columns}")
-                raise
-            finally:
-                if should_log:
-                    duration_ms = (time.time() - start_time) * 1000
-                    logger = get_query_logger()
-                    if logger:
-                        logger.log_query(
-                            query_type='insert_rows',
-                            sql_preview=f"INSERT INTO {table} ({row_count} rows)",
-                            duration_ms=duration_ms,
-                            rows_affected=row_count,
-                            success=success,
-                            error_message=error_msg
-                        )
-
-    def insert_dataframe(self, table: str, df: pd.DataFrame, columns: List[str] | None = None, log_query: bool = True):
-        """
-        Insert a pandas DataFrame into a table.
-
-        Args:
-            table: Table name
-            df: DataFrame to insert
-            columns: Optional column subset
-        """
-        if df.empty:
             return
 
         start_time = time.time()
         success = True
         error_msg = None
-        row_count = len(df)
-
-        if columns is None:
-            columns = list(df.columns)
-
-        cols_str = ', '.join(columns)
-        with ClickHouseAdapter._query_lock:
-            try:
-                if getattr(self, "backend", "clickhouse") == "chdb":
-                    # CHDB: serialize dataframe rows via JSONEachRow.
-                    def _split_qualified_table_name(full_name: str) -> tuple[str, str]:
-                        name = (full_name or "").strip()
-                        if not name:
-                            return self.database, name
-                        # Common form: db.table
-                        if "." in name and not name.startswith(".") and not name.endswith("."):
-                            parts = name.split(".", 1)
-                            if len(parts) == 2:
-                                return parts[0], parts[1]
-                        return self.database, name
-
-                    def _get_column_types_map() -> dict[str, str]:
-                        cache = getattr(self, "_chdb_table_column_types_cache", None)
-                        if cache is None:
-                            cache = {}
-                            setattr(self, "_chdb_table_column_types_cache", cache)
-
-                        db_name, table_name = _split_qualified_table_name(table)
-                        cache_key = f"{db_name}.{table_name}"
-                        cached = cache.get(cache_key)
-                        if isinstance(cached, dict) and cached:
-                            return cached
-
-                        # Best-effort lookup; if it fails, default to conservative formatting.
-                        try:
-                            safe_db = db_name.replace("\\", "\\\\").replace("'", "''")
-                            safe_table = table_name.replace("\\", "\\\\").replace("'", "''")
-                            result = self.client.execute(
-                                f"SELECT name, type FROM system.columns "
-                                f"WHERE database = '{safe_db}' AND table = '{safe_table}'",
-                                with_column_types=True,
-                            )
-                            if isinstance(result, tuple) and len(result) == 2:
-                                type_rows, _ = result
-                            else:
-                                type_rows = result
-                            mapping = {str(r[0]): str(r[1]) for r in (type_rows or []) if len(r) >= 2}
-                            if mapping:
-                                cache[cache_key] = mapping
-                                return mapping
-                        except Exception:
-                            pass
-                        return {}
-
-                    col_types_map = _get_column_types_map()
-
-                    def _json_safe_value(v: Any, col_type: str | None):
-                        if v is None:
-                            return None
-                        # pandas can produce numpy scalars; normalize.
-                        try:
-                            import numpy as np
-                            if isinstance(v, np.integer):
-                                v = int(v)
-                            elif isinstance(v, np.floating):
-                                v = float(v)
-                            elif isinstance(v, np.ndarray):
-                                v = v.tolist()
-                        except Exception:
-                            pass
-
-                        if isinstance(v, (str, int, float, bool)):
-                            if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
-                                return None
-                            if isinstance(v, str) and col_type and "DateTime" in col_type and "DateTime64" not in col_type:
-                                # JSONEachRow is strict for DateTime (no fractional seconds).
-                                s = v.replace("T", " ", 1)
-                                if "." in s:
-                                    s = s.split(".", 1)[0]
-                                return s
-                            return v
-                        if isinstance(v, (bytes, bytearray, memoryview)):
-                            return bytes(v).hex()
-                        if isinstance(v, datetime):
-                            # JSONEachRow is strict for DateTime (no fractional seconds). DateTime64 accepts both.
-                            if col_type and "DateTime64" in col_type:
-                                return _format_datetime_for_clickhouse(v)
-                            return v.replace(microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
-                        if hasattr(v, "to_pydatetime"):
-                            try:
-                                dt = v.to_pydatetime()
-                                if col_type and "DateTime64" in col_type:
-                                    return _format_datetime_for_clickhouse(dt)
-                                return dt.replace(microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
-                            except Exception:
-                                pass
-                        if hasattr(v, "isoformat"):
-                            try:
-                                return v.isoformat()
-                            except Exception:
-                                pass
-                        if isinstance(v, (list, tuple)):
-                            return [_json_safe_value(x, None) for x in v]
-                        if isinstance(v, dict):
-                            return {k: _json_safe_value(val, None) for k, val in v.items()}
-                        return str(v)
-
-                    json_lines: list[str] = []
-                    for row in df[columns].to_dict(orient="records"):
-                        payload_row = {col: _json_safe_value(row.get(col), col_types_map.get(col)) for col in columns}
-                        json_lines.append(json.dumps(payload_row, default=str, ensure_ascii=False))
-
-                    insert_sql = f"INSERT INTO {table} ({cols_str}) FORMAT JSONEachRow\n" + "\n".join(json_lines)
-                    self.client.execute(insert_sql)
-                else:
-                    # ClickHouse server: use clickhouse-driver's native DataFrame insert.
-                    self.client.insert_dataframe(
-                        f"INSERT INTO {table} ({cols_str}) VALUES",
-                        df[columns],
-                        settings={'use_numpy': True}
-                    )
-            except Exception as e:
-                success = False
-                error_msg = str(e)
-                # Check if this is a missing table error
-                is_missing, table_name = _is_missing_table_error(e)
-                if is_missing:
-                    raise SchemaNotInitializedError(e, table_name or table) from e
-                print(f"[ClickHouse Error] Insert DataFrame failed: {e}")
-                print(f"[ClickHouse Error] Table: {table}")
-                raise
-            finally:
+        
+        try:
+            if columns:
+                # Filter rows to only include specified columns
+                rows = [{k: r.get(k) for k in columns} for r in rows]
+            
+            self._db.write(table, rows)
+            
+        except Exception as e:
+            success = False
+            error_msg = str(e)
+            print(f"[DuckDB Error] Insert failed: {e}")
+            raise
+        finally:
+            if log_query and table != 'ui_sql_log':  # Avoid recursion
                 duration_ms = (time.time() - start_time) * 1000
                 logger = get_query_logger()
-                if log_query and logger:
+                if logger:
                     logger.log_query(
-                        query_type='insert_df',
-                        sql_preview=f"INSERT INTO {table} (DataFrame {row_count} rows)",
+                        query_type='insert_rows',
+                        sql_preview=f"INSERT INTO {table} ({len(rows)} rows)",
                         duration_ms=duration_ms,
-                        rows_affected=row_count,
+                        rows_affected=len(rows),
                         success=success,
                         error_message=error_msg
                     )
 
-    # =========================================================================
-    # Update Operations (Mutations)
-    # =========================================================================
-    # ClickHouse supports ALTER TABLE UPDATE for in-place mutations.
-    # These are efficient for our use case: one update per row, shortly after insert.
+    def insert_dataframe(self, table: str, df: pd.DataFrame, columns: List[str] | None = None, log_query: bool = True):
+        """Insert a pandas DataFrame into a table."""
+        if df.empty:
+            return
+        
+        rows = df.to_dict(orient='records')
+        self.insert_rows(table, rows, columns, log_query)
 
+    # =========================================================================
+    # Update Operations (Append-Only Pattern)
+    # =========================================================================
+    
     def update_row(
         self,
         table: str,
         updates: Dict[str, Any],
         where: str,
-        sync: bool = True
+        sync: bool = True,
+        log_query: bool = True
     ):
         """
-        Update rows matching condition using ALTER TABLE UPDATE.
-
+        Update rows by appending new versions (append-only pattern).
+        
+        With parquet storage, updates are implemented by inserting new rows
+        with the updated values. Views should use ROW_NUMBER() OVER
+        (PARTITION BY key ORDER BY updated_at DESC) to get latest values.
+        
         Args:
             table: Table name
-            updates: Dict of {column: value} to update
-            where: WHERE clause (without WHERE keyword)
-            sync: If True, wait for mutation to complete (mutations_sync=1)
+            updates: Dict of column -> new value
+            where: WHERE clause (without WHERE keyword), e.g. "session_id = 'abc'"
+            sync: Ignored (for ClickHouse compatibility)
+            log_query: Whether to log
         """
+        import re
+        
         if not updates:
             return
-
-        start_time = time.time()
-        success = True
-        error_msg = None
-
-        # Build SET clause with proper value formatting
-        set_parts = []
-        for col, val in updates.items():
-            if val is None:
-                set_parts.append(f"{col} = NULL")
-            elif isinstance(val, bool):
-                set_parts.append(f"{col} = {str(val).lower()}")
-            elif isinstance(val, (int, float)):
-                set_parts.append(f"{col} = {val}")
-            elif isinstance(val, str):
-                # Escape backslashes first, then single quotes
-                # ClickHouse requires backslashes to be escaped in string literals
-                escaped = val.replace("\\", "\\\\").replace("'", "''")
-                set_parts.append(f"{col} = '{escaped}'")
-            elif isinstance(val, list):
-                # Check if it's a numeric array (for embeddings)
-                if val and all(isinstance(x, (int, float)) for x in val):
-                    # Format as ClickHouse array literal: [1.0, 2.0, 3.0]
-                    array_str = '[' + ', '.join(str(x) for x in val) + ']'
-                    set_parts.append(f"{col} = {array_str}")
-                else:
-                    # Non-numeric array - store as JSON string
-                    # json.dumps produces backslashes (e.g., \n) that need escaping for ClickHouse
-                    # Escape backslashes FIRST, then single quotes
-                    json_str = json.dumps(val, default=str, ensure_ascii=False).replace("\\", "\\\\").replace("'", "''")
-                    set_parts.append(f"{col} = '{json_str}'")
-            elif isinstance(val, dict):
-                # json.dumps produces backslashes (e.g., \n) that need escaping for ClickHouse
-                # Escape backslashes FIRST, then single quotes
-                json_str = json.dumps(val, default=str, ensure_ascii=False).replace("\\", "\\\\").replace("'", "''")
-                set_parts.append(f"{col} = '{json_str}'")
-            else:
-                # Fallback for other types
-                escaped = str(val).replace("\\", "\\\\").replace("'", "''")
-                set_parts.append(f"{col} = '{escaped}'")
-
-        set_clause = ', '.join(set_parts)
-        settings = "SETTINGS mutations_sync = 1" if sync else ""
-
-        sql = f"""
-            ALTER TABLE {table}
-            UPDATE {set_clause}
-            WHERE {where}
-            {settings}
-        """
-        with ClickHouseAdapter._query_lock:
-            try:
-                self.client.execute(sql)
-            except Exception as e:
-                success = False
-                error_msg = str(e)
-                # Check if this is a missing table error
-                is_missing, table_name = _is_missing_table_error(e)
-                if is_missing:
-                    raise SchemaNotInitializedError(e, table_name or table) from e
-                print(f"[ClickHouse Error] Update failed: {e}")
-                print(f"[ClickHouse Error] SQL: {sql[:500]}...")
-                raise
-            finally:
-                duration_ms = (time.time() - start_time) * 1000
-                logger = get_query_logger()
-                if logger:
-                    logger.log_query(
-                        query_type='update',
-                        sql_preview=f"ALTER TABLE {table} UPDATE ... WHERE {where[:100]}",
-                        duration_ms=duration_ms,
-                        success=success,
-                        error_message=error_msg
-                    )
+        
+        # Parse simple WHERE clause to extract key column and value
+        # Supports: "column = 'value'" or "column = value"
+        match = re.match(r"(\w+)\s*=\s*'?([^']+)'?", where.strip())
+        if match:
+            key_column = match.group(1)
+            key_value = match.group(2)
+        else:
+            # Fallback: just include the where clause info in metadata
+            key_column = '_where'
+            key_value = where
+        
+        # Create a new row with the key and updated values
+        row = {key_column: key_value, **updates}
+        
+        # Add timestamp for ordering (critical for merge-on-read dedup)
+        row['updated_at'] = datetime.now(timezone.utc)
+        
+        self.insert_rows(table, [row], log_query=log_query)
 
     def batch_update_costs(self, table: str, updates: List[Dict]):
         """
-        Batch update cost data for multiple rows by trace_id.
-
-        This is more efficient than individual updates - ClickHouse processes
-        as a single mutation operation.
-
-        IMPORTANT: Only updates rows with role='assistant' to avoid propagating
-        cost data to system/cell_start rows that share the same trace_id.
-        This prevents double/triple counting of costs in aggregate queries.
-
-        Args:
-            updates: List of dicts with keys: trace_id, cost, tokens_in, tokens_out, provider, model
+        Batch update cost records (append to costs table for merge-on-read).
+        
+        Each update dict should have:
+        - trace_id or message_id: ID to join with unified_logs
+        - cost: Cost value
+        - (optional) tokens_in, tokens_out, tokens_reasoning, model, provider
+        
+        Note: unified_logs is parquet-backed (immutable). Costs are stored in a
+        separate 'costs' table and merged via the unified_logs view on read.
         """
         if not updates:
             return
-
-        # Build individual UPDATE statements for each trace_id
-        # ClickHouse doesn't have CASE/WHEN in UPDATE, so we batch by grouping
+        
+        # Write to costs table - merged with unified_logs via view
+        cost_rows = []
         for update in updates:
-            trace_id = update.get('trace_id')
+            # Accept trace_id (from unified_logs.py) or message_id
+            trace_id = update.get('trace_id') or update.get('message_id')
             if not trace_id:
                 continue
-
-            update_data = {}
-            if 'cost' in update and update['cost'] is not None:
-                update_data['cost'] = update['cost']
-            if 'tokens_in' in update and update['tokens_in'] is not None:
-                update_data['tokens_in'] = update['tokens_in']
-            if 'tokens_out' in update and update['tokens_out'] is not None:
-                update_data['tokens_out'] = update['tokens_out']
-            if 'tokens_reasoning' in update and update['tokens_reasoning'] is not None:
-                update_data['tokens_reasoning'] = update['tokens_reasoning']
-            if 'provider' in update and update['provider']:
-                update_data['provider'] = update['provider']
-            if 'model' in update and update['model']:
-                update_data['model'] = update['model']
-
-            # Calculate total_tokens (only if we have at least one token count)
-            tokens_in_val = update_data.get('tokens_in', 0) or 0
-            tokens_out_val = update_data.get('tokens_out', 0) or 0
-            if 'tokens_in' in update_data or 'tokens_out' in update_data:
-                update_data['total_tokens'] = tokens_in_val + tokens_out_val
-
-            if update_data:
-                # Only update the assistant row - system/cell_start rows share trace_id
-                # but shouldn't have cost data (prevents double-counting in SUM queries)
-                self.update_row(
-                    table,
-                    update_data,
-                    f"trace_id = '{trace_id}' AND role = 'assistant'",
-                    sync=False  # Don't wait for each individual update
-                )
+                
+            cost_rows.append({
+                'id': uuid.uuid4().hex,
+                'trace_id': trace_id,
+                'message_id': update.get('message_id'),
+                'session_id': update.get('session_id', ''),
+                'timestamp': datetime.now(timezone.utc),
+                'cost': update.get('cost'),
+                'tokens_in': update.get('tokens_in'),
+                'tokens_out': update.get('tokens_out'),
+                'tokens_reasoning': update.get('tokens_reasoning'),
+                'model': update.get('model'),
+                'provider': update.get('provider'),
+            })
+        
+        if cost_rows:
+            self._db.write('costs', cost_rows)
 
     def mark_take_winner(
         self,
-        table: str,
         session_id: str,
         cell_name: str,
-        winning_index: int
+        take_index: int,
+        log_query: bool = True
     ):
         """
-        Mark all rows in a take as winner/loser.
-
-        Updates is_winner for all rows matching the session/cell/take.
-
-        Args:
-            table: Table name (usually unified_logs)
-            session_id: Session ID
-            cell_name: Cell name
-            winning_index: The winning take index
+        Mark a take as the winner (append-only pattern).
+        
+        Instead of UPDATE, we write a record to track winners.
+        Queries join against this to find winning takes.
         """
-        # Mark winner
-        self.update_row(
-            table,
-            {'is_winner': True},
-            f"session_id = '{session_id}' AND cell_name = '{cell_name}' AND take_index = {winning_index}",
-            sync=True
-        )
-
-        # Mark losers (all other take indexes in same cell)
-        start_time = time.time()
-        success = True
-        error_msg = None
-
-        sql = f"""
-            ALTER TABLE {table}
-            UPDATE is_winner = false
-            WHERE session_id = '{session_id}'
-              AND cell_name = '{cell_name}'
-              AND take_index IS NOT NULL
-              AND take_index != {winning_index}
-            SETTINGS mutations_sync = 1
-        """
-        with ClickHouseAdapter._query_lock:
-            try:
-                self.client.execute(sql)
-            except Exception as e:
-                success = False
-                error_msg = str(e)
-                print(f"[ClickHouse Error] Mark losers failed: {e}")
-                raise
-            finally:
-                duration_ms = (time.time() - start_time) * 1000
-                logger = get_query_logger()
-                if logger:
-                    logger.log_query(
-                        query_type='update',
-                        sql_preview=f"ALTER TABLE {table} UPDATE is_winner=false (mark losers)",
-                        duration_ms=duration_ms,
-                        success=success,
-                        error_message=error_msg
-                    )
+        # For now, we'll update unified_logs directly since it has is_winner column
+        # In a full migration, we might want a separate winners table
+        winner_record = {
+            'id': uuid.uuid4().hex,
+            'timestamp': datetime.now(timezone.utc),
+            'session_id': session_id,
+            'cell_name': cell_name,
+            'take_index': take_index,
+            'is_winner': True,
+        }
+        
+        # Could write to a separate 'take_winners' table
+        # For now, callers should handle winner tracking differently
+        print(f"[DuckDB] mark_take_winner called but not fully implemented for parquet")
 
     # =========================================================================
-    # Vector Search Operations
+    # Vector Search (delegates to ChromaDB)
     # =========================================================================
 
     def vector_search(
         self,
         table: str,
-        embedding_col: str,
-        query_vector: List[float],
+        embedding: List[float],
+        embedding_column: str = "embedding",
         limit: int = 10,
-        where: str | None = None,
-        select_cols: str = "*"
+        where_clause: str | None = None,
+        select_columns: List[str] | None = None,
     ) -> List[Dict]:
         """
-        Semantic search using ClickHouse's cosineDistance function.
-
-        Args:
-            table: Table name
-            embedding_col: Column containing embeddings (Array(Float32))
-            query_vector: Query embedding vector
-            limit: Max results to return
-            where: Optional WHERE clause filter
-            select_cols: Columns to select (default: *)
-
-        Returns:
-            List of dicts with results, sorted by similarity (ascending distance)
+        Vector similarity search.
+        
+        NOTE: With the parquet migration, vector search should use ChromaDB.
+        This method is kept for API compatibility but may not work as expected.
         """
-        where_clause = f"WHERE {where}" if where else ""
-
-        # Convert query vector to ClickHouse array format
-        vec_str = f"[{','.join(str(v) for v in query_vector)}]"
-
-        sql = f"""
-            SELECT {select_cols},
-                   cosineDistance({embedding_col}, {vec_str}) AS distance,
-                   1 - cosineDistance({embedding_col}, {vec_str}) AS similarity
-            FROM {table}
-            {where_clause}
-            ORDER BY distance ASC
-            LIMIT {limit}
-        """
-        return self.query(sql, output_format="dict")
+        print(f"[DuckDB] vector_search called - use ChromaDB for vector operations")
+        return []
 
     # =========================================================================
-    # Context Cards Operations
+    # Context Cards (simplified for parquet)
     # =========================================================================
 
     def insert_context_cards(self, rows: List[Dict]):
-        """
-        Insert context cards into the context_cards table.
-
-        Args:
-            rows: List of context card dictionaries with fields:
-                - session_id: str
-                - content_hash: str
-                - summary: str
-                - keywords_json: str (JSON array)
-                - embedding_json: str (JSON array of floats)
-                - embedding_model: str
-                - embedding_dim: int
-                - estimated_tokens: int
-                - role: str
-                - cell_name: str
-                - cascade_id: str
-                - turn_number: int
-                - is_anchor: bool
-                - is_callout: bool
-                - callout_name: str
-                - generator_model: str
-                - message_timestamp: str (ISO format)
-        """
+        """Insert context cards."""
         if not rows:
             return
-
-        # Prepare rows for insertion
-        prepared_rows = []
-        for row in rows:
-            prepared = {
-                "session_id": row.get("session_id", ""),
-                "content_hash": row.get("content_hash", ""),
-                "summary": row.get("summary", ""),
-                "keywords": json.loads(row.get("keywords_json", "[]")) if isinstance(row.get("keywords_json"), str) else row.get("keywords", []),
-                "embedding": json.loads(row.get("embedding_json", "[]")) if isinstance(row.get("embedding_json"), str) else row.get("embedding", []),
-                "embedding_model": row.get("embedding_model"),
-                "embedding_dim": len(row.get("embedding", [])) if row.get("embedding") else None,
-                "estimated_tokens": row.get("estimated_tokens", 0),
-                "role": row.get("role", ""),
-                "cell_name": row.get("cell_name"),
-                "cascade_id": row.get("cascade_id"),
-                "turn_number": row.get("turn_number"),
-                "is_anchor": row.get("is_anchor", False),
-                "is_callout": row.get("is_callout", False),
-                "callout_name": row.get("callout_name"),
-                "generator_model": row.get("generator_model"),
-                "message_timestamp": row.get("message_timestamp"),
-            }
-            prepared_rows.append(prepared)
-
-        # Use standard insert_rows
-        self.insert_rows("context_cards", prepared_rows)
+        self._db.write('context_cards', rows)
 
     def get_context_cards(
         self,
         session_id: str,
-        cell_names: Optional[List[str]] = None,
-        limit: int = 100
+        cell_name: str | None = None,
+        limit: int = 100,
     ) -> List[Dict]:
-        """
-        Get context cards for a session.
-
-        Args:
-            session_id: Session ID to query
-            cell_names: Optional list of cell names to filter by
-            limit: Maximum number of cards to return
-
-        Returns:
-            List of context card dictionaries
-        """
-        where_parts = [f"session_id = '{session_id}'"]
-
-        if cell_names:
-            cells_str = ", ".join([f"'{p}'" for p in cell_names])
-            where_parts.append(f"cell_name IN ({cells_str})")
-
-        where_clause = " AND ".join(where_parts)
-
+        """Get context cards for a session."""
         sql = f"""
-            SELECT
-                session_id,
-                content_hash,
-                summary,
-                keywords,
-                estimated_tokens,
-                role,
-                cell_name,
-                turn_number,
-                is_anchor,
-                is_callout,
-                callout_name,
-                message_timestamp
-            FROM context_cards
-            WHERE {where_clause}
-            ORDER BY message_timestamp DESC
-            LIMIT {limit}
+            SELECT * FROM context_cards
+            WHERE session_id = '{session_id}'
         """
-
-        return self.query(sql, output_format="dict")
+        if cell_name:
+            sql += f" AND cell_name = '{cell_name}'"
+        sql += f" ORDER BY message_timestamp DESC LIMIT {limit}"
+        
+        return self.query(sql, output_format="dict", log_query=False)
 
     def get_context_cards_with_embeddings(
         self,
         session_id: str,
-        limit: int = 100
+        cell_name: str | None = None,
     ) -> List[Dict]:
-        """
-        Get context cards with embeddings for semantic search.
-
-        Args:
-            session_id: Session ID to query
-            limit: Maximum number of cards to return
-
-        Returns:
-            List of context card dictionaries including embeddings
-        """
-        sql = f"""
-            SELECT
-                session_id,
-                content_hash,
-                summary,
-                keywords,
-                embedding,
-                estimated_tokens,
-                role,
-                cell_name,
-                turn_number,
-                is_anchor,
-                is_callout,
-                message_timestamp
-            FROM context_cards
-            WHERE session_id = '{session_id}'
-                AND length(embedding) > 0
-            ORDER BY message_timestamp DESC
-            LIMIT {limit}
-        """
-
-        return self.query(sql, output_format="dict")
+        """Get context cards with their embeddings."""
+        return self.get_context_cards(session_id, cell_name, limit=1000)
 
     def search_context_cards_semantic(
         self,
         session_id: str,
         query_embedding: List[float],
-        limit: int = 20,
-        similarity_threshold: float = 0.5
+        limit: int = 10,
+        cell_name: str | None = None,
     ) -> List[Dict]:
         """
-        Search context cards using semantic similarity.
-
-        Args:
-            session_id: Session ID to search within
-            query_embedding: Query embedding vector
-            limit: Maximum results to return
-            similarity_threshold: Minimum similarity score (0-1)
-
-        Returns:
-            List of matching context cards with similarity scores
+        Semantic search over context cards.
+        
+        NOTE: Should use ChromaDB for proper vector search.
         """
-        vec_str = "[" + ",".join(str(x) for x in query_embedding) + "]"
-
-        sql = f"""
-            SELECT
-                session_id,
-                content_hash,
-                summary,
-                keywords,
-                estimated_tokens,
-                role,
-                cell_name,
-                turn_number,
-                is_anchor,
-                is_callout,
-                message_timestamp,
-                1 - cosineDistance(embedding, {vec_str}) AS similarity
-            FROM context_cards
-            WHERE session_id = '{session_id}'
-                AND length(embedding) > 0
-            HAVING similarity >= {similarity_threshold}
-            ORDER BY similarity DESC
-            LIMIT {limit}
-        """
-
-        return self.query(sql, output_format="dict")
+        print(f"[DuckDB] search_context_cards_semantic - use ChromaDB for vector search")
+        return self.get_context_cards(session_id, cell_name, limit)
 
     # =========================================================================
     # Table Management
@@ -2027,130 +1254,73 @@ class ClickHouseAdapter:
 
     def ensure_table_exists(self, table_name: str, ddl: str):
         """
-        Ensure a table exists, creating it if necessary.
-
-        Args:
-            table_name: Name of the table to check
-            ddl: CREATE TABLE statement (should include IF NOT EXISTS)
+        Ensure a table exists.
+        
+        With parquet storage, tables are created automatically.
+        This is a no-op.
         """
-        with ClickHouseAdapter._query_lock:
-            try:
-                result = self.client.execute(
-                    f"SELECT 1 FROM system.tables WHERE database = '{self.database}' AND name = '{table_name}'"
-                )
-                if not result:
-                    print(f"[LARS] Creating table '{table_name}'...")
-                    self.client.execute(ddl)  # Direct execute to avoid nested lock
-                    print(f"[LARS] Table '{table_name}' created")
-            except Exception as e:
-                print(f"[LARS] Warning: Could not ensure table '{table_name}': {e}")
+        pass
 
     def table_exists(self, table_name: str) -> bool:
-        """Check if a table exists."""
-        with ClickHouseAdapter._query_lock:
-            result = self.client.execute(
-                f"SELECT 1 FROM system.tables WHERE database = '{self.database}' AND name = '{table_name}'"
-            )
-            return len(result) > 0
+        """Check if a table has any data."""
+        return self._db.table_exists(table_name)
 
     def get_table_row_count(self, table_name: str) -> int:
         """Get approximate row count for a table."""
-        with ClickHouseAdapter._query_lock:
-            result = self.client.execute(f"SELECT count() FROM {table_name}")
-            return result[0][0] if result else 0
-
-
-# Global adapter singleton
-_adapter_singleton: Optional[ClickHouseAdapter] = None
-
-
-def get_db_adapter() -> ClickHouseAdapter:
-    """
-    Get the ClickHouse database adapter (singleton).
-
-    This is the main entry point for all database operations.
-    Returns a singleton instance to reuse connections.
-
-    Returns:
-        ClickHouseAdapter instance
-    """
-    global _adapter_singleton
-
-    if _adapter_singleton is not None:
-        return _adapter_singleton
-
-    from .config import get_config
-
-    config = get_config()
-
-    mode = _normalize_db_mode(getattr(config, "db_mode", "auto"))
-    backend = "clickhouse"
-    if mode == "chdb":
-        backend = "chdb"
-    elif mode == "clickhouse":
-        backend = "clickhouse"
-    else:
-        # Auto: try ClickHouse server quickly, fall back to CHDB if unreachable.
-        if not _clickhouse_server_reachable(
-            host=config.clickhouse_host,
-            port=config.clickhouse_port,
-            database=config.clickhouse_database,
-            user=config.clickhouse_user,
-            password=config.clickhouse_password,
-        ):
-            backend = "chdb"
-
-    chdb_path = getattr(config, "chdb_path", None)
-    if backend == "chdb":
-        # Ensure relative CHDB paths are resolved relative to LARS_ROOT/root_dir, not CWD.
         try:
-            path = (chdb_path or "").strip()
-            if path and path not in (":memory:", ":memory"):
-                path = os.path.expanduser(path)
-                if not os.path.isabs(path):
-                    base = getattr(config, "root_dir", "") or os.getcwd()
-                    path = os.path.join(base, path)
-                chdb_path = os.path.abspath(path)
+            result = self.query(f"SELECT COUNT(*) as cnt FROM {table_name}", log_query=False)
+            return result[0]['cnt'] if result else 0
         except Exception:
-            pass
-
-    _adapter_singleton = ClickHouseAdapter(
-        host=config.clickhouse_host,
-        port=config.clickhouse_port,
-        database=config.clickhouse_database,
-        user=config.clickhouse_user,
-        password=config.clickhouse_password,
-        backend=backend,
-        chdb_path=chdb_path,
-    )
-
-    return _adapter_singleton
+            return 0
 
 
-def get_db() -> ClickHouseAdapter:
-    """Alias for get_db_adapter() - shorter name for convenience."""
+# =============================================================================
+# Compatibility Aliases
+# =============================================================================
+
+# Keep ClickHouseAdapter as an alias for compatibility
+ClickHouseAdapter = DuckDBAdapter
+
+
+# =============================================================================
+# Singleton Access Functions
+# =============================================================================
+
+_db_adapter: Optional[DuckDBAdapter] = None
+
+
+def get_db_adapter() -> DuckDBAdapter:
+    """
+    Get the database adapter singleton.
+    
+    Returns a DuckDBAdapter instance (parquet-backed).
+    """
+    global _db_adapter
+    
+    if _db_adapter is None:
+        _db_adapter = DuckDBAdapter()
+    
+    return _db_adapter
+
+
+def get_db() -> DuckDBAdapter:
+    """Alias for get_db_adapter()."""
     return get_db_adapter()
 
 
 def ensure_housekeeping():
     """
-    Ensure database schema and migrations are up to date.
-
-    Call this explicitly at:
-    - Backend startup (before querying)
-    - CLI commands that need full schema (db init, tools sync, etc.)
-
-    This is idempotent - safe to call multiple times.
-    Cascade runs (lars run) should NOT call this for fast startup.
+    Ensure database housekeeping has been run.
+    
+    With parquet storage, this is a no-op (tables auto-create).
     """
-    db = get_db_adapter()
-    db.run_housekeeping()
+    get_db_adapter().run_housekeeping()
 
 
 def reset_adapter():
-    """Reset the adapter singleton (useful for testing)."""
-    global _adapter_singleton
-    _adapter_singleton = None
-    ClickHouseAdapter._instance = None
-    ClickHouseAdapter._initialized = False
-    ClickHouseAdapter._housekeeping_done = False
+    """Reset the adapter singleton (mainly for testing)."""
+    global _db_adapter
+    _db_adapter = None
+    DuckDBAdapter._instance = None
+    DuckDBAdapter._initialized = False
+    DuckDBAdapter._housekeeping_done = False

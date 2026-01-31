@@ -244,8 +244,8 @@ class UnderstandingStore:
         # Update last_used_at on the understanding
         self.db.execute(
             """
-            ALTER TABLE bi_understandings
-            UPDATE last_used_at = now64()
+            UPDATE bi_understandings
+            SET last_used_at = now()
             WHERE understanding_id = %(id)s
             """,
             {"id": understanding_id},

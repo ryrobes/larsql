@@ -1,0 +1,45 @@
+# =============================================================================
+# SQL Demo Cascade
+# =============================================================================
+# Demonstrates deterministic SQL cells and data analysis.
+#
+# Run with:
+#   lars run cascades/examples/sql_demo.yaml
+
+cascade_id: sql_demo
+description: Demonstrates using SQL tools to query and analyze data.
+
+cells:
+  # Deterministic cell - runs SQL directly without LLM
+  - name: get_sessions
+    tool: sql_data
+    inputs:
+      query: |
+        SELECT
+          session_id,
+          cascade_id,
+          COUNT(*) as message_count,
+          SUM(cost) as total_cost,
+          MIN(timestamp) as started_at
+        FROM unified_logs
+        WHERE timestamp > now() - INTERVAL 7 DAY
+        GROUP BY session_id, cascade_id
+        ORDER BY started_at DESC
+        LIMIT 10
+    handoffs: [analyze]
+
+  # LLM cell - analyzes the SQL results
+  - name: analyze
+    instructions: |
+      Analyze the recent session data:
+
+      {{ outputs.get_sessions.result | tojson(indent=2) }}
+
+      Provide insights about:
+      1. Activity patterns over the past week
+      2. Most active cascades
+      3. Cost efficiency observations
+
+      Keep the analysis concise and actionable.
+    rules:
+      max_turns: 1

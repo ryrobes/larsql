@@ -134,52 +134,47 @@ def main():
     data_parser = subparsers.add_parser('data', help='Data management commands')
     data_subparsers = data_parser.add_subparsers(dest='data_command', help='Data subcommands')
 
-    # data compact (deprecated)
+    # data compact - merge small parquet files and apply dedup
     compact_parser = data_subparsers.add_parser(
         'compact',
-        help='DEPRECATED - ClickHouse handles compaction automatically'
+        help='Compact parquet files - merge small files and apply dedup'
     )
     compact_parser.add_argument(
-        '--path',
+        '--table', '-t',
         default=None,
-        help='Directory to compact (default: $LARS_DATA_DIR)'
+        help='Specific table to compact (default: all tables)'
     )
     compact_parser.add_argument(
-        '--max-size',
+        '--threshold',
         type=int,
-        default=500,
-        help='Maximum file size in MB (default: 500)'
+        default=2,
+        help='Minimum files before compacting (default: 2)'
     )
     compact_parser.add_argument(
-        '--dry-run',
+        '--force', '-f',
+        action='store_true',
+        help='Compact even if below threshold'
+    )
+    compact_parser.add_argument(
+        '--dry-run', '-n',
         action='store_true',
         help='Show what would be done without making changes'
     )
-    compact_parser.add_argument(
-        '--keep-originals',
-        action='store_true',
-        help='Keep original files after compaction (default: delete)'
-    )
-    compact_parser.add_argument(
-        '--recursive',
-        action='store_true',
-        help='Also compact subdirectories (e.g., data/evals)'
-    )
 
     # Database management command group
-    db_parser = subparsers.add_parser('db', help='ClickHouse database management')
+    db_parser = subparsers.add_parser('db', help='Database management (DuckDB/Parquet)')
     db_subparsers = db_parser.add_subparsers(dest='db_command', help='Database subcommands')
 
     # db status
     db_status_parser = db_subparsers.add_parser(
         'status',
-        help='Show ClickHouse database status and statistics'
+        help='Show database status and statistics'
     )
 
     # db init (ensure schema exists)
     db_init_parser = db_subparsers.add_parser(
         'init',
-        help='Initialize ClickHouse schema and run full bootstrap (tools, models, sql crawl, doctor)'
+        help='Initialize database and run full bootstrap (now an alias for bootstrap)'
     )
     db_init_parser.add_argument(
         '--only',
@@ -347,6 +342,12 @@ def main():
         type=int,
         default=0,
         help='Disconnect idle clients after N seconds, 0=disabled (default: 0)'
+    )
+    sql_server_parser.add_argument(
+        '--workers', '-w',
+        type=int,
+        default=16,
+        help='Number of pre-warmed DuckDB connections in the pool (default: 16)'
     )
     sql_server_parser.set_defaults(func=cmd_sql_server)
 
@@ -1085,6 +1086,12 @@ def main():
         default=0,
         help='Disconnect idle clients after N seconds, 0=disabled (default: 0)'
     )
+    serve_sql_parser.add_argument(
+        '--workers', '-w',
+        type=int,
+        default=16,
+        help='Number of pre-warmed DuckDB connections in the pool (default: 16)'
+    )
 
     # serve watcher - Watch daemon for reactive SQL subscriptions
     serve_watcher_parser = serve_subparsers.add_parser(
@@ -1304,12 +1311,17 @@ def main():
     # Bootstrap command - Initialize everything for a fresh installation
     bootstrap_parser = subparsers.add_parser(
         'bootstrap',
-        help='Full setup: sync tools, refresh models, discover SQL schemas, run doctor'
+        help='Full setup: workspace dirs, artifacts, tools, models, SQL schemas'
+    )
+    bootstrap_parser.add_argument(
+        '--skip-workspace',
+        action='store_true',
+        help='Skip workspace directory/file setup'
     )
     bootstrap_parser.add_argument(
         '--skip-db',
         action='store_true',
-        help='Skip database initialization'
+        help='Skip database/artifact initialization'
     )
     bootstrap_parser.add_argument(
         '--skip-tools',
@@ -3216,289 +3228,234 @@ def _evaluate_expectation(actual, expect):
 
 def cmd_data_compact(args):
     """
-    DEPRECATED: Compact Parquet files.
-
-    This command is no longer needed since LARS now stores data directly
-    in ClickHouse. Data management is handled automatically by ClickHouse.
-
-    Use 'lars db status' to check database health.
+    Compact Parquet files - merge small files and apply dedup.
+    
+    This reduces file count and applies deduplication for tables
+    with primary keys (e.g., session_state keeps only latest per session_id).
     """
-    from lars.config import get_clickhouse_url
+    from lars.lars_db import get_lars_db, SYSTEM_TABLES
+    from rich.console import Console
+    from rich.table import Table
+    
+    console = Console()
+    db = get_lars_db()
+    
+    # Get options from args
+    table = getattr(args, 'table', None)
+    threshold = getattr(args, 'threshold', 2)
+    force = getattr(args, 'force', False)
+    dry_run = getattr(args, 'dry_run', False)
+    
+    if dry_run:
+        console.print("\n[yellow]DRY RUN[/yellow] - showing what would be compacted:\n")
+    
+    if table:
+        # Compact specific table
+        if table not in SYSTEM_TABLES:
+            console.print(f"[red]Unknown system table: {table}[/red]")
+            console.print(f"Available tables: {', '.join(SYSTEM_TABLES.keys())}")
+            return
+        
+        if dry_run:
+            # Just show file count
+            table_dir = db.root / "system" / table
+            if table_dir.exists():
+                files = list(table_dir.glob("*.parquet"))
+                console.print(f"  {table}: {len(files)} files")
+            return
+            
+        result = db.compact(table, threshold=threshold, force=force)
+        _print_compact_result(console, result)
+    else:
+        # Compact all tables
+        if dry_run:
+            for tbl in SYSTEM_TABLES:
+                table_dir = db.root / "system" / tbl
+                if table_dir.exists():
+                    files = list(table_dir.glob("*.parquet"))
+                    if files:
+                        console.print(f"  {tbl}: {len(files)} files")
+            return
+            
+        results = db.compact_all(threshold=threshold, force=force)
+        
+        if not results:
+            console.print("[dim]No tables needed compaction[/dim]")
+            return
+        
+        # Show results table
+        tbl = Table(title="Compaction Results")
+        tbl.add_column("Table", style="cyan")
+        tbl.add_column("Files", justify="right")
+        tbl.add_column("Rows", justify="right")
+        tbl.add_column("Dedup", justify="center")
+        tbl.add_column("Status")
+        
+        for r in results:
+            files_str = f"{r['files_before']} → {r['files_after']}"
+            rows_str = f"{r['rows_before']} → {r['rows_after']}"
+            dedup_str = "✓" if r.get('dedup_applied') else "-"
+            status = "[red]error[/red]" if r.get('error') else "[green]ok[/green]"
+            tbl.add_row(r['table'], files_str, rows_str, dedup_str, status)
+        
+        console.print(tbl)
 
-    print()
-    print("="*60)
-    print("DEPRECATED COMMAND")
-    print("="*60)
-    print()
-    print("The 'data compact' command is no longer needed.")
-    print()
-    print("LARS now stores all data directly in ClickHouse:")
-    print(f"  {get_clickhouse_url()}")
-    print()
-    print("ClickHouse handles data compaction automatically via:")
-    print("  • MergeTree engine background merges")
-    print("  • Partitioning by month (toYYYYMM)")
-    print("  • TTL-based data expiration")
-    print()
-    print("To check database status:")
-    print("  lars db status")
-    print()
-    print("To optimize tables manually (if needed):")
-    print("  lars sql \"OPTIMIZE TABLE unified_logs FINAL\"")
-    print()
+
+def _print_compact_result(console, result):
+    """Print a single compaction result."""
+    if result.get('error'):
+        console.print(f"[red]Error compacting {result['table']}: {result['error']}[/red]")
+    elif result['files_before'] == result['files_after']:
+        console.print(f"[dim]{result['table']}: no compaction needed ({result['files_before']} files)[/dim]")
+    else:
+        dedup = " (dedup applied)" if result.get('dedup_applied') else ""
+        console.print(
+            f"[green]{result['table']}[/green]: "
+            f"{result['files_before']} → {result['files_after']} files, "
+            f"{result['rows_before']} → {result['rows_after']} rows{dedup}"
+        )
 
 
 def cmd_db_status(args):
-    """Show ClickHouse database status and statistics."""
-    from lars.config import get_clickhouse_url
-    from lars.db_adapter import get_db
+    """Show database status and statistics (DuckDB/Parquet)."""
+    from lars.lars_db import get_lars_db, SYSTEM_TABLES
     from rich.console import Console
     from rich.table import Table
+    from pathlib import Path
 
     console = Console()
 
     print()
     print("="*60)
-    print("CLICKHOUSE DATABASE STATUS")
+    print("LARS DATABASE STATUS (DuckDB/Parquet)")
     print("="*60)
-    print()
-    print(f"Connection: {get_clickhouse_url()}")
     print()
 
     try:
-        db = get_db()
+        db = get_lars_db()
+        print(f"Data Directory: {db.root}")
+        print()
 
-        # Get table statistics
-        tables_info = db.query("""
-            SELECT
-                name as table_name,
-                formatReadableSize(total_bytes) as size,
-                formatReadableQuantity(total_rows) as rows,
-                partition_count
-            FROM (
-                SELECT
-                    table as name,
-                    sum(bytes) as total_bytes,
-                    sum(rows) as total_rows,
-                    count() as partition_count
-                FROM system.parts
-                WHERE database = currentDatabase()
-                  AND active
-                GROUP BY table
-            )
-            ORDER BY total_bytes DESC
-        """)
+        # Scan parquet files in each system table directory
+        tables_info = []
+        system_dir = db.root / "system"
+        
+        for table_name in sorted(SYSTEM_TABLES.keys()):
+            table_dir = system_dir / table_name
+            if table_dir.exists():
+                parquet_files = list(table_dir.glob("*.parquet"))
+                if parquet_files:
+                    total_bytes = sum(f.stat().st_size for f in parquet_files)
+                    file_count = len(parquet_files)
+                    
+                    # Get row count via DuckDB
+                    try:
+                        conn = db.connect()
+                        result = conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()
+                        row_count = result[0] if result else 0
+                        conn.close()
+                    except Exception:
+                        row_count = "?"
+                    
+                    tables_info.append({
+                        'table_name': table_name,
+                        'size': _format_size(total_bytes),
+                        'rows': str(row_count),
+                        'files': file_count
+                    })
 
         if tables_info:
             table = Table(title="Table Statistics", show_header=True, header_style="bold cyan")
             table.add_column("Table")
             table.add_column("Size", justify="right")
             table.add_column("Rows", justify="right")
-            table.add_column("Partitions", justify="right")
+            table.add_column("Files", justify="right")
 
             for row in tables_info:
                 table.add_row(
                     row['table_name'],
                     row['size'],
                     row['rows'],
-                    str(row['partition_count'])
+                    str(row['files'])
                 )
 
             console.print(table)
         else:
             print("No tables with data found.")
+            print(f"(Tables will be created when data is first written)")
 
         print()
-        styled_print(f"{S.OK} Database connection OK")
-        print()
-
-    except Exception as e:
-        print(f"✗ Database connection failed: {e}")
-        print()
-        print("Check that ClickHouse is running and accessible.")
-        sys.exit(1)
-
-
-def cmd_db_init(args):
-    """Initialize ClickHouse schema and optionally run full bootstrap."""
-    from lars.config import get_clickhouse_url
-    from lars.db_adapter import ensure_housekeeping
-
-    # Check for OPENROUTER_API_KEY if running full bootstrap (not --only)
-    if not getattr(args, 'only', False):
-        api_key = os.environ.get('OPENROUTER_API_KEY', '')
-        if not api_key:
-            print()
-            styled_print(f"{S.ERR} OPENROUTER_API_KEY not set")
-            print()
-            print("Full setup requires an OpenRouter API key for model discovery.")
-            print()
-            print("To fix:")
-            print("  1. Get an API key from https://openrouter.ai/keys")
-            print("  2. Set it in your environment:")
-            print("     export OPENROUTER_API_KEY=sk-or-v1-...")
-            print()
-            print("Or run with --only to just initialize the database schema:")
-            print("  lars db init --only")
-            print()
-            sys.exit(1)
-
-    print()
-    print("="*60)
-    print("CLICKHOUSE SCHEMA INITIALIZATION")
-    print("="*60)
-    print()
-    print(f"Connection: {get_clickhouse_url()}")
-    print()
-
-    try:
-        print("Creating database, tables, and running migrations...")
-        print()
-
-        ensure_housekeeping()
-
-        print()
-        styled_print(f"{S.OK} Schema initialization complete!")
+        styled_print(f"{S.OK} Database OK - {len(SYSTEM_TABLES)} system tables defined")
         print()
 
     except Exception as e:
-        print(f"✗ Schema initialization failed: {e}")
-        print()
+        print(f"✗ Database error: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)
 
-    # If --only flag, stop here
-    if getattr(args, 'only', False):
-        print("Run 'lars db status' to view table statistics.")
-        print()
-        return
 
-    # Otherwise, continue with full bootstrap (tools, models, sql crawl, doctor)
-    print()
-    print("="*60)
-    print("CONTINUING WITH BOOTSTRAP...")
-    print("="*60)
-    print()
+def _format_size(size_bytes: int) -> str:
+    """Format bytes as human-readable size."""
+    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+        if size_bytes < 1024:
+            return f"{size_bytes:.1f} {unit}"
+        size_bytes /= 1024
+    return f"{size_bytes:.1f} PB"
 
-    # Create a fake args object for bootstrap with the flags we need
+
+def cmd_db_init(args):
+    """Initialize database (alias for 'lars bootstrap').
+    
+    With DuckDB/Parquet storage, no external database is needed.
+    This command now just runs bootstrap for backwards compatibility.
+    """
+    print()
+    print("Note: 'lars db init' now runs 'lars bootstrap'")
+    print("      (No external database needed with DuckDB/Parquet storage)")
+    print()
+    
+    # Create bootstrap args
     class BootstrapArgs:
-        skip_db = True  # Already done
+        skip_workspace = False
+        skip_db = False
         skip_tools = False
         skip_models = False
         skip_sql_crawl = False
         skip_verification = getattr(args, 'skip_verification', False)
         workers = getattr(args, 'workers', 10)
-
+    
+    # If --only flag, skip tools/models/sql_crawl
+    if getattr(args, 'only', False):
+        BootstrapArgs.skip_tools = True
+        BootstrapArgs.skip_models = True
+        BootstrapArgs.skip_sql_crawl = True
+    
     cmd_bootstrap(BootstrapArgs())
 
 
 def cmd_db_migrate(args):
-    """Run database migrations or show migration status."""
-    from lars.config import get_clickhouse_url
-    from lars.db_adapter import get_db_adapter
-    from lars.migrations import MigrationRunner, get_migration_status
-
+    """Database migrations (deprecated with DuckDB/Parquet storage)."""
+    from lars.lars_db import SYSTEM_TABLES
+    
     print()
     print("="*60)
     print("DATABASE MIGRATIONS")
     print("="*60)
     print()
-    print(f"Connection: {get_clickhouse_url()}")
+    print("With DuckDB/Parquet storage, explicit migrations are no longer needed!")
     print()
-
-    try:
-        db = get_db_adapter()
-        runner = MigrationRunner(db_adapter=db)
-
-        # Show status mode
-        if args.status:
-            print("Migration Status:")
-            print("-" * 60)
-            print()
-
-            status = runner.get_status()
-            if not status:
-                print("No migrations found in migrations/sql/")
-                return
-
-            pending_count = 0
-            applied_count = 0
-
-            for m in status:
-                status_icon = {
-                    'pending': '[dim]--[/dim]',
-                    'applied': '[green]OK[/green]',
-                    'failed': '[red]FAIL[/red]',
-                    'rolled_back': '[yellow]ROLLBACK[/yellow]',
-                }.get(m['status'], '?')
-
-                checksum_status = '' if m.get('checksum_match', True) else ' [MODIFIED]'
-                always_run = ' [always_run]' if m.get('always_run') else ''
-
-                styled_print(f"  {status_icon} {m['version']:03d} {m['name']}")
-                print(f"       Status: {m['status']}{checksum_status}{always_run}")
-                if m.get('executed_at'):
-                    print(f"       Executed: {m['executed_at']}")
-                print()
-
-                if m['status'] == 'pending':
-                    pending_count += 1
-                elif m['status'] == 'applied':
-                    applied_count += 1
-
-            print(f"Summary: {applied_count} applied, {pending_count} pending")
-            print()
-            return
-
-        # Dry run mode
-        if args.dry_run:
-            print("DRY RUN - showing what would be executed:")
-            print("-" * 60)
-            print()
-
-            pending = runner.get_pending_migrations()
-            if not pending:
-                print("No pending migrations")
-                return
-
-            for m in pending:
-                print(f"  Would run: {m.version:03d}_{m.name}")
-                print(f"             {m.description}")
-                print(f"             {len(m.statements)} statements")
-                print()
-
-            print(f"Total: {len(pending)} migration(s) would be executed")
-            print()
-            print("Run without --dry-run to apply these migrations.")
-            print()
-            return
-
-        # Run migrations
-        print("Running migrations...")
-        print("-" * 60)
-        print()
-
-        successful, failed = runner.run_all(dry_run=False, stop_on_error=True)
-
-        print()
-        if failed > 0:
-            print(f"✗ {failed} migration(s) failed")
-            sys.exit(1)
-        elif successful > 0:
-            styled_print(f"{S.OK} {successful} migration(s) applied successfully")
-        else:
-            styled_print(f"{S.OK} No pending migrations")
-        print()
-        print("Run 'lars db migrate --status' to view all migrations.")
-        print()
-
-    except Exception as e:
-        print(f"✗ Migration error: {e}")
-        print()
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
+    print("Schema evolution is handled automatically:")
+    print("  • Schema defined in code (SYSTEM_TABLES dict)")
+    print("  • Parquet files written with current schema")
+    print("  • DuckDB's union_by_name=true handles schema differences")
+    print("  • Old files missing new columns get NULL values")
+    print()
+    print(f"Current schema defines {len(SYSTEM_TABLES)} system tables.")
+    print()
+    print("To update schema: modify lars/lars_db.py and redeploy.")
+    print()
+    styled_print(f"{S.OK} No migrations required")
 
 
 def cmd_db_cleanup_results(args):
@@ -3606,8 +3563,8 @@ def cmd_db_cleanup_results(args):
             for table in tables_to_drop:
                 try:
                     db.execute(f"""
-                        ALTER TABLE lars_results.query_results
-                        UPDATE is_dropped = true
+                        UPDATE lars_results.query_results
+                        SET is_dropped = true
                         WHERE result_table = '{table}'
                     """)
                 except Exception:
@@ -6542,28 +6499,10 @@ def cmd_serve_studio(args):
     config = get_config()
     workspace_root = config.root_dir
 
-    # Detect which persistence backend is active (ClickHouse server vs CHDB) without opening CHDB here.
-    # CHDB cannot be shared across processes; Studio runs the backend in a subprocess (Flask dev or Gunicorn),
-    # so this supervisor process must not hold the CHDB lock.
-    chdb_backend_active = False
-    try:
-        from lars.db_adapter import _clickhouse_server_reachable, _normalize_db_mode
-
-        mode = _normalize_db_mode(getattr(config, "db_mode", "auto"))
-        if mode == "chdb":
-            chdb_backend_active = True
-        elif mode == "clickhouse":
-            chdb_backend_active = False
-        else:
-            chdb_backend_active = not _clickhouse_server_reachable(
-                host=config.clickhouse_host,
-                port=config.clickhouse_port,
-                database=config.clickhouse_database,
-                user=config.clickhouse_user,
-                password=config.clickhouse_password,
-            )
-    except Exception:
-        chdb_backend_active = False
+    # Detect which persistence backend is active.
+    # With DuckDB/Parquet backend, we don't have the CHDB file-locking constraints,
+    # so we can run multiple workers and preload without issues.
+    chdb_backend_active = False  # DuckDB mode - no special handling needed
 
     styled_print(f"{S.CASCADE} LARS Studio")
     print(f"   Workspace: {workspace_root}")
@@ -7109,10 +7048,13 @@ def cmd_sql_server(args):
     """Start LARS PostgreSQL wire protocol server."""
     from lars.server import start_postgres_server
 
+    workers = getattr(args, 'workers', 16)
+    
     styled_print(f"{S.RUN} Starting LARS PostgreSQL server...")
     print(f"   Host: {args.host}")
     print(f"   Port: {args.port}")
     print(f"   Session prefix: {args.session_prefix}")
+    print(f"   Pre-warmed connections: {workers}")
     print()
     styled_print(f"{S.TIP} TIP: Connect with:")
     print(f"   psql postgresql://localhost:{args.port}/default")
@@ -7127,6 +7069,7 @@ def cmd_sql_server(args):
         listen_backlog=args.listen_backlog,
         max_connections=args.max_connections,
         idle_timeout=args.idle_timeout,
+        pool_size=workers,
     )
 
 
@@ -7206,7 +7149,37 @@ def cmd_mcp_test(args):
 # =============================================================================
 
 def cmd_init(args):
-    """Initialize a new LARS workspace with starter files."""
+    """Initialize a new LARS workspace (alias for 'lars bootstrap').
+    
+    Use 'lars bootstrap' for full setup, or 'lars setup' for workspace-only setup.
+    """
+    print()
+    print("Note: 'lars setup' is now integrated into 'lars bootstrap'")
+    print()
+    
+    # If path specified, set LARS_ROOT temporarily
+    if args.path != '.':
+        import os
+        from pathlib import Path
+        workspace = Path(args.path).resolve()
+        os.environ['LARS_ROOT'] = str(workspace)
+        print(f"Setting LARS_ROOT to: {workspace}")
+        print()
+    
+    # Create bootstrap args
+    class BootstrapArgs:
+        skip_workspace = False
+        skip_db = False
+        skip_tools = getattr(args, 'minimal', False)
+        skip_models = getattr(args, 'minimal', False)
+        skip_sql_crawl = getattr(args, 'minimal', False)
+        skip_verification = True
+        workers = 10
+    
+    cmd_bootstrap(BootstrapArgs())
+    return
+
+    # --- Old code below (kept for reference) ---
     import shutil
     from pathlib import Path
 
@@ -7583,9 +7556,27 @@ def cmd_doctor(args):
 
     verbose = args.verbose
 
+    # ANSI color codes
+    RESET = "\033[0m"
+    BOLD = "\033[1m"
+    DIM = "\033[2m"
+    GREEN = "\033[32m"
+    YELLOW = "\033[33m"
+    RED = "\033[31m"
+    CYAN = "\033[36m"
+    MAGENTA = "\033[35m"
+    BLUE = "\033[34m"
+    
+    # Status icons
+    OK = f"{GREEN}✓{RESET}"
+    WARN = f"{YELLOW}⚠{RESET}"
+    ERR = f"{RED}✗{RESET}"
+    INFO = f"{CYAN}ℹ{RESET}"
+
     print()
-    print("LARS Doctor - Workspace Health Check")
-    print("=" * 50)
+    print(f"{BOLD}{MAGENTA}╔══════════════════════════════════════════════════╗{RESET}")
+    print(f"{BOLD}{MAGENTA}║{RESET}     {BOLD}🩺 LARS Doctor - Workspace Health Check{RESET}     {BOLD}{MAGENTA}║{RESET}")
+    print(f"{BOLD}{MAGENTA}╚══════════════════════════════════════════════════╝{RESET}")
     print()
 
     issues = []
@@ -7594,33 +7585,40 @@ def cmd_doctor(args):
     # -------------------------------------------------------------------------
     # 1. Check LARS_ROOT / Workspace
     # -------------------------------------------------------------------------
-    print("Workspace:")
-    print("-" * 50)
+    print(f"{BOLD}{BLUE}📁 Workspace{RESET}")
+    print(f"{DIM}{'─' * 50}{RESET}")
 
     lars_root = os.environ.get('LARS_ROOT', os.getcwd())
     root_path = Path(lars_root).resolve()
 
     marker_file = root_path / '.lars'
     if marker_file.exists():
-        print(f"  LARS_ROOT:     {root_path}")
+        print(f"   {OK} LARS_ROOT      {DIM}{root_path}{RESET}")
         marker_content = marker_file.read_text().strip()
         if verbose:
-            print(f"  Marker:          {marker_content}")
+            print(f"   {INFO} Marker         {DIM}{marker_content}{RESET}")
     else:
-        print(f"  LARS_ROOT:     {root_path}")
+        print(f"   {WARN} LARS_ROOT      {root_path}")
         warnings.append("No .lars marker file found. Run 'lars init' to initialize workspace.")
 
     # Check directory structure
     expected_dirs = ['cascades', 'skills', 'config', 'logs', 'states']
     missing_dirs = [d for d in expected_dirs if not (root_path / d).exists()]
     if missing_dirs:
+        print(f"   {WARN} Structure      {DIM}Missing: {', '.join(missing_dirs)}{RESET}")
         warnings.append(f"Missing directories: {', '.join(missing_dirs)}")
     else:
-        print(f"  Structure:       OK (all expected directories present)")
+        print(f"   {OK} Structure      {DIM}All directories present{RESET}")
 
     # Count user cascades and skills
-    user_cascade_count = len(list((root_path / 'cascades').rglob('*.yaml'))) + len(list((root_path / 'cascades').rglob('*.json')))
-    user_skills_count = len(list((root_path / 'skills').rglob('*.yaml'))) + len(list((root_path / 'skills').rglob('*.json'))) + len(list((root_path / 'skills').rglob('*.py')))
+    try:
+        user_cascade_count = len(list((root_path / 'cascades').rglob('*.yaml'))) + len(list((root_path / 'cascades').rglob('*.json')))
+    except:
+        user_cascade_count = 0
+    try:
+        user_skills_count = len(list((root_path / 'skills').rglob('*.yaml'))) + len(list((root_path / 'skills').rglob('*.json'))) + len(list((root_path / 'skills').rglob('*.py')))
+    except:
+        user_skills_count = 0
 
     # Count builtin cascades and skills
     from .config import get_builtin_cascades_dir, get_builtin_skills_dir
@@ -7641,231 +7639,164 @@ def cmd_doctor(args):
     if builtin_skills_dir.exists():
         builtin_skills_count = len(list(builtin_skills_dir.rglob('*.yaml'))) + len(list(builtin_skills_dir.rglob('*.json')))
 
-    print(f"  User cascades:   {user_cascade_count} files")
-    print(f"  User skills:     {user_skills_count} files")
-    print(f"  Builtin cascades: {builtin_cascade_count} files (including {builtin_operators_count} semantic SQL operators)")
-    print(f"  Builtin skills:  {builtin_skills_count} files")
+    print(f"   {INFO} User cascades  {CYAN}{user_cascade_count}{RESET} files")
+    print(f"   {INFO} User skills    {CYAN}{user_skills_count}{RESET} files")
+    print(f"   {INFO} Builtins       {CYAN}{builtin_cascade_count}{RESET} cascades {DIM}({builtin_operators_count} SQL operators){RESET}, {CYAN}{builtin_skills_count}{RESET} skills")
 
     print()
 
     # -------------------------------------------------------------------------
     # 2. Check Environment Variables
     # -------------------------------------------------------------------------
-    print("Environment:")
-    print("-" * 50)
+    print(f"{BOLD}{BLUE}🔑 Environment{RESET}")
+    print(f"{DIM}{'─' * 50}{RESET}")
 
     # Required
     openrouter_key = os.environ.get('OPENROUTER_API_KEY')
     if openrouter_key:
         masked = openrouter_key[:10] + '...' + openrouter_key[-4:] if len(openrouter_key) > 14 else '***'
-        print(f"  OPENROUTER_API_KEY:    Set ({masked})")
+        print(f"   {OK} OPENROUTER_API_KEY  {DIM}{masked}{RESET}")
     else:
-        print(f"  OPENROUTER_API_KEY:    NOT SET")
+        print(f"   {ERR} OPENROUTER_API_KEY  {RED}NOT SET{RESET}")
         issues.append("OPENROUTER_API_KEY is not set. LLM calls will fail.")
 
-    # ClickHouse settings
-    ch_host = os.environ.get('LARS_CLICKHOUSE_HOST', 'localhost')
-    ch_port = os.environ.get('LARS_CLICKHOUSE_PORT', '9000')
-    ch_db = os.environ.get('LARS_CLICKHOUSE_DATABASE', 'lars')
-    ch_user = os.environ.get('LARS_CLICKHOUSE_USER', 'lars')
-    ch_pass = os.environ.get('LARS_CLICKHOUSE_PASSWORD', 'lars')
-
-    print(f"  CLICKHOUSE_HOST:       {ch_host}")
-    print(f"  CLICKHOUSE_PORT:       {ch_port}")
-    print(f"  CLICKHOUSE_DATABASE:   {ch_db}")
-    print(f"  CLICKHOUSE_USER:       {ch_user}")
-    print(f"  CLICKHOUSE_PASSWORD:   {'*' * len(ch_pass) if ch_pass else '(empty)'}")
-
-    # Optional
+    # Optional keys
     hf_token = os.environ.get('HF_TOKEN')
     elevenlabs_key = os.environ.get('ELEVENLABS_API_KEY')
     brave_key = os.environ.get('BRAVE_SEARCH_API_KEY')
 
     if verbose:
-        print()
-        print("  Optional:")
-        print(f"    HF_TOKEN:              {'Set' if hf_token else 'Not set'}")
-        print(f"    ELEVENLABS_API_KEY:    {'Set' if elevenlabs_key else 'Not set'}")
-        print(f"    BRAVE_SEARCH_API_KEY:  {'Set' if brave_key else 'Not set'}")
+        print(f"   {INFO if hf_token else DIM} HF_TOKEN            {'Set' if hf_token else 'Not set'}{RESET}")
+        print(f"   {INFO if elevenlabs_key else DIM} ELEVENLABS_API_KEY  {'Set' if elevenlabs_key else 'Not set'}{RESET}")
+        print(f"   {INFO if brave_key else DIM} BRAVE_SEARCH_API_KEY {'Set' if brave_key else 'Not set'}{RESET}")
 
     print()
 
     # -------------------------------------------------------------------------
-    # 3. Check ClickHouse Connectivity
+    # 3. Check Database (DuckDB/Parquet)
     # -------------------------------------------------------------------------
-    print("Database (ClickHouse):")
-    print("-" * 50)
+    print(f"{BOLD}{BLUE}🗄️  Database (DuckDB/Parquet){RESET}")
+    print(f"{DIM}{'─' * 50}{RESET}")
 
     try:
-        from .db_adapter import get_db_adapter, SchemaNotInitializedError
+        from .lars_db import get_lars_db
 
-        db = get_db_adapter()
+        db = get_lars_db()
+        
+        # Show database path
+        db_path = db.root if hasattr(db, 'root') else "in-memory"
+        print(f"   {OK} Storage        {DIM}{db_path}{RESET}")
 
         # Test basic connectivity
-        result = db.query("SELECT 1 as test", output_format="dict")
+        result = db.query("SELECT 1 as test")
         if result and result[0].get('test') == 1:
-            print(f"  Connection:      OK ({ch_host}:{ch_port})")
+            print(f"   {OK} Connection     {DIM}DuckDB ready{RESET}")
         else:
-            print(f"  Connection:      FAILED")
-            issues.append("ClickHouse query test failed.")
+            print(f"   {ERR} Connection     {RED}Query test failed{RESET}")
+            issues.append("DuckDB query test failed.")
 
-        # Check if tables exist
+        # Check for data in key tables
         try:
-            tables_result = db.query(
-                f"SELECT name FROM system.tables WHERE database = '{ch_db}'",
-                output_format="dict"
-            )
-            table_count = len(tables_result)
-            if table_count > 0:
-                print(f"  Database:        {ch_db} ({table_count} tables)")
-
-                # Check for key tables
-                table_names = {t['name'] for t in tables_result}
-                key_tables = ['unified_logs', 'checkpoints', 'signals', 'context_cards']
-                missing_tables = [t for t in key_tables if t not in table_names]
-
-                if missing_tables:
-                    print(f"  Schema:          INCOMPLETE (missing: {', '.join(missing_tables)})")
-                    warnings.append(f"Missing tables: {', '.join(missing_tables)}. Run 'lars db init'.")
-                else:
-                    print(f"  Schema:          OK (key tables present)")
-
-                # Get row count from unified_logs
-                try:
-                    log_count = db.query(
-                        "SELECT count() as cnt FROM unified_logs",
-                        output_format="dict"
-                    )
-                    if log_count:
-                        print(f"  Log entries:     {log_count[0]['cnt']:,}")
-                except Exception:
-                    pass
+            log_count = db.query("SELECT COUNT(*) as cnt FROM unified_logs_base")
+            cnt = log_count[0]['cnt'] if log_count else 0
+            if cnt > 0:
+                print(f"   {OK} Log entries    {CYAN}{cnt:,}{RESET}")
             else:
-                print(f"  Database:        {ch_db} (empty - no tables)")
-                warnings.append("Database has no tables. Run 'lars db init' to create schema.")
+                print(f"   {INFO} Log entries    {DIM}0 (fresh database){RESET}")
+        except Exception:
+            print(f"   {INFO} Log entries    {DIM}Table will be created on first write{RESET}")
 
-        except SchemaNotInitializedError:
-            print(f"  Database:        NOT INITIALIZED")
-            issues.append("Database schema not initialized. Run 'lars db init'.")
-        except Exception as e:
-            if "doesn't exist" in str(e).lower():
-                print(f"  Database:        NOT FOUND ({ch_db})")
-                issues.append(f"Database '{ch_db}' does not exist. Run 'lars db init'.")
-            else:
-                raise
-
-    except ImportError as e:
-        print(f"  Connection:      FAILED (missing dependency: {e})")
-        issues.append(f"ClickHouse driver not installed: {e}")
     except Exception as e:
-        err_str = str(e).lower()
-        if "connection refused" in err_str or "couldn't connect" in err_str:
-            print(f"  Connection:      FAILED (connection refused)")
-            issues.append(f"Cannot connect to ClickHouse at {ch_host}:{ch_port}. Is it running?")
-        else:
-            print(f"  Connection:      ERROR ({e})")
-            issues.append(f"ClickHouse error: {e}")
+        print(f"   {ERR} Connection     {RED}Error: {e}{RESET}")
+        issues.append(f"Database error: {e}")
 
     print()
 
     # -------------------------------------------------------------------------
     # 4. Catalog Data (Tools & Models)
     # -------------------------------------------------------------------------
-    print("Catalog Data:")
-    print("-" * 50)
+    print(f"{BOLD}{BLUE}📚 Catalog Data{RESET}")
+    print(f"{DIM}{'─' * 50}{RESET}")
 
     try:
-        from .db_adapter import get_db_adapter
+        from .lars_db import get_lars_db
 
-        db = get_db_adapter()
+        db = get_lars_db()
 
         # Check tools sync status
         try:
-            tools_result = db.query(
-                "SELECT count() as cnt FROM tool_manifest_vectors FINAL",
-                output_format="dict"
-            )
+            tools_result = db.query("SELECT COUNT(*) as cnt FROM tool_manifest_vectors")
             tools_count = tools_result[0]['cnt'] if tools_result else 0
             if tools_count > 0:
-                print(f"  Tools:           {tools_count:,} synced")
+                print(f"   {OK} Tools          {CYAN}{tools_count:,}{RESET} synced")
             else:
-                print(f"  Tools:           NOT SYNCED")
+                print(f"   {WARN} Tools          {YELLOW}Not synced{RESET}")
                 warnings.append("Tools not synced. Run 'lars tools sync' to populate tool catalog.")
-        except Exception as e:
-            if "doesn't exist" in str(e).lower():
-                print(f"  Tools:           TABLE MISSING")
-                warnings.append("tool_manifest_vectors table missing. Run 'lars db init'.")
-            else:
-                print(f"  Tools:           ERROR ({e})")
+        except Exception:
+            print(f"   {INFO} Tools          {DIM}Run 'lars tools sync'{RESET}")
 
         # Check models sync status
         try:
-            models_result = db.query(
-                "SELECT count() as cnt FROM openrouter_models FINAL",
-                output_format="dict"
-            )
+            models_result = db.query("SELECT COUNT(*) as cnt FROM openrouter_models")
             models_count = models_result[0]['cnt'] if models_result else 0
             if models_count > 0:
                 # Also check active models
-                active_result = db.query(
-                    "SELECT count() as cnt FROM openrouter_models FINAL WHERE is_active = 1",
-                    output_format="dict"
-                )
-                active_count = active_result[0]['cnt'] if active_result else 0
-                print(f"  Models:          {models_count:,} total ({active_count:,} active)")
+                try:
+                    active_result = db.query("SELECT COUNT(*) as cnt FROM openrouter_models WHERE is_active = true")
+                    active_count = active_result[0]['cnt'] if active_result else 0
+                except:
+                    active_count = models_count
+                print(f"   {OK} Models         {CYAN}{models_count:,}{RESET} total {DIM}({active_count:,} active){RESET}")
             else:
-                print(f"  Models:          NOT SYNCED")
+                print(f"   {WARN} Models         {YELLOW}Not synced{RESET}")
                 warnings.append("Models not synced. Run 'lars models refresh' to populate model catalog.")
-        except Exception as e:
-            if "doesn't exist" in str(e).lower():
-                print(f"  Models:          TABLE MISSING")
-                warnings.append("openrouter_models table missing. Run 'lars db init'.")
+        except Exception:
+            print(f"   {INFO} Models         {DIM}Run 'lars models refresh'{RESET}")
+
+        # Check artifact registry
+        try:
+            artifacts_result = db.query("SELECT COUNT(*) as cnt FROM artifact_registry")
+            artifacts_count = artifacts_result[0]['cnt'] if artifacts_result else 0
+            if artifacts_count > 0:
+                print(f"   {OK} Artifacts      {CYAN}{artifacts_count:,}{RESET} registered")
             else:
-                print(f"  Models:          ERROR ({e})")
+                print(f"   {WARN} Artifacts      {YELLOW}Not seeded{RESET}")
+                warnings.append("Artifacts not seeded. Run 'lars bootstrap' to populate registry.")
+        except Exception:
+            print(f"   {INFO} Artifacts      {DIM}Run 'lars bootstrap'{RESET}")
 
     except Exception:
-        # Database not available, skip this section
-        print(f"  (Skipped - database not available)")
+        print(f"   {DIM}(Skipped - database not available){RESET}")
 
     print()
 
     # -------------------------------------------------------------------------
     # 5. Summary
     # -------------------------------------------------------------------------
-    print("=" * 50)
+    print(f"{BOLD}{MAGENTA}{'═' * 50}{RESET}")
 
     if issues:
-        print(f"ISSUES ({len(issues)}):")
+        print(f"\n{BOLD}{RED}❌ ISSUES ({len(issues)}):{RESET}")
         for issue in issues:
-            print(f"  - {issue}")
-        print()
+            print(f"   {ERR} {issue}")
 
     if warnings:
-        print(f"WARNINGS ({len(warnings)}):")
+        print(f"\n{BOLD}{YELLOW}⚠️  WARNINGS ({len(warnings)}):{RESET}")
         for warning in warnings:
-            print(f"  - {warning}")
-        print()
+            print(f"   {WARN} {warning}")
 
     if not issues and not warnings:
-        print("All checks passed! Your LARS workspace is ready.")
+        print(f"\n{BOLD}{GREEN}✨ All checks passed!{RESET}")
+        print(f"{DIM}Your LARS workspace is ready.{RESET}")
         print()
-        print("Try running:")
-        print("  lars run cascades/examples/hello_world.yaml")
+        print(f"   Try: {CYAN}lars run cascades/examples/hello_world.yaml{RESET}")
     elif not issues:
-        print("No critical issues found, but there are warnings above.")
+        print(f"\n{BOLD}{GREEN}✓ No critical issues{RESET} {DIM}(warnings above){RESET}")
+        print()
+        print(f"   Fix warnings with: {CYAN}lars bootstrap{RESET}")
     else:
         print()
-        print("To fix ClickHouse issues, start a container:")
-        print()
-        print("  docker run -d --name lars-clickhouse \\")
-        print("    -p 9000:9000 -p 8123:8123 \\")
-        print("    -e CLICKHOUSE_USER=lars \\")
-        print("    -e CLICKHOUSE_PASSWORD=lars \\")
-        print("    -e CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1 \\")
-        print("    -v lars-clickhouse-data:/var/lib/clickhouse \\")
-        print("    clickhouse/clickhouse-server:latest")
-        print()
-        print("Then run: lars db init")
+        print(f"   Fix issues with: {CYAN}lars bootstrap{RESET}")
 
     print()
 
@@ -7877,17 +7808,23 @@ def cmd_doctor(args):
 def cmd_bootstrap(args):
     """Initialize everything for a fresh LARS installation.
 
-    Runs: lars db init, lars tools sync, lars models refresh, lars sql crawl
+    Sets up workspace, syncs tools, refreshes models, and discovers SQL schemas.
+    With DuckDB/Parquet storage, no external database is needed.
     """
     import time
+    import shutil
+    from pathlib import Path
 
     print()
     print("LARS Bootstrap - Fresh Installation Setup")
     print("=" * 50)
     print()
 
+    # Count steps
     steps_completed = 0
-    steps_total = 4
+    steps_total = 5  # workspace, artifacts, tools, models, sql_crawl
+    if getattr(args, 'skip_workspace', False):
+        steps_total -= 1
     if args.skip_db:
         steps_total -= 1
     if args.skip_tools:
@@ -7904,35 +7841,122 @@ def cmd_bootstrap(args):
     start_time = time.time()
 
     # -------------------------------------------------------------------------
-    # Step 1: Database Initialization
+    # Step 1: Workspace Setup (create directories + copy starter files)
+    # -------------------------------------------------------------------------
+    if not getattr(args, 'skip_workspace', False):
+        print(f"[{steps_completed + 1}/{steps_total}] Setting up workspace...")
+        print("-" * 50)
+        try:
+            from lars.config import LARS_ROOT
+            workspace = Path(LARS_ROOT)
+            starter_dir = Path(__file__).parent / 'starter'
+
+            # Create directory structure
+            dirs = [
+                'cascades/examples',
+                'skills',
+                'cell_types',
+                'config',
+                'data',
+                'logs',
+                'states',
+                'graphs',
+                'images',
+                'audio',
+                'videos',
+                'session_dbs',
+                'research_dbs',
+                'sql_connections',
+            ]
+            created_any = False
+            for d in dirs:
+                dir_path = workspace / d
+                if not dir_path.exists():
+                    dir_path.mkdir(parents=True, exist_ok=True)
+                    print(f"  Created: {d}/")
+                    created_any = True
+            
+            if not created_any:
+                print("  Directories already exist.")
+            
+            # Copy starter files if they don't exist
+            if starter_dir.exists():
+                copied_any = False
+                
+                # Copy example cascades
+                examples_src = starter_dir / 'cascades' / 'examples'
+                if examples_src.exists():
+                    for yaml_file in examples_src.glob('*.yaml'):
+                        dst = workspace / 'cascades' / 'examples' / yaml_file.name
+                        if not dst.exists():
+                            shutil.copy2(yaml_file, dst)
+                            print(f"  Copied: cascades/examples/{yaml_file.name}")
+                            copied_any = True
+                
+                # Copy cell types
+                cell_types_src = starter_dir / 'cell_types'
+                if cell_types_src.exists():
+                    for yaml_file in cell_types_src.glob('*.yaml'):
+                        dst = workspace / 'cell_types' / yaml_file.name
+                        if not dst.exists():
+                            shutil.copy2(yaml_file, dst)
+                            print(f"  Copied: cell_types/{yaml_file.name}")
+                            copied_any = True
+                
+                # Copy SQL connection examples
+                sql_src = starter_dir / 'sql_connections'
+                if sql_src.exists():
+                    for yaml_file in sql_src.glob('*.yaml'):
+                        dst = workspace / 'sql_connections' / yaml_file.name
+                        if not dst.exists():
+                            shutil.copy2(yaml_file, dst)
+                            print(f"  Copied: sql_connections/{yaml_file.name}")
+                            copied_any = True
+                
+                if not copied_any:
+                    print("  Starter files already exist.")
+            
+            # Create .lars marker file
+            marker_file = workspace / '.lars'
+            if not marker_file.exists():
+                from lars import __version__ as lars_version
+                marker_file.write_text(f"version: {lars_version}\ninitialized: bootstrap\n")
+                print(f"  Created: .lars")
+            
+            steps_completed += 1
+        except Exception as e:
+            print(f"  WARNING: Workspace setup failed: {e}")
+            print("  Continuing with other steps...")
+        print()
+
+    # -------------------------------------------------------------------------
+    # Step 2: Database & Artifact Initialization
     # -------------------------------------------------------------------------
     if not args.skip_db:
-        print(f"[{steps_completed + 1}/{steps_total}] Initializing database...")
+        print(f"[{steps_completed + 1}/{steps_total}] Initializing database & artifacts...")
         print("-" * 50)
         try:
             from lars.db_adapter import ensure_housekeeping
+            from lars.artifact_registry import get_artifact_registry
 
+            # Run housekeeping (creates directories, compacts tables)
             ensure_housekeeping()
-            print("  Database initialized successfully.")
+            print("  Database initialized (DuckDB/Parquet).")
+            
+            # Trigger artifact seeding
+            registry = get_artifact_registry()
+            print("  Artifacts seeded from builtin_cascades/ and builtin_skills/.")
+            
             steps_completed += 1
         except Exception as e:
             print(f"  ERROR: {e}")
-            print()
-            print("  Make sure ClickHouse is running. To start:")
-            print()
-            print("  docker run -d --name lars-clickhouse \\")
-            print("    -p 9000:9000 -p 8123:8123 \\")
-            print("    -e CLICKHOUSE_USER=lars \\")
-            print("    -e CLICKHOUSE_PASSWORD=lars \\")
-            print("    -e CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1 \\")
-            print("    -v lars-clickhouse-data:/var/lib/clickhouse \\")
-            print("    clickhouse/clickhouse-server:latest")
-            print()
+            import traceback
+            traceback.print_exc()
             sys.exit(1)
         print()
 
     # -------------------------------------------------------------------------
-    # Step 2: Tools Sync
+    # Step 3: Tools Sync
     # -------------------------------------------------------------------------
     if not args.skip_tools:
         print(f"[{steps_completed + 1}/{steps_total}] Syncing tools to database...")
@@ -7948,7 +7972,7 @@ def cmd_bootstrap(args):
         print()
 
     # -------------------------------------------------------------------------
-    # Step 3: Models Refresh
+    # Step 4: Models Refresh
     # -------------------------------------------------------------------------
     if not args.skip_models:
         print(f"[{steps_completed + 1}/{steps_total}] Refreshing model catalog...")
@@ -7967,7 +7991,7 @@ def cmd_bootstrap(args):
         print()
 
     # -------------------------------------------------------------------------
-    # Step 4: SQL Schema Discovery
+    # Step 5: SQL Schema Discovery
     # -------------------------------------------------------------------------
     if not args.skip_sql_crawl:
         print(f"[{steps_completed + 1}/{steps_total}] Discovering SQL schemas...")

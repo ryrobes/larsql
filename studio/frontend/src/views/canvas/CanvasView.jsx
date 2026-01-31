@@ -836,7 +836,7 @@ const CanvasView = () => {
       // Step 2: Execute panels with limited concurrency
       // This prevents overwhelming the server when running expensive semantic queries
       // (Flask dev server shares a single DuckDB connection lock across threads)
-      const MAX_CONCURRENT = 1;
+      const MAX_CONCURRENT = 10;  // Parallel panel execution (browser may cap at 6 for HTTP/1.1)
       setPanelExecutionState('executing');
       console.log(`[parallel] Executing ${panelLayout.panels.length} panels (max ${MAX_CONCURRENT} concurrent)...`);
 

@@ -25,6 +25,18 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../.
 from lars.db_adapter import get_db
 
 
+def to_list(value):
+    """Convert numpy arrays or other iterables to plain Python lists for JSON serialization."""
+    if value is None:
+        return []
+    # Handle numpy arrays
+    if hasattr(value, 'tolist'):
+        return value.tolist()
+    if isinstance(value, (list, tuple)):
+        return list(value)
+    return []
+
+
 def safe_float(value, default=0.0):
     """Convert value to float, handling None and NaN cases."""
     if value is None:
@@ -127,11 +139,11 @@ def get_overview():
                     COUNT(*) as llm_calls_count
                 FROM unified_logs
                 WHERE caller_id LIKE 'sql-%%'
-                  AND timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+                  AND timestamp >= '{current_start.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP
                   AND request_id IS NOT NULL AND request_id != ''
                 GROUP BY caller_id
             ) c ON q.caller_id = c.caller_id
-            WHERE q.timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}'){filter_sql}
+            WHERE q.timestamp >= '{current_start.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP{filter_sql}
         """
 
         kpis_result = db.query(kpis_query)
@@ -165,8 +177,8 @@ def get_overview():
                 SUM(cache_hits) as total_cache_hits,
                 SUM(cache_misses) as total_cache_misses
             FROM sql_query_log
-            WHERE timestamp >= toDateTime('{previous_start.strftime('%Y-%m-%d %H:%M:%S')}')
-              AND timestamp < toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+            WHERE timestamp >= '{previous_start.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP
+              AND timestamp < '{current_start.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP
         """
         prev_result = db.query(previous_query)
         prev_row = prev_result[0] if prev_result else {}
@@ -201,11 +213,11 @@ def get_overview():
                     SUM(cost) as total_cost
                 FROM unified_logs
                 WHERE caller_id LIKE 'sql-%%'
-                  AND timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+                  AND timestamp >= '{current_start.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP
                   AND request_id IS NOT NULL AND request_id != ''
                 GROUP BY caller_id
             ) c ON q.caller_id = c.caller_id
-            WHERE q.timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+            WHERE q.timestamp >= '{current_start.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP
               AND q.query_type != 'plain_sql'{udf_type_only_filter}
             GROUP BY q.query_type
             ORDER BY cnt DESC
@@ -217,25 +229,33 @@ def get_overview():
         # but IS filtered by query_type if that filter is active
         # NOTE: Must JOIN with unified_logs for accurate cost data (same as KPIs query)
         query_type_only_filter = f" AND q.query_type = '{query_type_filter}'" if query_type_filter else ''
+        # DuckDB doesn't support UNNEST + LEFT JOIN, so do the join first then unnest
         udf_types_query = f"""
+            WITH joined AS (
+                SELECT
+                    q.caller_id,
+                    q.udf_types,
+                    q.duration_ms,
+                    COALESCE(c.total_cost, 0) as total_cost
+                FROM sql_query_log q
+                LEFT JOIN (
+                    SELECT
+                        caller_id,
+                        SUM(cost) as total_cost
+                    FROM unified_logs
+                    WHERE caller_id LIKE 'sql-%%'
+                      AND timestamp >= '{current_start.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP
+                      AND request_id IS NOT NULL AND request_id != ''
+                    GROUP BY caller_id
+                ) c ON q.caller_id = c.caller_id
+                WHERE q.timestamp >= '{current_start.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP{query_type_only_filter}
+            )
             SELECT
                 udf_type,
                 COUNT(*) as cnt,
-                SUM(COALESCE(c.total_cost, 0)) as sum_cost,
-                AVG(q.duration_ms) as avg_duration
-            FROM sql_query_log q
-            ARRAY JOIN q.udf_types as udf_type
-            LEFT JOIN (
-                SELECT
-                    caller_id,
-                    SUM(cost) as total_cost
-                FROM unified_logs
-                WHERE caller_id LIKE 'sql-%%'
-                  AND timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
-                  AND request_id IS NOT NULL AND request_id != ''
-                GROUP BY caller_id
-            ) c ON q.caller_id = c.caller_id
-            WHERE q.timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}'){query_type_only_filter}
+                SUM(total_cost) as sum_cost,
+                AVG(duration_ms) as avg_duration
+            FROM joined, UNNEST(joined.udf_types) as t(udf_type)
             GROUP BY udf_type
             ORDER BY cnt DESC
             LIMIT 20
@@ -331,7 +351,7 @@ def get_queries():
         current_start = datetime.now() - timedelta(days=days)
 
         # Build WHERE clause
-        where_clauses = [f"timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')"]
+        where_clauses = [f"timestamp >= '{current_start.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP"]
         if status:
             where_clauses.append(f"status = '{status}'")
         if query_type:
@@ -406,7 +426,7 @@ def get_queries():
                 'query_preview': row.get('query_preview'),  # Truncated version
                 'query_fingerprint': row.get('query_fingerprint'),
                 'query_type': row.get('query_type'),
-                'udf_types': row.get('udf_types', []),
+                'udf_types': to_list(row.get('udf_types')),
                 'status': row.get('status'),
                 'started_at': format_timestamp_utc(row.get('started_at')),
                 'duration_ms': round(safe_float(row.get('duration_ms')), 2),
@@ -418,7 +438,7 @@ def get_queries():
                 'rows_output': safe_int(row.get('rows_output')),
                 'llm_calls_count': safe_int(row.get('llm_calls_count')),
                 'cascade_count': safe_int(row.get('cascade_count')),
-                'cascade_paths': row.get('cascade_paths', []),
+                'cascade_paths': to_list(row.get('cascade_paths')),
                 'error_message': row.get('error_message'),
                 'timestamp': format_timestamp_utc(row.get('timestamp'))
             })
@@ -482,23 +502,31 @@ def get_query_detail(caller_id: str):
 
         query_row = query_data[0]
 
-        # Check if results exist in ClickHouse (stored as actual tables)
-        safe_caller_id = caller_id.replace("'", "''")
-        results_check_query = f"""
-            SELECT result_table, row_count, column_count
-            FROM lars_results.query_results
-            WHERE caller_id = '{safe_caller_id}'
-            ORDER BY created_at DESC
-            LIMIT 1
-        """
+        # Check if results exist (stored as actual tables)
+        # First check if the query_results table exists to avoid noisy error logs
+        has_clickhouse_results = False
+        results_info = {}
         try:
-            results_check = db.query(results_check_query)
-            has_clickhouse_results = bool(results_check and len(results_check) > 0 and results_check[0].get('result_table'))
-            results_info = results_check[0] if has_clickhouse_results else {}
+            table_check = db.query("""
+                SELECT 1 FROM information_schema.tables 
+                WHERE table_schema = 'lars_results' AND table_name = 'query_results'
+                LIMIT 1
+            """)
+            if table_check and len(table_check) > 0:
+                safe_caller_id = caller_id.replace("'", "''")
+                results_check_query = f"""
+                    SELECT result_table, row_count, column_count
+                    FROM lars_results.query_results
+                    WHERE caller_id = '{safe_caller_id}'
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                """
+                results_check = db.query(results_check_query)
+                has_clickhouse_results = bool(results_check and len(results_check) > 0 and results_check[0].get('result_table'))
+                results_info = results_check[0] if has_clickhouse_results else {}
         except Exception:
-            # Table might not exist yet
-            has_clickhouse_results = False
-            results_info = {}
+            # Table might not exist yet or other error
+            pass
 
         # Get cascade executions from tracking table
         cascade_execs_query = f"""
@@ -559,7 +587,7 @@ def get_query_detail(caller_id: str):
                 'query_fingerprint': query_row.get('query_fingerprint'),
                 'query_template': query_row.get('query_template'),
                 'query_type': query_row.get('query_type'),
-                'udf_types': query_row.get('udf_types', []),
+                'udf_types': to_list(query_row.get('udf_types')),
                 'status': query_row.get('status'),
                 'started_at': format_timestamp_utc(query_row.get('started_at')),
                 'completed_at': format_timestamp_utc(query_row.get('completed_at')),
@@ -573,7 +601,7 @@ def get_query_detail(caller_id: str):
                 'cache_misses': safe_int(query_row.get('cache_misses')),
                 'llm_calls_count': safe_int(query_row.get('mv_llm_calls_count')),
                 'cascade_count': safe_int(query_row.get('cascade_count')),
-                'cascade_paths': query_row.get('cascade_paths', []),
+                'cascade_paths': to_list(query_row.get('cascade_paths')),
                 'error_message': query_row.get('error_message'),
                 'protocol': query_row.get('protocol'),
                 'timestamp': format_timestamp_utc(query_row.get('timestamp')),
@@ -684,11 +712,11 @@ def get_patterns():
                     SUM(cost) as total_cost
                 FROM unified_logs
                 WHERE caller_id LIKE 'sql-%%'
-                  AND timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+                  AND timestamp >= '{current_start.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP
                   AND request_id IS NOT NULL AND request_id != ''
                 GROUP BY caller_id
             ) c ON q.caller_id = c.caller_id
-            WHERE q.timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}'){filter_sql}
+            WHERE q.timestamp >= '{current_start.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP{filter_sql}
             GROUP BY q.query_fingerprint
             HAVING COUNT(*) >= {min_runs}
             ORDER BY run_count DESC
@@ -777,11 +805,11 @@ def get_cache_stats():
                 SELECT caller_id, SUM(cost) as total_cost
                 FROM unified_logs
                 WHERE caller_id LIKE 'sql-%%'
-                  AND timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+                  AND timestamp >= '{current_start.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP
                   AND request_id IS NOT NULL AND request_id != ''
                 GROUP BY caller_id
             ) c ON q.caller_id = c.caller_id
-            WHERE q.timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}'){filter_sql}
+            WHERE q.timestamp >= '{current_start.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP{filter_sql}
         """
         overall_result = db.query(overall_query)
         overall_row = overall_result[0] if overall_result else {}
@@ -810,11 +838,11 @@ def get_cache_stats():
                 SELECT caller_id, SUM(cost) as total_cost
                 FROM unified_logs
                 WHERE caller_id LIKE 'sql-%%'
-                  AND timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+                  AND timestamp >= '{current_start.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP
                   AND request_id IS NOT NULL AND request_id != ''
                 GROUP BY caller_id
             ) c ON q.caller_id = c.caller_id
-            WHERE q.timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+            WHERE q.timestamp >= '{current_start.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP
               AND q.query_type != 'plain_sql'{filter_sql}
             GROUP BY q.query_type
             ORDER BY query_count DESC
@@ -850,7 +878,7 @@ def get_cache_stats():
                 SUM(cache_hits) as hits,
                 SUM(cache_misses) as misses
             FROM sql_query_log
-            WHERE timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}'){simple_filter_sql}
+            WHERE timestamp >= '{current_start.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP{simple_filter_sql}
             GROUP BY date
             ORDER BY date
         """
@@ -951,11 +979,11 @@ def get_time_series():
                     COUNT(*) as llm_calls_count
                 FROM unified_logs
                 WHERE caller_id LIKE 'sql-%%'
-                  AND timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+                  AND timestamp >= '{current_start.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP
                   AND request_id IS NOT NULL AND request_id != ''
                 GROUP BY caller_id
             ) c ON q.caller_id = c.caller_id
-            WHERE q.timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}'){filter_sql}
+            WHERE q.timestamp >= '{current_start.strftime('%Y-%m-%d %H:%M:%S')}'::TIMESTAMP{filter_sql}
             GROUP BY period
             ORDER BY period
         """
@@ -1030,7 +1058,19 @@ def get_query_results(caller_id: str):
 
         db = get_db()
 
-        # First, get the result table reference from the log
+        # First, check if the query_results table exists
+        table_check = db.query("""
+            SELECT 1 FROM information_schema.tables 
+            WHERE table_schema = 'lars_results' AND table_name = 'query_results'
+            LIMIT 1
+        """)
+        if not table_check or len(table_check) == 0:
+            return jsonify({
+                'error': 'No materialized results',
+                'message': 'The query_results table does not exist yet. Results are saved for queries that use LARS features.'
+            }), 404
+
+        # Get the result table reference from the log
         safe_caller_id = caller_id.replace("'", "''")
         log_query = f"""
             SELECT
@@ -1059,7 +1099,7 @@ def get_query_results(caller_id: str):
         log_row = log_data[0]
         result_table = log_row.get('result_table')
         columns_list = log_row.get('columns', [])
-        column_types_list = log_row.get('column_types', [])
+        column_types_list = to_list(log_row.get('column_types'))
         total_rows = safe_int(log_row.get('row_count', 0))
 
         if not result_table:
@@ -1141,7 +1181,16 @@ def export_query_results(caller_id: str):
 
         db = get_db()
 
-        # First, get the result table reference from the log
+        # First, check if the query_results table exists
+        table_check = db.query("""
+            SELECT 1 FROM information_schema.tables 
+            WHERE table_schema = 'lars_results' AND table_name = 'query_results'
+            LIMIT 1
+        """)
+        if not table_check or len(table_check) == 0:
+            return jsonify({'error': 'No materialized results available'}), 404
+
+        # Get the result table reference from the log
         safe_caller_id = caller_id.replace("'", "''")
         log_query = f"""
             SELECT result_table, columns

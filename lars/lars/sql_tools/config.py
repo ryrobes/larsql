@@ -117,7 +117,9 @@ class SqlConnectionConfig(BaseModel):
         # Phase 5: Hybrid/materialization
         "mongodb", "cassandra",
         # Text file types
-        "markdown_folder"
+        "markdown_folder",
+        # Native DuckDB (tables already exist as parquet-backed views)
+        "native"
     ]
     enabled: bool = True
 
@@ -392,9 +394,11 @@ def load_sql_connections() -> Dict[str, SqlConnectionConfig]:
     clickhouse_user = cfg.clickhouse_user
     clickhouse_password = cfg.clickhouse_password
 
+    # LARS internal database - now native DuckDB with parquet storage
+    # Tables are already available as views, no external attachment needed
     connections["lars"] = SqlConnectionConfig(
         connection_name="lars",
-        type="clickhouse",
+        type="native",  # Native DuckDB - tables exist as parquet-backed views
         host=clickhouse_host,
         port=clickhouse_port,
         database=clickhouse_database,

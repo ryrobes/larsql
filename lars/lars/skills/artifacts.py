@@ -332,22 +332,19 @@ def _save_to_parquet(artifact: dict, cfg):
     artifacts_file = os.path.join(data_dir, "artifacts.parquet")
 
     # If file exists, append; otherwise create
+    import pandas as pd
     if os.path.exists(artifacts_file):
         # Read existing, append new row
         try:
-            import chdb
-            existing_df = chdb.query(f"SELECT * FROM file('{artifacts_file}', Parquet)").to_df()
-            import pandas as pd
+            existing_df = pd.read_parquet(artifacts_file)
             new_df = pd.concat([existing_df, pd.DataFrame([artifact])], ignore_index=True)
             new_df.to_parquet(artifacts_file, index=False)
         except Exception as e:
             print(f"[Artifacts] Failed to append to parquet: {e}")
             # Fallback: just write new file (will overwrite)
-            import pandas as pd
             pd.DataFrame([artifact]).to_parquet(artifacts_file, index=False)
     else:
         # Create new file
-        import pandas as pd
         pd.DataFrame([artifact]).to_parquet(artifacts_file, index=False)
 
 
@@ -383,39 +380,24 @@ def list_artifacts(
 
     where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
 
-    if cfg.use_clickhouse_server:
-        import clickhouse_connect
-        client = clickhouse_connect.get_client(host=cfg.clickhouse_host)
+    # Use DuckDB for parquet queries
+    import duckdb
+    data_dir = cfg.data_dir
+    artifacts_file = os.path.join(data_dir, "artifacts.parquet")
 
-        result = client.query(f"""
-            SELECT id, session_id, cascade_id, cell_name, title, artifact_type,
-                   description, tags, created_at
-            FROM artifacts
-            {where_clause}
-            ORDER BY created_at DESC
-            LIMIT {limit}
-        """)
+    if not os.path.exists(artifacts_file):
+        return {"artifacts": [], "count": 0}
 
-        artifacts = [dict(zip(result.column_names, row)) for row in result.result_rows]
+    result = duckdb.query(f"""
+        SELECT id, session_id, cascade_id, cell_name, title, artifact_type,
+               description, tags, created_at
+        FROM read_parquet('{artifacts_file}')
+        {where_clause}
+        ORDER BY created_at DESC
+        LIMIT {limit}
+    """).fetchdf()
 
-    else:
-        import chdb
-        data_dir = cfg.data_dir
-        artifacts_file = os.path.join(data_dir, "artifacts.parquet")
-
-        if not os.path.exists(artifacts_file):
-            return {"artifacts": [], "count": 0}
-
-        result = chdb.query(f"""
-            SELECT id, session_id, cascade_id, cell_name, title, artifact_type,
-                   description, tags, created_at
-            FROM file('{artifacts_file}', Parquet)
-            {where_clause}
-            ORDER BY created_at DESC
-            LIMIT {limit}
-        """)
-
-        artifacts = result.to_dict('records')
+    artifacts = result.to_dict('records')
 
     return {
         "artifacts": artifacts,
@@ -434,36 +416,23 @@ def get_artifact(artifact_id: str) -> dict:
 
     cfg = get_config()
 
-    if cfg.use_clickhouse_server:
-        import clickhouse_connect
-        client = clickhouse_connect.get_client(host=cfg.clickhouse_host)
+    # Use DuckDB for parquet queries
+    import duckdb
+    data_dir = cfg.data_dir
+    artifacts_file = os.path.join(data_dir, "artifacts.parquet")
 
-        result = client.query(f"""
-            SELECT * FROM artifacts WHERE id = '{artifact_id}'
-        """)
+    if not os.path.exists(artifacts_file):
+        return {"error": "No artifacts found"}
 
-        if not result.result_rows:
-            return {"error": "Artifact not found"}
+    result = duckdb.query(f"""
+        SELECT * FROM read_parquet('{artifacts_file}')
+        WHERE id = '{artifact_id}'
+    """).fetchdf()
 
-        artifact = dict(zip(result.column_names, result.result_rows[0]))
+    artifacts = result.to_dict('records')
+    if not artifacts:
+        return {"error": "Artifact not found"}
 
-    else:
-        import chdb
-        data_dir = cfg.data_dir
-        artifacts_file = os.path.join(data_dir, "artifacts.parquet")
-
-        if not os.path.exists(artifacts_file):
-            return {"error": "No artifacts found"}
-
-        result = chdb.query(f"""
-            SELECT * FROM file('{artifacts_file}', Parquet)
-            WHERE id = '{artifact_id}'
-        """)
-
-        artifacts = result.to_dict('records')
-        if not artifacts:
-            return {"error": "Artifact not found"}
-
-        artifact = artifacts[0]
+    artifact = artifacts[0]
 
     return artifact

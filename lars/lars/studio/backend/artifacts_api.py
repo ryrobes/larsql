@@ -461,8 +461,7 @@ def create_artifact_endpoint():
             import pandas as pd
             if os.path.exists(artifacts_file):
                 try:
-                    import chdb
-                    existing_df = chdb.query(f"SELECT * FROM file('{artifacts_file}', Parquet)").to_df()
+                    existing_df = pd.read_parquet(artifacts_file)
                     new_df = pd.concat([existing_df, pd.DataFrame([artifact])], ignore_index=True)
                     new_df.to_parquet(artifacts_file, index=False)
                 except Exception:

@@ -1,13 +1,10 @@
-last_discovery: '2026-01-21T20:33:11.428738'
+last_discovery: '2026-01-31T03:09:50.092328'
 rag_id: d8477acf692d
 databases_indexed:
 - csv_files
-- bigquery_rabbitize
-- mongodb_test
-- minio_test
 - jsonl_files
-- markdown_files
-- lars
-table_count: 103
-total_columns: 1828
+- local_postgres
+- bigquery_rabbitize
+table_count: 138
+total_columns: 2061
 embed_model: qwen/qwen3-embedding-8b

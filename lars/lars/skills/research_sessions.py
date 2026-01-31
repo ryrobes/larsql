@@ -521,20 +521,17 @@ def _save_to_parquet(research_session: dict, cfg):
 
     sessions_file = os.path.join(data_dir, "research_sessions.parquet")
 
+    import pandas as pd
     if os.path.exists(sessions_file):
         # Append to existing
         try:
-            import chdb
-            import pandas as pd
-            existing_df = chdb.query(f"SELECT * FROM file('{sessions_file}', Parquet)").to_df()
+            existing_df = pd.read_parquet(sessions_file)
             new_df = pd.concat([existing_df, pd.DataFrame([research_session])], ignore_index=True)
             new_df.to_parquet(sessions_file, index=False)
         except Exception as e:
             print(f"[ResearchSessions] Failed to append: {e}")
             # Fallback: overwrite
-            import pandas as pd
             pd.DataFrame([research_session]).to_parquet(sessions_file, index=False)
     else:
         # Create new file
-        import pandas as pd
         pd.DataFrame([research_session]).to_parquet(sessions_file, index=False)

@@ -130,7 +130,7 @@ class ArtifactRegistry:
             db = get_db()
 
             # Check if already seeded
-            result = _query_one(db, "SELECT count() as c FROM artifact_registry")
+            result = _query_one(db, "SELECT COUNT(*) as c FROM artifact_registry")
             if result and result['c'] > 0:
                 log.debug("[ArtifactRegistry] Already seeded, skipping")
                 return
@@ -308,12 +308,10 @@ class ArtifactRegistry:
                         "change_type": change_type
                     }])
 
-                    # Deactivate old versions if updating
-                    if existing:
-                        db.execute(f"""
-                            ALTER TABLE artifact_registry UPDATE is_active = false
-                            WHERE artifact_id = '{artifact_id}' AND artifact_type = '{artifact_type}' AND version < {next_version}
-                        """)
+                    # Note: With DuckDB/Parquet append-only model, we don't need to deactivate
+                    # old versions. The dedup view (artifact_registry) automatically shows only
+                    # the latest version based on (artifact_id, artifact_type) + version DESC.
+                    # Old versions are naturally hidden by the view's ROW_NUMBER() logic.
 
                     count += 1
 

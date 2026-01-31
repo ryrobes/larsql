@@ -215,9 +215,14 @@ class ShadowAssessor:
 
         # Recency score
         if take.message_timestamp:
-            now = datetime.now()
+            from datetime import timezone
+            now = datetime.now(timezone.utc)
             if isinstance(take.message_timestamp, datetime):
-                age_minutes = (now - take.message_timestamp).total_seconds() / 60
+                ts = take.message_timestamp
+                # Handle tz-naive timestamps
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                age_minutes = (now - ts).total_seconds() / 60
             else:
                 age_minutes = 60
             recency_score = max(0, 100 - age_minutes) / 100

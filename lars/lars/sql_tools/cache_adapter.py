@@ -571,9 +571,9 @@ class SemanticCache:
 
                 if conditions:
                     where_clause = " AND ".join(conditions)
-                    query = f"ALTER TABLE semantic_sql_cache DELETE WHERE {where_clause}"
+                    query = f"DELETE FROM semantic_sql_cache WHERE {where_clause}"
                 else:
-                    query = "TRUNCATE TABLE semantic_sql_cache"
+                    query = "DELETE FROM semantic_sql_cache"
 
                 db.execute(query, params)
                 log.info(f"[SemanticCache] L2 cleared: {query[:100]}...")

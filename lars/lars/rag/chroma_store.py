@@ -223,18 +223,33 @@ def upsert_chunks(embed_model: str, embedding_dim: int, chunks: List[ChromaChunk
     cfg = get_config()
     lock_path = os.path.join(os.path.abspath(os.path.expanduser(cfg.chroma_path)), ".lars_chroma.lock")
 
+    # ChromaDB max batch size is 5461 — stay under it
+    BATCH_SIZE = 5000
+
     ids = [c.chroma_id() for c in chunks]
     embeddings = [c.embedding for c in chunks]
     documents = [c.text for c in chunks]
     metadatas = [c.metadata() for c in chunks]
 
-    def _do_upsert():
-        coll = _get_collection(embed_model, int(embedding_dim))
-        coll.upsert(ids=ids, embeddings=embeddings, documents=documents, metadatas=metadatas)
-
     with _chroma_op_lock:
         with _interprocess_lock(lock_path):
-            _retry_chroma(_do_upsert)
+            coll = _get_collection(embed_model, int(embedding_dim))
+            for start in range(0, len(ids), BATCH_SIZE):
+                end = start + BATCH_SIZE
+                batch_ids = ids[start:end]
+                batch_embeddings = embeddings[start:end]
+                batch_documents = documents[start:end]
+                batch_metadatas = metadatas[start:end]
+
+                def _do_upsert():
+                    coll.upsert(
+                        ids=batch_ids,
+                        embeddings=batch_embeddings,
+                        documents=batch_documents,
+                        metadatas=batch_metadatas,
+                    )
+
+                _retry_chroma(_do_upsert)
 
 
 def delete_by_rag_id(embed_model: str, embedding_dim: int, rag_id: str) -> None:
@@ -257,7 +272,8 @@ def delete_by_doc_id(embed_model: str, embedding_dim: int, rag_id: str, doc_id: 
 
     def _do_delete():
         coll = _get_collection(embed_model, int(embedding_dim))
-        coll.delete(where={"rag_id": rag_id, "doc_id": doc_id})
+        # ChromaDB requires $and for compound where conditions
+        coll.delete(where={"$and": [{"rag_id": rag_id}, {"doc_id": doc_id}]})
 
     with _chroma_op_lock:
         with _interprocess_lock(lock_path):
