@@ -473,7 +473,7 @@ def ensure_rag_index(
         # Delete old chunks for this doc (if updating)
         if prev:
             # DuckDB tables are views over parquet (append-only) - skip DELETE
-            # ChromaDB is the source of truth for RAG vectors
+            # DuckDB VSS is the source of truth for RAG vectors
             try:
                 db.execute(f"DELETE FROM rag_chunks WHERE rag_id = '{rag_id}' AND doc_id = '{prev['doc_id']}'")
             except Exception:

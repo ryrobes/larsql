@@ -451,7 +451,7 @@ class DuckDBAdapter:
     - No external server required
     - Writes create new parquet files (append-only)
     - Updates are handled by writing new rows; reads use "latest wins" semantics
-    - Vector search delegates to ChromaDB (not implemented here)
+    - Vector search delegates to DuckDB VSS (see rag/duckdb_store.py)
     """
     
     _instance = None
@@ -1177,7 +1177,7 @@ class DuckDBAdapter:
         print(f"[DuckDB] mark_take_winner called but not fully implemented for parquet")
 
     # =========================================================================
-    # Vector Search (delegates to ChromaDB)
+    # Vector Search (delegates to DuckDB VSS)
     # =========================================================================
 
     def vector_search(
@@ -1192,10 +1192,10 @@ class DuckDBAdapter:
         """
         Vector similarity search.
         
-        NOTE: With the parquet migration, vector search should use ChromaDB.
+        NOTE: Vector search uses DuckDB VSS (see rag/duckdb_store.py).
         This method is kept for API compatibility but may not work as expected.
         """
-        print(f"[DuckDB] vector_search called - use ChromaDB for vector operations")
+        print(f"[DuckDB] vector_search called - use rag/duckdb_store for vector operations")
         return []
 
     # =========================================================================
@@ -1243,9 +1243,9 @@ class DuckDBAdapter:
         """
         Semantic search over context cards.
         
-        NOTE: Should use ChromaDB for proper vector search.
+        NOTE: Should use DuckDB VSS for proper vector search (see rag/duckdb_store.py).
         """
-        print(f"[DuckDB] search_context_cards_semantic - use ChromaDB for vector search")
+        print(f"[DuckDB] search_context_cards_semantic - use rag/duckdb_store for vector search")
         return self.get_context_cards(session_id, cell_name, limit)
 
     # =========================================================================

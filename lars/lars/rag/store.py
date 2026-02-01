@@ -1,7 +1,7 @@
 """
-RAG Store - Chroma Vector Search Implementation
+RAG Store - Vector Search Implementation
 
-Provides semantic search over RAG chunks using Chroma.
+Provides semantic search over RAG chunks using DuckDB VSS.
 
 Key functions:
 - search_chunks(): Semantic search with optional filters
@@ -107,7 +107,7 @@ def search_chunks(
     doc_filter: Optional[str] = None
 ) -> List[Dict[str, Any]]:
     """
-    Semantic search using Chroma.
+    Semantic search using DuckDB VSS.
 
     Args:
         rag_ctx: RAG context with rag_id and session info
