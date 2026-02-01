@@ -4507,6 +4507,12 @@ def playground_session_stream(session_id):
         # Use db.query() for proper dict results with all columns
         db = get_db()
         rows = db.query(query)
+        
+        # DEBUG: Log query results for troubleshooting
+        if len(rows) == 0:
+            print(f"[session-stream DEBUG] No rows returned for session={session_id}, after={after}")
+        else:
+            print(f"[session-stream DEBUG] Got {len(rows)} rows for session={session_id}, after={after}")
 
         # Check if there are more rows
         has_more = len(rows) > limit
