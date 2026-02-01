@@ -32,16 +32,13 @@ def validate_parse_expression(content: str, text: str = None, instruction: str =
     import duckdb
     from .semantic_sql.sql_macro import bind_sql_parameters
     
-    # Debug: log what we received
-    log.info(f"[validate_parse_expression] content={content[:50] if content else None}...")
-    log.info(f"[validate_parse_expression] text={text[:50] if text else None}...")
-    log.info(f"[validate_parse_expression] kwargs keys={list(kwargs.keys())}")
+    # Debug logging at debug level (not info, to avoid console spam)
+    log.debug(f"[validate_parse_expression] content={content[:50] if content else None}...")
+    log.debug(f"[validate_parse_expression] text={text[:50] if text else None}...")
+    log.debug(f"[validate_parse_expression] kwargs keys={list(kwargs.keys())}")
     
-    # Try multiple ways to get the text parameter
-    # 1. Direct parameter (ideal case)
-    # 2. From kwargs directly
-    # 3. From kwargs['input'] (nested)
-    # 4. From echo state if available
+    # Input_data should be passed via **kwargs from the runner
+    # Try multiple fallback locations just in case
     if text is None:
         text = kwargs.get('text')
     if text is None and 'input' in kwargs:
@@ -49,14 +46,12 @@ def validate_parse_expression(content: str, text: str = None, instruction: str =
         if isinstance(inp, dict):
             text = inp.get('text')
     
-    # If still no text, we can't validate the expression
+    # If still no text, validation cannot proceed properly
     if text is None:
-        # Try to get sample text from content analysis
-        # For parse, the expression uses :text, so we just need any sample to test
-        log.warning(f"[validate_parse_expression] No text parameter found, using sample value for validation")
-        text = "sample test value for validation"  # Use a placeholder to at least test the SQL syntax
-    
-    log.info(f"[validate_parse_expression] Using text={text[:50]}...")
+        return {
+            "valid": False,
+            "reason": f"Missing 'text' parameter. Available kwargs: {list(kwargs.keys())}"
+        }
     
     expression = content  # The agent's output is the SQL expression
     
