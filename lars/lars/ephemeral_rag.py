@@ -600,9 +600,9 @@ class EphemeralRagManager:
             logger.error(f"[Ephemeral-RAG] Failed to insert chunks: {e}")
             raise
 
-        # Best-effort upsert to Chroma (failures should not crash the cell).
+        # Best-effort upsert to DuckDB vector store (failures should not crash the cell).
         try:
-            from .rag.chroma_store import ChromaChunk, upsert_chunks
+            from .rag.duckdb_store import ChromaChunk, upsert_chunks
 
             chroma_chunks = [
                 ChromaChunk(
@@ -847,11 +847,11 @@ class EphemeralRagManager:
             except Exception as e:
                 logger.warning(f"[Ephemeral-RAG] Cleanup failed for {rag_id}: {e}")
 
-            # Best-effort delete vectors from Chroma.
+            # Best-effort delete vectors from DuckDB store.
             try:
                 if self._embedding_dim:
                     from .config import get_config
-                    from .rag.chroma_store import delete_by_rag_id
+                    from .rag.duckdb_store import delete_by_rag_id
 
                     embed_model = get_config().default_embed_model
                     delete_by_rag_id(embed_model, int(self._embedding_dim), rag_id)

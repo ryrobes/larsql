@@ -261,9 +261,9 @@ class MemorySystem:
 
                 db.insert_rows('rag_manifests', [manifest_row])
 
-                # Upsert vector to Chroma.
+                # Upsert vector to DuckDB vector store.
                 try:
-                    from .rag.chroma_store import ChromaChunk, upsert_chunks
+                    from .rag.duckdb_store import ChromaChunk, upsert_chunks
 
                     chroma_chunk = ChromaChunk(
                         rag_id=rag_id,
