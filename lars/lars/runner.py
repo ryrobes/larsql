@@ -13054,8 +13054,9 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                         # Set trace context for validator
                         set_current_trace(validation_trace)
 
-                        # Call validator with validation content (includes tool outputs for comprehensive validation)
-                        validator_result = validator_tool(content=validation_content)
+                        # Call validator with validation content AND original cascade inputs
+                        # input_data contains the cascade inputs (e.g., text, instruction for parse)
+                        validator_result = validator_tool(content=validation_content, **input_data)
 
                         # Parse validator result
                         if isinstance(validator_result, str):
