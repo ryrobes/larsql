@@ -42,7 +42,7 @@ export function useTimelinePolling(sessionId, isRunning, isReplayMode = false) {
   const [cascadeAnalytics, setCascadeAnalytics] = useState(null);  // Pre-computed cascade-level analytics
   const [cellAnalytics, setCellAnalytics] = useState({});    // Pre-computed per-cell analytics
 
-  const cursorRef = useRef('1970-01-01 00:00:00');
+  const cursorRef = useRef(0);  // Epoch milliseconds for timezone-safe polling
   const pollIntervalRef = useRef(null);
   const completeTimeoutRef = useRef(null);
   const seenIdsRef = useRef(new Set());
@@ -62,15 +62,14 @@ export function useTimelinePolling(sessionId, isRunning, isReplayMode = false) {
 
       if (isReplayMode) {
         // REPLAY MODE: Fetch all data once (full replacement)
-        url = `${API_BASE_URL}/api/playground/session-stream/${sessionId}?after=1970-01-01 00:00:00`;
+        url = `${API_BASE_URL}/api/playground/session-stream/${sessionId}?after_ms=0`;
       } else {
-        // LIVE MODE: Incremental updates using cursor
-        const now = new Date();
-        const lookbackTime = new Date(now.getTime() - COST_BACKFILL_LOOKBACK_MS);
-        const lookbackTimestamp = lookbackTime.toISOString().replace('T', ' ').replace('Z', '').split('.')[0];
-        const effectiveCursor = cursorRef.current < lookbackTimestamp ? cursorRef.current : lookbackTimestamp;
+        // LIVE MODE: Incremental updates using cursor (epoch ms for timezone safety)
+        // Look back 30s for cost backfill updates
+        const lookbackMs = Date.now() - COST_BACKFILL_LOOKBACK_MS;
+        const effectiveCursor = Math.min(cursorRef.current, lookbackMs);
 
-        url = `${API_BASE_URL}/api/playground/session-stream/${sessionId}?after=${encodeURIComponent(effectiveCursor)}`;
+        url = `${API_BASE_URL}/api/playground/session-stream/${sessionId}?after_ms=${effectiveCursor}`;
       }
 
       const response = await fetch(url);
@@ -143,7 +142,8 @@ export function useTimelinePolling(sessionId, isRunning, isReplayMode = false) {
           });
         }
 
-        cursorRef.current = data.cursor || cursorRef.current;
+        // Use cursor_ms (epoch) for timezone-safe cursor tracking
+        cursorRef.current = parseInt(data.cursor_ms, 10) || cursorRef.current;
       }
 
       // Only update session complete if it changed
@@ -221,7 +221,7 @@ export function useTimelinePolling(sessionId, isRunning, isReplayMode = false) {
       setChildSessions({});
       setCascadeAnalytics(null);  // Clear cascade analytics
       setCellAnalytics({});  // Clear cell analytics
-      cursorRef.current = '1970-01-01 00:00:00';
+      cursorRef.current = 0;  // Reset to epoch for new session
       seenIdsRef.current.clear();
       prevSessionRef.current = sessionId;
 

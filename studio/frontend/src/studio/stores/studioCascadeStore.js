@@ -322,7 +322,7 @@ const useStudioCascadeStore = create(
 
         try {
           // Use same endpoint as polling
-          const url = `${API_BASE_URL}/api/playground/session-stream/${sessionId}?after=1970-01-01 00:00:00`;
+          const url = `${API_BASE_URL}/api/playground/session-stream/${sessionId}?after_ms=0`;
           const response = await fetch(url);
 
           if (!response.ok) {

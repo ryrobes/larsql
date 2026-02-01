@@ -63,7 +63,7 @@ export default function useExplorePolling(sessionId) {
   const [childSessions, setChildSessions] = useState([]);  // Sub-cascades spawned
 
   // Refs (prevent re-render loops)
-  const cursorRef = useRef('1970-01-01 00:00:00');
+  const cursorRef = useRef(0);  // Epoch ms for timezone-safe polling
   const seenIdsRef = useRef(new Set());
   const ghostTimeoutsRef = useRef(new Map());
   const pollIntervalRef = useRef(null);
@@ -125,7 +125,7 @@ export default function useExplorePolling(sessionId) {
     setChildSessions([]);
 
     // Clear refs
-    cursorRef.current = '1970-01-01 00:00:00';
+    cursorRef.current = 0;  // Reset to epoch for new session
     seenIdsRef.current.clear();
 
     // Clear ghost timeouts
@@ -443,8 +443,8 @@ export default function useExplorePolling(sessionId) {
     try {
       setIsPolling(true);
 
-      // Use Studio's endpoint
-      const url = `${API_BASE_URL}/api/playground/session-stream/${sessionId}?after=${encodeURIComponent(cursorRef.current)}`;
+      // Use Studio's endpoint with epoch ms cursor for timezone safety
+      const url = `${API_BASE_URL}/api/playground/session-stream/${sessionId}?after_ms=${cursorRef.current}`;
       const res = await fetch(url);
 
       if (!res.ok) {
@@ -484,7 +484,8 @@ export default function useExplorePolling(sessionId) {
         // Then derive ghosts and state (after logs are updated)
         deriveGhostMessages(newRows);
 
-        cursorRef.current = data.cursor || cursorRef.current;
+        // Use cursor_ms (epoch) for timezone-safe cursor tracking
+        cursorRef.current = parseInt(data.cursor_ms, 10) || cursorRef.current;
       }
 
       // Always update orchestration state with latest API data
