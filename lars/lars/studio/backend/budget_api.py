@@ -44,10 +44,7 @@ def get_budget_status(session_id):
 
     try:
         from lars.db_adapter import get_db
-        import os
         db = get_db()
-        print(f"[Budget API DEBUG] LARS_ROOT={os.environ.get('LARS_ROOT', '(not set)')}")
-        print(f"[Budget API DEBUG] db._db.root={db._db.root}")
 
         # Get enforcement events with new first-class fields
         events_query = """

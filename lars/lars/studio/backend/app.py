@@ -4461,7 +4461,6 @@ def playground_session_stream(session_id):
         after_ms = request.args.get('after_ms')  # Epoch milliseconds (new format)
         after = request.args.get('after', '1970-01-01 00:00:00')  # Legacy string format
         limit = int(request.args.get('limit', 200))
-        print(f"[session-stream DEBUG] Request: session={session_id}, after_ms={after_ms!r}, after={after!r}")
         
         # Convert string timestamp to epoch_ms if not provided directly
         if not after_ms:
@@ -4548,22 +4547,6 @@ def playground_session_stream(session_id):
                 except Exception:
                     pass  # Keep default
         
-        # DEBUG: Log query results for troubleshooting
-        from datetime import datetime, timezone
-        after_dt = datetime.fromtimestamp(int(after_ms)/1000, tz=timezone.utc)
-        now_utc = datetime.now(timezone.utc)
-        if len(rows) == 0:
-            print(f"[session-stream DEBUG] No rows for session={session_id}")
-            print(f"[session-stream DEBUG]   after_ms={after_ms} ({after_dt.isoformat()})")
-            print(f"[session-stream DEBUG]   now_utc={now_utc.isoformat()}")
-        else:
-            first_ts = rows[0].get('timestamp')
-            last_ts_dbg = rows[-1].get('timestamp')
-            print(f"[session-stream DEBUG] {len(rows)} rows for session={session_id}")
-            print(f"[session-stream DEBUG]   after_ms={after_ms} ({after_dt.isoformat()})")
-            print(f"[session-stream DEBUG]   first_row_ts={first_ts}, last_row_ts={last_ts_dbg}")
-            print(f"[session-stream DEBUG]   returning cursor_ms={cursor_ms}")
-
         # Rows are already dicts from db.query(), need to serialize timestamps and numeric types
         for row in rows_to_return:
             # Serialize timestamps
