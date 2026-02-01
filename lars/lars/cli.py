@@ -2456,6 +2456,23 @@ def cmd_sql_semantic(args):
             register_lars_udf(conn)
             register_dynamic_sql_functions(conn)
 
+        # Auto-attach sql_connections (csv_folder, jsonl_folder, postgres, etc.)
+        try:
+            from lars.sql_tools.config import load_sql_connections
+            from lars.sql_tools.lazy_attach import LazyAttachManager
+
+            sql_conns = load_sql_connections()
+            if sql_conns:
+                manager = LazyAttachManager(conn, sql_conns)
+                with lock:
+                    results = manager.attach_all()
+                attached = [r for r in results if r.get("status") == "attached"]
+                if attached and args.verbose:
+                    console.print(f"[dim]Auto-attached {len(attached)} sql_connections[/dim]")
+        except Exception as e:
+            if args.verbose:
+                console.print(f"[dim yellow]sql_connections attach failed: {e}[/dim yellow]")
+
         # Rewrite SQL through full operator stack (same as postgres_server)
         from lars.sql_rewriter import rewrite_lars_syntax
         rewritten_sql = rewrite_lars_syntax(args.query, duckdb_conn=conn)
