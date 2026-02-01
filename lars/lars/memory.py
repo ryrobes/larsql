@@ -128,21 +128,23 @@ class MemorySystem:
             logger.debug(f"No indexed messages in ClickHouse for memory: {memory_name}")
             return None
 
-        # Get embedding model from existing chunks
+        # Get embedding model and dimension from existing chunks
         model_query = f"""
-            SELECT DISTINCT embedding_model
+            SELECT DISTINCT embedding_model, embedding_dim
             FROM rag_chunks
             WHERE rag_id = '{rag_id}'
             LIMIT 1
         """
         model_result = db.query(model_query)
         embed_model = model_result[0]['embedding_model'] if model_result else get_config().default_embed_model
+        embedding_dim = int(model_result[0].get('embedding_dim', 0)) if model_result else 0
 
-        # Create ClickHouse-based RAG context
+        # Create RAG context with embedding dimension for DuckDB vector store
         rag_ctx = RagContext(
             rag_id=rag_id,
-            directory="",  # Not needed for ClickHouse
+            directory="",  # Not needed for DuckDB store
             embed_model=embed_model,
+            embedding_dim=embedding_dim,
             stats={'chunk_count': result[0]['cnt']},
             session_id=None,
             cascade_id=None,
