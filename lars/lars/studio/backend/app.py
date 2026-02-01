@@ -749,7 +749,8 @@ def get_cascade_definitions():
                     session_id,
                     MIN(timestamp) as run_start,
                     MAX(timestamp) as run_end,
-                    MAX(timestamp) - MIN(timestamp) as duration_seconds
+                    -- DuckDB: epoch() extracts seconds from interval as DOUBLE
+                    epoch(MAX(timestamp) - MIN(timestamp)) as duration_seconds
                 FROM unified_logs
                 WHERE cascade_id IS NOT NULL AND cascade_id != ''
                 GROUP BY cascade_id, session_id
@@ -1166,7 +1167,7 @@ def get_cascade_instances(cascade_id):
                 arraySort(arrayFilter(x -> x IS NOT NULL AND x != '', groupArray(DISTINCT species_hash))) as species_hashes,
                 MIN(timestamp) as start_time,
                 MAX(timestamp) as end_time,
-                MAX(timestamp) - MIN(timestamp) as duration_seconds
+                epoch(MAX(timestamp) - MIN(timestamp)) as duration_seconds
             FROM unified_logs
             WHERE cascade_id = ?
               AND (parent_session_id IS NULL OR parent_session_id = '')
@@ -1181,7 +1182,7 @@ def get_cascade_instances(cascade_id):
                 l.parent_session_id,
                 MIN(l.timestamp) as start_time,
                 MAX(l.timestamp) as end_time,
-                MAX(l.timestamp) - MIN(l.timestamp) as duration_seconds
+                epoch(MAX(l.timestamp) - MIN(l.timestamp)) as duration_seconds
             FROM unified_logs l
             INNER JOIN parent_sessions p ON l.parent_session_id = p.session_id
             WHERE l.parent_session_id IS NOT NULL AND l.parent_session_id != ''
@@ -1438,7 +1439,7 @@ def get_cascade_instances(cascade_id):
                     session_id,
                     model,
                     SUM(cost) as total_cost,
-                    (MAX(timestamp) - MIN(timestamp)) as duration_seconds
+                    epoch(MAX(timestamp) - MIN(timestamp)) as duration_seconds
                 FROM unified_logs
                 WHERE session_id IN ({})
                   AND model IS NOT NULL AND model != ''
@@ -4457,8 +4458,33 @@ def playground_session_stream(session_id):
         conn = get_db_connection()
 
         # Parse query params
-        after = request.args.get('after', '1970-01-01 00:00:00')
+        after_ms = request.args.get('after_ms')  # Epoch milliseconds (new format)
+        after = request.args.get('after', '1970-01-01 00:00:00')  # Legacy string format
         limit = int(request.args.get('limit', 200))
+        print(f"[session-stream DEBUG] Request: session={session_id}, after_ms={after_ms!r}, after={after!r}")
+        
+        # Convert string timestamp to epoch_ms if not provided directly
+        if not after_ms:
+            try:
+                from datetime import datetime, timezone
+                # Handle isoformat with timezone (e.g., 2026-02-01T10:20:39.274000-05:00)
+                after_str = after.strip()
+                if after_str == '1970-01-01 00:00:00':
+                    after_ms = '0'
+                else:
+                    # Try parsing as isoformat (handles timezone correctly)
+                    try:
+                        dt = datetime.fromisoformat(after_str)
+                    except ValueError:
+                        # Fallback: assume UTC if no timezone
+                        after_clean = after_str.replace('T', ' ')
+                        if '.' in after_clean:
+                            after_clean = after_clean.split('.')[0]
+                        dt = datetime.strptime(after_clean, '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc)
+                    after_ms = str(int(dt.timestamp() * 1000))
+            except Exception as e:
+                print(f"[session-stream DEBUG] Timestamp parse error: {e} for '{after}'")
+                after_ms = '0'
 
         # Query for relevant execution events INCLUDING child sub-cascades
         # We include:
@@ -4499,7 +4525,7 @@ def playground_session_stream(session_id):
                 estimated_tokens
             FROM unified_logs
             WHERE (startsWith(session_id, '{session_id}') OR CAST(parent_session_id AS VARCHAR) = '{session_id}')
-              AND timestamp > '{after}'
+              AND epoch_ms(timestamp) > {after_ms}
             ORDER BY timestamp ASC
             LIMIT {limit + 1}
         """
@@ -4507,16 +4533,36 @@ def playground_session_stream(session_id):
         # Use db.query() for proper dict results with all columns
         db = get_db()
         rows = db.query(query)
-        
-        # DEBUG: Log query results for troubleshooting
-        if len(rows) == 0:
-            print(f"[session-stream DEBUG] No rows returned for session={session_id}, after={after}")
-        else:
-            print(f"[session-stream DEBUG] Got {len(rows)} rows for session={session_id}, after={after}")
 
         # Check if there are more rows
         has_more = len(rows) > limit
         rows_to_return = rows[:limit]
+        
+        # Compute cursor_ms BEFORE serialization (need raw timestamp object)
+        cursor_ms = after_ms  # Default to current cursor
+        if rows_to_return:
+            last_ts = rows_to_return[-1].get('timestamp')
+            if last_ts and hasattr(last_ts, 'timestamp'):
+                try:
+                    cursor_ms = str(int(last_ts.timestamp() * 1000))
+                except Exception:
+                    pass  # Keep default
+        
+        # DEBUG: Log query results for troubleshooting
+        from datetime import datetime, timezone
+        after_dt = datetime.fromtimestamp(int(after_ms)/1000, tz=timezone.utc)
+        now_utc = datetime.now(timezone.utc)
+        if len(rows) == 0:
+            print(f"[session-stream DEBUG] No rows for session={session_id}")
+            print(f"[session-stream DEBUG]   after_ms={after_ms} ({after_dt.isoformat()})")
+            print(f"[session-stream DEBUG]   now_utc={now_utc.isoformat()}")
+        else:
+            first_ts = rows[0].get('timestamp')
+            last_ts_dbg = rows[-1].get('timestamp')
+            print(f"[session-stream DEBUG] {len(rows)} rows for session={session_id}")
+            print(f"[session-stream DEBUG]   after_ms={after_ms} ({after_dt.isoformat()})")
+            print(f"[session-stream DEBUG]   first_row_ts={first_ts}, last_row_ts={last_ts_dbg}")
+            print(f"[session-stream DEBUG]   returning cursor_ms={cursor_ms}")
 
         # Rows are already dicts from db.query(), need to serialize timestamps and numeric types
         for row in rows_to_return:
@@ -4535,10 +4581,10 @@ def playground_session_stream(session_id):
                     else:
                         row[field] = safe_float(row[field], None)
 
-        # Determine cursor (timestamp of last row)
+        # Determine cursor (timestamp of last row) - string format for legacy support
         cursor = after
         if rows_to_return:
-            cursor = rows_to_return[-1]['timestamp']
+            cursor = rows_to_return[-1]['timestamp']  # Already serialized to isoformat above
 
         # Check if session is complete by looking for cascade_complete role in logs
         session_complete_from_logs = any(
@@ -4729,6 +4775,7 @@ def playground_session_stream(session_id):
             'rows': rows_to_return,
             'has_more': has_more,
             'cursor': cursor,
+            'cursor_ms': cursor_ms,  # Epoch ms cursor for timezone-safe polling
             'session_complete': session_complete,
             'session_status': session_status,  # 'running', 'completed', 'error', 'cancelled', 'orphaned'
             'session_error': session_error,    # Error message if session_status == 'error'
