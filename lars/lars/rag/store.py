@@ -119,7 +119,7 @@ def search_chunks(
     Returns:
         List of search results with chunk data and similarity scores
     """
-    from .chroma_store import query_chunks
+    from .duckdb_store import query_chunks
 
     # Embed query using Agent.embed() - same model as the index
     embed_result = embed_texts(

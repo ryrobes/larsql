@@ -7,7 +7,7 @@ name = "larsql"
 version = "2.4.0"
 description = "LARS: Declarative agent framework with first class SQL integration"
 readme = "README.md"
-requires-python = ">=3.10,<3.14"
+requires-python = ">=3.10"
 authors = [{name = "Ryan Robitaille", email = "ryan.robitaille@gmail.com"}]
 license = {text = "OSASSY"}
 keywords = ["agents", "llm", "workflows", "declarative", "sql", "semantic"]
@@ -49,7 +49,7 @@ dependencies = [
     "jinja2>=3.0,<4.0",              # Template engine
     #"chdb>=2.0,<3.0",               # ClickHouse embedded
     #"chdb",                          # ClickHouse embedded
-    "chromadb",
+    # chromadb removed - using native DuckDB VSS for vector search
 
     # ========================================================================
     # LOW RISK - Minimum version only (very stable APIs)

@@ -323,7 +323,7 @@ def ensure_rag_index(
     Chunk text + manifests are stored in rag_chunks/rag_manifests. Vectors are stored in Chroma.
     """
     from ..db_adapter import get_db
-    from .chroma_store import ChromaChunk, delete_by_doc_id, upsert_chunks
+    from .duckdb_store import Chunk as ChromaChunk, delete_by_doc_id, upsert_chunks
 
     abs_dir = _resolve_directory(rag_config, cascade_path)
     console.print(f"[bold cyan][INFO] Building RAG index[/bold cyan] for [white]{abs_dir}[/white] (recursive={rag_config.recursive})")
@@ -609,7 +609,7 @@ def ensure_rag_index(
 def delete_rag_index(rag_id: str):
     """Delete all data for a RAG index."""
     from ..db_adapter import get_db
-    from .chroma_store import delete_by_rag_id
+    from .duckdb_store import delete_by_rag_id
 
     db = get_db()
     # Best-effort delete from Chroma first (requires model/dim).
