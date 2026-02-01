@@ -7588,7 +7588,8 @@ def cmd_doctor(args):
     print(f"{BOLD}{BLUE}📁 Workspace{RESET}")
     print(f"{DIM}{'─' * 50}{RESET}")
 
-    lars_root = os.environ.get('LARS_ROOT', os.getcwd())
+    # Default to ~/.lars (cross-platform) if LARS_ROOT not set
+    lars_root = os.environ.get('LARS_ROOT') or str(Path.home() / ".lars")
     root_path = Path(lars_root).resolve()
 
     marker_file = root_path / '.lars'

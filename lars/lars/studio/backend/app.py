@@ -331,8 +331,9 @@ def timestamp_to_float(ts):
 
 # Configuration - reads from environment or uses defaults
 # LARS_ROOT-based configuration (single source of truth)
-# Calculate default root relative to this file's location (dashboard/backend/app.py -> repo root)
-_DEFAULT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
+# Default to ~/.lars (cross-platform via Path.home())
+from pathlib import Path
+_DEFAULT_ROOT = str(Path.home() / ".lars")
 LARS_ROOT = os.path.abspath(os.getenv("LARS_ROOT", _DEFAULT_ROOT))
 
 # All paths are absolute to avoid issues with working directory changes

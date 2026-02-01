@@ -110,7 +110,9 @@ def get_audible_status(session_id: str) -> dict:
 
 
 # Get IMAGE_DIR from environment or default
-_DEFAULT_ROOT = os.path.abspath(os.path.join(_THIS_DIR, "../../.."))
+# Default to ~/.lars (cross-platform via Path.home())
+from pathlib import Path
+_DEFAULT_ROOT = str(Path.home() / ".lars")
 LARS_ROOT = os.path.abspath(os.getenv("LARS_ROOT", _DEFAULT_ROOT))
 IMAGE_DIR = os.path.abspath(os.getenv("LARS_IMAGE_DIR", os.path.join(LARS_ROOT, "images")))
 

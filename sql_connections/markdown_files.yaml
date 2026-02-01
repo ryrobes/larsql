@@ -1,7 +1,7 @@
 connection_name: markdown_files
 type: markdown_folder
-folder_path: /home/ryanr/extracted
-enabled: true
+folder_path: ~/extracted
+enabled: false
 
 # Optional settings (inherited from base config)
 sample_row_limit: 0

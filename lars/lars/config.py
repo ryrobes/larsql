@@ -14,11 +14,14 @@ Key notes:
 """
 import os
 import json
+from pathlib import Path
 from typing import Optional, List, Any, Dict
 from pydantic import BaseModel, Field, ConfigDict
 
 # Get LARS_ROOT once at module load
-_LARS_ROOT = os.getenv("LARS_ROOT", os.getcwd())
+# Default to ~/.lars (cross-platform via Path.home())
+_DEFAULT_LARS_ROOT = str(Path.home() / ".lars")
+_LARS_ROOT = os.getenv("LARS_ROOT", _DEFAULT_LARS_ROOT)
 
 # Export as LARS_ROOT for backward compatibility with modules that import it directly
 # (e.g., analytics_worker.py uses `from .config import LARS_ROOT`)

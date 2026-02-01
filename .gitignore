@@ -33,3 +33,4 @@ chdb
 data
 .venv
 
+.env

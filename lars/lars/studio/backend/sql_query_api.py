@@ -34,7 +34,9 @@ except ImportError as e:
 sql_query_bp = Blueprint('sql_query', __name__, url_prefix='/api/sql')
 
 # History storage
-_DEFAULT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
+# Default to ~/.lars (cross-platform), fall back to package dir for dev
+from pathlib import Path
+_DEFAULT_ROOT = str(Path.home() / ".lars")
 LARS_ROOT = os.path.abspath(os.getenv("LARS_ROOT", _DEFAULT_ROOT))
 DATA_DIR = os.path.abspath(os.getenv("LARS_DATA_DIR", os.path.join(LARS_ROOT, "data")))
 HISTORY_DB_PATH = os.path.join(DATA_DIR, "sql_query_history.duckdb")

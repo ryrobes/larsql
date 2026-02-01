@@ -5,6 +5,6 @@ connection_name: mongodb_test
 type: mongodb
 mongodb_uri_env: MONGODB_URI
 database: testdb
-enabled: true
+enabled: false
 sample_row_limit: 100
 distinct_value_threshold: 50

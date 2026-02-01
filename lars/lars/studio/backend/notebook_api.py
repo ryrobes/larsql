@@ -46,7 +46,9 @@ except ImportError as e:
 notebook_bp = Blueprint('notebook', __name__, url_prefix='/api/notebook')
 
 # Default paths
-_DEFAULT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
+# Default to ~/.lars (cross-platform), fall back to package dir for dev
+from pathlib import Path
+_DEFAULT_ROOT = str(Path.home() / ".lars")
 LARS_ROOT = os.path.abspath(os.getenv("LARS_ROOT", _DEFAULT_ROOT))
 SKILLS_DIR = os.path.join(LARS_ROOT, "skills")
 CASCADES_DIR = os.path.join(LARS_ROOT, "cascades")
