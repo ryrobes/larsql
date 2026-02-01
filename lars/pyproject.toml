@@ -7,7 +7,7 @@ name = "larsql"
 version = "2.4.0"
 description = "LARS: Declarative agent framework with first class SQL integration"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.14"
 authors = [{name = "Ryan Robitaille", email = "ryan.robitaille@gmail.com"}]
 license = {text = "OSASSY"}
 keywords = ["agents", "llm", "workflows", "declarative", "sql", "semantic"]
