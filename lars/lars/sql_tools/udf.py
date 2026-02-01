@@ -222,8 +222,13 @@ def _cache_set(cache: dict, key: str, value: str, ttl: Optional[float] = None):
     Set in cache with optional TTL.
 
     Writes to both persistent SemanticCache (L1+L2) and in-memory cache dict.
+    Skips caching for error values to allow retry on next call.
     """
     import time
+
+    # Don't cache errors - allow retry on next call
+    if isinstance(value, str) and value.startswith("ERROR:"):
+        return
 
     # Write to persistent cache (async, non-blocking)
     try:
