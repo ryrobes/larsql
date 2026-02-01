@@ -23,14 +23,22 @@ Note: Data survives process restarts but NOT system reboots (tmpfs).
 """
 
 import sqlite3
+import sys
 import threading
 import logging
 from pathlib import Path
 
 log = logging.getLogger(__name__)
 
-# Path to the scratch database (RAM-backed via tmpfs)
-SCRATCH_DB_PATH = "/dev/shm/lars_scratch.db"
+# Path to the scratch database
+# Linux: /dev/shm (RAM-backed tmpfs) for speed
+# macOS/other: ~/.lars/scratch (filesystem, but still fast for SQLite)
+if sys.platform == "linux" and Path("/dev/shm").exists():
+    SCRATCH_DB_PATH = "/dev/shm/lars_scratch.db"
+else:
+    _scratch_dir = Path.home() / ".lars" / "scratch"
+    _scratch_dir.mkdir(parents=True, exist_ok=True)
+    SCRATCH_DB_PATH = str(_scratch_dir / "lars_scratch.db")
 
 # SQL to initialize the scratch database
 # Note: No DEFAULT for updated_at - DuckDB doesn't understand SQLite's unixepoch()
