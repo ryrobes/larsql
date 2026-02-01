@@ -11,7 +11,7 @@ from typing import Dict, Any
 log = logging.getLogger(__name__)
 
 
-def validate_parse_expression(content: str, text: str, instruction: str = None, **kwargs) -> Dict[str, Any]:
+def validate_parse_expression(content: str, text: str = None, instruction: str = None, **kwargs) -> Dict[str, Any]:
     """
     Validate a generated SQL expression by executing it against a sample value.
     
@@ -31,6 +31,32 @@ def validate_parse_expression(content: str, text: str, instruction: str = None, 
     """
     import duckdb
     from .semantic_sql.sql_macro import bind_sql_parameters
+    
+    # Debug: log what we received
+    log.info(f"[validate_parse_expression] content={content[:50] if content else None}...")
+    log.info(f"[validate_parse_expression] text={text[:50] if text else None}...")
+    log.info(f"[validate_parse_expression] kwargs keys={list(kwargs.keys())}")
+    
+    # Try multiple ways to get the text parameter
+    # 1. Direct parameter (ideal case)
+    # 2. From kwargs directly
+    # 3. From kwargs['input'] (nested)
+    # 4. From echo state if available
+    if text is None:
+        text = kwargs.get('text')
+    if text is None and 'input' in kwargs:
+        inp = kwargs['input']
+        if isinstance(inp, dict):
+            text = inp.get('text')
+    
+    # If still no text, we can't validate the expression
+    if text is None:
+        # Try to get sample text from content analysis
+        # For parse, the expression uses :text, so we just need any sample to test
+        log.warning(f"[validate_parse_expression] No text parameter found, using sample value for validation")
+        text = "sample test value for validation"  # Use a placeholder to at least test the SQL syntax
+    
+    log.info(f"[validate_parse_expression] Using text={text[:50]}...")
     
     expression = content  # The agent's output is the SQL expression
     
