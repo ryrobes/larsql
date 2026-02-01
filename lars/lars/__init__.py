@@ -73,6 +73,7 @@ def _register_all_skills():
     from .skills.image_gen import outpaint_image, generate_image, llm_outpaint, llm_generate
     from .rag.tools import rag_search, rag_read_chunk, rag_list_sources
     from .sql_tools.tools import sql_search, sql_rag_search, smart_sql_search, run_sql as sql_run_sql, list_sql_connections, validate_sql
+    from .validators import validate_parse_expression
     from .skills.data_tools import sql_data, python_data, js_data, clojure_data, lars_data
     from .skills.bash_substrate import bash_data
     from .skills.ui_components import lookup_ui_component, list_ui_components, get_ui_examples
@@ -151,6 +152,7 @@ def _register_all_skills():
     register_skill("sql_query", sql_run_sql)
     register_skill("list_sql_connections", list_sql_connections)
     register_skill("validate_sql", validate_sql)
+    register_skill("validate_parse_expression", validate_parse_expression)
 
     # BI tools (understanding management)
     register_skill("find_understanding", find_understanding)

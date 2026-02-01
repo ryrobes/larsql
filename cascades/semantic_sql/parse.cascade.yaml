@@ -117,3 +117,13 @@ cells:
 
     rules:
       max_turns: 1
+      loop_until: validate_parse_expression
+      max_attempts: 3
+      retry_instructions: |
+        The SQL expression you generated failed validation:
+        {{ validation_error }}
+        
+        Please fix the expression. Remember:
+        - Use :text to reference the input value
+        - Use valid DuckDB functions (regexp_extract, trim, etc.)
+        - Return ONLY the expression, no SELECT or semicolon

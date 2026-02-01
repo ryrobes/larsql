@@ -1,0 +1,13 @@
+# Validator for parse cascades - executes generated SQL to verify it works
+# This file registers the Python function as a skill for loop_until validation
+#
+# The function receives:
+#   - content: The agent's output (generated SQL expression)
+#   - text: The sample text value (from cascade input)
+#   - instruction: What to extract (from cascade input)
+#
+# Returns: {"valid": true/false, "reason": "..."}
+
+cascade_id: validate_parse_expression
+skill_type: function
+function: lars.validators.validate_parse_expression
