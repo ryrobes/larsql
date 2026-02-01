@@ -546,7 +546,7 @@ class EphemeralRagManager:
         content_hash: str,
     ):
         """
-        Insert chunks into ClickHouse/CHDB (text + metadata) and upsert vectors to Chroma.
+        Insert chunks into ClickHouse/CHDB (text + metadata) and upsert vectors to DuckDB vector store.
 
         Args:
             rag_id: Ephemeral RAG identifier
@@ -587,7 +587,7 @@ class EphemeralRagManager:
                 "start_line": 0,
                 "end_line": 0,
                 "file_hash": content_hash,
-                # Placeholder only; vectors are stored in Chroma.
+                # Placeholder only; vectors are stored in DuckDB vector store.
                 "embedding": [],
                 "embedding_model": embed_model,
                 "embedding_dim": embedding_dim or (len(embedding) if embedding else 0),
@@ -626,9 +626,9 @@ class EphemeralRagManager:
             dim = int(embedding_dim or self._embedding_dim or 0)
             if chroma_chunks and dim:
                 upsert_chunks(embed_model, dim, chroma_chunks)
-                logger.debug(f"[Ephemeral-RAG] Upserted {len(chroma_chunks)} vectors to Chroma for {rag_id}")
+                logger.debug(f"[Ephemeral-RAG] Upserted {len(chroma_chunks)} vectors to DuckDB for {rag_id}")
         except Exception as e:
-            logger.warning(f"[Ephemeral-RAG] Failed to upsert vectors to Chroma: {e}")
+            logger.warning(f"[Ephemeral-RAG] Failed to upsert vectors to DuckDB: {e}")
 
     # =========================================================================
     # SEARCH TOOL CREATION
@@ -856,7 +856,7 @@ class EphemeralRagManager:
                     embed_model = get_config().default_embed_model
                     delete_by_rag_id(embed_model, int(self._embedding_dim), rag_id)
             except Exception as e:
-                logger.debug(f"[Ephemeral-RAG] Chroma cleanup failed for {rag_id}: {e}")
+                logger.debug(f"[Ephemeral-RAG] DuckDB cleanup failed for {rag_id}: {e}")
 
         # Clear tracking
         self.replacements.clear()

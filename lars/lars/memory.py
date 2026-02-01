@@ -195,7 +195,7 @@ class MemorySystem:
         message_file = memory_dir / filename
         message_file.write_text(json.dumps(entry, indent=2))
 
-        # Embed and index for semantic search (vectors stored in Chroma).
+        # Embed and index for semantic search (vectors stored in DuckDB).
         content = message.get('content', '')
         if content and isinstance(content, str) and content.strip():
             try:
@@ -217,7 +217,7 @@ class MemorySystem:
                 embedding_dim = embed_result['dim']
 
                 # Insert into ClickHouse/CHDB rag_chunks table (text + metadata only).
-                # Embedding vectors are stored in Chroma to reduce load on the persistence DB.
+                # Embedding vectors are stored in DuckDB vector store to reduce load on the persistence DB.
                 from .db_adapter import get_db
                 import uuid
 
@@ -240,7 +240,7 @@ class MemorySystem:
                     'start_line': 0,
                     'end_line': 0,
                     'file_hash': file_hash,
-                    # Placeholder only; vectors are in Chroma.
+                    # Placeholder only; vectors are in DuckDB vector store.
                     'embedding': [],
                     'embedding_model': embed_model,
                     'embedding_dim': embedding_dim,
@@ -284,9 +284,9 @@ class MemorySystem:
                     )
                     upsert_chunks(embed_model, int(embedding_dim), [chroma_chunk])
                 except Exception as e:
-                    logger.warning(f"Failed to upsert memory chunk to Chroma: {e}")
+                    logger.warning(f"Failed to upsert memory chunk to vector store: {e}")
 
-                logger.debug(f"Indexed message in Chroma: {rag_id} / {doc_id}")
+                logger.debug(f"Indexed message in vector store: {rag_id} / {doc_id}")
 
             except Exception as e:
                 # Don't fail the save if indexing fails
