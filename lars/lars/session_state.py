@@ -371,9 +371,11 @@ class SessionStateManager:
             self._cache[session_id] = state
 
         if self.use_db:
-            # Use sync=True for terminal states to ensure they persist before process exit
+            # Use sync=True for terminal states AND cell transitions
+            # This prevents race conditions where UI polls before async write completes
             is_terminal = status in (SessionStatus.COMPLETED, SessionStatus.ERROR, SessionStatus.CANCELLED)
-            self._save_state(state, sync=is_terminal)
+            is_cell_transition = current_cell is not None
+            self._save_state(state, sync=is_terminal or is_cell_transition)
 
     def set_blocked(
         self,
