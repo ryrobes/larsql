@@ -248,6 +248,46 @@ services:
     restart: unless-stopped
 
   # ===========================================================================
+  # SAP HANA Express Edition
+  # NOTE: Requires Linux host with kernel tuning. Won't run on Docker Desktop (Mac/Windows)
+  # due to sysctl requirements. Use profiles to skip on Mac.
+  # ===========================================================================
+  hana:
+    image: saplabs/hanaexpress:latest
+    platform: linux/amd64    # x86-64 only
+    container_name: lars-test-hana
+    hostname: hana
+    profiles:
+      - hana    # Only start with: docker compose --profile hana up hana
+    ports:
+      - "39017:39017"   # SQL/MDX
+      - "39041:39041"   # SQL/MDX (MDC tenant)
+      - "59013:59013"   # HTTP
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
+    # These sysctls require Linux host (won't work on Docker Desktop Mac/Windows)
+    # sysctls:
+    #   - kernel.shmmax=1073741824
+    #   - kernel.shmmni=524288
+    #   - kernel.shmall=8388608
+    environment:
+      AGREE_TO_SAP_LICENSE: "Y"
+      MASTER_PASSWORD: "HanaTest1!"
+    volumes:
+      - hana-data:/hana/mounts
+    networks:
+      - sql-tests
+    healthcheck:
+      test: /usr/sap/HXE/HDB90/exe/hdbsql -i 90 -u SYSTEM -p HanaTest1! -d SYSTEMDB "SELECT 1 FROM DUMMY"
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 300s    # HANA takes 5+ minutes to initialize
+    restart: unless-stopped
+
+  # ===========================================================================
   # ClickHouse (analytics database)
   # ===========================================================================
   clickhouse:
@@ -282,6 +322,7 @@ volumes:
   mssql-data:
   oracle-data:
   db2-data:
+  hana-data:
   clickhouse-data:
 
 networks:

@@ -114,6 +114,7 @@ enterprise = [
     "oracledb>=2.0,<3.0",            # Oracle (thin mode = pure Python)
     "pymssql>=2.2,<3.0",             # Microsoft SQL Server
     "ibm-db>=3.2,<4.0",              # IBM DB2
+    "hdbcli>=2.0,<3.0",              # SAP HANA
 ]
 all = [
     "docker>=7.0,<8.0",

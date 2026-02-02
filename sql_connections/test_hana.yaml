@@ -1,0 +1,19 @@
+# SAP HANA Express Edition Test Connection
+# Docker: docker compose -f docker_compose/docker-compose.sql-tests.yml up hana -d
+# Port: 39017 (HXE default)
+#
+# Note: HANA Express requires accepting SAP license (AGREE_TO_SAP_LICENSE=Y)
+# Install: pip install hdbcli
+# Or: pip install lars[enterprise]
+
+connection_name: test_hana
+type: hana
+enabled: true
+
+host: localhost
+port: 39017
+database: HXE
+user: SYSTEM
+password_env: HANA_TEST_PASSWORD
+
+sample_row_limit: 1000

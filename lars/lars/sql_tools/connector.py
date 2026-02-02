@@ -188,6 +188,9 @@ class DatabaseConnector:
         elif config.type == "db2":
             self._attach_db2(config, alias)
 
+        elif config.type == "hana":
+            self._attach_hana(config, alias)
+
         elif config.type == "native":
             # Native DuckDB - tables already exist as parquet-backed views
             # No attachment needed, just mark as attached
@@ -1415,6 +1418,109 @@ class DatabaseConnector:
 
         except Exception as e:
             print(f"    [WARN]  Failed to connect to DB2: {str(e)[:80]}")
+
+    def _attach_hana(self, config: SqlConnectionConfig, alias: str):
+        """
+        Attach SAP HANA database by materializing tables into DuckDB.
+
+        Requires:
+        - host: HANA hostname
+        - port: HANA port (default: 39017 for HXE, 30015 for on-prem)
+        - database: Database/tenant name (optional, defaults to HXE)
+        - user: HANA username
+        - password_env: Environment variable for password
+
+        Uses hdbcli (SAP's official Python driver).
+
+        Query syntax: SELECT * FROM {alias}.{table_name}
+
+        Note: This materializes data into DuckDB (not live connection).
+        """
+        try:
+            from hdbcli import dbapi
+            import pandas as pd
+        except ImportError:
+            print(f"    [WARN]  HANA connector requires: pip install hdbcli pandas")
+            return
+
+        if not config.host:
+            print(f"    [WARN]  HANA connection {alias} missing host")
+            return
+
+        if not config.user:
+            print(f"    [WARN]  HANA connection {alias} missing user")
+            return
+
+        password = os.getenv(config.password_env) if config.password_env else config.password
+        if not password:
+            print(f"    [WARN]  HANA connection {alias} missing password (set {config.password_env})")
+            return
+
+        port = config.port or 39017  # Default HXE port
+        database = config.database or "HXE"
+
+        try:
+            # Connect to HANA
+            conn = dbapi.connect(
+                address=config.host,
+                port=port,
+                user=config.user,
+                password=password,
+                databaseName=database
+            )
+            cursor = conn.cursor()
+
+            # Create schema
+            self.conn.execute(f"CREATE SCHEMA IF NOT EXISTS {alias};")
+
+            # Get user tables (HANA uses SYS.TABLES)
+            cursor.execute("""
+                SELECT TABLE_NAME FROM SYS.TABLES
+                WHERE SCHEMA_NAME = CURRENT_SCHEMA
+                AND TABLE_TYPE = 'ROW'
+                ORDER BY TABLE_NAME
+            """)
+            tables = [row[0] for row in cursor.fetchall()]
+
+            table_count = 0
+            total_rows = 0
+            limit = config.sample_row_limit or 1000
+
+            for table_name in tables:
+                try:
+                    # Sample rows
+                    cursor.execute(f'SELECT * FROM "{table_name}" LIMIT {limit}')
+                    columns = [col[0].lower() for col in cursor.description]
+                    rows = cursor.fetchall()
+
+                    if not rows:
+                        continue
+
+                    df = pd.DataFrame(rows, columns=columns)
+
+                    # Register in DuckDB
+                    safe_name = table_name.lower().replace("-", "_").replace(" ", "_")
+                    temp_name = f'_hana_{safe_name}'
+                    self.conn.register(temp_name, df)
+                    self.conn.execute(f"""
+                        CREATE OR REPLACE TABLE {alias}.{safe_name} AS
+                        SELECT * FROM {temp_name}
+                    """)
+                    self.conn.unregister(temp_name)
+
+                    table_count += 1
+                    total_rows += len(df)
+                    print(f"    [OK] Materialized: {table_name} → {alias}.{safe_name} ({len(df)} rows)")
+
+                except Exception as e:
+                    print(f"    [WARN]  Failed to materialize {table_name}: {str(e)[:60]}")
+
+            cursor.close()
+            conn.close()
+            print(f"  └─ Materialized HANA: {database} ({table_count} tables, {total_rows:,} rows)")
+
+        except Exception as e:
+            print(f"    [WARN]  Failed to connect to HANA: {str(e)[:80]}")
 
     def _attach_clickhouse(self, config: SqlConnectionConfig, alias: str):
         """
