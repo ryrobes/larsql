@@ -1,5 +1,5 @@
-last_discovery: '2026-02-02T00:32:42.789414'
-rag_id: sql_schemas_1770010362
+last_discovery: '2026-02-02T00:41:10.680995'
+rag_id: fc3716092402
 databases_indexed:
 - test_mysql
 - test_postgres
@@ -7,4 +7,4 @@ databases_indexed:
 - jsonl_files
 table_count: 61
 total_columns: 922
-embed_model: none
+embed_model: qwen/qwen3-embedding-8b

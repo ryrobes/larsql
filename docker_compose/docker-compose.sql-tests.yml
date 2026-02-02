@@ -194,6 +194,31 @@ services:
     restart: unless-stopped
 
   # ===========================================================================
+  # Oracle XE 21c (via gvenzl community image)
+  # ===========================================================================
+  oracle:
+    image: gvenzl/oracle-xe:21-slim
+    container_name: lars-test-oracle
+    ports:
+      - "1621:1521"    # Oracle listener
+    environment:
+      ORACLE_PASSWORD: testpassword
+      APP_USER: testuser
+      APP_USER_PASSWORD: testpassword
+    volumes:
+      - oracle-data:/opt/oracle/oradata
+      - ./init-scripts/oracle:/container-entrypoint-initdb.d:ro
+    networks:
+      - sql-tests
+    healthcheck:
+      test: ["CMD", "healthcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s    # Oracle takes a while to start
+    restart: unless-stopped
+
+  # ===========================================================================
   # ClickHouse (analytics database)
   # ===========================================================================
   clickhouse:
@@ -226,6 +251,7 @@ volumes:
   mysql-data:
   mariadb-data:
   mssql-data:
+  oracle-data:
   clickhouse-data:
 
 networks:
