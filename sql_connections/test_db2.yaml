@@ -1,0 +1,19 @@
+# IBM DB2 Test Connection
+# Docker: docker compose -f docker_compose/docker-compose.sql-tests.yml up db2 -d
+# Port: 50000
+#
+# Note: ibm-db requires IBM DB2 client libraries (not pure Python).
+# Install: pip install ibm-db
+# Or: pip install lars[enterprise]
+
+connection_name: test_db2
+type: db2
+enabled: true
+
+host: localhost
+port: 50000
+database: testdb
+user: db2inst1
+password_env: TEST_DB2_PASSWORD
+
+sample_row_limit: 1000

@@ -219,6 +219,35 @@ services:
     restart: unless-stopped
 
   # ===========================================================================
+  # IBM DB2 Community Edition
+  # ===========================================================================
+  db2:
+    image: ibmcom/db2:latest
+    platform: linux/amd64    # No ARM64 image, run under Rosetta
+    container_name: lars-test-db2
+    privileged: true    # Required for DB2
+    ports:
+      - "50000:50000"   # DB2 standard port
+    environment:
+      LICENSE: accept
+      DB2INSTANCE: db2inst1
+      DB2INST1_PASSWORD: testpassword
+      DBNAME: testdb
+      SAMPLEDB: "false"
+    volumes:
+      - db2-data:/database
+      - ./init-scripts/db2:/var/custom:ro
+    networks:
+      - sql-tests
+    healthcheck:
+      test: ["CMD", "su", "-", "db2inst1", "-c", "db2 connect to testdb"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 180s    # DB2 takes a while to initialize
+    restart: unless-stopped
+
+  # ===========================================================================
   # ClickHouse (analytics database)
   # ===========================================================================
   clickhouse:
@@ -252,6 +281,7 @@ volumes:
   mariadb-data:
   mssql-data:
   oracle-data:
+  db2-data:
   clickhouse-data:
 
 networks:
