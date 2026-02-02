@@ -107,6 +107,7 @@ services:
       POSTGRES_DB: testdb
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      - ./init-scripts/postgres:/docker-entrypoint-initdb.d:ro
     networks:
       - sql-tests
     healthcheck:
@@ -131,6 +132,7 @@ services:
       MYSQL_PASSWORD: testpassword
     volumes:
       - mysql-data:/var/lib/mysql
+      - ./init-scripts/mysql:/docker-entrypoint-initdb.d:ro
     networks:
       - sql-tests
     healthcheck:
@@ -141,12 +143,90 @@ services:
       start_period: 30s
     restart: unless-stopped
 
+  # ===========================================================================
+  # MariaDB (MySQL-compatible, tests compatibility)
+  # ===========================================================================
+  mariadb:
+    image: mariadb:11
+    container_name: lars-test-mariadb
+    ports:
+      - "3407:3306"
+    environment:
+      MARIADB_ROOT_PASSWORD: rootpassword
+      MARIADB_DATABASE: testdb
+      MARIADB_USER: testuser
+      MARIADB_PASSWORD: testpassword
+    volumes:
+      - mariadb-data:/var/lib/mysql
+      - ./init-scripts/mysql:/docker-entrypoint-initdb.d:ro
+    networks:
+      - sql-tests
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  # ===========================================================================
+  # Microsoft SQL Server 2022 (Express)
+  # ===========================================================================
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: lars-test-mssql
+    ports:
+      - "1533:1433"
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "TestPass123!"
+      MSSQL_PID: Express
+    volumes:
+      - mssql-data:/var/opt/mssql
+    networks:
+      - sql-tests
+    healthcheck:
+      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "TestPass123!" -C -Q "SELECT 1" -b
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  # ===========================================================================
+  # ClickHouse (analytics database)
+  # ===========================================================================
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: lars-test-clickhouse
+    ports:
+      - "8223:8123"    # HTTP interface
+      - "9200:9000"    # Native TCP
+    environment:
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: testpassword
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+      - ./init-scripts/clickhouse:/docker-entrypoint-initdb.d:ro
+    networks:
+      - sql-tests
+    healthcheck:
+      test: wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
 volumes:
   minio-data:
   mongodb-data:
   cassandra-data:
   postgres-data:
   mysql-data:
+  mariadb-data:
+  mssql-data:
+  clickhouse-data:
 
 networks:
   sql-tests:

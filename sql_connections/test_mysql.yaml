@@ -1,0 +1,13 @@
+# MySQL test database (docker-compose.sql-tests.yml)
+# Start with: docker compose -f docker_compose/docker-compose.sql-tests.yml up -d mysql
+connection_name: test_mysql
+type: mysql
+host: localhost
+port: 3406
+database: testdb
+user: testuser
+password: testpassword
+enabled: true
+read_only: true
+sample_row_limit: 100
+distinct_value_threshold: 50

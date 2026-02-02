@@ -1,7 +1,10 @@
-last_discovery: '2026-02-01T07:51:58.118422'
-rag_id: fc3716092402
+last_discovery: '2026-02-02T00:32:42.789414'
+rag_id: sql_schemas_1770010362
 databases_indexed:
-- bigquery_rabbitize
-table_count: 19
-total_columns: 358
-embed_model: qwen/qwen3-embedding-8b
+- test_mysql
+- test_postgres
+- csv_files
+- jsonl_files
+table_count: 61
+total_columns: 922
+embed_model: none
