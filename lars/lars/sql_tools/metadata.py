@@ -246,6 +246,38 @@ class TableMetadata:
                 print(f"    [WARN]  Failed to list ClickHouse tables: {str(e)[:80]}")
                 return []
 
+        # === Enterprise databases (materialized into DuckDB schema) ===
+        elif config.type in ("oracle", "mssql", "db2", "hana"):
+            # These are materialized into DuckDB tables via Python connectors
+            sql = f"""
+                SELECT table_name
+                FROM duckdb_tables()
+                WHERE schema_name = '{alias}'
+                ORDER BY table_name
+            """
+            try:
+                rows = self.conn.fetch_all(sql)
+                return [(alias, row[0]) for row in rows]
+            except Exception as e:
+                print(f"    [WARN]  Failed to list {config.type} tables: {str(e)[:80]}")
+                return []
+
+        # === Native DuckDB (lars internal tables) ===
+        elif config.type == "native":
+            # Native DuckDB tables already exist - list from main schema
+            sql = f"""
+                SELECT table_name
+                FROM duckdb_tables()
+                WHERE schema_name = '{alias}' OR schema_name = 'main'
+                ORDER BY table_name
+            """
+            try:
+                rows = self.conn.fetch_all(sql)
+                return [(alias if alias else 'main', row[0]) for row in rows]
+            except Exception as e:
+                print(f"    [WARN]  Failed to list native tables: {str(e)[:80]}")
+                return []
+
         else:
             raise ValueError(f"Unsupported database type: {config.type}")
 
