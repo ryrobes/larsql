@@ -239,7 +239,7 @@ Context cards (used by [auto-context](#auto-context)) and memory banks serve dif
 | **Access**  | Automatic (inter-cell)    | Explicit tool call           |
 | **Purpose** | Short-term working memory | Long-term knowledge base     |
 | **Sharing** | Session-isolated          | Shared across cascades       |
-| **Storage** | ClickHouse (unified_logs) | Files + ClickHouse RAG index |
+| **Storage** | DuckDB (unified_logs)     | Files + DuckDB vector index  |
 
 
 > **TIP: Best Practices**

@@ -5,8 +5,7 @@ Get LARS running in minutes. This guide covers the essential setup — install, 
 **On This Page**
 - [Install](#install)
 - [Configure](#configure)
-- [Start ClickHouse](#clickhouse)
-- [Initialize Project](#initialize)
+- [Bootstrap](#bootstrap)
 - [Start SQL Server](#sql-server)
 - [Launch Studio (Optional)](#studio)
 - [Next Steps](#next-steps)
@@ -28,7 +27,7 @@ Optional installation variants:
 # With browser automation (Playwright)
 pip install larsql[browser]
 
-# With local models (HuggingFace)
+# With local models support (HuggingFace)
 pip install larsql[local-models]
 
 # Everything
@@ -44,53 +43,44 @@ Set your LLM API key. [OpenRouter](https://openrouter.ai/keys) is recommended (s
 export OPENROUTER_API_KEY=sk-or-v1-...
 ```
 
-## Start ClickHouse
+## Bootstrap
 
 
-LARS requires **ClickHouse** for logging, analytics, and vector search.
-  Run it with Docker:
+Run the bootstrap command to set up your LARS workspace in one step:
 
 ```bash
-docker run -d \
-  --name lars-clickhouse \
-  --ulimit nofile=262144:262144 \
-  -p 8123:8123 \
-  -p 9000:9000 \
-  -p 9009:9009 \
-  -v clickhouse-data:/var/lib/clickhouse \
-  -v clickhouse-logs:/var/log/clickhouse-server \
-  -e CLICKHOUSE_USER=lars \
-  -e CLICKHOUSE_PASSWORD=lars \
-  clickhouse/clickhouse-server:25.11
+lars bootstrap
 ```
 
 
-> **NOTE: ClickHouse Ports**
+This single command handles everything:
+- Creates workspace directories (cascades, skills, data, logs, etc.)
+- Initializes the DuckDB database schema
+- Downloads and registers built-in tools
+- Sets up model configurations
+- Runs initial SQL schema discovery
+
+
+> **TIP: Bootstrap Options**
 >
 > 
-> - **9000**: Native protocol (used by LARS)
-> - **8123**: HTTP interface (useful for debugging)
+> Skip specific steps if needed:
+> 
+> ```bash
+> lars bootstrap --skip-workspace  # Skip directory creation
+> lars bootstrap --skip-db         # Skip database initialization
+> lars bootstrap --skip-tools      # Skip tool downloads
+> lars bootstrap --skip-models     # Skip model setup
+> lars bootstrap --skip-sql-crawl  # Skip schema discovery
+> lars bootstrap --skip-verification  # Skip verification step
+> ```
 > 
 
 
-## Initialize Project
-
-
-Create a project directory with starter files and initialize the database:
-
-```bash
-# Create and enter project directory
-lars init my_lars_project ; cd my_lars_project
-
-# Initialize the database schema
-lars db init
-```
-
-
-This creates the following structure:
+After bootstrap completes, you'll have this structure:
 
 ```
-my_lars_project/
+./
 ├── .env                  # Environment config (auto-generated)
 ├── cascades/             # Workflow definitions
 │   └── examples/         # Sample cascades
@@ -100,15 +90,6 @@ my_lars_project/
 ├── session_dbs/          # Persistent session databases
 └── logs/                 # Execution logs
 ```
-
-
-> **TIP: Auto-Configuration**
->
-> 
-> `lars init` automatically creates a `.env` file with
->     `LARS_ROOT` set to your project's absolute path. Just add your API key
->     if you haven't already exported it.
-> 
 
 
 ## Start SQL Server
@@ -238,8 +219,7 @@ Embed data and use SIMILAR_TO for similarity search
 
 
 <details>
-<summary>Optional Setup
-    Add Elasticsearch for Hybrid Search</summary>
+<summary>Optional Setup — Add Elasticsearch for Hybrid Search</summary>
 
 
 **Elasticsearch is optional** but enables powerful additional features:
@@ -352,7 +332,7 @@ LARS_ELASTICSEARCH_HOST=http://localhost:9200
 > - Uses Elasticsearch for SQL schema search (better autocomplete and discovery)
 > 
 > If the environment variable is not set, these features simply won't be available,
->     and LARS will use ClickHouse for all vector search operations.
+>     and LARS will use DuckDB for all vector search operations.
 > 
 
 
@@ -377,34 +357,6 @@ curl http://localhost:9200/_cluster/health | jq
 </details>
 
 ## Troubleshooting
-
-
-### ClickHouse Connection Errors
-
-
-> **WARNING: Error: Connection refused**
->
-> 
-```
-# Check if ClickHouse is running
-docker ps | grep clickhouse
-
-# Check logs
-docker logs lars-clickhouse
-
-# Restart if needed
-docker restart lars-clickhouse
-```
-
-
-> **WARNING: Error: Table doesn't exist**
->
-> 
-> Run database initialization:
-> 
-```
-lars db init
-```
 
 
 ### API Key Issues

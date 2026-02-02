@@ -300,25 +300,20 @@ pip install -e .
 # LLM Provider (OpenRouter is default)
 OPENROUTER_API_KEY=sk-or-...
 
-# ClickHouse (Required for logging and SQL features)
-LARS_CLICKHOUSE_HOST=localhost
-LARS_CLICKHOUSE_PORT=9000
-LARS_CLICKHOUSE_DATABASE=lars
-LARS_CLICKHOUSE_USER=lars      # Default: lars
-LARS_CLICKHOUSE_PASSWORD=lars  # Default: lars
-
 # Optional: Customize models
 LARS_DEFAULT_MODEL=x-ai/grok-4.1-fast
 LARS_DEFAULT_EMBED_MODEL=qwen/qwen3-embedding-8b
+
+# Optional: Elasticsearch for hybrid search
+LARS_ELASTICSEARCH_HOST=http://localhost:9200
 ```
 
 
-> **WARNING: Required Infrastructure**
+> **TIP: Zero Infrastructure Required**
 >
 > 
-> LARS requires a running ClickHouse instance. There is no embedded fallback.
->     See the [ClickHouse installation guide](https://clickhouse.com/docs/en/getting-started/install)
->     to set up locally.
+> LARS uses embedded DuckDB for all logging, analytics, and vector search.
+>     No external databases required to get started. Just set your API key and run `lars bootstrap`.
 > 
 
 

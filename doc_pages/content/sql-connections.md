@@ -13,6 +13,14 @@ Connect LARS to 18+ data sources through DuckDB's federation capabilities. Query
 >     data is materialized into DuckDB for SQL compatibility.
 > 
 
+
+> **TIP: Tested Databases**
+>
+> 
+> LARS has been tested with PostgreSQL, MySQL, Oracle, MSSQL, IBM DB2, and SAP HANA
+>     via Docker test infrastructure. See the `docker/` directory for example configurations.
+> 
+
 On This Page
 - [Quick Start](#quick-start)
 - [Connection Types](#connection-types)

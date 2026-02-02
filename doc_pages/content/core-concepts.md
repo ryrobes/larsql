@@ -275,7 +275,7 @@ Understanding how LARS executes a cascade is key to building effective workflows
   - Load cascade definition
   - Validate configuration
   - Create session and Echo
-  - Initialize ClickHouse logging
+  - Initialize logging
 2. **Cell Execution Loop**
   - Select starting cell (first in list)
   - Render Jinja2 templates with context
@@ -285,7 +285,7 @@ Understanding how LARS executes a cascade is key to building effective workflows
   - Determine next cell via routing
   - Repeat until completion or error
 3. **Finalization**
-  - Flush logs to ClickHouse
+  - Flush logs to DuckDB
   - Generate execution graph (Mermaid)
   - Return final Echo with results
 
