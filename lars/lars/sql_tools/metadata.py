@@ -174,7 +174,7 @@ class TableMetadata:
                 return []
 
         # === Materialized Types (create tables in a schema) ===
-        elif config.type in ("mongodb", "cassandra"):
+        elif config.type in ("mongodb", "cassandra", "oracle", "mssql"):
             # These materialize collections/tables into a DuckDB schema
             # Use duckdb_tables() to avoid routing through attached databases
             sql = f"""

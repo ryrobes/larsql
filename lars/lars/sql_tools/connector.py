@@ -178,6 +178,13 @@ class DatabaseConnector:
         elif config.type == "clickhouse":
             self._attach_clickhouse(config, alias)
 
+        # Phase 6: Enterprise databases (via Python connectors)
+        elif config.type == "oracle":
+            self._attach_oracle(config, alias)
+
+        elif config.type == "mssql":
+            self._attach_mssql(config, alias)
+
         elif config.type == "native":
             # Native DuckDB - tables already exist as parquet-backed views
             # No attachment needed, just mark as attached
@@ -1085,6 +1092,214 @@ class DatabaseConnector:
 
         except Exception as e:
             print(f"    [WARN]  Failed to connect to Cassandra: {str(e)[:80]}")
+
+    def _attach_oracle(self, config: SqlConnectionConfig, alias: str):
+        """
+        Attach Oracle database by materializing tables into DuckDB.
+
+        Requires:
+        - host: Oracle hostname
+        - port: Oracle port (default: 1521)
+        - service_name or database: Oracle service name or SID
+        - user: Oracle username
+        - password_env: Environment variable for password
+
+        Uses oracledb in "thin mode" (pure Python, no Oracle Client needed).
+
+        Query syntax: SELECT * FROM {alias}.{table_name}
+
+        Note: This materializes data into DuckDB (not live connection).
+        """
+        try:
+            import oracledb
+            import pandas as pd
+        except ImportError:
+            print(f"    [WARN]  Oracle connector requires: pip install oracledb pandas")
+            return
+
+        if not config.host:
+            print(f"    [WARN]  Oracle connection {alias} missing host")
+            return
+
+        # Service name or database (SID)
+        service = config.service_name or config.database
+        if not service:
+            print(f"    [WARN]  Oracle connection {alias} missing service_name or database")
+            return
+
+        if not config.user:
+            print(f"    [WARN]  Oracle connection {alias} missing user")
+            return
+
+        password = os.getenv(config.password_env) if config.password_env else config.password
+        if not password:
+            print(f"    [WARN]  Oracle connection {alias} missing password (set {config.password_env})")
+            return
+
+        port = config.port or 1521
+
+        try:
+            # Connect using thin mode (pure Python)
+            dsn = f"{config.host}:{port}/{service}"
+            conn = oracledb.connect(user=config.user, password=password, dsn=dsn)
+
+            # Create schema
+            self.conn.execute(f"CREATE SCHEMA IF NOT EXISTS {alias};")
+
+            # Get user tables
+            cursor = conn.cursor()
+            cursor.execute("SELECT table_name FROM user_tables ORDER BY table_name")
+            tables = [row[0] for row in cursor.fetchall()]
+
+            table_count = 0
+            total_rows = 0
+            limit = config.sample_row_limit or 1000
+
+            for table_name in tables:
+                try:
+                    # Sample rows
+                    cursor.execute(f"SELECT * FROM {table_name} WHERE ROWNUM <= {limit}")
+                    columns = [col[0].lower() for col in cursor.description]
+                    rows = cursor.fetchall()
+
+                    if not rows:
+                        continue
+
+                    df = pd.DataFrame(rows, columns=columns)
+
+                    # Handle Oracle-specific types
+                    for col in df.columns:
+                        # Convert LOBs to strings
+                        if df[col].dtype == 'object':
+                            df[col] = df[col].apply(lambda x: x.read() if hasattr(x, 'read') else x)
+
+                    # Register in DuckDB
+                    safe_name = table_name.lower().replace("-", "_").replace(" ", "_")
+                    temp_name = f'_ora_{safe_name}'
+                    self.conn.register(temp_name, df)
+                    self.conn.execute(f"""
+                        CREATE OR REPLACE TABLE {alias}.{safe_name} AS
+                        SELECT * FROM {temp_name}
+                    """)
+                    self.conn.unregister(temp_name)
+
+                    table_count += 1
+                    total_rows += len(df)
+                    print(f"    [OK] Materialized: {table_name} → {alias}.{safe_name} ({len(df)} rows)")
+
+                except Exception as e:
+                    print(f"    [WARN]  Failed to materialize {table_name}: {str(e)[:60]}")
+
+            cursor.close()
+            conn.close()
+            print(f"  └─ Materialized Oracle: {service} ({table_count} tables, {total_rows:,} rows)")
+
+        except Exception as e:
+            print(f"    [WARN]  Failed to connect to Oracle: {str(e)[:80]}")
+
+    def _attach_mssql(self, config: SqlConnectionConfig, alias: str):
+        """
+        Attach Microsoft SQL Server database by materializing tables into DuckDB.
+
+        Requires:
+        - host: SQL Server hostname
+        - port: SQL Server port (default: 1433)
+        - database: Database name
+        - user: SQL Server username
+        - password_env: Environment variable for password
+
+        Uses pymssql (pure Python, no ODBC needed).
+
+        Query syntax: SELECT * FROM {alias}.{table_name}
+
+        Note: This materializes data into DuckDB (not live connection).
+        """
+        try:
+            import pymssql
+            import pandas as pd
+        except ImportError:
+            print(f"    [WARN]  MSSQL connector requires: pip install pymssql pandas")
+            return
+
+        if not config.host:
+            print(f"    [WARN]  MSSQL connection {alias} missing host")
+            return
+
+        if not config.database:
+            print(f"    [WARN]  MSSQL connection {alias} missing database")
+            return
+
+        if not config.user:
+            print(f"    [WARN]  MSSQL connection {alias} missing user")
+            return
+
+        password = os.getenv(config.password_env) if config.password_env else config.password
+        if not password:
+            print(f"    [WARN]  MSSQL connection {alias} missing password (set {config.password_env})")
+            return
+
+        port = config.port or 1433
+
+        try:
+            conn = pymssql.connect(
+                server=config.host,
+                port=port,
+                user=config.user,
+                password=password,
+                database=config.database
+            )
+
+            # Create schema
+            self.conn.execute(f"CREATE SCHEMA IF NOT EXISTS {alias};")
+
+            # Get user tables
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+                WHERE TABLE_TYPE = 'BASE TABLE'
+                ORDER BY TABLE_NAME
+            """)
+            tables = [row[0] for row in cursor.fetchall()]
+
+            table_count = 0
+            total_rows = 0
+            limit = config.sample_row_limit or 1000
+
+            for table_name in tables:
+                try:
+                    # Sample rows
+                    cursor.execute(f"SELECT TOP {limit} * FROM [{table_name}]")
+                    columns = [col[0].lower() for col in cursor.description]
+                    rows = cursor.fetchall()
+
+                    if not rows:
+                        continue
+
+                    df = pd.DataFrame(rows, columns=columns)
+
+                    # Register in DuckDB
+                    safe_name = table_name.lower().replace("-", "_").replace(" ", "_")
+                    temp_name = f'_mssql_{safe_name}'
+                    self.conn.register(temp_name, df)
+                    self.conn.execute(f"""
+                        CREATE OR REPLACE TABLE {alias}.{safe_name} AS
+                        SELECT * FROM {temp_name}
+                    """)
+                    self.conn.unregister(temp_name)
+
+                    table_count += 1
+                    total_rows += len(df)
+                    print(f"    [OK] Materialized: {table_name} → {alias}.{safe_name} ({len(df)} rows)")
+
+                except Exception as e:
+                    print(f"    [WARN]  Failed to materialize {table_name}: {str(e)[:60]}")
+
+            cursor.close()
+            conn.close()
+            print(f"  └─ Materialized MSSQL: {config.database} ({table_count} tables, {total_rows:,} rows)")
+
+        except Exception as e:
+            print(f"    [WARN]  Failed to connect to MSSQL: {str(e)[:80]}")
 
     def _attach_clickhouse(self, config: SqlConnectionConfig, alias: str):
         """

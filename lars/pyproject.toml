@@ -109,6 +109,11 @@ local-models = [
     "accelerate>=0.20,<1.0",         # HuggingFace acceleration
     "huggingface-hub>=0.34,<1.0",    # transformers 4.x requires <1.0
 ]
+enterprise = [
+    # Enterprise database connectors (pure Python, no system drivers needed)
+    "oracledb>=2.0,<3.0",            # Oracle (thin mode = pure Python)
+    "pymssql>=2.2,<3.0",             # Microsoft SQL Server
+]
 all = [
     "docker>=7.0,<8.0",
     "transformers>=4.45,<5.0",
@@ -119,6 +124,8 @@ all = [
     "fastapi>=0.100,<1.0",
     "uvicorn[standard]>=0.23,<1.0",
     "httpx>=0.25,<1.0",
+    "oracledb>=2.0,<3.0",
+    "pymssql>=2.2,<3.0",
 ]
 
 [project.scripts]

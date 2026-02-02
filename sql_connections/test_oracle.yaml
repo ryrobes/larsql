@@ -1,0 +1,21 @@
+# Oracle XE Test Database
+# Docker: docker compose -f docker_compose/docker-compose.sql-tests.yml up -d oracle
+
+connection_name: test_oracle
+type: oracle
+enabled: true
+
+host: localhost
+port: 1621
+service_name: XEPDB1  # Oracle pluggable database
+user: testuser
+password_env: ORACLE_TEST_PASSWORD
+
+# Discovery settings
+sample_row_limit: 1000
+
+# Notes:
+# - Uses oracledb in "thin mode" (pure Python, no Oracle Client needed)
+# - Data is materialized into DuckDB (not live connection)
+# - Install: pip install oracledb
+# - Set env: export ORACLE_TEST_PASSWORD=testpassword

@@ -116,6 +116,8 @@ class SqlConnectionConfig(BaseModel):
         "odbc", "adbc", "gsheets", "excel",
         # Phase 5: Hybrid/materialization
         "mongodb", "cassandra",
+        # Phase 6: Enterprise databases (via Python connectors)
+        "oracle", "mssql",
         # Text file types
         "markdown_folder",
         # Native DuckDB (tables already exist as parquet-backed views)
@@ -183,6 +185,13 @@ class SqlConnectionConfig(BaseModel):
     # Cassandra
     cassandra_hosts: Optional[List[str]] = None  # List of Cassandra host addresses
     cassandra_keyspace: Optional[str] = None     # Cassandra keyspace name
+
+    # === Phase 6: Enterprise Database Fields ===
+    # Oracle
+    service_name: Optional[str] = None           # Oracle service name (alternative to database/SID)
+
+    # MSSQL
+    # Uses standard fields: host, port, database, user, password_env
 
     # === Discovery Settings ===
     sample_row_limit: int = 50

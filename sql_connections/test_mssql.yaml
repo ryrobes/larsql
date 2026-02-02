@@ -1,0 +1,21 @@
+# Microsoft SQL Server Test Database
+# Docker: docker compose -f docker_compose/docker-compose.sql-tests.yml up -d mssql
+
+connection_name: test_mssql
+type: mssql
+enabled: true
+
+host: localhost
+port: 1533
+database: testdb
+user: SA
+password_env: MSSQL_SA_PASSWORD
+
+# Discovery settings
+sample_row_limit: 1000
+
+# Notes:
+# - Uses pymssql (pure Python, no ODBC needed)
+# - Data is materialized into DuckDB (not live connection)
+# - Install: pip install pymssql
+# - Set env: export MSSQL_SA_PASSWORD='TestPass123!'

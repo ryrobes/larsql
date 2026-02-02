@@ -793,6 +793,12 @@ class LazyAttachManager:
         if cfg.type == "cassandra":
             self._attach_cassandra(cfg)
             return
+        if cfg.type == "oracle":
+            self._attach_oracle(cfg)
+            return
+        if cfg.type == "mssql":
+            self._attach_mssql(cfg)
+            return
         if cfg.type == "clickhouse":
             self._attach_clickhouse(cfg)
             return
@@ -1394,6 +1400,159 @@ class LazyAttachManager:
                 log.debug("[lazy_attach] Failed materializing Cassandra table %s: %s", table_name, e)
 
         cluster.shutdown()
+
+    def _attach_oracle(self, cfg: SqlConnectionConfig) -> None:
+        """Attach Oracle by materializing tables into DuckDB."""
+        try:
+            import oracledb
+            import pandas as pd
+        except ImportError:
+            log.warning("[lazy_attach] Oracle connector requires oracledb and pandas: pip install oracledb pandas")
+            return
+
+        if not cfg.host:
+            raise ValueError(f"oracle config missing host for {cfg.connection_name}")
+
+        service = cfg.service_name or cfg.database
+        if not service:
+            raise ValueError(f"oracle config missing service_name or database for {cfg.connection_name}")
+
+        if not cfg.user:
+            raise ValueError(f"oracle config missing user for {cfg.connection_name}")
+
+        password = os.getenv(cfg.password_env) if cfg.password_env else cfg.password
+        if not password:
+            raise ValueError(f"oracle config missing password for {cfg.connection_name}")
+
+        port = cfg.port or 1521
+        dsn = f"{cfg.host}:{port}/{service}"
+
+        try:
+            conn = oracledb.connect(user=cfg.user, password=password, dsn=dsn)
+        except Exception as e:
+            log.warning("[lazy_attach] Failed to connect to Oracle %s: %s", cfg.connection_name, e)
+            return
+
+        # Create schema
+        alias = _quote_ident(cfg.connection_name)
+        self._conn.execute(f"CREATE SCHEMA IF NOT EXISTS {alias};")
+
+        cursor = conn.cursor()
+        cursor.execute("SELECT table_name FROM user_tables ORDER BY table_name")
+        tables = [row[0] for row in cursor.fetchall()]
+
+        limit = cfg.sample_row_limit or 1000
+        table_count = 0
+        total_rows = 0
+
+        for table_name in tables:
+            try:
+                cursor.execute(f"SELECT * FROM {table_name} WHERE ROWNUM <= {limit}")
+                columns = [col[0].lower() for col in cursor.description]
+                rows = cursor.fetchall()
+
+                if not rows:
+                    continue
+
+                df = pd.DataFrame(rows, columns=columns)
+
+                # Handle Oracle LOBs
+                for col in df.columns:
+                    if df[col].dtype == 'object':
+                        df[col] = df[col].apply(lambda x: x.read() if hasattr(x, 'read') else x)
+
+                safe_name = table_name.lower().replace("-", "_").replace(" ", "_")
+                temp_name = f'_ora_{safe_name}'
+                self._conn.register(temp_name, df)
+                self._conn.execute(f"CREATE TABLE {alias}.{_quote_ident(safe_name)} AS SELECT * FROM {temp_name}")
+                self._conn.unregister(temp_name)
+
+                table_count += 1
+                total_rows += len(df)
+            except Exception as e:
+                log.debug("[lazy_attach] Failed materializing Oracle table %s: %s", table_name, e)
+
+        cursor.close()
+        conn.close()
+        print(f"  └─ Materialized Oracle: {service} ({table_count} tables, {total_rows:,} rows)")
+
+    def _attach_mssql(self, cfg: SqlConnectionConfig) -> None:
+        """Attach MSSQL by materializing tables into DuckDB."""
+        try:
+            import pymssql
+            import pandas as pd
+        except ImportError:
+            log.warning("[lazy_attach] MSSQL connector requires pymssql and pandas: pip install pymssql pandas")
+            return
+
+        if not cfg.host:
+            raise ValueError(f"mssql config missing host for {cfg.connection_name}")
+
+        if not cfg.database:
+            raise ValueError(f"mssql config missing database for {cfg.connection_name}")
+
+        if not cfg.user:
+            raise ValueError(f"mssql config missing user for {cfg.connection_name}")
+
+        password = os.getenv(cfg.password_env) if cfg.password_env else cfg.password
+        if not password:
+            raise ValueError(f"mssql config missing password for {cfg.connection_name}")
+
+        port = cfg.port or 1433
+
+        try:
+            conn = pymssql.connect(
+                server=cfg.host,
+                port=port,
+                user=cfg.user,
+                password=password,
+                database=cfg.database
+            )
+        except Exception as e:
+            log.warning("[lazy_attach] Failed to connect to MSSQL %s: %s", cfg.connection_name, e)
+            return
+
+        # Create schema
+        alias = _quote_ident(cfg.connection_name)
+        self._conn.execute(f"CREATE SCHEMA IF NOT EXISTS {alias};")
+
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+            WHERE TABLE_TYPE = 'BASE TABLE'
+            ORDER BY TABLE_NAME
+        """)
+        tables = [row[0] for row in cursor.fetchall()]
+
+        limit = cfg.sample_row_limit or 1000
+        table_count = 0
+        total_rows = 0
+
+        for table_name in tables:
+            try:
+                cursor.execute(f"SELECT TOP {limit} * FROM [{table_name}]")
+                columns = [col[0].lower() for col in cursor.description]
+                rows = cursor.fetchall()
+
+                if not rows:
+                    continue
+
+                df = pd.DataFrame(rows, columns=columns)
+
+                safe_name = table_name.lower().replace("-", "_").replace(" ", "_")
+                temp_name = f'_mssql_{safe_name}'
+                self._conn.register(temp_name, df)
+                self._conn.execute(f"CREATE TABLE {alias}.{_quote_ident(safe_name)} AS SELECT * FROM {temp_name}")
+                self._conn.unregister(temp_name)
+
+                table_count += 1
+                total_rows += len(df)
+            except Exception as e:
+                log.debug("[lazy_attach] Failed materializing MSSQL table %s: %s", table_name, e)
+
+        cursor.close()
+        conn.close()
+        print(f"  └─ Materialized MSSQL: {cfg.database} ({table_count} tables, {total_rows:,} rows)")
 
     def _attach_clickhouse(self, cfg: SqlConnectionConfig) -> None:
         """
