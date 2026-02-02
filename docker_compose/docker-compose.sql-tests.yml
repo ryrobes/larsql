@@ -272,6 +272,7 @@ services:
     #   - kernel.shmmax=1073741824
     #   - kernel.shmmni=524288
     #   - kernel.shmall=8388608
+    command: --agree-to-sap-license --master-password HanaTest1!
     environment:
       AGREE_TO_SAP_LICENSE: "Y"
       MASTER_PASSWORD: "HanaTest1!"
