@@ -185,6 +185,9 @@ class DatabaseConnector:
         elif config.type == "mssql":
             self._attach_mssql(config, alias)
 
+        elif config.type == "db2":
+            self._attach_db2(config, alias)
+
         elif config.type == "native":
             # Native DuckDB - tables already exist as parquet-backed views
             # No attachment needed, just mark as attached
@@ -1300,6 +1303,118 @@ class DatabaseConnector:
 
         except Exception as e:
             print(f"    [WARN]  Failed to connect to MSSQL: {str(e)[:80]}")
+
+    def _attach_db2(self, config: SqlConnectionConfig, alias: str):
+        """
+        Attach IBM DB2 database by materializing tables into DuckDB.
+
+        Requires:
+        - host: DB2 hostname
+        - port: DB2 port (default: 50000)
+        - database: Database name
+        - user: DB2 username
+        - password_env: Environment variable for password
+
+        Uses ibm_db (IBM's official Python driver).
+
+        Query syntax: SELECT * FROM {alias}.{table_name}
+
+        Note: This materializes data into DuckDB (not live connection).
+        """
+        try:
+            import ibm_db
+            import ibm_db_dbi
+            import pandas as pd
+        except ImportError:
+            print(f"    [WARN]  DB2 connector requires: pip install ibm-db pandas")
+            return
+
+        if not config.host:
+            print(f"    [WARN]  DB2 connection {alias} missing host")
+            return
+
+        if not config.database:
+            print(f"    [WARN]  DB2 connection {alias} missing database")
+            return
+
+        if not config.user:
+            print(f"    [WARN]  DB2 connection {alias} missing user")
+            return
+
+        password = os.getenv(config.password_env) if config.password_env else config.password
+        if not password:
+            print(f"    [WARN]  DB2 connection {alias} missing password (set {config.password_env})")
+            return
+
+        port = config.port or 50000
+
+        try:
+            # Build connection string
+            conn_str = (
+                f"DATABASE={config.database};"
+                f"HOSTNAME={config.host};"
+                f"PORT={port};"
+                f"PROTOCOL=TCPIP;"
+                f"UID={config.user};"
+                f"PWD={password};"
+            )
+
+            # Connect using DB-API 2.0 interface
+            ibm_conn = ibm_db.connect(conn_str, "", "")
+            conn = ibm_db_dbi.Connection(ibm_conn)
+
+            # Create schema
+            self.conn.execute(f"CREATE SCHEMA IF NOT EXISTS {alias};")
+
+            # Get user tables (DB2 uses SYSCAT.TABLES)
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT TABNAME FROM SYSCAT.TABLES
+                WHERE TABSCHEMA = CURRENT SCHEMA
+                AND TYPE = 'T'
+                ORDER BY TABNAME
+            """)
+            tables = [row[0] for row in cursor.fetchall()]
+
+            table_count = 0
+            total_rows = 0
+            limit = config.sample_row_limit or 1000
+
+            for table_name in tables:
+                try:
+                    # Sample rows (DB2 uses FETCH FIRST)
+                    cursor.execute(f'SELECT * FROM "{table_name}" FETCH FIRST {limit} ROWS ONLY')
+                    columns = [col[0].lower() for col in cursor.description]
+                    rows = cursor.fetchall()
+
+                    if not rows:
+                        continue
+
+                    df = pd.DataFrame(rows, columns=columns)
+
+                    # Register in DuckDB
+                    safe_name = table_name.lower().replace("-", "_").replace(" ", "_")
+                    temp_name = f'_db2_{safe_name}'
+                    self.conn.register(temp_name, df)
+                    self.conn.execute(f"""
+                        CREATE OR REPLACE TABLE {alias}.{safe_name} AS
+                        SELECT * FROM {temp_name}
+                    """)
+                    self.conn.unregister(temp_name)
+
+                    table_count += 1
+                    total_rows += len(df)
+                    print(f"    [OK] Materialized: {table_name} → {alias}.{safe_name} ({len(df)} rows)")
+
+                except Exception as e:
+                    print(f"    [WARN]  Failed to materialize {table_name}: {str(e)[:60]}")
+
+            cursor.close()
+            conn.close()
+            print(f"  └─ Materialized DB2: {config.database} ({table_count} tables, {total_rows:,} rows)")
+
+        except Exception as e:
+            print(f"    [WARN]  Failed to connect to DB2: {str(e)[:80]}")
 
     def _attach_clickhouse(self, config: SqlConnectionConfig, alias: str):
         """

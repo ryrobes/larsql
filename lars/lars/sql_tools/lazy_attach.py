@@ -799,6 +799,9 @@ class LazyAttachManager:
         if cfg.type == "mssql":
             self._attach_mssql(cfg)
             return
+        if cfg.type == "db2":
+            self._attach_db2(cfg)
+            return
         if cfg.type == "clickhouse":
             self._attach_clickhouse(cfg)
             return
@@ -1553,6 +1556,91 @@ class LazyAttachManager:
         cursor.close()
         conn.close()
         print(f"  └─ Materialized MSSQL: {cfg.database} ({table_count} tables, {total_rows:,} rows)")
+
+    def _attach_db2(self, cfg: SqlConnectionConfig) -> None:
+        """Attach IBM DB2 by materializing tables into DuckDB."""
+        try:
+            import ibm_db
+            import ibm_db_dbi
+            import pandas as pd
+        except ImportError:
+            log.warning("[lazy_attach] DB2 connector requires ibm-db and pandas: pip install ibm-db pandas")
+            return
+
+        if not cfg.host:
+            raise ValueError(f"db2 config missing host for {cfg.connection_name}")
+
+        if not cfg.database:
+            raise ValueError(f"db2 config missing database for {cfg.connection_name}")
+
+        if not cfg.user:
+            raise ValueError(f"db2 config missing user for {cfg.connection_name}")
+
+        password = os.getenv(cfg.password_env) if cfg.password_env else cfg.password
+        if not password:
+            raise ValueError(f"db2 config missing password for {cfg.connection_name}")
+
+        port = cfg.port or 50000
+
+        # Build connection string
+        conn_str = (
+            f"DATABASE={cfg.database};"
+            f"HOSTNAME={cfg.host};"
+            f"PORT={port};"
+            f"PROTOCOL=TCPIP;"
+            f"UID={cfg.user};"
+            f"PWD={password};"
+        )
+
+        try:
+            ibm_conn = ibm_db.connect(conn_str, "", "")
+            conn = ibm_db_dbi.Connection(ibm_conn)
+        except Exception as e:
+            log.warning("[lazy_attach] Failed to connect to DB2 %s: %s", cfg.connection_name, e)
+            return
+
+        # Create schema
+        alias = _quote_ident(cfg.connection_name)
+        self._conn.execute(f"CREATE SCHEMA IF NOT EXISTS {alias};")
+
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT TABNAME FROM SYSCAT.TABLES
+            WHERE TABSCHEMA = CURRENT SCHEMA
+            AND TYPE = 'T'
+            ORDER BY TABNAME
+        """)
+        tables = [row[0] for row in cursor.fetchall()]
+
+        limit = cfg.sample_row_limit or 1000
+        table_count = 0
+        total_rows = 0
+
+        for table_name in tables:
+            try:
+                cursor.execute(f'SELECT * FROM "{table_name}" FETCH FIRST {limit} ROWS ONLY')
+                columns = [col[0].lower() for col in cursor.description]
+                rows = cursor.fetchall()
+
+                if not rows:
+                    continue
+
+                df = pd.DataFrame(rows, columns=columns)
+
+                safe_name = table_name.lower().replace("-", "_").replace(" ", "_")
+                temp_name = f'_db2_{safe_name}'
+                self._conn.register(temp_name, df)
+                self._conn.execute(f"CREATE TABLE {alias}.{_quote_ident(safe_name)} AS SELECT * FROM {temp_name}")
+                self._conn.unregister(temp_name)
+
+                table_count += 1
+                total_rows += len(df)
+            except Exception as e:
+                log.debug("[lazy_attach] Failed materializing DB2 table %s: %s", table_name, e)
+
+        cursor.close()
+        conn.close()
+        print(f"  └─ Materialized DB2: {cfg.database} ({table_count} tables, {total_rows:,} rows)")
 
     def _attach_clickhouse(self, cfg: SqlConnectionConfig) -> None:
         """

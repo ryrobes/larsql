@@ -113,6 +113,7 @@ enterprise = [
     # Enterprise database connectors (pure Python, no system drivers needed)
     "oracledb>=2.0,<3.0",            # Oracle (thin mode = pure Python)
     "pymssql>=2.2,<3.0",             # Microsoft SQL Server
+    "ibm-db>=3.2,<4.0",              # IBM DB2
 ]
 all = [
     "docker>=7.0,<8.0",
@@ -126,6 +127,7 @@ all = [
     "httpx>=0.25,<1.0",
     "oracledb>=2.0,<3.0",
     "pymssql>=2.2,<3.0",
+    "ibm-db>=3.2,<4.0",
 ]
 
 [project.scripts]

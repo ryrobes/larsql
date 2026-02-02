@@ -117,7 +117,7 @@ class SqlConnectionConfig(BaseModel):
         # Phase 5: Hybrid/materialization
         "mongodb", "cassandra",
         # Phase 6: Enterprise databases (via Python connectors)
-        "oracle", "mssql",
+        "oracle", "mssql", "db2",
         # Text file types
         "markdown_folder",
         # Native DuckDB (tables already exist as parquet-backed views)

@@ -1,0 +1,28 @@
+# IBM DB2 Connection Example
+# Requires: pip install ibm-db pandas
+
+connection_name: my_db2
+type: db2
+enabled: true
+
+host: localhost
+port: 50000
+database: SAMPLE
+user: db2inst1
+password_env: DB2_PASSWORD
+
+# Discovery settings
+sample_row_limit: 1000
+
+# Notes:
+# - Uses ibm_db Python driver
+# - Data is materialized into DuckDB (not live connection)
+# - Default port: 50000
+# - Set env: export DB2_PASSWORD=yourpassword
+
+# Docker test (if needed):
+# docker run -d --name db2 -p 50000:50000 \
+#   -e LICENSE=accept \
+#   -e DB2INST1_PASSWORD=password \
+#   -e DBNAME=testdb \
+#   ibmcom/db2
