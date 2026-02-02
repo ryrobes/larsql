@@ -396,8 +396,11 @@ class ClientConnection:
                 pass
 
             # Auto-attach all configured connections (can be slow but must complete before client queries)
+            # NOTE: We attach for BOTH pooled and fresh connections. Pooled connections skip
+            # attach during warming (LARS_POOL_ATTACH_ALL=0 by default) for faster startup,
+            # so we must attach here. attach_all() is idempotent - already-attached DBs are skipped.
             from ..sql_tools.lazy_attach import _auto_attach_all_enabled
-            if (not self._is_pooled_connection) and self._lazy_attach and _auto_attach_all_enabled():
+            if self._lazy_attach and _auto_attach_all_enabled():
                 try:
                     results = self._lazy_attach.attach_all()
                     attached = [r for r in results if r["status"] == "attached"]
