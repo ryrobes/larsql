@@ -58,6 +58,7 @@ dependencies = [
     "requests>=2.31",                # Extremely stable HTTP library
     "python-dotenv>=1.0",            # Simple, stable env loader
     "rich>=13.0",                    # Terminal formatting
+    "InquirerPy>=0.3.4",             # Interactive prompts for TUI wizards
     "pillow>=10.0",                  # Image processing
     "jsonschema>=4.0",               # JSON validation
     "watchdog>=4.0",                 # File system monitoring

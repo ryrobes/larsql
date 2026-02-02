@@ -1,6 +1,8 @@
-last_discovery: '2026-02-02T00:41:10.680995'
+last_discovery: '2026-02-02T03:12:19.968890'
 rag_id: fc3716092402
 databases_indexed:
+- test_mssql
+- test_oracle
 - test_mysql
 - test_postgres
 - csv_files

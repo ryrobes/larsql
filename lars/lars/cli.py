@@ -1349,6 +1349,11 @@ def main():
         default=10,
         help='Number of parallel workers for model verification (default: 10)'
     )
+    bootstrap_parser.add_argument(
+        '--non-interactive', '-y',
+        action='store_true',
+        help='Skip interactive wizard, use defaults/env vars'
+    )
 
     # Kit command group - Calliope micro-app management
     kit_parser = subparsers.add_parser('kit', help='Calliope kit management (micro-app builder)')
@@ -7823,6 +7828,129 @@ def cmd_doctor(args):
         sys.exit(1)
 
 
+def bootstrap_wizard():
+    """Interactive setup wizard for new LARS installations."""
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.prompt import Prompt, Confirm
+    from InquirerPy import inquirer
+
+    console = Console()
+
+    # Welcome banner
+    console.print()
+    console.print(Panel.fit(
+        "[bold cyan]🚀 LARS Setup Wizard[/bold cyan]\n\n"
+        "Let's get you set up with LARS.\n"
+        "Press Ctrl+C at any time to exit.",
+        border_style="cyan"
+    ))
+
+    # 1. LARS_ROOT selection
+    default_root = os.environ.get('LARS_ROOT', str(Path.home() / '.lars'))
+    lars_root = Prompt.ask(
+        "\n[bold]Where should LARS store data?[/bold]",
+        default=default_root
+    )
+
+    # 2. OpenRouter API key
+    existing_key = os.environ.get('OPENROUTER_API_KEY', '')
+    if existing_key:
+        console.print(f"\n[bold]OpenRouter API key[/bold] [dim](current: ...{existing_key[-8:]})[/dim]")
+        api_key = Prompt.ask("  API Key (Enter to keep current)", password=True, default="")
+        if not api_key:
+            api_key = existing_key
+    else:
+        console.print("\n[bold]OpenRouter API key[/bold] [dim](get one at openrouter.ai/keys)[/dim]")
+        api_key = Prompt.ask("  API Key", password=True, default="")
+
+    # Validate API key
+    if api_key and api_key != existing_key:
+        console.print("  Validating key...", end="")
+        try:
+            import httpx
+            resp = httpx.get(
+                "https://openrouter.ai/api/v1/models",
+                headers={"Authorization": f"Bearer {api_key}"},
+                timeout=10
+            )
+            if resp.status_code == 200:
+                console.print(" [green]✓ Valid[/green]")
+            else:
+                console.print(f" [red]✗ Invalid (HTTP {resp.status_code})[/red]")
+                api_key = None
+        except Exception as e:
+            console.print(f" [yellow]⚠ Could not validate: {e}[/yellow]")
+    elif api_key == existing_key:
+        console.print("  [dim]Using existing key[/dim]")
+
+    # 3. SQL Connections
+    sql_connections = []
+    passwords_for_env = {}  # Track passwords to write to .env
+    
+    if Confirm.ask("\n[bold]Add a SQL connection?[/bold]", default=False):
+        while True:
+            conn_type = inquirer.select(
+                message="Connection type:",
+                choices=[
+                    "postgres", "mysql", "sqlite", "clickhouse",
+                    "bigquery", "snowflake", "motherduck",
+                    "s3", "gcs", "azure",
+                    "Skip"
+                ]
+            ).execute()
+
+            if conn_type == "Skip":
+                break
+
+            conn = {"type": conn_type, "enabled": True}
+
+            if conn_type in ("postgres", "mysql", "clickhouse"):
+                conn["host"] = Prompt.ask("  Host", default="localhost")
+                default_port = {"postgres": "5432", "mysql": "3306", "clickhouse": "8123"}[conn_type]
+                conn["port"] = int(Prompt.ask("  Port", default=default_port))
+                conn["database"] = Prompt.ask("  Database")
+                conn["user"] = Prompt.ask("  User", default="")
+                password = Prompt.ask("  Password", password=True, default="")
+                if password:
+                    env_var = f"{conn_type.upper()}_PASSWORD"
+                    conn["password_env"] = env_var
+                    passwords_for_env[env_var] = password
+            elif conn_type == "sqlite":
+                conn["database"] = Prompt.ask("  Database file path")
+            elif conn_type == "bigquery":
+                conn["project_id"] = Prompt.ask("  GCP Project ID")
+            elif conn_type == "snowflake":
+                conn["account"] = Prompt.ask("  Account (e.g. xy12345.us-east-1)")
+                conn["user"] = Prompt.ask("  User")
+                conn["database"] = Prompt.ask("  Database", default="")
+                conn["warehouse"] = Prompt.ask("  Warehouse", default="")
+            elif conn_type == "motherduck":
+                conn["database"] = Prompt.ask("  Database name", default="my_db")
+                token = Prompt.ask("  MotherDuck token", password=True, default="")
+                if token:
+                    passwords_for_env["MOTHERDUCK_TOKEN"] = token
+                    conn["token_env"] = "MOTHERDUCK_TOKEN"
+            elif conn_type in ("s3", "gcs", "azure"):
+                conn["bucket"] = Prompt.ask("  Bucket/container name")
+                conn["prefix"] = Prompt.ask("  Path prefix", default="")
+
+            conn_name = Prompt.ask("  Connection name", default=conn.get("database", conn_type))
+            conn["connection_name"] = conn_name
+
+            sql_connections.append(conn)
+
+            if not Confirm.ask("Add another connection?", default=False):
+                break
+
+    return {
+        "lars_root": lars_root,
+        "api_key": api_key,
+        "sql_connections": sql_connections,
+        "passwords_for_env": passwords_for_env
+    }
+
+
 def cmd_bootstrap(args):
     """Initialize everything for a fresh LARS installation.
 
@@ -7832,6 +7960,55 @@ def cmd_bootstrap(args):
     import time
     import shutil
     from pathlib import Path
+
+    # Interactive wizard unless --non-interactive or not a TTY
+    wizard_config = None
+    if not getattr(args, 'non_interactive', False) and sys.stdin.isatty():
+        try:
+            wizard_config = bootstrap_wizard()
+        except KeyboardInterrupt:
+            print("\nSetup cancelled.")
+            sys.exit(0)
+
+        # Apply wizard config
+        if wizard_config:
+            lars_root = Path(wizard_config['lars_root'])
+            
+            # Ensure LARS_ROOT directory exists first
+            lars_root.mkdir(parents=True, exist_ok=True)
+            
+            # Set env vars for this session
+            os.environ['LARS_ROOT'] = str(lars_root)
+            if wizard_config.get('api_key'):
+                os.environ['OPENROUTER_API_KEY'] = wizard_config['api_key']
+
+            # Write .env file
+            env_path = lars_root / '.env'
+            env_lines = [f"LARS_ROOT={lars_root}"]
+            if wizard_config.get('api_key'):
+                env_lines.append(f"OPENROUTER_API_KEY={wizard_config['api_key']}")
+            
+            # Add any collected passwords
+            for env_var, value in wizard_config.get('passwords_for_env', {}).items():
+                env_lines.append(f"{env_var}={value}")
+            
+            env_path.write_text('\n'.join(env_lines) + '\n')
+            print(f"\n✓ Wrote {env_path}")
+
+            # Write sql_connections as YAML files
+            import ruamel.yaml
+            yaml = ruamel.yaml.YAML()
+            yaml.default_flow_style = False
+            
+            for conn in wizard_config.get('sql_connections', []):
+                conn_name = conn.pop('connection_name')
+                conn_path = lars_root / 'sql_connections' / f"{conn_name}.yaml"
+                conn_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(conn_path, 'w') as f:
+                    yaml.dump(conn, f)
+                print(f"✓ Wrote {conn_path}")
+
+            print()
 
     print()
     print("LARS Bootstrap - Fresh Installation Setup")
