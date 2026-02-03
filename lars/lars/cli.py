@@ -1455,8 +1455,31 @@ def main():
             args.base_url = standalone_args.base_url
             args.api_key = standalone_args.api_key
         else:
-            parser.print_help()
-            sys.exit(1)
+            # Check if workspace is initialized
+            from pathlib import Path
+            lars_root = os.environ.get('LARS_ROOT') or str(Path.home() / ".lars")
+            marker_file = Path(lars_root) / '.lars'
+            
+            if not marker_file.exists():
+                # No .lars marker = fresh install, run bootstrap wizard
+                print()
+                print("Welcome to LARS! Let's get you set up.")
+                print()
+                # Create fake args for bootstrap
+                class BootstrapArgs:
+                    skip_workspace = False
+                    skip_db = False
+                    skip_tools = False
+                    skip_models = False
+                    skip_sql_crawl = False
+                    skip_verification = True
+                    verify_models = False
+                    workers = 10
+                    non_interactive = False
+                cmd_bootstrap(BootstrapArgs())
+            else:
+                parser.print_help()
+            sys.exit(0)
 
     # Execute commands
     if args.command == 'run':
