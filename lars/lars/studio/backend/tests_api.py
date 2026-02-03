@@ -770,24 +770,17 @@ def execute_tests(tests: List[TestDefinition], run_id: str, options: Dict[str, A
     # Insert run record
     started_at = datetime.now(timezone.utc)
     try:
-        db.execute("""
-            INSERT INTO test_runs (
-                run_id, run_type, started_at, status, total_tests,
-                trigger, trigger_source, test_filter, run_options
-            ) VALUES (
-                %(run_id)s, %(run_type)s, %(started_at)s, 'running', %(total_tests)s,
-                %(trigger)s, %(trigger_source)s, %(test_filter)s, %(run_options)s
-            )
-        """, {
+        db.insert_rows('test_runs', [{
             'run_id': run_id,
             'run_type': run_type,
             'started_at': started_at,
+            'status': 'running',
             'total_tests': total_executions,
             'trigger': options.get('trigger', 'manual'),
             'trigger_source': options.get('trigger_source', ''),
             'test_filter': options.get('filter', ''),
             'run_options': json.dumps(options)
-        })
+        }])
         print(f"[TestsAPI] Created run record: {run_id} ({total_executions} test executions)")
     except Exception as e:
         print(f"[TestsAPI] Failed to create run record: {e}")
@@ -875,31 +868,28 @@ def execute_tests(tests: List[TestDefinition], run_id: str, options: Dict[str, A
             except Exception as e:
                 print(f"[TestsAPI]   Failed to store result: {e}")
 
-    # Update run record
+    # Update run record (append new row with updated values - dedup view shows latest)
     completed_at = datetime.now(timezone.utc)
     duration_ms = (completed_at - started_at).total_seconds() * 1000
     final_status = 'passed' if failed_count == 0 and error_count == 0 else 'failed'
 
-    db.execute("""
-        UPDATE test_runs SET
-            completed_at = %(completed_at)s,
-            duration_ms = %(duration_ms)s,
-            status = %(status)s,
-            passed_tests = %(passed)s,
-            failed_tests = %(failed)s,
-            error_tests = %(error)s,
-            skipped_tests = %(skipped)s
-        WHERE run_id = %(run_id)s
-    """, {
+    db.insert_rows('test_runs', [{
         'run_id': run_id,
+        'run_type': run_type,
+        'started_at': started_at,
         'completed_at': completed_at,
         'duration_ms': duration_ms,
         'status': final_status,
-        'passed': passed_count,
-        'failed': failed_count,
-        'error': error_count,
-        'skipped': skipped_count
-    })
+        'total_tests': total_executions,
+        'passed_tests': passed_count,
+        'failed_tests': failed_count,
+        'error_tests': error_count,
+        'skipped_tests': skipped_count,
+        'trigger': options.get('trigger', 'manual'),
+        'trigger_source': options.get('trigger_source', ''),
+        'test_filter': options.get('filter', ''),
+        'run_options': json.dumps(options)
+    }])
 
     return {
         'run_id': run_id,
@@ -915,40 +905,22 @@ def execute_tests(tests: List[TestDefinition], run_id: str, options: Dict[str, A
 
 
 def _store_test_result(run_id: str, result: TestResult):
-    """Store a test result in ClickHouse."""
+    """Store a test result in DuckDB (parquet-backed)."""
     db = _get_db()
-
-    # Base columns that always exist
-    base_columns = """
-        run_id, test_id, test_type, test_group, test_name, test_description,
-        source_file, source_line, started_at, completed_at, duration_ms, status,
-        sql_query, expected_value, actual_value, expect_type,
-        validation_mode, cells_validated, contracts_checked, contracts_passed,
-        anchors_checked, anchors_passed, judge_score, judge_reasoning,
-        failure_type, failure_message, failure_diff,
-        error_type, error_message, error_traceback
-    """
-    base_values = """
-        %(run_id)s, %(test_id)s, %(test_type)s, %(test_group)s, %(test_name)s, %(description)s,
-        %(source_file)s, %(source_line)s, %(started_at)s, %(completed_at)s, %(duration_ms)s, %(status)s,
-        %(sql_query)s, %(expected_value)s, %(actual_value)s, %(expect_type)s,
-        %(validation_mode)s, %(cells_validated)s, %(contracts_checked)s, %(contracts_passed)s,
-        %(anchors_checked)s, %(anchors_passed)s, %(judge_score)s, %(judge_reasoning)s,
-        %(failure_type)s, %(failure_message)s, %(failure_diff)s,
-        %(error_type)s, %(error_message)s, %(error_traceback)s
-    """
-
-    base_params = {
+    
+    now = datetime.now(timezone.utc)
+    
+    row = {
         'run_id': run_id,
         'test_id': result.test_id,
         'test_type': result.test_type,
         'test_group': result.test_group,
         'test_name': result.test_name,
-        'description': result.description,
+        'test_description': result.description,
         'source_file': result.source_file,
         'source_line': result.source_line,
-        'started_at': datetime.now(timezone.utc),
-        'completed_at': datetime.now(timezone.utc),
+        'started_at': now,
+        'completed_at': now,
         'duration_ms': result.duration_ms,
         'status': result.status,
         'sql_query': result.sql_query,
@@ -969,33 +941,15 @@ def _store_test_result(run_id: str, result: TestResult):
         'error_type': result.error_type,
         'error_message': result.error_message,
         'error_traceback': result.error_traceback,
+        # Visual columns (always included, schema supports them)
+        'session_id': result.session_id or '',
+        'previous_session_id': result.previous_session_id or '',
+        'overall_score': result.overall_score,
+        'is_baseline': result.is_baseline if result.is_baseline else False,
+        'screenshots_compared': result.screenshots_compared or ''
     }
-
-    # Try with visual columns first
-    try:
-        visual_columns = ", session_id, previous_session_id, overall_score, is_baseline, screenshots_compared"
-        visual_values = ", %(session_id)s, %(previous_session_id)s, %(overall_score)s, %(is_baseline)s, %(screenshots_compared)s"
-        visual_params = {
-            'session_id': result.session_id,
-            'previous_session_id': result.previous_session_id,
-            'overall_score': result.overall_score,
-            'is_baseline': 1 if result.is_baseline else 0,
-            'screenshots_compared': result.screenshots_compared
-        }
-
-        db.execute(f"""
-            INSERT INTO test_results ({base_columns}{visual_columns})
-            VALUES ({base_values}{visual_values})
-        """, {**base_params, **visual_params})
-    except Exception as e:
-        # Fall back to base columns only if visual columns don't exist
-        if 'session_id' in str(e) or 'No such column' in str(e):
-            db.execute(f"""
-                INSERT INTO test_results ({base_columns})
-                VALUES ({base_values})
-            """, base_params)
-        else:
-            raise
+    
+    db.insert_rows('test_results', [row])
 
 
 # =============================================================================

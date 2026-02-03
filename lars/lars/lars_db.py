@@ -1529,6 +1529,101 @@ SYSTEM_TABLES = {
         "partition_by": None,
     },
 
+    # =========================================================================
+    # Test Dashboard Tables
+    # =========================================================================
+
+    "test_runs": {
+        "columns": [
+            # Identity
+            ("run_id", "VARCHAR"),
+            # Run classification (semantic_sql, cascade_snapshot, mixed)
+            ("run_type", "VARCHAR"),
+            # Timing
+            ("started_at", "TIMESTAMP"),
+            ("completed_at", "TIMESTAMP"),
+            ("duration_ms", "DOUBLE"),
+            # Status (running, passed, failed, error, cancelled)
+            ("status", "VARCHAR"),
+            # Counts
+            ("total_tests", "UINTEGER"),
+            ("passed_tests", "UINTEGER"),
+            ("failed_tests", "UINTEGER"),
+            ("skipped_tests", "UINTEGER"),
+            ("error_tests", "UINTEGER"),
+            # Trigger info (manual, ci, scheduled, hook, api)
+            ("trigger", "VARCHAR"),
+            ("trigger_source", "VARCHAR"),
+            # Environment
+            ("git_commit", "VARCHAR"),
+            ("git_branch", "VARCHAR"),
+            ("git_dirty", "BOOLEAN"),
+            # Configuration
+            ("test_filter", "VARCHAR"),
+            ("run_options", "VARCHAR"),
+            # Error info (for status=error)
+            ("error_message", "VARCHAR"),
+            ("error_traceback", "VARCHAR"),
+        ],
+        "partition_by": None,
+        "dedup": {
+            "pk": "run_id",
+            "order_by": "started_at DESC"
+        },
+    },
+
+    "test_results": {
+        "columns": [
+            # Link to run
+            ("run_id", "VARCHAR"),
+            # Test identity
+            ("test_id", "VARCHAR"),
+            ("test_type", "VARCHAR"),  # semantic_sql, cascade_snapshot, visual_regression
+            ("test_group", "VARCHAR"),  # e.g., "semantic_sql/implies" or "snapshots"
+            ("test_name", "VARCHAR"),
+            ("test_description", "VARCHAR"),
+            # Source file info
+            ("source_file", "VARCHAR"),
+            ("source_line", "UINTEGER"),
+            # Timing
+            ("started_at", "TIMESTAMP"),
+            ("completed_at", "TIMESTAMP"),
+            ("duration_ms", "DOUBLE"),
+            # Result (pending, running, passed, failed, error, skipped)
+            ("status", "VARCHAR"),
+            # For semantic SQL tests
+            ("sql_query", "VARCHAR"),
+            ("expected_value", "VARCHAR"),
+            ("actual_value", "VARCHAR"),
+            ("expect_type", "VARCHAR"),  # exact, contains, regex, true/false
+            # For cascade snapshot tests
+            ("validation_mode", "VARCHAR"),  # structure, contracts, anchors, deterministic, full
+            ("cells_validated", "UINTEGER"),
+            ("contracts_checked", "UINTEGER"),
+            ("contracts_passed", "UINTEGER"),
+            ("anchors_checked", "UINTEGER"),
+            ("anchors_passed", "UINTEGER"),
+            # LLM Judge results (for anchors mode)
+            ("judge_score", "FLOAT"),
+            ("judge_reasoning", "VARCHAR"),
+            # Failure details
+            ("failure_type", "VARCHAR"),  # assertion, timeout, exception, contract, anchor
+            ("failure_message", "VARCHAR"),
+            ("failure_diff", "VARCHAR"),
+            # Exception info (for error status)
+            ("error_type", "VARCHAR"),
+            ("error_message", "VARCHAR"),
+            ("error_traceback", "VARCHAR"),
+            # Session linking (from migration 032)
+            ("session_id", "VARCHAR"),
+            ("previous_session_id", "VARCHAR"),
+            ("overall_score", "FLOAT"),
+            ("is_baseline", "BOOLEAN"),
+            ("screenshots_compared", "VARCHAR"),
+        ],
+        "partition_by": None,
+    },
+
 }
 
 
