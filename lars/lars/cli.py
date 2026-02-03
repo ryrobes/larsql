@@ -1341,7 +1341,13 @@ def main():
     bootstrap_parser.add_argument(
         '--skip-verification',
         action='store_true',
-        help='Skip model verification (faster)'
+        default=True,
+        help='Skip model verification (default: True for faster bootstrap)'
+    )
+    bootstrap_parser.add_argument(
+        '--verify-models',
+        action='store_true',
+        help='Run model verification (slower but validates API access)'
     )
     bootstrap_parser.add_argument(
         '--workers', '-w',
@@ -8114,7 +8120,10 @@ def cmd_bootstrap(args):
             # Create .lars marker file
             marker_file = workspace / '.lars'
             if not marker_file.exists():
-                from lars import __version__ as lars_version
+                try:
+                    from lars import __version__ as lars_version
+                except ImportError:
+                    lars_version = "unknown"
                 marker_file.write_text(f"version: {lars_version}\ninitialized: bootstrap\n")
                 print(f"  Created: .lars")
             
@@ -8175,8 +8184,11 @@ def cmd_bootstrap(args):
         try:
             from lars.models_mgmt import refresh_models
 
+            # --verify-models overrides --skip-verification
+            do_verify = getattr(args, 'verify_models', False)
+            skip_verify = not do_verify  # Default: skip verification for speed
             refresh_models(
-                skip_verification=args.skip_verification,
+                skip_verification=skip_verify,
                 workers=args.workers
             )
             steps_completed += 1

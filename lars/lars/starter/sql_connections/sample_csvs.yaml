@@ -1,6 +1,7 @@
+# Example CSV folder connection - uncomment 'enabled' and create the folder to use
 connection_name: csv_files
 type: csv_folder
 folder_path: ./data/csv_files
-enabled: true
+enabled: false  # Set to true after creating ./data/csv_files/ with your CSV files
 sample_row_limit: 10
 distinct_value_threshold: 30
