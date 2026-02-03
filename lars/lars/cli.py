@@ -6771,6 +6771,8 @@ def cmd_serve_studio(args):
             '--worker-class', 'gevent',
             '--workers', str(args.workers),
             '--bind', f'{args.host}:{args.port}',
+            '--timeout', '600',  # 10 min timeout for long test runs
+            '--graceful-timeout', '60',
             '--chdir', studio_backend_dir,
         ]
         if args.preload:
