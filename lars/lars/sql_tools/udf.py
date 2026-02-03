@@ -2759,12 +2759,26 @@ def register_dynamic_sql_functions(connection, existing: set | None = None):
 
                 # ALSO register additional aliases from operator patterns
                 # Extract function names from patterns like "TLDR({{ text }})" or "CONDENSE(...)"
+                # AND infix operators like "{{ text }} MEANS {{ criterion }}"
                 import re
                 for operator_pattern in entry.operators:
+                    alias_name = None
+                    
                     # Match function-style operators: FUNCNAME(...)
                     func_match = re.match(r'^([A-Z_]+)\s*\(', operator_pattern)
                     if func_match:
                         alias_name = func_match.group(1).lower()
+                    else:
+                        # Match infix operators: {{ text }} MEANS {{ criterion }}
+                        # Pattern: whitespace-separated uppercase word between template vars
+                        infix_match = re.search(r'\}\}\s+([A-Z_~]+)\s+\{\{', operator_pattern)
+                        if infix_match:
+                            alias_name = infix_match.group(1).lower()
+                            # Skip single-char operators like ~
+                            if len(alias_name) < 2:
+                                alias_name = None
+                    
+                    if alias_name:
                         # Only register if different from main function name and short_name
                         if alias_name != name and (not name.startswith('semantic_') or alias_name != short_name):
                             if alias_name not in existing_names:
