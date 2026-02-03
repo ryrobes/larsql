@@ -2978,9 +2978,12 @@ def cmd_sql_test(args):
         from lars.config import get_config
         config = get_config()
 
-    # Find cascades with test_cases
-    cascades_dir = Path(config.cascades_dir)
-    semantic_sql_dir = cascades_dir / 'semantic_sql'
+    # Find cascades with test_cases - search both user and builtin directories
+    from lars.config import get_builtin_cascades_dir
+    search_dirs = [
+        Path(config.cascades_dir) / 'semantic_sql',
+        Path(get_builtin_cascades_dir()) / 'semantic_sql',
+    ]
 
     # Track results per mode
     results_by_mode = {m: {'found': 0, 'passed': 0, 'failed': 0, 'failures': []} for m in modes_to_run}
@@ -2992,7 +2995,19 @@ def cmd_sql_test(args):
         console.print(f"[dim]PostgreSQL: {args.host}:{args.port}/{args.database}[/dim]")
     console.print()
 
-    for cascade_file in sorted(semantic_sql_dir.glob('*.yaml')):
+    # Collect all cascade files from search dirs
+    all_cascade_files = []
+    seen_names = set()
+    for search_dir in search_dirs:
+        if not search_dir.exists():
+            continue
+        for cascade_file in sorted(search_dir.glob('*.cascade.yaml')):
+            # User cascades take priority (first dir searched)
+            if cascade_file.name not in seen_names:
+                all_cascade_files.append(cascade_file)
+                seen_names.add(cascade_file.name)
+
+    for cascade_file in all_cascade_files:
         try:
             with open(cascade_file) as f:
                 cascade = yaml.safe_load(f)

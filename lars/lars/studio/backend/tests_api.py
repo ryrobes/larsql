@@ -327,6 +327,7 @@ def discover_all_tests(filter_pattern: Optional[str] = None) -> Dict[str, List[T
 _duckdb_conn = None
 _duckdb_lock = None
 _rewriter_func = None
+_duckdb_init_lock = threading.Lock()  # Thread-safe initialization
 
 
 def _get_duckdb_executor():
@@ -334,25 +335,28 @@ def _get_duckdb_executor():
     global _duckdb_conn, _duckdb_lock, _rewriter_func
 
     if _duckdb_conn is None:
-        from lars.sql_tools.session_db import get_session_db, get_session_lock
-        from lars.sql_tools.udf import register_lars_udf, register_dynamic_sql_functions
-        from lars.semantic_sql.registry import initialize_registry
-        from lars.sql_rewriter import rewrite_lars_syntax
+        # Thread-safe double-checked locking
+        with _duckdb_init_lock:
+            if _duckdb_conn is None:
+                from lars.sql_tools.session_db import get_session_db, get_session_lock
+                from lars.sql_tools.udf import register_lars_udf, register_dynamic_sql_functions
+                from lars.semantic_sql.registry import initialize_registry
+                from lars.sql_rewriter import rewrite_lars_syntax
 
-        # Initialize registry for semantic SQL functions
-        initialize_registry(force=True)
+                # Initialize registry for semantic SQL functions
+                initialize_registry(force=True)
 
-        # Use a special session for tests
-        session_id = '_tests_api_session'
-        _duckdb_conn = get_session_db(session_id)
-        _duckdb_lock = get_session_lock(session_id)
+                # Use a special session for tests
+                session_id = '_tests_api_session'
+                _duckdb_conn = get_session_db(session_id)
+                _duckdb_lock = get_session_lock(session_id)
 
-        # Register all UDFs
-        with _duckdb_lock:
-            register_lars_udf(_duckdb_conn)
-            register_dynamic_sql_functions(_duckdb_conn)
+                # Register all UDFs
+                with _duckdb_lock:
+                    register_lars_udf(_duckdb_conn)
+                    register_dynamic_sql_functions(_duckdb_conn)
 
-        _rewriter_func = rewrite_lars_syntax
+                _rewriter_func = rewrite_lars_syntax
 
     return _duckdb_conn, _duckdb_lock, _rewriter_func
 
@@ -809,6 +813,11 @@ def execute_tests(tests: List[TestDefinition], run_id: str, options: Dict[str, A
     # Build list of (test, mode) tuples to execute
     test_executions = []
     for test in tests:
+        # Handle pre-skipped tests (validation_modes=['skipped'])
+        if test.validation_modes == ['skipped']:
+            test_executions.append((test, 'skipped'))
+            continue
+            
         if test.test_type == 'semantic_sql':
             if ssql_mode == 'full':
                 modes_to_run = ['internal', 'simple', 'extended']
@@ -825,6 +834,23 @@ def execute_tests(tests: List[TestDefinition], run_id: str, options: Dict[str, A
     def run_single_test(args):
         """Worker function to run a single test."""
         test, mode = args
+        
+        # Handle pre-skipped tests immediately (no SQL execution)
+        if mode == 'skipped':
+            return TestResult(
+                test_id=test.test_id,
+                test_type=test.test_type,
+                test_group=test.test_group,
+                test_name=test.test_name,
+                description=test.description,
+                source_file=test.source_file,
+                source_line=test.source_line,
+                sql_query=test.sql_query,
+                validation_mode='skipped',
+                status='skipped',
+                duration_ms=0
+            )
+        
         try:
             if test.test_type == 'semantic_sql':
                 result = _run_semantic_sql_test(test, mode=mode)
