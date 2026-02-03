@@ -8127,6 +8127,28 @@ def cmd_bootstrap(args):
                 marker_file.write_text(f"version: {lars_version}\ninitialized: bootstrap\n")
                 print(f"  Created: .lars")
             
+            # Create sample database from SQL script
+            sample_db_path = workspace / 'data' / 'sample.duckdb'
+            sample_sql_path = starter_dir / 'data' / 'create_sample_db.sql'
+            if sample_sql_path.exists() and not sample_db_path.exists():
+                try:
+                    import duckdb
+                    sample_db_path.parent.mkdir(parents=True, exist_ok=True)
+                    conn = duckdb.connect(str(sample_db_path))
+                    conn.execute(sample_sql_path.read_text())
+                    conn.close()
+                    print(f"  Created: data/sample.duckdb (demo data)")
+                    
+                    # Enable sample_data connection now that DB exists
+                    sample_yaml = workspace / 'sql_connections' / 'sample_data.yaml'
+                    if sample_yaml.exists():
+                        content = sample_yaml.read_text()
+                        content = content.replace('enabled: false', 'enabled: true')
+                        sample_yaml.write_text(content)
+                        print(f"  Enabled: sql_connections/sample_data.yaml")
+                except Exception as e:
+                    print(f"  Note: Could not create sample database: {e}")
+            
             steps_completed += 1
         except Exception as e:
             print(f"  WARNING: Workspace setup failed: {e}")
