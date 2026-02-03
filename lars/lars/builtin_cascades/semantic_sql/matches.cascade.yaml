@@ -64,24 +64,27 @@ cells:
   training_strategy: recent
   training_min_confidence: 0.8
   training_format: xml
-  instructions: 'Does this text match the semantic criterion?
-
+  instructions: |
+    Does this text semantically match the criterion?
 
     TEXT: {{ input.text }}
-
-
     CRITERION: {{ input.criterion }}
 
+    A match means the text's meaning, topic, or intent is related to the criterion.
 
-    Respond with ONLY "true" or "false" - no explanation, no other text.
+    Guidelines:
+    - Match if the text discusses the SAME or CLOSELY RELATED topic as the criterion
+    - Do NOT match if topics are completely unrelated (e.g., weather vs finance)
+    - Consider synonyms and related concepts as matches
+    - Unrelated topics = NOT a match
 
+    Examples:
+    - "stock prices fell" vs "financial news" → true (finance topic)
+    - "sunny weather tomorrow" vs "forecast" → true (weather/prediction)
+    - "weather forecast" vs "financial news" → false (unrelated topics)
+    - "cute puppies" vs "pets" → true (related topic)
 
-    Think about whether the text''s meaning, topic, or sentiment aligns with the criterion.
-
-    Be generous in interpretation - if there''s a reasonable semantic connection,
-    answer "true".
-
-    '
+    Respond with ONLY "true" or "false" - no explanation.
   rules:
     max_turns: 1
   output_schema:

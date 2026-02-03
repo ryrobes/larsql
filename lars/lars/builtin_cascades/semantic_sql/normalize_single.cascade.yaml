@@ -110,9 +110,9 @@ cells:
 
       {% elif input.type == 'email' %}
       EMAIL NORMALIZATION:
-      - Lowercase everything
-      - Remove dots from gmail local part (g.mail → gmail)
-      - Remove plus addressing (user+tag@domain → user@domain)
+      - Lowercase everything (domain AND local part)
+      - Keep dots in local part (john.smith stays as john.smith)
+      - Optionally remove plus addressing (user+tag@domain → user@domain)
       - Fix common typos in domains: gmial → gmail, outlok → outlook
 
       {% elif input.type == 'country' %}

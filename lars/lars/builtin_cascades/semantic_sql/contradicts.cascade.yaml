@@ -44,30 +44,26 @@ sql_function:
 cells:
 - name: check_contradiction
   model: google/gemini-3-flash-preview
-  instructions: 'Do these two texts contradict each other?
-
+  instructions: |
+    Do these two texts logically contradict each other?
 
     TEXT A: {{ input.text_a }}
-
-
     TEXT B: {{ input.text_b }}
 
+    A CONTRADICTION means: Both statements CANNOT be true at the same time because they make OPPOSING claims about THE SAME subject.
 
-    A contradiction means: Both texts cannot be true at the same time.
+    IMPORTANT:
+    - Statements about DIFFERENT topics are NOT contradictions (e.g., "The sky is blue" and "Water is wet" - different subjects, no contradiction)
+    - Only mark as contradiction if one statement DIRECTLY opposes the other on the SAME topic
+    - Unrelated statements = NOT a contradiction
 
-
-    Consider:
-
-    - Do they make opposing claims about the same thing?
-
-    - Are they logically incompatible?
-
-    - Does one negate or deny what the other asserts?
-
+    Examples:
+    - "It's raining" vs "It's sunny" → true (same topic, opposing)
+    - "The car is red" vs "The car is blue" → true (same subject, opposing)
+    - "I like pizza" vs "Dogs are mammals" → false (unrelated topics)
+    - "The sky is blue" vs "Water is wet" → false (different subjects)
 
     Respond with ONLY "true" or "false" - no explanation.
-
-    '
   rules:
     max_turns: 1
   output_schema:
