@@ -384,8 +384,14 @@ def _execute_internal_sql(sql: str, timeout_seconds: int = 120) -> tuple:
         return None, str(e)
 
 
-def _execute_psql_simple_sql(sql: str, host: str = 'localhost', port: int = 15432, database: str = 'lars') -> tuple:
+def _execute_psql_simple_sql(sql: str, host: str = 'localhost', port: int = 15433, database: str = 'lars') -> tuple:
     """Execute SQL via psql CLI (Simple Query Protocol)."""
+    import shutil
+    
+    # Skip gracefully if psql not installed
+    if not shutil.which('psql'):
+        return None, "SKIP:psql not installed"
+    
     try:
         result = subprocess.run(
             [
@@ -393,7 +399,7 @@ def _execute_psql_simple_sql(sql: str, host: str = 'localhost', port: int = 1543
                 '-h', host,
                 '-p', str(port),
                 '-d', database,
-                '-U', 'user',
+                '-U', 'admin',
                 '-t',
                 '-A',
                 '-c', sql
@@ -401,7 +407,7 @@ def _execute_psql_simple_sql(sql: str, host: str = 'localhost', port: int = 1543
             capture_output=True,
             text=True,
             timeout=120,
-            env={**os.environ, 'PGPASSWORD': ''}
+            env={**os.environ, 'PGPASSWORD': 'admin'}
         )
 
         if result.returncode != 0:
@@ -420,12 +426,12 @@ def _execute_psql_simple_sql(sql: str, host: str = 'localhost', port: int = 1543
     except subprocess.TimeoutExpired:
         return None, "Query timed out (120s)"
     except FileNotFoundError:
-        return None, "psql not found - install postgresql-client"
+        return None, "SKIP:psql not installed"
     except Exception as e:
         return None, str(e)
 
 
-def _execute_extended_sql(sql: str, host: str = 'localhost', port: int = 15432, database: str = 'lars') -> tuple:
+def _execute_extended_sql(sql: str, host: str = 'localhost', port: int = 15433, database: str = 'lars') -> tuple:
     """Execute SQL via psycopg2 (Extended Query Protocol)."""
     try:
         import psycopg2
@@ -434,8 +440,8 @@ def _execute_extended_sql(sql: str, host: str = 'localhost', port: int = 15432, 
             host=host,
             port=port,
             database=database,
-            user='user',
-            password=''
+            user='admin',
+            password='admin'
         )
 
         with conn.cursor() as cur:
@@ -487,9 +493,14 @@ def _run_semantic_sql_test(test: TestDefinition, mode: str = 'internal') -> Test
             actual, error = _execute_extended_sql(test.sql_query)
 
         if error:
-            result.status = 'error'
-            result.error_type = 'ExecutionError'
-            result.error_message = error
+            # Handle graceful skips (e.g., missing optional deps)
+            if error.startswith('SKIP:'):
+                result.status = 'skipped'
+                result.error_message = error[5:]  # Remove "SKIP:" prefix
+            else:
+                result.status = 'error'
+                result.error_type = 'ExecutionError'
+                result.error_message = error
         else:
             result.actual_value = json.dumps(_json_safe(actual)) if actual is not None else "NULL"
             passed = _check_expectation(actual, test.expect)
