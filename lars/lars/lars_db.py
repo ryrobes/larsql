@@ -96,6 +96,69 @@ def _get_data_root() -> Path:
 # Maps table names to their column definitions for parquet schema
 # These match the ClickHouse schemas but use DuckDB/Arrow types
 
+def _duckdb_type_to_pyarrow(dtype: str) -> pa.DataType:
+    """Convert DuckDB type string to PyArrow type."""
+    dtype_upper = dtype.upper()
+    
+    # String types
+    if dtype_upper in ("VARCHAR", "TEXT", "STRING"):
+        return pa.string()
+    
+    # Integer types
+    if dtype_upper in ("INTEGER", "INT", "INT32"):
+        return pa.int32()
+    if dtype_upper in ("BIGINT", "INT64"):
+        return pa.int64()
+    if dtype_upper in ("SMALLINT", "INT16"):
+        return pa.int16()
+    if dtype_upper in ("TINYINT", "INT8"):
+        return pa.int8()
+    if dtype_upper in ("UTINYINT", "UINT8"):
+        return pa.uint8()
+    if dtype_upper in ("USMALLINT", "UINT16"):
+        return pa.uint16()
+    if dtype_upper in ("UINTEGER", "UINT32"):
+        return pa.uint32()
+    if dtype_upper in ("UBIGINT", "UINT64"):
+        return pa.uint64()
+    
+    # Floating point
+    if dtype_upper in ("DOUBLE", "FLOAT8"):
+        return pa.float64()
+    if dtype_upper in ("FLOAT", "REAL", "FLOAT4"):
+        return pa.float32()
+    
+    # Boolean
+    if dtype_upper == "BOOLEAN":
+        return pa.bool_()
+    
+    # Timestamps
+    if dtype_upper in ("TIMESTAMP", "TIMESTAMP WITH TIME ZONE", "TIMESTAMPTZ"):
+        return pa.timestamp("us", tz="UTC")
+    if dtype_upper == "DATE":
+        return pa.date32()
+    if dtype_upper == "TIME":
+        return pa.time64("us")
+    
+    # Arrays
+    if dtype_upper.startswith("INTEGER[]") or dtype_upper == "INT[]":
+        return pa.list_(pa.int32())
+    if dtype_upper.startswith("VARCHAR[]") or dtype_upper == "TEXT[]":
+        return pa.list_(pa.string())
+    
+    # Default to string for unknown types
+    return pa.string()
+
+
+def _schema_to_pyarrow(schema_def: dict) -> pa.Schema:
+    """Convert our schema definition to PyArrow Schema."""
+    fields = []
+    for col_name, dtype in schema_def.get("columns", []):
+        pa_type = _duckdb_type_to_pyarrow(dtype)
+        fields.append(pa.field(col_name, pa_type, nullable=True))
+    return pa.schema(fields)
+
+
 SYSTEM_TABLES = {
     "artifact_registry": {
         "columns": [
@@ -1961,8 +2024,12 @@ class LarsDB:
         
         rows = [{k: _sanitize_nat(v) for k, v in row.items()} for row in rows]
         
-        # Convert to Arrow and write
-        table_data = pa.Table.from_pylist(rows)
+        # Convert to Arrow and write with explicit schema (prevents type inference mismatches)
+        if schema_def:
+            arrow_schema = _schema_to_pyarrow(schema_def)
+            table_data = pa.Table.from_pylist(rows, schema=arrow_schema)
+        else:
+            table_data = pa.Table.from_pylist(rows)
         pq.write_table(table_data, filepath, compression="snappy")
         
         return str(filepath)
