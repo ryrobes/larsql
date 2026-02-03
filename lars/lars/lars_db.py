@@ -2239,10 +2239,16 @@ class LarsDB:
                     pk_col = dedup_config["pk"]
                     order_col = dedup_config.get("order_by", "updated_at")
                     
-                    if order_col == "updated_at":
+                    if "," in order_col:
+                        # Multi-column ORDER BY - use as-is (already has DESC/ASC)
+                        order_clause = order_col
+                    elif order_col == "updated_at":
                         # Cast to handle mixed types in older parquet files
                         # Don't assume created_at exists - not all tables have it
                         order_clause = "COALESCE(TRY_CAST(updated_at AS TIMESTAMP), '1970-01-01'::TIMESTAMP) DESC NULLS LAST"
+                    elif "DESC" in order_col.upper() or "ASC" in order_col.upper():
+                        # Already has direction specified
+                        order_clause = order_col
                     else:
                         order_clause = f"{order_col} DESC NULLS LAST"
                     

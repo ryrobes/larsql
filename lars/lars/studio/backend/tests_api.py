@@ -434,15 +434,15 @@ def _execute_psql_simple_sql(sql: str, host: str = 'localhost', port: int = 1543
 def _execute_extended_sql(sql: str, host: str = 'localhost', port: int = 15433, database: str = 'lars') -> tuple:
     """Execute SQL via psycopg2 (Extended Query Protocol)."""
     try:
-        import psycopg2
+        import psycopg
     except ImportError as e:
-        return None, f"SKIP:psycopg2 not installed ({e})"
+        return None, f"SKIP:psycopg not installed ({e})"
     
     try:
-        conn = psycopg2.connect(
+        conn = psycopg.connect(
             host=host,
             port=port,
-            database=database,
+            dbname=database,
             user='admin',
             password='admin'
         )
