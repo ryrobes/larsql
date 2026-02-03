@@ -7628,7 +7628,7 @@ def cmd_doctor(args):
             print(f"   {INFO} Marker         {DIM}{marker_content}{RESET}")
     else:
         print(f"   {WARN} LARS_ROOT      {root_path}")
-        warnings.append("No .lars marker file found. Run 'lars init' to initialize workspace.")
+        warnings.append("No .lars marker file found. Run 'lars bootstrap' to initialize workspace.")
 
     # Check directory structure
     expected_dirs = ['cascades', 'skills', 'config', 'logs', 'states']
