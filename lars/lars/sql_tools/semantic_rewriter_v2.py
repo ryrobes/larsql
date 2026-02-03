@@ -1091,11 +1091,20 @@ def _rewrite_function_calls_with_source_context(sql: str) -> Tuple[str, bool, Li
                                 new_args.append(arg_stripped)
 
                         # For single-arg functions (no string arg), add synthetic source arg
+                        # BUT skip aggregate functions - they don't accept extra args and get
+                        # rewritten by llm_agg_rewriter later
                         if not injected and len(args) == 1:
-                            new_arg = f"'{source_prefix}'"
-                            _log.debug(f"[semantic_rewriter_v2] Injected synthetic source arg for {fn_name}: {target_column}")
-                            new_args.append(new_arg)
-                            injected = True
+                            # Check if this is an aggregate function
+                            from lars.sql_tools.aggregate_registry import get_all_aggregate_names
+                            agg_names = {n.lower() for n in get_all_aggregate_names()}
+                            
+                            if fn_name.lower() not in agg_names:
+                                new_arg = f"'{source_prefix}'"
+                                _log.debug(f"[semantic_rewriter_v2] Injected synthetic source arg for {fn_name}: {target_column}")
+                                new_args.append(new_arg)
+                                injected = True
+                            else:
+                                _log.debug(f"[semantic_rewriter_v2] Skipping source injection for aggregate {fn_name}")
 
                         if injected:
                             # Reconstruct the function call
