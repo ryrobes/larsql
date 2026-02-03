@@ -159,7 +159,7 @@ export const views = {
     icon: 'mdi:test-tube',
     label: 'Tests',
     position: 'top',
-    enabled: process.env.NODE_ENV === 'development',
+    enabled: true, // User-space tests (semantic SQL, snapshots, visual) - always available
   },
 
   hyper: {
