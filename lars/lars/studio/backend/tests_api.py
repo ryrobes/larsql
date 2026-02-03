@@ -564,6 +564,38 @@ def _check_expectation(actual: Any, expect: Any) -> bool:
         elif expect_type == 'not_empty':
             return bool(actual)
 
+        elif expect_type == 'json_contains':
+            # Check if JSON path contains expected value
+            path = expect.get('path', '')
+            value = expect.get('value')
+            try:
+                # Parse actual as JSON if it's a string
+                if isinstance(actual, str):
+                    actual_obj = json.loads(actual)
+                else:
+                    actual_obj = actual
+                
+                # Navigate JSON path (simple $.key.key format)
+                if path.startswith('$.'):
+                    path = path[2:]
+                
+                current = actual_obj
+                for key in path.split('.'):
+                    if key and isinstance(current, dict):
+                        current = current.get(key)
+                    elif key and isinstance(current, list):
+                        try:
+                            current = current[int(key)]
+                        except (ValueError, IndexError):
+                            return False
+                    elif key:
+                        return False
+                
+                # Check if value matches
+                return current == value
+            except (json.JSONDecodeError, TypeError, KeyError):
+                return False
+
         else:
             return actual == expect
 

@@ -9,7 +9,7 @@ import re
 from typing import Dict, Any
 
 
-def validate_sql(query: str) -> Dict[str, Any]:
+def validate_sql(query: str = None, *, content: str = None, **kwargs) -> Dict[str, Any]:
     """
     Validate a SQL query for basic syntax issues.
 
@@ -17,10 +17,14 @@ def validate_sql(query: str) -> Dict[str, Any]:
 
     Args:
         query: The SQL query to validate
+        content: Alternative to query (used by loop_until validator interface)
+        **kwargs: Ignored (accepts extra args from validator system)
 
     Returns:
         Dict with validation result and cleaned query
     """
+    # Support both direct call (query=) and validator interface (content=)
+    query = query or content
     errors = []
     cleaned = query.strip()
 

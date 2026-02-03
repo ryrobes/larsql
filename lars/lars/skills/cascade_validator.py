@@ -178,7 +178,7 @@ def _validate_cascade_overrides_internal(overrides: Dict[str, Any]) -> Dict[str,
 
 
 @simple_eddy
-def validate_cascade_overrides(overrides_json: str) -> str:
+def validate_cascade_overrides(overrides_json: str = None, *, content: str = None, **kwargs) -> str:
     """
     Validate cascade override configuration against LARS Pydantic models.
     
@@ -188,6 +188,8 @@ def validate_cascade_overrides(overrides_json: str) -> str:
     
     Args:
         overrides_json: JSON string containing override configuration with structure:
+        content: Alternative to overrides_json (used by loop_until validator interface)
+        **kwargs: Ignored (accepts extra args from validator system)
             {
                 "cascade_overrides": {
                     "takes": {...},
@@ -217,6 +219,9 @@ def validate_cascade_overrides(overrides_json: str) -> str:
         result = validate_cascade_overrides('{"cascade_overrides": {"takes": {"factor": 3}}}')
         # Returns: {"valid": true, "reason": "Valid cascade overrides", "errors": [], "sanitized": {...}}
     """
+    # Support both direct call (overrides_json=) and validator interface (content=)
+    overrides_json = overrides_json or content
+    
     try:
         overrides = json.loads(overrides_json)
     except json.JSONDecodeError as e:

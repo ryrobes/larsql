@@ -140,13 +140,14 @@ def _validate_json_structure(content: str, expected_keys: str = "subject,predica
 
 
 @simple_eddy
-def valid_json(content: str, expected_keys: str = "subject,predicate,object") -> Dict:
+def valid_json(content: str, expected_keys: str = "subject,predicate,object", **kwargs) -> Dict:
     """
     Validate that content is a valid JSON array with expected keys in each object.
 
     Args:
         content: The string content to validate (passed by validator system)
         expected_keys: Comma-separated list of required keys in each object
+        **kwargs: Ignored (accepts extra args from validator system)
 
     Returns:
         {"valid": True/False, "error": "error message if invalid", "reason": "..."}
@@ -155,12 +156,13 @@ def valid_json(content: str, expected_keys: str = "subject,predicate,object") ->
 
 
 @simple_eddy
-def valid_json_array(content: str) -> Dict:
+def valid_json_array(content: str, **kwargs) -> Dict:
     """
     Simple validator - just checks if content is valid JSON array.
 
     Args:
         content: The string content to validate (passed by validator system)
+        **kwargs: Ignored (accepts extra args from validator system)
 
     Returns:
         {"valid": True/False, "error": "error message if invalid", "reason": "..."}

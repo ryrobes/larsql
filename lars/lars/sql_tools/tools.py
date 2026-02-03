@@ -544,7 +544,7 @@ def run_sql(sql: str, connection: str, limit: Optional[int] = 200) -> str:
         })
 
 
-def validate_sql(sql: str | None = None, connection: Optional[str] = None, *, content: str | None = None) -> str:
+def validate_sql(sql: str | None = None, connection: Optional[str] = None, *, content: str | None = None, **kwargs) -> str:
     """
     Validate SQL syntax and optionally check schema references.
 
@@ -564,6 +564,7 @@ def validate_sql(sql: str | None = None, connection: Optional[str] = None, *, co
                    If provided, validates that referenced tables/columns exist.
                    If omitted, auto-detects from SQL (e.g., csv_files.table → csv_files)
         content: Alternative to sql (used by loop_until validator interface)
+        **kwargs: Ignored (accepts extra args from validator system)
 
     Returns:
         JSON with validation result: {"valid": bool, "reason": str}
