@@ -8433,6 +8433,20 @@ def cmd_bootstrap(args):
             padding=(1, 2)
         ))
         
+        # Auth info
+        console.print(Panel(
+            "[bold]Default credentials (SQL Server + Studio UI)[/bold]\n\n"
+            "Username: [cyan]admin[/cyan]\n"
+            "Password: [cyan]admin[/cyan]\n\n"
+            "[bold]Manage users:[/bold]\n"
+            "  [dim]lars auth add-user <username> --password <pass>[/dim]\n"
+            "  [dim]lars auth change-password <username>[/dim]\n"
+            "  [dim]lars auth list-users[/dim]",
+            title="[bold red]🔐 AUTHENTICATION[/bold red]",
+            border_style="red",
+            padding=(1, 2)
+        ))
+        
         console.print()
         console.print("[dim]📖 Docs: https://larsql.com/docs.html[/dim]")
         console.print()
