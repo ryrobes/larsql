@@ -8406,7 +8406,7 @@ def cmd_bootstrap(args):
         console.print(Panel(
             "[bold]Query with AI-powered operators[/bold]\n\n"
             "Try semantic search on your sample data:\n\n"
-            "[cyan]lars ssql \"SELECT * FROM sample_data.products WHERE description MEANS 'eco-friendly'\"[/cyan]",
+            "[cyan]lars ssql \"SELECT subject, priority FROM sample_data.support_tickets WHERE description MEANS 'performance problem'\"[/cyan]",
             title="[bold green]2️⃣  SEMANTIC SQL[/bold green]",
             border_style="green",
             padding=(1, 2)
@@ -8456,7 +8456,7 @@ def cmd_bootstrap(args):
         print()
         print("Next steps:")
         print("  1. lars run cascades/examples/hello_world.yaml")
-        print("  2. lars ssql \"SELECT * FROM sample_data.products WHERE description MEANS 'eco-friendly'\"")
+        print("  2. lars ssql \"SELECT subject, priority FROM sample_data.support_tickets WHERE description MEANS 'performance problem'\"")
         print("  3. lars serve sql --port 15432")
         print("  4. lars serve studio  (http://localhost:5050)")
         print()
