@@ -140,66 +140,78 @@ def _get_db():
 def discover_semantic_sql_tests(filter_pattern: Optional[str] = None) -> List[TestDefinition]:
     """Discover all semantic SQL tests from cascade files."""
     import yaml
+    from lars.config import get_builtin_cascades_dir
 
     config = _get_config()
-    cascades_dir = Path(config.cascades_dir)
-    semantic_sql_dir = cascades_dir / 'semantic_sql'
+    
+    # Search both user cascades and builtin cascades
+    search_dirs = [
+        Path(config.cascades_dir) / 'semantic_sql',
+        Path(get_builtin_cascades_dir()) / 'semantic_sql',
+    ]
 
     tests = []
+    seen_test_ids = set()  # Avoid duplicates if same cascade exists in both locations
 
-    if not semantic_sql_dir.exists():
-        return tests
-
-    for cascade_file in semantic_sql_dir.glob('*.cascade.yaml'):
-        try:
-            with open(cascade_file) as f:
-                cascade = yaml.safe_load(f)
-        except Exception:
+    for semantic_sql_dir in search_dirs:
+        if not semantic_sql_dir.exists():
             continue
 
-        sql_fn = cascade.get('sql_function', {})
-        fn_name = sql_fn.get('name', '')
-        test_cases = sql_fn.get('test_cases', [])
-
-        if not test_cases:
-            continue
-
-        # Apply filter
-        if filter_pattern:
-            if not fnmatch.fnmatch(fn_name, filter_pattern):
+        for cascade_file in semantic_sql_dir.glob('*.cascade.yaml'):
+            try:
+                with open(cascade_file) as f:
+                    cascade = yaml.safe_load(f)
+            except Exception:
                 continue
 
-        for i, test in enumerate(test_cases):
-            sql = test.get('sql', '')
-            expect = test.get('expect')
-            description = test.get('description', f"Test {i+1}")
-            skip = test.get('skip', False)
+            sql_fn = cascade.get('sql_function', {})
+            fn_name = sql_fn.get('name', '')
+            test_cases = sql_fn.get('test_cases', [])
 
-            # Determine expect type
-            if isinstance(expect, dict):
-                expect_type = expect.get('type', 'complex')
-            elif isinstance(expect, bool):
-                expect_type = 'boolean'
-            elif isinstance(expect, (int, float)):
-                expect_type = 'numeric'
-            else:
-                expect_type = 'exact'
+            if not test_cases:
+                continue
 
-            test_id = f"semantic_sql/{fn_name}/{i}"
+            # Apply filter
+            if filter_pattern:
+                if not fnmatch.fnmatch(fn_name, filter_pattern):
+                    continue
 
-            tests.append(TestDefinition(
-                test_id=test_id,
-                test_type="semantic_sql",
-                test_group=f"semantic_sql/{fn_name}",
-                test_name=description,
-                description=description,
-                source_file=str(cascade_file),
-                source_line=0,
-                sql_query=sql,
-                expect=expect,
-                expect_type=expect_type,
-                validation_modes=['skipped'] if skip else ['internal', 'simple', 'extended']
-            ))
+            for i, test in enumerate(test_cases):
+                sql = test.get('sql', '')
+                expect = test.get('expect')
+                description = test.get('description', f"Test {i+1}")
+                skip = test.get('skip', False)
+
+                # Determine expect type
+                if isinstance(expect, dict):
+                    expect_type = expect.get('type', 'complex')
+                elif isinstance(expect, bool):
+                    expect_type = 'boolean'
+                elif isinstance(expect, (int, float)):
+                    expect_type = 'numeric'
+                else:
+                    expect_type = 'exact'
+
+                test_id = f"semantic_sql/{fn_name}/{i}"
+
+                # Skip if we've already seen this test (user cascades take priority)
+                if test_id in seen_test_ids:
+                    continue
+                seen_test_ids.add(test_id)
+
+                tests.append(TestDefinition(
+                    test_id=test_id,
+                    test_type="semantic_sql",
+                    test_group=f"semantic_sql/{fn_name}",
+                    test_name=description,
+                    description=description,
+                    source_file=str(cascade_file),
+                    source_line=0,
+                    sql_query=sql,
+                    expect=expect,
+                    expect_type=expect_type,
+                    validation_modes=['skipped'] if skip else ['internal', 'simple', 'extended']
+                ))
 
     return tests
 
