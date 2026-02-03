@@ -2026,6 +2026,39 @@ class LarsDB:
         
         # Convert to Arrow and write with explicit schema (prevents type inference mismatches)
         if schema_def:
+            # Coerce values to match schema types (PyArrow doesn't auto-coerce)
+            type_map = {col: dtype for col, dtype in schema_def["columns"]}
+            coerced_rows = []
+            for row in rows:
+                coerced = {}
+                for col, val in row.items():
+                    if val is None:
+                        coerced[col] = None
+                    elif col in type_map:
+                        dtype = type_map[col].upper()
+                        try:
+                            if dtype in ("INTEGER", "INT", "INT32", "SMALLINT", "TINYINT", 
+                                        "BIGINT", "INT64", "UBIGINT", "UINTEGER", 
+                                        "UTINYINT", "USMALLINT", "INT8", "INT16", "UINT8", "UINT16", "UINT32", "UINT64"):
+                                coerced[col] = int(val) if val is not None else None
+                            elif dtype in ("DOUBLE", "FLOAT", "REAL", "FLOAT4", "FLOAT8"):
+                                coerced[col] = float(val) if val is not None else None
+                            elif dtype == "BOOLEAN":
+                                if isinstance(val, bool):
+                                    coerced[col] = val
+                                elif isinstance(val, str):
+                                    coerced[col] = val.lower() in ("true", "1", "yes")
+                                else:
+                                    coerced[col] = bool(val)
+                            else:
+                                coerced[col] = val
+                        except (ValueError, TypeError):
+                            coerced[col] = None  # Can't coerce → null
+                    else:
+                        coerced[col] = val
+                coerced_rows.append(coerced)
+            rows = coerced_rows
+            
             arrow_schema = _schema_to_pyarrow(schema_def)
             table_data = pa.Table.from_pylist(rows, schema=arrow_schema)
         else:
