@@ -435,7 +435,10 @@ def _execute_extended_sql(sql: str, host: str = 'localhost', port: int = 15433, 
     """Execute SQL via psycopg2 (Extended Query Protocol)."""
     try:
         import psycopg2
-
+    except ImportError as e:
+        return None, f"SKIP:psycopg2 not installed ({e})"
+    
+    try:
         conn = psycopg2.connect(
             host=host,
             port=port,
@@ -454,8 +457,6 @@ def _execute_extended_sql(sql: str, host: str = 'localhost', port: int = 15433, 
             return None, None
         return row[0], None
 
-    except ImportError:
-        return None, "psycopg2 not installed"
     except Exception as e:
         return None, str(e)
 
