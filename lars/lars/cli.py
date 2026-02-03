@@ -7800,7 +7800,88 @@ def cmd_doctor(args):
     print()
 
     # -------------------------------------------------------------------------
-    # 5. Summary
+    # 5. SQL Connections
+    # -------------------------------------------------------------------------
+    print(f"{BOLD}{BLUE}🔌 SQL Connections{RESET}")
+    print(f"{DIM}{'─' * 50}{RESET}")
+
+    try:
+        import yaml
+        sql_conn_dir = root_path / 'sql_connections'
+        samples_dir = sql_conn_dir / 'samples'
+
+        if sql_conn_dir.exists():
+            # Load connection configs
+            conn_files = list(sql_conn_dir.glob('*.yaml')) + list(sql_conn_dir.glob('*.yml'))
+            enabled_conns = []
+            disabled_conns = []
+
+            for cf in conn_files:
+                try:
+                    with open(cf) as f:
+                        cfg = yaml.safe_load(f)
+                    if cfg and isinstance(cfg, dict):
+                        name = cfg.get('connection_name', cf.stem)
+                        conn_type = cfg.get('type', 'unknown')
+                        enabled = cfg.get('enabled', True)
+                        if enabled:
+                            enabled_conns.append((name, conn_type))
+                        else:
+                            disabled_conns.append((name, conn_type))
+                except:
+                    pass
+
+            if enabled_conns:
+                print(f"   {OK} Configured     {CYAN}{len(enabled_conns)}{RESET} enabled, {DIM}{len(disabled_conns)} disabled{RESET}")
+                if verbose:
+                    for name, conn_type in enabled_conns:
+                        print(f"      {DIM}├─ {name} ({conn_type}){RESET}")
+            else:
+                print(f"   {INFO} Configured     {DIM}No enabled connections{RESET}")
+
+            # Check indexed schemas from samples directory
+            if samples_dir.exists():
+                total_tables = 0
+                total_rows = 0
+                db_stats = {}
+
+                for table_file in samples_dir.rglob('*.yaml'):
+                    try:
+                        with open(table_file) as f:
+                            meta = yaml.safe_load(f)
+                        if meta and isinstance(meta, dict):
+                            db_name = meta.get('database', 'unknown')
+                            row_count = meta.get('row_count', 0) or 0
+                            if db_name not in db_stats:
+                                db_stats[db_name] = {'tables': 0, 'rows': 0}
+                            db_stats[db_name]['tables'] += 1
+                            db_stats[db_name]['rows'] += row_count
+                            total_tables += 1
+                            total_rows += row_count
+                    except:
+                        pass
+
+                if total_tables > 0:
+                    print(f"   {OK} Indexed        {CYAN}{total_tables}{RESET} tables, {CYAN}{total_rows:,}{RESET} rows")
+                    if verbose:
+                        for db_name, stats in sorted(db_stats.items()):
+                            print(f"      {DIM}├─ {db_name}: {stats['tables']} tables, {stats['rows']:,} rows{RESET}")
+                else:
+                    print(f"   {INFO} Indexed        {DIM}No schemas indexed yet{RESET}")
+                    if enabled_conns:
+                        warnings.append("SQL connections configured but not indexed. Run 'lars sql crawl'.")
+            else:
+                print(f"   {INFO} Indexed        {DIM}Run 'lars sql crawl' to discover schemas{RESET}")
+        else:
+            print(f"   {INFO} Configured     {DIM}No sql_connections/ directory{RESET}")
+
+    except Exception as e:
+        print(f"   {DIM}(Error reading SQL connections: {e}){RESET}")
+
+    print()
+
+    # -------------------------------------------------------------------------
+    # 6. Summary
     # -------------------------------------------------------------------------
     print(f"{BOLD}{MAGENTA}{'═' * 50}{RESET}")
 
