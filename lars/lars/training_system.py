@@ -123,7 +123,9 @@ def _get_recent_examples(
         return examples
 
     except Exception as e:
-        log.warning(f"[training] Query failed: {e}")
+        # Suppress noisy view schema errors
+        if "Contents of view were altered" not in str(e):
+            log.warning(f"[training] Query failed: {e}")
         return []
 
 
@@ -178,7 +180,9 @@ def _get_high_confidence_examples(
         return examples
 
     except Exception as e:
-        log.warning(f"[training] Query failed: {e}")
+        # Suppress noisy view schema errors
+        if "Contents of view were altered" not in str(e):
+            log.warning(f"[training] Query failed: {e}")
         return []
 
 
@@ -231,7 +235,9 @@ def _get_random_examples(
         return examples
 
     except Exception as e:
-        log.warning(f"[training] Query failed: {e}")
+        # Suppress noisy view schema errors
+        if "Contents of view were altered" not in str(e):
+            log.warning(f"[training] Query failed: {e}")
         return []
 
 
