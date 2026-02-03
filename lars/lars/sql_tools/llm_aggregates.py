@@ -22,9 +22,13 @@ This module provides thin wrappers that execute those cascades.
 
 import json
 import hashlib
+import os
 import re
 from typing import Optional, List, Dict, Any, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+# Debug mode for verbose internal logging
+_DEBUG = os.environ.get('LARS_DEBUG', '').lower() in ('1', 'true', 'yes')
 
 
 # ============================================================================
@@ -2473,8 +2477,8 @@ def _register_dynamic_aggregate_variants(connection, log, existing: set):
             if safe_create_function(connection, func_name, wrapper_func, existing, return_type="VARCHAR"):
                 registered_count += 1
 
-    # Only print if we actually registered something new
-    if registered_count > 0:
+    # Only print if we actually registered something new (and in debug mode)
+    if registered_count > 0 and _DEBUG:
         print(f"[DynamicAgg] Registered {registered_count} new aggregate variants")
 
 
@@ -2530,7 +2534,8 @@ def register_dimension_compute_udfs(connection, existing: set | None = None):
                 import hashlib
 
                 # Version marker - verify latest code is running
-                print(f"[dimension_compute] v2026.01.03.A {func_name_inner} called", flush=True)
+                if _DEBUG:
+                    print(f"[dimension_compute] v2026.01.03.A {func_name_inner} called", flush=True)
 
                 # Import execution infrastructure (same as execute_cascade_udf)
                 from lars.session_naming import generate_woodland_id
@@ -2543,14 +2548,15 @@ def register_dimension_compute_udfs(connection, existing: set | None = None):
                 caller_id = get_caller_id()
 
                 # DEBUG: Log caller_id for dimension functions (with flush for immediate output)
-                if caller_id:
-                    print(f"[dimension_compute] {func_name_inner}: caller_id={caller_id}", flush=True)
-                else:
-                    print(f"[dimension_compute] {func_name_inner}: WARNING - caller_id is None/empty!", flush=True)
-                    # Also log global registry state for debugging
-                    from lars.caller_context import _global_caller_registry, _registry_lock
-                    with _registry_lock:
-                        print(f"[dimension_compute] Global registry contents: {list(_global_caller_registry.keys())}", flush=True)
+                if _DEBUG:
+                    if caller_id:
+                        print(f"[dimension_compute] {func_name_inner}: caller_id={caller_id}", flush=True)
+                    else:
+                        print(f"[dimension_compute] {func_name_inner}: WARNING - caller_id is None/empty!", flush=True)
+                        # Also log global registry state for debugging
+                        from lars.caller_context import _global_caller_registry, _registry_lock
+                        with _registry_lock:
+                            print(f"[dimension_compute] Global registry contents: {list(_global_caller_registry.keys())}", flush=True)
 
                 # Parse values JSON array
                 try:
@@ -2617,7 +2623,8 @@ def register_dimension_compute_udfs(connection, existing: set | None = None):
 
                 # Register cascade execution for SQL Trail
                 if caller_id:
-                    print(f"[dimension_compute] Registering cascade: {cascade_id_inner}, session={session_id}, caller_id={caller_id}", flush=True)
+                    if _DEBUG:
+                        print(f"[dimension_compute] Registering cascade: {cascade_id_inner}, session={session_id}, caller_id={caller_id}", flush=True)
                     try:
                         register_cascade_execution(
                             caller_id=caller_id,
@@ -2626,14 +2633,17 @@ def register_dimension_compute_udfs(connection, existing: set | None = None):
                             session_id=session_id,
                             inputs=cascade_input
                         )
-                        print(f"[dimension_compute] Successfully registered cascade execution", flush=True)
+                        if _DEBUG:
+                            print(f"[dimension_compute] Successfully registered cascade execution", flush=True)
                     except Exception as reg_e:
-                        print(f"[dimension_compute] ERROR registering cascade: {reg_e}", flush=True)
-                else:
+                        if _DEBUG:
+                            print(f"[dimension_compute] ERROR registering cascade: {reg_e}", flush=True)
+                elif _DEBUG:
                     print(f"[dimension_compute] WARNING: No caller_id for cascade {cascade_id_inner}, session={session_id}", flush=True)
 
                 # Execute the cascade with proper caller_id propagation
-                print(f"[dimension_compute] Running cascade {cascade_id_inner} with caller_id={caller_id}")
+                if _DEBUG:
+                    print(f"[dimension_compute] Running cascade {cascade_id_inner} with caller_id={caller_id}")
                 try:
                     result = _run_cascade_sync(
                         cascade_path_inner,
@@ -2758,8 +2768,8 @@ def register_dimension_compute_udfs(connection, existing: set | None = None):
                 registered_count += 1
                 total_registered += 1
 
-    # Only print summary if we actually registered something
-    if total_registered > 0:
+    # Only print summary if we actually registered something (and in debug mode)
+    if total_registered > 0 and _DEBUG:
         print(f"[dimension_compute] Registered {total_registered} new dimension UDFs")
 
 

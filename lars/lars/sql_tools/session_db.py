@@ -13,6 +13,9 @@ from threading import Lock
 
 from ..console_style import S, styled_print
 
+# Debug mode for verbose internal logging
+_DEBUG = os.environ.get('LARS_DEBUG', '').lower() in ('1', 'true', 'yes')
+
 
 # Global registry of session databases
 _session_dbs: Dict[str, duckdb.DuckDBPyConnection] = {}
@@ -85,8 +88,10 @@ def get_session_db(session_id: str) -> duckdb.DuckDBPyConnection:
             from .shared_parquet import attach_shared_tables, is_shared_tables_enabled
             if is_shared_tables_enabled():
                 if attach_shared_tables(conn):
-                    styled_print(f"[session_db] {S.DB} Shared tables attached for {session_id}")
+                    if _DEBUG:
+                        styled_print(f"[session_db] {S.DB} Shared tables attached for {session_id}")
         except Exception as e:
+            # Always show warnings
             styled_print(f"[session_db] {S.WARN}  Shared tables failed: {e}")
 
         _session_dbs[session_id] = conn

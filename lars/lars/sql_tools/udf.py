@@ -28,6 +28,9 @@ import duckdb
 from ..console_style import S, styled_print
 from ..perf_logger import perf_timer
 
+# Debug mode for verbose internal logging
+_DEBUG = os.environ.get('LARS_DEBUG', '').lower() in ('1', 'true', 'yes')
+
 
 # Track which connections have UDF registered (to avoid duplicate registration)
 _registered_connections: set = set()
@@ -2731,7 +2734,8 @@ def register_dynamic_sql_functions(connection, existing: set | None = None):
                             connection.execute(macro_sql)
                             existing_names.add(rows_macro_name.lower())
                             registered_count += 1
-                            print(f"[DynamicUDF] Created _rows macro: {rows_macro_name}({req_macro_args})")
+                            if _DEBUG:
+                                print(f"[DynamicUDF] Created _rows macro: {rows_macro_name}({req_macro_args})")
 
                     except Exception as macro_err:
                         import logging
@@ -2783,11 +2787,12 @@ def register_dynamic_sql_functions(connection, existing: set | None = None):
                     logging.getLogger(__name__).debug(f"[DynamicUDF] Could not register {name}: {e}")
                 skipped_count += 1
 
-        # Only print summary if we actually registered something new
-        if registered_count > 0:
+        # Only print summary if we actually registered something new (and in debug mode)
+        if registered_count > 0 and _DEBUG:
             print(f"[DynamicUDF] Registered {registered_count} new SQL functions")
 
     except Exception as e:
+        # Always print errors (not just debug)
         print(f"[DynamicUDF] ERROR: Dynamic registration failed: {e}")
         import traceback
         traceback.print_exc()

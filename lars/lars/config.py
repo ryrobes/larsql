@@ -27,6 +27,9 @@ _LARS_ROOT = os.getenv("LARS_ROOT", _DEFAULT_LARS_ROOT)
 # (e.g., analytics_worker.py uses `from .config import LARS_ROOT`)
 LARS_ROOT = _LARS_ROOT
 
+# Debug mode for verbose internal logging
+_DEBUG = os.environ.get('LARS_DEBUG', '').lower() in ('1', 'true', 'yes')
+
 
 # ============================================================================
 # Builtin Resources - Package-bundled content
@@ -122,7 +125,8 @@ def _resolve_google_credentials() -> Optional[str]:
 
             atexit.register(_cleanup_temp_credentials)
 
-            print(f"[Config] Resolved GOOGLE_APPLICATION_CREDENTIALS from JSON string to temp file")
+            if _DEBUG:
+                print(f"[Config] Resolved GOOGLE_APPLICATION_CREDENTIALS from JSON string to temp file")
             return temp_path
 
         except Exception as e:
@@ -780,7 +784,8 @@ def set_vertex_provider(
                 _resolved_google_credentials_path = temp_path
                 _global_config.vertex_credentials_path = temp_path
 
-                print(f"[Config] set_vertex_provider: Resolved credentials from JSON string to temp file")
+                if _DEBUG:
+                    print(f"[Config] set_vertex_provider: Resolved credentials from JSON string to temp file")
 
             except json.JSONDecodeError as e:
                 print(f"[Config] Warning: credentials_path looks like JSON but failed to parse: {e}")

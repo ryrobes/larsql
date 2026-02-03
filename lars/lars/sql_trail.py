@@ -15,6 +15,7 @@ Core Functions:
 
 import hashlib
 import logging
+import os
 import re
 import uuid
 from datetime import datetime, timezone
@@ -22,6 +23,9 @@ from threading import Lock
 from typing import Optional, List, Tuple, Dict, Any, Set
 
 logger = logging.getLogger(__name__)
+
+# Debug mode for verbose internal logging
+_DEBUG = os.environ.get('LARS_DEBUG', '').lower() in ('1', 'true', 'yes')
 
 # ============================================================================
 # Cascade Tracking (Thread-Safe)
@@ -914,9 +918,11 @@ def register_cascade_execution(
             'inputs_summary': str(inputs)[:200] if inputs else '',
             'timestamp': datetime.now(timezone.utc)
         }
-        print(f"[sql_trail] Inserting cascade execution: caller_id={caller_id}, cascade_id={cascade_id}, session={session_id}", flush=True)
+        if _DEBUG:
+            print(f"[sql_trail] Inserting cascade execution: caller_id={caller_id}, cascade_id={cascade_id}, session={session_id}", flush=True)
         db.insert_rows('sql_cascade_executions', [row_data])
-        print(f"[sql_trail] Insert successful", flush=True)
+        if _DEBUG:
+            print(f"[sql_trail] Insert successful", flush=True)
 
         logger.debug(f"SQL Trail: Registered cascade {cascade_id} for {caller_id[:16]}")
     except Exception as e:

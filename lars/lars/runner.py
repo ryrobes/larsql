@@ -11,6 +11,9 @@ import logging
 
 # Module-level logger for debugging
 logger = logging.getLogger(__name__)
+
+# Debug mode for verbose internal logging
+_DEBUG = os.environ.get('LARS_DEBUG', '').lower() in ('1', 'true', 'yes')
 from rich.console import Console
 from rich.panel import Panel
 from rich.markdown import Markdown
@@ -4817,9 +4820,11 @@ Refinement directive: {reforge_config.honing_prompt}
         self.echo.update_state("input", input_data)
         self._update_graph() # Initial graph
 
-        style = "bold blue" if self.depth == 0 else "bold cyan"
-        indent = "  " * self.depth
-        console.print(f"{indent}[{style}]{S.CASCADE} Starting Cascade: {self.config.cascade_id} (Depth {self.depth})[/{style}]\n")
+        # Only print cascade start for top-level (depth 0) unless in debug mode
+        if self.depth == 0 or _DEBUG:
+            style = "bold blue" if self.depth == 0 else "bold cyan"
+            indent = "  " * self.depth
+            console.print(f"{indent}[{style}]{S.CASCADE} Starting Cascade: {self.config.cascade_id} (Depth {self.depth})[/{style}]\n")
 
         # Hook: Cascade Start
         self.hooks.on_cascade_start(self.config.cascade_id, self.session_id, {

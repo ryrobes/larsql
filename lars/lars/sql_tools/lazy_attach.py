@@ -27,6 +27,9 @@ from .connector import sanitize_name
 
 log = logging.getLogger(__name__)
 
+# Debug mode for verbose internal logging
+_DEBUG = os.environ.get('LARS_DEBUG', '').lower() in ('1', 'true', 'yes')
+
 
 @dataclass(frozen=True)
 class _Token:
@@ -808,7 +811,8 @@ class LazyAttachManager:
         if cfg.type == "native":
             # Native DuckDB - tables already exist as parquet-backed views
             # No attachment needed
-            print(f"  └─ Native DuckDB: {cfg.connection_name} (tables already available)")
+            if _DEBUG:
+                print(f"  └─ Native DuckDB: {cfg.connection_name} (tables already available)")
             return
         # csv_folder, jsonl_folder, and markdown_folder are handled via schema/table materialization (not catalog attach)
         if cfg.type == "csv_folder":

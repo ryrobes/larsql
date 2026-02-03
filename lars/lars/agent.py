@@ -1,4 +1,5 @@
 import json
+import os
 from typing import Any, List, Dict, Optional, Tuple
 import litellm
 import logging
@@ -8,6 +9,9 @@ from .config import get_config
 from .reasoning import parse_model_with_reasoning, ReasoningConfig
 
 logger = logging.getLogger(__name__)
+
+# Debug mode for verbose internal logging
+_DEBUG = os.environ.get('LARS_DEBUG', '').lower() in ('1', 'true', 'yes')
 
 
 def _parse_llm_response_content(content: Any) -> Any:
@@ -366,9 +370,10 @@ class Agent:
 
                 # DEBUG: Log critical routing params to diagnose intermittent API routing issues
                 # This helps identify when base_url or custom_llm_provider gets lost/overridden
-                print(f"[LiteLLM Call] model={args.get('model')}, base_url={args.get('base_url')}, "
-                      f"custom_llm_provider={args.get('custom_llm_provider')}, "
-                      f"api_key={'***' + args.get('api_key', '')[-4:] if args.get('api_key') else 'None'}")
+                if _DEBUG:
+                    print(f"[LiteLLM Call] model={args.get('model')}, base_url={args.get('base_url')}, "
+                          f"custom_llm_provider={args.get('custom_llm_provider')}, "
+                          f"api_key={'***' + args.get('api_key', '')[-4:] if args.get('api_key') else 'None'}")
 
                 response = litellm.completion(**args)
 

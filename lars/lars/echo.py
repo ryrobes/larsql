@@ -1,5 +1,9 @@
 import json
+import os
 from typing import Any, Dict, List, Optional, Callable
+
+# Debug mode for verbose internal logging
+_DEBUG = os.environ.get('LARS_DEBUG', '').lower() in ('1', 'true', 'yes')
 
 class Echo:
     """
@@ -283,21 +287,26 @@ class SessionManager:
     def get_session(self, session_id: str, parent_session_id: str | None = None,
                    caller_id: str | None = None, invocation_metadata: Dict | None = None) -> Echo:
         if session_id not in self.sessions:
-            print(f"[SessionManager] Creating NEW Echo for {session_id}")
+            if _DEBUG:
+                print(f"[SessionManager] Creating NEW Echo for {session_id}")
             self.sessions[session_id] = Echo(session_id, parent_session_id=parent_session_id,
                                             caller_id=caller_id, invocation_metadata=invocation_metadata)
         else:
-            print(f"[SessionManager] REUSING existing Echo for {session_id}")
+            if _DEBUG:
+                print(f"[SessionManager] REUSING existing Echo for {session_id}")
             # CRITICAL: Update caller_id and metadata even for existing sessions!
             # This ensures SQL queries can set tracking info on reused sessions
             if caller_id is not None:
-                print(f"[SessionManager]   Updating caller_id: {self.sessions[session_id].caller_id!r} → {caller_id!r}")
+                if _DEBUG:
+                    print(f"[SessionManager]   Updating caller_id: {self.sessions[session_id].caller_id!r} → {caller_id!r}")
                 self.sessions[session_id].caller_id = caller_id
             if invocation_metadata is not None:
-                print(f"[SessionManager]   Updating invocation_metadata")
+                if _DEBUG:
+                    print(f"[SessionManager]   Updating invocation_metadata")
                 self.sessions[session_id].invocation_metadata = invocation_metadata
-            print(f"[SessionManager]   State keys: {list(self.sessions[session_id].state.keys())}")
-            print(f"[SessionManager]   History entries: {len(self.sessions[session_id].history)}")
+            if _DEBUG:
+                print(f"[SessionManager]   State keys: {list(self.sessions[session_id].state.keys())}")
+                print(f"[SessionManager]   History entries: {len(self.sessions[session_id].history)}")
         return self.sessions[session_id]
 
 _session_manager = SessionManager()

@@ -18,6 +18,9 @@ except ImportError:
 from .config import SqlConnectionConfig, resolve_google_credentials
 from ..console_style import S, styled_print
 
+# Debug mode for verbose internal logging
+_DEBUG = os.environ.get('LARS_DEBUG', '').lower() in ('1', 'true', 'yes')
+
 
 def sanitize_name(name: str) -> str:
     """
@@ -194,7 +197,8 @@ class DatabaseConnector:
         elif config.type == "native":
             # Native DuckDB - tables already exist as parquet-backed views
             # No attachment needed, just mark as attached
-            print(f"  └─ Native DuckDB: {alias} (tables already available)")
+            if _DEBUG:
+                print(f"  └─ Native DuckDB: {alias} (tables already available)")
 
         else:
             raise ValueError(f"Unsupported database type: {config.type}")
