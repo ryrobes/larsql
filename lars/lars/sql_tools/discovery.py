@@ -201,8 +201,16 @@ def discover_all_schemas(session_id: str | None = None):
 
     console.print(f"[green][OK] Charted {total_tables} tables across {len(databases_indexed)} database(s)[/green]")
 
-    # Build unified RAG index
+    # Build unified RAG index (only if tables were found)
+    if total_tables == 0:
+        console.print(f"[dim]{S.SEARCH} Skipping RAG index (no tables discovered)[/dim]")
+        console.print(f"[dim]  Location: sql_connections/samples/[/dim]")
+        return
+
     console.print(f"[bold cyan]{S.SEARCH} Building unified RAG index...[/bold cyan]")
+
+    # Ensure samples directory exists for RAG indexing
+    os.makedirs(samples_dir, exist_ok=True)
 
     rag_config = RagConfig(
         directory=samples_dir,

@@ -256,8 +256,8 @@ class DatabaseConnector:
             return
 
         # Attach DuckDB file directly (DuckDB can attach other DuckDB files)
-        read_only = "READ_ONLY" if config.read_only else ""
-        self.conn.execute(f"ATTACH '{db_path}' AS {alias} {read_only};")
+        read_only_clause = " (READ_ONLY)" if config.read_only else ""
+        self.conn.execute(f"ATTACH '{db_path}' AS {alias}{read_only_clause};")
         print(f"    [OK] Attached DuckDB: {alias} → {db_path}")
 
     # =========================================================================

@@ -885,8 +885,8 @@ class LazyAttachManager:
             raise ValueError(f"DuckDB file not found: {db_path}")
 
         alias = _quote_ident(cfg.connection_name)
-        read_only = "READ_ONLY" if cfg.read_only else ""
-        self._conn.execute(f"ATTACH '{_escape_single_quotes(db_path)}' AS {alias} {read_only};")
+        read_only_clause = " (READ_ONLY)" if cfg.read_only else ""
+        self._conn.execute(f"ATTACH '{_escape_single_quotes(db_path)}' AS {alias}{read_only_clause};")
 
     # -------------------------------------------------------------------------
     # Phase 1: Cloud Database Connectors
