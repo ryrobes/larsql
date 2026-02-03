@@ -8417,7 +8417,7 @@ def cmd_bootstrap(args):
             "[bold]PostgreSQL wire-protocol server[/bold]\n\n"
             "Connect any SQL client (DBeaver, DataGrip, psql, Tableau):\n\n"
             "[cyan]lars serve sql --port 15432[/cyan]\n\n"
-            "[dim]Connect: psql postgresql://localhost:15432/default[/dim]",
+            "[dim]Connect: psql postgresql://admin:admin@localhost:15432/default[/dim]",
             title="[bold blue]3️⃣  SQL SERVER[/bold blue]",
             border_style="blue",
             padding=(1, 2)
