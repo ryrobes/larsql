@@ -802,78 +802,80 @@ def execute_tests(tests: List[TestDefinition], run_id: str, options: Dict[str, A
     failed_count = 0
     error_count = 0
     skipped_count = 0
-    should_stop = False
-
-    for i, test in enumerate(tests):
-        if should_stop:
-            break
-
-        print(f"[TestsAPI] Running test {i+1}/{len(tests)}: {test.test_id}")
-
-        # Determine which modes to run
+    
+    # Build list of (test, mode) tuples to execute
+    test_executions = []
+    for test in tests:
         if test.test_type == 'semantic_sql':
             if ssql_mode == 'full':
                 modes_to_run = ['internal', 'simple', 'extended']
             else:
                 modes_to_run = [ssql_mode]
         elif test.test_type == 'visual_regression':
-            modes_to_run = ['visual']  # Visual tests have only one mode
+            modes_to_run = ['visual']
         else:
             modes_to_run = [snapshot_mode]
-
-        # Execute test for each mode
+        
         for mode in modes_to_run:
-            if should_stop:
-                break
-
-            mode_label = f" [{mode}]" if len(modes_to_run) > 1 else ""
-            try:
-                if test.test_type == 'semantic_sql':
-                    result = _run_semantic_sql_test(test, mode=mode)
-                elif test.test_type == 'visual_regression':
-                    result = _run_visual_test(test, db)
-                else:
-                    result = _run_snapshot_test(test, mode=mode)
-            except Exception as e:
-                # Create error result for crashed test
-                print(f"[TestsAPI]   CRASH{mode_label}: {type(e).__name__}: {str(e)[:200]}")
-                result = TestResult(
-                    test_id=test.test_id,
-                    test_type=test.test_type,
-                    test_group=test.test_group,
-                    test_name=test.test_name,
-                    description=test.description,
-                    source_file=test.source_file,
-                    source_line=test.source_line,
-                    sql_query=test.sql_query,
-                    validation_mode=mode,
-                    status='error',
-                    error_type=type(e).__name__,
-                    error_message=f"Test crashed: {str(e)}",
-                    error_traceback=traceback.format_exc(),
-                    duration_ms=0
-                )
-
-            print(f"[TestsAPI]   Result{mode_label}: {result.status} ({result.duration_ms:.1f}ms)")
-            if result.error_message:
-                print(f"[TestsAPI]   Error: {result.error_message[:200]}")
-
+            test_executions.append((test, mode))
+    
+    def run_single_test(args):
+        """Worker function to run a single test."""
+        test, mode = args
+        try:
+            if test.test_type == 'semantic_sql':
+                result = _run_semantic_sql_test(test, mode=mode)
+            elif test.test_type == 'visual_regression':
+                result = _run_visual_test(test, db)
+            else:
+                result = _run_snapshot_test(test, mode=mode)
+        except Exception as e:
+            result = TestResult(
+                test_id=test.test_id,
+                test_type=test.test_type,
+                test_group=test.test_group,
+                test_name=test.test_name,
+                description=test.description,
+                source_file=test.source_file,
+                source_line=test.source_line,
+                sql_query=test.sql_query,
+                validation_mode=mode,
+                status='error',
+                error_type=type(e).__name__,
+                error_message=f"Test crashed: {str(e)}",
+                error_traceback=traceback.format_exc(),
+                duration_ms=0
+            )
+        return result
+    
+    # Run tests in parallel with 3 workers
+    num_workers = min(3, len(test_executions))
+    print(f"[TestsAPI] Running {len(test_executions)} test executions with {num_workers} parallel workers...")
+    
+    completed = 0
+    with ThreadPoolExecutor(max_workers=num_workers) as executor:
+        for result in executor.map(run_single_test, test_executions):
+            completed += 1
+            
+            # Log progress
+            status_icon = "✓" if result.status == 'passed' else "✗" if result.status == 'failed' else "○" if result.status == 'skipped' else "!"
+            mode_label = f"[{result.validation_mode}]" if result.validation_mode else ""
+            print(f"[TestsAPI] {status_icon} [{completed}/{len(test_executions)}] {result.test_id} {mode_label} ({result.duration_ms:.0f}ms)")
+            if result.status == 'error' and result.error_message:
+                print(f"[TestsAPI]   Error: {result.error_message[:100]}")
+            
             results.append(result)
-
+            
             # Update counts
             if result.status == 'passed':
                 passed_count += 1
             elif result.status == 'failed':
                 failed_count += 1
-                if fail_fast:
-                    should_stop = True
             elif result.status == 'error':
                 error_count += 1
-                if fail_fast:
-                    should_stop = True
             elif result.status == 'skipped':
                 skipped_count += 1
-
+            
             # Store result
             try:
                 _store_test_result(run_id, result)
