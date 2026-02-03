@@ -2071,7 +2071,12 @@ class LarsDB:
             table_data = pa.Table.from_pylist(rows, schema=arrow_schema)
         else:
             table_data = pa.Table.from_pylist(rows)
-        pq.write_table(table_data, filepath, compression="snappy")
+        
+        # Atomic write: write to temp file first, then rename
+        # This prevents readers from seeing incomplete parquet files
+        temp_filepath = filepath.with_suffix(".parquet.tmp")
+        pq.write_table(table_data, temp_filepath, compression="snappy")
+        temp_filepath.rename(filepath)  # Atomic on POSIX
         
         return str(filepath)
     
