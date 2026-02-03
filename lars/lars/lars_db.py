@@ -145,6 +145,14 @@ def _duckdb_type_to_pyarrow(dtype: str) -> pa.DataType:
         return pa.list_(pa.int32())
     if dtype_upper.startswith("VARCHAR[]") or dtype_upper == "TEXT[]":
         return pa.list_(pa.string())
+    if dtype_upper.startswith("FLOAT[]") or dtype_upper in ("FLOAT4[]", "REAL[]"):
+        return pa.list_(pa.float32())
+    if dtype_upper.startswith("DOUBLE[]") or dtype_upper == "FLOAT8[]":
+        return pa.list_(pa.float64())
+    if dtype_upper.startswith("BIGINT[]") or dtype_upper == "INT64[]":
+        return pa.list_(pa.int64())
+    if dtype_upper == "BOOLEAN[]":
+        return pa.list_(pa.bool_())
     
     # Default to string for unknown types
     return pa.string()

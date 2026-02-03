@@ -1,7 +1,7 @@
 """
 Tool registry management for LARS.
 
-Handles syncing tools from in-memory registry to ClickHouse and analytics.
+Handles syncing tools from in-memory registry to DuckDB and analytics.
 """
 
 import json
@@ -146,7 +146,7 @@ def tools_have_changed(manifest: Dict) -> Tuple[bool, Optional[str]]:
 
 def sync_tools_to_db(force: bool = False):
     """
-    Sync current tool manifest to ClickHouse tool_manifest_vectors table.
+    Sync current tool manifest to tool_manifest_vectors table.
 
     This enables:
     - Cross-instance tool visibility
@@ -238,7 +238,7 @@ def sync_tools_to_db(force: bool = False):
         # Determine tool type from manifest
         tool_type_str = tool_info.get('type', 'function')
 
-        # Map to enum string values for ClickHouse Enum8
+        # Map to enum string values
         if 'cascade' in tool_type_str:
             tool_type = 'cascade'
         elif 'memory' in tool_type_str:
@@ -277,8 +277,8 @@ def sync_tools_to_db(force: bool = False):
 
         rows.append(row)
 
-    # Step 4: Insert into ClickHouse
-    console.print(f"[cyan]Inserting {len(rows)} tools into ClickHouse...[/cyan]")
+    # Step 4: Insert into database
+    console.print(f"[cyan]Inserting {len(rows)} tools into database...[/cyan]")
 
     try:
         db.insert_rows("tool_manifest_vectors", rows)
@@ -627,8 +627,8 @@ def semantic_find_tools(query: str, limit: int = 10):
 
         query_embedding = embed_result['embeddings'][0]
 
-        # Vector search in ClickHouse
-        # Note: ClickHouse cosineDistance returns 0 for identical vectors, higher for dissimilar
+        # Vector search
+        # Note: cosineDistance returns 0 for identical vectors, higher for dissimilar
         search_query = f"""
             SELECT
                 tool_name,
