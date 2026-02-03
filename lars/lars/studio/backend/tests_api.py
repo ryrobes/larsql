@@ -22,7 +22,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 from dataclasses import dataclass, field, asdict
 from typing import List, Dict, Any, Optional
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError, as_completed
 from flask import Blueprint, jsonify, request
 
 # Add lars to path for imports
@@ -432,7 +432,7 @@ def _execute_psql_simple_sql(sql: str, host: str = 'localhost', port: int = 1543
 
 
 def _execute_extended_sql(sql: str, host: str = 'localhost', port: int = 15433, database: str = 'lars') -> tuple:
-    """Execute SQL via psycopg2 (Extended Query Protocol)."""
+    """Execute SQL via psycopg (Extended Query Protocol)."""
     try:
         import psycopg
     except ImportError as e:
@@ -444,8 +444,11 @@ def _execute_extended_sql(sql: str, host: str = 'localhost', port: int = 15433, 
             port=port,
             dbname=database,
             user='admin',
-            password='admin'
+            password='admin',
+            connect_timeout=10
         )
+        # Set statement timeout to 120 seconds
+        conn.execute("SET statement_timeout = '120s'")
 
         with conn.cursor() as cur:
             cur.execute(sql)
@@ -854,8 +857,51 @@ def execute_tests(tests: List[TestDefinition], run_id: str, options: Dict[str, A
     
     completed = 0
     with ThreadPoolExecutor(max_workers=num_workers) as executor:
-        for result in executor.map(run_single_test, test_executions):
+        # Submit all tasks and track them
+        future_to_test = {
+            executor.submit(run_single_test, args): args 
+            for args in test_executions
+        }
+        
+        # Process results as they complete (not in order)
+        for future in as_completed(future_to_test, timeout=600):  # 10 min total timeout
+            test, mode = future_to_test[future]
             completed += 1
+            
+            try:
+                result = future.result(timeout=180)  # 3 min per-test timeout
+            except FuturesTimeoutError:
+                result = TestResult(
+                    test_id=test.test_id,
+                    test_type=test.test_type,
+                    test_group=test.test_group,
+                    test_name=test.test_name,
+                    description=test.description,
+                    source_file=test.source_file,
+                    source_line=test.source_line,
+                    sql_query=test.sql_query,
+                    validation_mode=mode,
+                    status='error',
+                    error_type='TimeoutError',
+                    error_message='Test timed out after 180 seconds',
+                    duration_ms=180000
+                )
+            except Exception as e:
+                result = TestResult(
+                    test_id=test.test_id,
+                    test_type=test.test_type,
+                    test_group=test.test_group,
+                    test_name=test.test_name,
+                    description=test.description,
+                    source_file=test.source_file,
+                    source_line=test.source_line,
+                    sql_query=test.sql_query,
+                    validation_mode=mode,
+                    status='error',
+                    error_type=type(e).__name__,
+                    error_message=str(e),
+                    duration_ms=0
+                )
             
             # Log progress
             status_icon = "✓" if result.status == 'passed' else "✗" if result.status == 'failed' else "○" if result.status == 'skipped' else "!"
