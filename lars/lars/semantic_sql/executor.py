@@ -980,9 +980,15 @@ def register_cascade_udfs(connection, existing: set | None = None) -> None:
     safe_create_function(connection, "cascade_matches", semantic_matches_cascade, existing, return_type="BOOLEAN")
     safe_create_function(connection, "cascade_implies", semantic_implies_cascade, existing, return_type="BOOLEAN")
     safe_create_function(connection, "cascade_contradicts", semantic_contradicts_cascade, existing, return_type="BOOLEAN")
+    
+    # Also register operator names as function aliases (so MEANS() works in SELECT)
+    safe_create_function(connection, "means", semantic_matches_cascade, existing, return_type="BOOLEAN")
+    safe_create_function(connection, "implies", semantic_implies_cascade, existing, return_type="BOOLEAN")
+    safe_create_function(connection, "contradicts", semantic_contradicts_cascade, existing, return_type="BOOLEAN")
 
     # Score function (SCALAR)
     safe_create_function(connection, "cascade_score", semantic_score_cascade, existing, return_type="DOUBLE")
+    safe_create_function(connection, "score", semantic_score_cascade, existing, return_type="DOUBLE")
 
     # Aggregate functions (via JSON input)
     safe_create_function(connection, "cascade_summarize", semantic_summarize_cascade, existing, return_type="VARCHAR")
