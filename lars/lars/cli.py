@@ -8376,39 +8376,78 @@ def cmd_bootstrap(args):
 
     cmd_doctor(DoctorArgs())
 
-    print()
-    print("=" * 60)
-    print("🚀 NEXT STEPS")
-    print("=" * 60)
-    print()
-    print("1️⃣  TEST THE CASCADE SYSTEM")
-    print("   Run a sample workflow to verify LLM calls work:")
-    print()
-    print("   lars run cascades/examples/hello_world.yaml")
-    print()
-    print("2️⃣  TRY SEMANTIC SQL")
-    print("   Query your sample data with AI-powered operators:")
-    print()
-    print("   lars ssql \"SELECT * FROM sample_data.products WHERE description MEANS 'eco-friendly'\"")
-    print()
-    print("3️⃣  START THE SQL SERVER")
-    print("   Launch PostgreSQL wire-protocol server for SQL clients:")
-    print()
-    print("   lars serve sql --port 15432")
-    print()
-    print("   Then connect with: psql postgresql://localhost:15432/default")
-    print("   Or use DBeaver, DataGrip, Tableau, etc.")
-    print()
-    print("4️⃣  LAUNCH STUDIO (optional)")
-    print("   Visual UI for SQL queries, cascade runs, and cost analytics:")
-    print()
-    print("   lars serve studio")
-    print()
-    print("   Open http://localhost:5050 in your browser")
-    print()
-    print("📖 Docs: https://larsql.com/docs.html")
-    print("💬 Discord: https://discord.gg/larsql")
-    print()
+    # Pretty next steps with Rich
+    try:
+        from rich.console import Console
+        from rich.panel import Panel
+        from rich.columns import Columns
+        from rich.text import Text
+        from rich import box
+        
+        console = Console()
+        console.print()
+        console.print(Panel.fit(
+            "[bold cyan]🚀 NEXT STEPS[/bold cyan]",
+            border_style="cyan"
+        ))
+        console.print()
+        
+        # Step 1: Test Cascades
+        console.print(Panel(
+            "[bold]Test the cascade system[/bold]\n\n"
+            "Run a sample workflow to verify LLM calls work:\n\n"
+            "[cyan]lars run cascades/examples/hello_world.yaml[/cyan]",
+            title="[bold yellow]1️⃣  CASCADE TEST[/bold yellow]",
+            border_style="yellow",
+            padding=(1, 2)
+        ))
+        
+        # Step 2: Semantic SQL
+        console.print(Panel(
+            "[bold]Query with AI-powered operators[/bold]\n\n"
+            "Try semantic search on your sample data:\n\n"
+            "[cyan]lars ssql \"SELECT * FROM sample_data.products WHERE description MEANS 'eco-friendly'\"[/cyan]",
+            title="[bold green]2️⃣  SEMANTIC SQL[/bold green]",
+            border_style="green",
+            padding=(1, 2)
+        ))
+        
+        # Step 3: SQL Server
+        console.print(Panel(
+            "[bold]PostgreSQL wire-protocol server[/bold]\n\n"
+            "Connect any SQL client (DBeaver, DataGrip, psql, Tableau):\n\n"
+            "[cyan]lars serve sql --port 15432[/cyan]\n\n"
+            "[dim]Connect: psql postgresql://localhost:15432/default[/dim]",
+            title="[bold blue]3️⃣  SQL SERVER[/bold blue]",
+            border_style="blue",
+            padding=(1, 2)
+        ))
+        
+        # Step 4: Studio
+        console.print(Panel(
+            "[bold]Visual UI for queries, runs & analytics[/bold]\n\n"
+            "[cyan]lars serve studio[/cyan]\n\n"
+            "[dim]Open http://localhost:5050 in your browser[/dim]",
+            title="[bold magenta]4️⃣  STUDIO UI[/bold magenta]",
+            border_style="magenta",
+            padding=(1, 2)
+        ))
+        
+        console.print()
+        console.print("[dim]📖 Docs: https://larsql.com/docs.html[/dim]")
+        console.print()
+        
+    except ImportError:
+        # Fallback to plain text
+        print()
+        print("Next steps:")
+        print("  1. lars run cascades/examples/hello_world.yaml")
+        print("  2. lars ssql \"SELECT * FROM sample_data.products WHERE description MEANS 'eco-friendly'\"")
+        print("  3. lars serve sql --port 15432")
+        print("  4. lars serve studio  (http://localhost:5050)")
+        print()
+        print("Docs: https://larsql.com/docs.html")
+        print()
 
 
 if __name__ == "__main__":
