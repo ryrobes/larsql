@@ -2008,10 +2008,22 @@ def cmd_run(args):
                         caller_id=caller_id, invocation_metadata=invocation_metadata)
 
     print()
-    print("="*60)
-    print("RESULT")
-    print("="*60)
-    print(json.dumps(result, indent=2))
+    
+    # Pretty print result with syntax highlighting
+    try:
+        from rich.console import Console
+        from rich.panel import Panel
+        from rich.json import JSON
+        
+        console = Console()
+        json_display = JSON.from_data(result, indent=2)
+        console.print(Panel(json_display, title="[bold cyan]RESULT[/bold cyan]", border_style="cyan"))
+    except ImportError:
+        # Fallback to plain JSON if rich not available
+        print("="*60)
+        print("RESULT")
+        print("="*60)
+        print(json.dumps(result, indent=2))
 
 
 def cmd_test_freeze(args):
