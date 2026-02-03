@@ -12810,12 +12810,32 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                                     unwrapped = next(iter(output_data.values()))
 
                         if unwrapped is not None:
-                            # Try validating the unwrapped value
+                            # Try type coercion for common LLM mistakes
+                            coerced = unwrapped
+                            schema_type = cell.output_schema.get("type")
+                            
+                            if schema_type == "boolean" and isinstance(unwrapped, str):
+                                # String "true"/"false" → boolean
+                                if unwrapped.lower() in ("true", "yes", "1"):
+                                    coerced = True
+                                elif unwrapped.lower() in ("false", "no", "0"):
+                                    coerced = False
+                            elif schema_type in ("integer", "number") and isinstance(unwrapped, str):
+                                # String numbers → numeric
+                                try:
+                                    coerced = int(unwrapped) if schema_type == "integer" else float(unwrapped)
+                                except ValueError:
+                                    pass
+                            
+                            # Try validating the unwrapped/coerced value
                             try:
-                                jsonschema.validate(instance=unwrapped, schema=cell.output_schema)
+                                jsonschema.validate(instance=coerced, schema=cell.output_schema)
                                 # Unwrapped value passes - use it instead
-                                output_data = unwrapped
-                                console.print(f"{indent}  [dim]↳ Unwrapped LLM wrapper dict[/dim]")
+                                output_data = coerced
+                                if coerced != unwrapped:
+                                    console.print(f"{indent}  [dim]↳ Unwrapped + coerced LLM wrapper dict[/dim]")
+                                else:
+                                    console.print(f"{indent}  [dim]↳ Unwrapped LLM wrapper dict[/dim]")
                             except ValidationError:
                                 # Unwrapped also fails - raise original error
                                 raise ve
