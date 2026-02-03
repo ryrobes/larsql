@@ -698,7 +698,7 @@ def cleanup_orphaned_sql_queries(max_age_minutes: int = 15) -> int:
         #
         # This is safe for multi-process: if a query is actually running on another
         # server/process, it will have recent unified_logs entries.
-        orphaned = db.execute(f"""
+        result = db.execute(f"""
             SELECT q.query_id, q.caller_id, q.started_at
             FROM sql_query_log q
             WHERE q.status = 'running'
@@ -708,7 +708,13 @@ def cleanup_orphaned_sql_queries(max_age_minutes: int = 15) -> int:
                   WHERE u.caller_id = q.caller_id
                     AND u.timestamp > now() - INTERVAL {max_age_minutes} MINUTE
               )
-        """).fetchall()
+        """)
+        
+        # Handle case where table doesn't exist yet (fresh install)
+        if result is None:
+            return 0
+        
+        orphaned = result.fetchall()
 
         if not orphaned:
             return 0
