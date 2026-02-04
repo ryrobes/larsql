@@ -43,7 +43,7 @@ sql_function:
 cells:
 - name: analyze_comparison
   model: google/gemini-3-flash-preview
-  instructions: "Compare these values and identify patterns.\n\nVALUES:\n{{ input.values\
+  instructions: "Compare these values and identify patterns.\n\nVALUES:\n{{ input['values']\
     \ }}\n\nFOCUS: {{ input.focus | default('all') }}\n\nReturn a JSON object:\n{\n\
     \  \"value_count\": 3,\n  \"similarities\": [\n    \"All mention 'wireless connectivity'\"\
     ,\n    \"Price range is consistent ($99-$129)\"\n  ],\n  \"differences\": [\n\

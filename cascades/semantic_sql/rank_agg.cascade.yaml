@@ -41,7 +41,7 @@ sql_function:
 cells:
 - name: semantic_ranking
   model: google/gemini-3-flash-preview
-  instructions: "Rank these values according to the criteria.\n\nVALUES:\n{{ input.values\
+  instructions: "Rank these values according to the criteria.\n\nVALUES:\n{{ input['values']\
     \ }}\n\nCRITERIA: {{ input.criteria }}\n\nReturn a JSON object:\n{\n  \"rankings\"\
     : [\n    {\n      \"rank\": 1,\n      \"value_index\": 2,\n      \"value_preview\"\
     : \"First 50 chars of value...\",\n      \"score\": 0.95,\n      \"reasoning\"\

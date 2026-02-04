@@ -49,7 +49,7 @@ cells:
 - name: identify_clusters
   model: google/gemini-3-flash-preview
   instructions: "Analyze these values and identify {{ input.num_clusters | default(8)\
-    \ }} semantic clusters.\n\nVALUES:\n{{ input.values }}\n\n{% if input.criterion\
+    \ }} semantic clusters.\n\nVALUES:\n{{ input['values'] }}\n\n{% if input.criterion\
     \ %}\nCLUSTERING CRITERION: {{ input.criterion }}\nGroup values by: {{ input.criterion\
     \ }}\n{% else %}\nGroup values by semantic similarity - find natural categories.\n\
     {% endif %}\n\nReturn a JSON object with this exact structure:\n{\n  \"clusters\"\
@@ -81,7 +81,7 @@ cells:
     from:
     - identify_clusters
   instructions: "Assign each value to one of the identified clusters.\n\nCLUSTERS:\n\
-    {{ outputs.identify_clusters.clusters | tojson }}\n\nVALUES TO ASSIGN:\n{{ input.values\
+    {{ outputs.identify_clusters.clusters | tojson }}\n\nVALUES TO ASSIGN:\n{{ input['values']\
     \ }}\n\nReturn a JSON object mapping each value to its cluster ID:\n{\n  \"assignments\"\
     : {\n    \"value1\": 0,\n    \"value2\": 1,\n    \"value3\": 0,\n    ...\n  }\n\
     }\n\nRules:\n- Every value must be assigned to exactly one cluster\n- Use the\
