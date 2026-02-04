@@ -48,8 +48,20 @@ sql_function:
 
 cells:
   - name: parse
-    #model: google/gemini-3-flash-preview
-
+    model: google/gemini-3-flash-preview
+    rules:
+      max_turns: 1
+      loop_until: validate_sql_expression
+      max_attempts: 3
+      retry_instructions: |
+        The SQL expression you generated failed validation:
+        {{ validation_error }}
+        
+        Please fix the expression. Remember:
+        - Use :name to reference the input value
+        - Use valid DuckDB functions (json_object, regexp_extract, split_part, trim, initcap, etc.)
+        - Return ONLY the json_object(...) expression, no SELECT or semicolon
+        - Ensure all string literals are properly quoted with single quotes
     instructions: |
       Generate a DuckDB SQL expression that parses this name format into a JSON object.
 
@@ -102,9 +114,6 @@ cells:
       Handle case normalization with initcap() for ALL-CAPS input.
       CRITICAL: Return ONLY the json_object(...) SQL expression. No markdown, no explanation.
       The expression must build the COMPLETE JSON with ALL fields.
-
-    rules:
-      max_turns: 1
 
     output_schema:
       type: string

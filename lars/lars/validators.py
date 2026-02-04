@@ -114,6 +114,102 @@ def validate_parse_expression(content: str, text: str = None, instruction: str =
         }
 
 
+def validate_sql_expression(content: str, **kwargs) -> Dict[str, Any]:
+    """
+    Generic SQL expression validator - handles any param name.
+    
+    Automatically detects :param placeholders in the expression and binds them
+    from cascade inputs. More flexible than validate_parse_expression.
+    
+    Args:
+        content: The generated SQL expression
+        **kwargs: All cascade inputs (will be used to bind :params)
+        
+    Returns:
+        Dict with validation result
+    """
+    import re
+    import duckdb
+    from .semantic_sql.sql_macro import bind_sql_parameters
+    
+    expression = content
+    if not expression or not expression.strip():
+        return {"valid": False, "reason": "Expression is empty"}
+    
+    expression = expression.strip()
+    
+    # Clean up common LLM output issues
+    if expression.endswith(';'):
+        expression = expression[:-1].strip()
+    if expression.startswith('```') and expression.endswith('```'):
+        lines = expression.split('\n')
+        expression = '\n'.join(lines[1:-1]).strip()
+    if expression.lower().startswith('select '):
+        # Remove SELECT wrapper if LLM added it
+        expression = expression[7:].strip()
+    
+    # Find all :param placeholders
+    param_pattern = re.compile(r':(\w+)')
+    params = set(param_pattern.findall(expression))
+    
+    if not params:
+        # No params to bind - just validate syntax
+        test_sql = f"SELECT {expression} AS result"
+    else:
+        # Build args dict from cascade inputs for all params found
+        args = {}
+        arg_specs = []
+        
+        # Flatten kwargs - handle nested 'input' dict if present
+        flat_kwargs = dict(kwargs)
+        if 'input' in kwargs and isinstance(kwargs['input'], dict):
+            flat_kwargs.update(kwargs['input'])
+        
+        for param in params:
+            if param in flat_kwargs:
+                args[param] = flat_kwargs[param]
+                arg_specs.append({"name": param, "type": "VARCHAR"})
+            else:
+                # Provide a test value for missing params
+                args[param] = "test_value"
+                arg_specs.append({"name": param, "type": "VARCHAR"})
+                log.debug(f"[validate_sql_expression] Param :{param} not in inputs, using 'test_value'")
+        
+        # Bind parameters
+        try:
+            bound_expression = bind_sql_parameters(expression, args, arg_specs)
+        except Exception as e:
+            return {"valid": False, "reason": f"Parameter binding failed: {e}"}
+        
+        test_sql = f"SELECT {bound_expression} AS result"
+    
+    try:
+        conn = duckdb.connect(':memory:')
+        result = conn.execute(test_sql).fetchone()
+        conn.close()
+        
+        return {
+            "valid": True,
+            "result": result[0] if result else None,
+            "expression": expression
+        }
+        
+    except duckdb.Error as e:
+        error_msg = str(e)
+        log.debug(f"[validate_sql_expression] DuckDB error: {error_msg}")
+        return {
+            "valid": False,
+            "reason": f"SQL execution failed: {error_msg}",
+            "expression": expression
+        }
+    except Exception as e:
+        return {
+            "valid": False,
+            "reason": f"Validation error: {e}",
+            "expression": expression
+        }
+
+
 def validate_sql_syntax(query: str) -> Dict[str, Any]:
     """
     Validate SQL syntax without executing.

@@ -49,10 +49,19 @@ sql_function:
 
 cells:
   - name: generate_parser
-    #model: google/gemini-3-flash-preview
-    model: x-ai/grok-4
+    model: google/gemini-3-flash-preview
     rules:
       max_turns: 1
+      loop_until: validate_sql_expression
+      max_attempts: 3
+      retry_instructions: |
+        The SQL expression you generated failed validation:
+        {{ validation_error }}
+        
+        Please fix the expression. Remember:
+        - Use :raw_email to reference the input value
+        - Use valid DuckDB functions (regexp_extract, json_object, trim, etc.)
+        - Return ONLY the expression, no SELECT or semicolon
     instructions: |
       Generate a DuckDB SQL expression to parse this email into a JSON object.
 
@@ -65,7 +74,7 @@ cells:
       {{ input.fields | default('from,to,cc,date,subject,body') }}
 
       ## Rules:
-      - Use `:data` as the placeholder for the raw email text
+      - Use `:raw_email` as the placeholder for the raw email text
       - Return a JSON object with the requested fields
       - Use regexp_extract() for header fields
       - The body is everything after the first blank line (double newline)
@@ -73,14 +82,14 @@ cells:
       - Clean up extracted values (trim whitespace)
 
       ## Standard Email Header Patterns:
-      - From: `regexp_extract(:data, 'From:\s*([^\n]+)', 1)`
-      - To: `regexp_extract(:data, 'To:\s*([^\n]+)', 1)`
-      - Cc: `regexp_extract(:data, 'Cc:\s*([^\n]+)', 1)` or `X-cc:`
-      - Date: `regexp_extract(:data, 'Date:\s*([^\n]+)', 1)`
-      - Subject: `regexp_extract(:data, 'Subject:\s*([^\n]+)', 1)`
-      - Body: `regexp_extract(:data, '\n\n(.*)$', 1)` (everything after headers)
-      - X-From: `regexp_extract(:data, 'X-From:\s*([^\n]+)', 1)` (display name)
-      - X-To: `regexp_extract(:data, 'X-To:\s*([^\n]+)', 1)` (display name)
+      - From: `regexp_extract(:raw_email, 'From:\s*([^\n]+)', 1)`
+      - To: `regexp_extract(:raw_email, 'To:\s*([^\n]+)', 1)`
+      - Cc: `regexp_extract(:raw_email, 'Cc:\s*([^\n]+)', 1)` or `X-cc:`
+      - Date: `regexp_extract(:raw_email, 'Date:\s*([^\n]+)', 1)`
+      - Subject: `regexp_extract(:raw_email, 'Subject:\s*([^\n]+)', 1)`
+      - Body: `regexp_extract(:raw_email, '\n\n(.*)$', 1)` (everything after headers)
+      - X-From: `regexp_extract(:raw_email, 'X-From:\s*([^\n]+)', 1)` (display name)
+      - X-To: `regexp_extract(:raw_email, 'X-To:\s*([^\n]+)', 1)` (display name)
 
       ## Output Format:
       Return a SQL expression that produces a JSON object. Use json_object() or construct JSON directly.
@@ -88,11 +97,11 @@ cells:
       Example output:
       ```sql
       json_object(
-        'from', trim(regexp_extract(:data, 'From:\s*([^\n]+)', 1)),
-        'to', trim(regexp_extract(:data, 'To:\s*([^\n]+)', 1)),
-        'date', trim(regexp_extract(:data, 'Date:\s*([^\n]+)', 1)),
-        'subject', trim(regexp_extract(:data, 'Subject:\s*([^\n]+)', 1)),
-        'body', trim(regexp_extract(:data, '\n\n([\s\S]*)$', 1))
+        'from', trim(regexp_extract(:raw_email, 'From:\s*([^\n]+)', 1)),
+        'to', trim(regexp_extract(:raw_email, 'To:\s*([^\n]+)', 1)),
+        'date', trim(regexp_extract(:raw_email, 'Date:\s*([^\n]+)', 1)),
+        'subject', trim(regexp_extract(:raw_email, 'Subject:\s*([^\n]+)', 1)),
+        'body', trim(regexp_extract(:raw_email, '\n\n([\s\S]*)$', 1))
       )
       ```
 
