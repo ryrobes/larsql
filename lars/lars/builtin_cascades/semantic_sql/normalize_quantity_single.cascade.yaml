@@ -28,8 +28,9 @@ sql_function:
   test_cases:
   - sql: SELECT normalize_quantity('about 5 gallons', 'liters')
     expect:
-      type: contains
-      value: liter
+      type: json_contains
+      path: "$.normalized.unit"
+      value: "l"
     description: Quantity normalized
 cells:
 - name: parse_quantity

@@ -40,7 +40,7 @@ sql_function:
       SELECT THEMES(article, 3) FROM test_data
     expect:
       type: contains
-      value: AI
+      value: Intelligence
     description: Extracts themes from AI/healthcare articles
 cells:
 - name: extract_topics

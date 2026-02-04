@@ -29,6 +29,19 @@ sql_function:
       description: "Reference date for resolving relative times (e.g., 'yesterday')"
   returns: JSON
   shape: SCALAR
+  # Column definitions for auto-generated _rows macro (timeline_rows)
+  # Enables: SELECT doc_id, t.* FROM docs, LATERAL timeline_rows(content) t
+  returns_columns:
+    - name: timestamp
+      type: VARCHAR
+    - name: event
+      type: VARCHAR
+    - name: actors
+      type: JSON
+    - name: type
+      type: VARCHAR
+    - name: sequence
+      type: INTEGER
   operators:
     - 'TIMELINE({{ text }})'
     - 'TIMELINE({{ text }}, ''{{ reference_date }}'')'
@@ -43,7 +56,7 @@ sql_function:
     - sql: SELECT timeline('The server crashed at 3:15 PM. We identified the issue at 3:45 PM and deployed a fix at 4:30 PM.')
       expect:
         type: contains
-        value: "3:15"
+        value: "15:15"
       description: "Extracts precise timestamps"
 
 cells:

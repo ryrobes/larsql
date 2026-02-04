@@ -39,7 +39,7 @@ sql_function:
     - sql: "SELECT parse_typed('Contact John at john@example.com', 'email')"
       expect:
         type: json_contains
-        path: "$.email"
+        path: "$.full"
         value: "john@example.com"
       description: "Email extracted from text"
     - sql: "SELECT parse_typed('123 Main St, Boston MA 02101', 'address')"

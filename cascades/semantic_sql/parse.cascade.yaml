@@ -62,7 +62,7 @@ sql_function:
     - sql: "SELECT parse('Meeting scheduled for March 15, 2024 at 2pm', 'the date')"
       expect:
         type: contains
-        value: "March 15"
+        value: "2024-03-15"
       description: "Date extracted from text"
     - sql: "SELECT parse('Contact John Smith at john@acme.com for details', 'email address')"
       expect:

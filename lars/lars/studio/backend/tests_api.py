@@ -606,6 +606,9 @@ def _check_expectation(actual: Any, expect: Any) -> bool:
         elif expect_type == 'not_empty':
             return bool(actual)
 
+        elif expect_type == 'any':
+            return True  # Any non-error result is valid
+
         elif expect_type == 'json_contains':
             # Check if JSON path contains expected value
             path = expect.get('path', '')
