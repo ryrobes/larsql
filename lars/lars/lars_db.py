@@ -1267,6 +1267,7 @@ SYSTEM_TABLES = {
             ("overall_score", "FLOAT"),
             ("is_baseline", "UTINYINT"),
             ("screenshots_compared", "VARCHAR"),
+            ("models_used", "VARCHAR"),
         ],
         "partition_by": None,
     },
@@ -1622,6 +1623,8 @@ SYSTEM_TABLES = {
             ("overall_score", "FLOAT"),
             ("is_baseline", "BOOLEAN"),
             ("screenshots_compared", "VARCHAR"),
+            # Model tracking (from output, not config)
+            ("models_used", "VARCHAR"),  # JSON array of model names actually used
         ],
         "partition_by": None,
     },

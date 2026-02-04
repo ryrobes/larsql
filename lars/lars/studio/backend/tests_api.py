@@ -120,6 +120,8 @@ class TestResult:
     overall_score: float = 0.0
     is_baseline: bool = False
     screenshots_compared: str = ""  # JSON array of screenshot comparisons
+    # Model tracking
+    models_used: str = ""  # JSON array of model names actually used
 
 
 def _get_config():
@@ -1092,7 +1094,9 @@ def _store_test_result(run_id: str, result: TestResult):
         'previous_session_id': result.previous_session_id or '',
         'overall_score': result.overall_score,
         'is_baseline': result.is_baseline if result.is_baseline else False,
-        'screenshots_compared': result.screenshots_compared or ''
+        'screenshots_compared': result.screenshots_compared or '',
+        # Model tracking
+        'models_used': result.models_used or ''
     }
     
     db.insert_rows('test_results', [row])
@@ -1341,7 +1345,7 @@ def get_run(run_id: str):
 
         # Get test results - check if visual columns exist first
         try:
-            # Try with visual columns
+            # Try with visual columns and models_used
             results_query = """
                 SELECT
                     test_id, test_type, test_group, test_name, test_description,
@@ -1351,7 +1355,8 @@ def get_run(run_id: str):
                     anchors_checked, anchors_passed, judge_score, judge_reasoning,
                     failure_type, failure_message, failure_diff,
                     error_type, error_message, error_traceback,
-                    session_id, previous_session_id, overall_score, is_baseline, screenshots_compared
+                    session_id, previous_session_id, overall_score, is_baseline, screenshots_compared,
+                    models_used
                 FROM test_results
                 WHERE run_id = %(run_id)s
                 ORDER BY test_type, test_group, test_id
@@ -1376,10 +1381,46 @@ def get_run(run_id: str):
             result_rows = db.query(results_query, {'run_id': run_id})
             has_visual_columns = False
 
+        # Get historical avg duration per test_id
+        try:
+            avg_query = """
+                SELECT test_id, AVG(duration_ms) as avg_duration_ms
+                FROM test_results
+                WHERE status IN ('passed', 'failed')
+                  AND duration_ms > 0
+                GROUP BY test_id
+            """
+            avg_rows = db.query(avg_query)
+            avg_duration_map = {r['test_id']: r['avg_duration_ms'] for r in avg_rows}
+        except Exception:
+            avg_duration_map = {}
+        
+        # Get models used from unified_logs for this run's sessions
+        models_map = {}
+        try:
+            models_query = """
+                SELECT 
+                    session_id,
+                    LIST(DISTINCT model) as models
+                FROM unified_logs
+                WHERE session_id LIKE 'udf-%'
+                  AND model IS NOT NULL
+                  AND model != ''
+                  AND timestamp >= %(started_at)s
+                GROUP BY session_id
+            """
+            models_rows = db.query(models_query, {'started_at': run.get('started_at', '2020-01-01')})
+            for r in models_rows:
+                # Map session to models (we'll match by test later if needed)
+                models_map[r['session_id']] = r['models']
+        except Exception:
+            pass
+
         results = []
         for row in result_rows:
+            test_id = row['test_id']
             result = {
-                'test_id': row['test_id'],
+                'test_id': test_id,
                 'test_type': row['test_type'],
                 'test_group': row['test_group'],
                 'test_name': row['test_name'],
@@ -1387,6 +1428,7 @@ def get_run(run_id: str):
                 'source_file': row.get('source_file'),
                 'source_line': row.get('source_line'),
                 'duration_ms': row.get('duration_ms'),
+                'avg_duration_ms': avg_duration_map.get(test_id, row.get('duration_ms')),
                 'status': row['status'],
                 'sql_query': row.get('sql_query'),
                 'expected_value': row.get('expected_value'),
@@ -1406,6 +1448,7 @@ def get_run(run_id: str):
                 'error_type': row.get('error_type'),
                 'error_message': row.get('error_message'),
                 'error_traceback': row.get('error_traceback'),
+                'models_used': row.get('models_used', ''),
             }
             if has_visual_columns:
                 result['session_id'] = row.get('session_id')
