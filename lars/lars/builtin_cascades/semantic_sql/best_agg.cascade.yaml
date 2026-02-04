@@ -50,7 +50,7 @@ cells:
 
     VALUES:
 
-    {{ input['values'] }}
+    {{ input[''values''] }}
 
 
     CRITERIA: {{ input.criteria | default(''highest quality'') }}

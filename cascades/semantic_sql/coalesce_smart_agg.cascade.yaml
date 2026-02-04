@@ -48,7 +48,7 @@ cells:
 
     VALUES:
 
-    {{ input['values'] }}
+    {{ input[''values''] }}
 
 
     {% if input.preference %}PREFERENCE: {{ input.preference }}{% endif %}
