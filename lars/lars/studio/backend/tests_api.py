@@ -355,6 +355,7 @@ def _get_duckdb_executor():
     
     # Check if this thread already has a connection
     if not hasattr(_thread_local, 'conn') or _thread_local.conn is None:
+        print(f"[TestsAPI] DEBUG: Creating new DuckDB connection (thread_id={threading.current_thread().ident})", flush=True)
         from lars.sql_tools.session_db import get_session_db, get_session_lock
         from lars.sql_tools.udf import register_lars_udf, register_dynamic_sql_functions
         from lars.sql_rewriter import rewrite_lars_syntax
@@ -368,9 +369,13 @@ def _get_duckdb_executor():
         _thread_local.rewriter = rewrite_lars_syntax
         
         # Register all UDFs for this connection
+        print(f"[TestsAPI] DEBUG: Registering UDFs (this is slow!)...", flush=True)
         with _thread_local.lock:
             register_lars_udf(_thread_local.conn)
             register_dynamic_sql_functions(_thread_local.conn)
+        print(f"[TestsAPI] DEBUG: UDF registration complete", flush=True)
+    else:
+        print(f"[TestsAPI] DEBUG: Reusing existing DuckDB connection", flush=True)
     
     return _thread_local.conn, _thread_local.lock, _thread_local.rewriter
 
