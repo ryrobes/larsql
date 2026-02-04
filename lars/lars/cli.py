@@ -6835,7 +6835,7 @@ def cmd_serve_studio(args):
         finally:
             cleanup_pgwire()
     else:
-        # Production mode: use Gunicorn with gevent
+        # Production mode: use Gunicorn with gthread (threaded workers)
         if not has_built_frontend:
             styled_print(f"{S.WARN}  No built frontend found at studio/frontend/build/")
             print("   Run 'npm run build' in studio/frontend/ to build static files")
@@ -6850,7 +6850,7 @@ def cmd_serve_studio(args):
             cleanup_pgwire()
             sys.exit(1)
 
-        styled_print(f"{S.RUN} Starting with Gunicorn ({args.workers} workers, gevent)")
+        styled_print(f"{S.RUN} Starting with Gunicorn ({args.workers} workers, gthread)")
         print(f"   URL: http://{args.host}:{args.port}")
         if pgwire_port:
             print(f"   PGwire: localhost:{pgwire_port}")
@@ -6865,10 +6865,13 @@ def cmd_serve_studio(args):
             env['LARS_STUDIO_PGWIRE_PORT'] = str(pgwire_port)
 
         # Build gunicorn command
+        # Use gthread (threaded) workers instead of gevent - gevent's greenlets
+        # don't work well with the cascade runner's threading model
         cmd = [
             sys.executable, '-m', 'gunicorn',
-            '--worker-class', 'gevent',
+            '--worker-class', 'gthread',
             '--workers', str(args.workers),
+            '--threads', '4',  # threads per worker for gthread
             '--bind', f'{args.host}:{args.port}',
             '--timeout', '600',  # 10 min timeout for long test runs
             '--graceful-timeout', '60',
