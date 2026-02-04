@@ -380,7 +380,7 @@ def _get_duckdb_executor():
     return _thread_local.conn, _thread_local.lock, _thread_local.rewriter
 
 
-def _execute_internal_sql(sql: str, timeout_seconds: int = 60) -> tuple:
+def _execute_internal_sql(sql: str, timeout_seconds: int = 300) -> tuple:
     """Execute SQL via internal DuckDB connection with timeout."""
     print(f"[TestsAPI] DEBUG _execute_internal_sql starting", flush=True)
     conn, lock, rewriter_func = _get_duckdb_executor()
@@ -1067,7 +1067,7 @@ def execute_tests(tests: List[TestDefinition], run_id: str, options: Dict[str, A
                 try:
                     while pending_futures:
                         # Wait for any future to complete (60s per-test timeout)
-                        done, pending_futures = wait(pending_futures, timeout=120, return_when=FIRST_COMPLETED)
+                        done, pending_futures = wait(pending_futures, timeout=330, return_when=FIRST_COMPLETED)  # 5.5 min to allow 5 min test + buffer
                         
                         if not done:
                             # Timeout waiting for any completion - something is very stuck
