@@ -917,7 +917,9 @@ def execute_tests(tests: List[TestDefinition], run_id: str, options: Dict[str, A
         return result
     
     # Run tests in parallel with 3 workers
-    num_workers = min(3, len(test_executions))
+    # Allow override via env var for debugging slow tests
+    max_workers = int(os.environ.get("LARS_TEST_WORKERS", "3"))
+    num_workers = min(max_workers, len(test_executions))
     print(f"[TestsAPI] Running {len(test_executions)} test executions with {num_workers} parallel workers...")
     
     completed = 0
