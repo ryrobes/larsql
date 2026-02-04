@@ -881,9 +881,11 @@ def execute_tests(tests: List[TestDefinition], run_id: str, options: Dict[str, A
     def run_single_test(args):
         """Worker function to run a single test."""
         test, mode = args
+        print(f"[TestsAPI] DEBUG run_single_test: {test.test_id} mode={mode}", flush=True)
         
         # Handle pre-skipped tests immediately (no SQL execution)
         if mode == 'skipped':
+            print(f"[TestsAPI] DEBUG: Test is skipped, returning immediately", flush=True)
             return TestResult(
                 test_id=test.test_id,
                 test_type=test.test_type,
@@ -953,8 +955,10 @@ def execute_tests(tests: List[TestDefinition], run_id: str, options: Dict[str, A
     if gevent_active:
         for test, mode in test_executions:
             completed += 1
+            print(f"[TestsAPI] DEBUG: Starting test {completed}/{len(test_executions)}: {test.test_id} [{mode}]", flush=True)
             try:
                 result = run_single_test((test, mode))
+                print(f"[TestsAPI] DEBUG: Finished test {test.test_id}", flush=True)
             except Exception as e:
                 result = TestResult(
                     test_id=test.test_id,
