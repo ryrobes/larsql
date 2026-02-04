@@ -377,20 +377,39 @@ def _get_duckdb_executor():
 
 def _execute_internal_sql(sql: str, timeout_seconds: int = 60) -> tuple:
     """Execute SQL via internal DuckDB connection with timeout."""
+    print(f"[TestsAPI] DEBUG _execute_internal_sql starting", flush=True)
     conn, lock, rewriter_func = _get_duckdb_executor()
+    print(f"[TestsAPI] DEBUG _execute_internal_sql got executor", flush=True)
 
     if conn is None or lock is None or rewriter_func is None:
         return None, "DuckDB executor not initialized"
 
     def _run_sql():
+        print(f"[TestsAPI] DEBUG _run_sql: rewriting SQL", flush=True)
         rewritten_sql = rewriter_func(sql, duckdb_conn=conn)
+        print(f"[TestsAPI] DEBUG _run_sql: executing SQL", flush=True)
         with lock:
             result = conn.execute(rewritten_sql)
             df = result.fetchdf()
+        print(f"[TestsAPI] DEBUG _run_sql: got result", flush=True)
         if df.empty:
             return None, None
         return df.iloc[0, 0], None
 
+    # Under gevent, ThreadPoolExecutor doesn't work - run directly without timeout
+    if HAS_GEVENT:
+        try:
+            import gevent.monkey
+            if gevent.monkey.is_module_patched('threading'):
+                print(f"[TestsAPI] DEBUG: gevent detected, running SQL directly (no timeout)", flush=True)
+                try:
+                    return _run_sql()
+                except Exception as e:
+                    return None, str(e)
+        except (ImportError, AttributeError):
+            pass
+
+    # Non-gevent: use ThreadPoolExecutor for timeout
     try:
         with ThreadPoolExecutor(max_workers=1) as executor:
             future = executor.submit(_run_sql)
@@ -484,6 +503,7 @@ def _execute_extended_sql(sql: str, host: str = 'localhost', port: int = 15433, 
 
 def _run_semantic_sql_test(test: TestDefinition, mode: str = 'internal') -> TestResult:
     """Execute a single semantic SQL test."""
+    print(f"[TestsAPI] DEBUG _run_semantic_sql_test: {test.test_id} mode={mode}", flush=True)
     start_time = datetime.now(timezone.utc)
     result = TestResult(
         test_id=test.test_id,
