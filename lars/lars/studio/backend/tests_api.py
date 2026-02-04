@@ -938,97 +938,151 @@ def execute_tests(tests: List[TestDefinition], run_id: str, options: Dict[str, A
         except (ImportError, AttributeError):
             pass
     
-    if gevent_active and max_workers > 1:
-        print(f"[TestsAPI] Detected gevent worker - forcing serial execution to avoid thread/greenlet deadlocks")
-        max_workers = 1
+    if gevent_active:
+        print(f"[TestsAPI] Detected gevent worker - running tests synchronously (no thread pool)")
+        num_workers = 1
+    else:
+        num_workers = min(max_workers, len(test_executions))
     
-    num_workers = min(max_workers, len(test_executions))
     print(f"[TestsAPI] Running {len(test_executions)} test executions with {num_workers} parallel workers...")
     
     completed = 0
     global_timeout_reached = False
     
-    with ThreadPoolExecutor(max_workers=num_workers) as executor:
-        # Submit all tasks and track them
-        future_to_test = {
-            executor.submit(run_single_test, args): args 
-            for args in test_executions
-        }
-        
-        try:
-            # Process results as they complete (not in order)
-            for future in as_completed(future_to_test, timeout=600):  # 10 min total timeout
-                test, mode = future_to_test[future]
-                completed += 1
-                
-                try:
-                    result = future.result(timeout=60)  # 60s per-test timeout
-                except FuturesTimeoutError:
-                    result = TestResult(
-                        test_id=test.test_id,
-                        test_type=test.test_type,
-                        test_group=test.test_group,
-                        test_name=test.test_name,
-                        description=test.description,
-                        source_file=test.source_file,
-                        source_line=test.source_line,
-                        sql_query=test.sql_query,
-                        validation_mode=mode,
-                        status='timed_out',
-                        error_type='TimeoutError',
-                        error_message='Test timed out after 60 seconds',
-                        duration_ms=60000
-                    )
-                except Exception as e:
-                    result = TestResult(
-                        test_id=test.test_id,
-                        test_type=test.test_type,
-                        test_group=test.test_group,
-                        test_name=test.test_name,
-                        description=test.description,
-                        source_file=test.source_file,
-                        source_line=test.source_line,
-                        sql_query=test.sql_query,
-                        validation_mode=mode,
-                        status='error',
-                        error_type=type(e).__name__,
-                        error_message=str(e),
-                        duration_ms=0
-                    )
-                
-                # Log progress
-                status_icons = {'passed': '✓', 'failed': '✗', 'skipped': '○', 'timed_out': '⏱', 'error': '!'}
-                status_icon = status_icons.get(result.status, '?')
-                mode_label = f"[{result.validation_mode}]" if result.validation_mode else ""
-                print(f"[TestsAPI] {status_icon} [{completed}/{len(test_executions)}] {result.test_id} {mode_label} ({result.duration_ms:.0f}ms)")
-                if result.status in ('error', 'timed_out') and result.error_message:
-                    print(f"[TestsAPI]   {result.status}: {result.error_message[:100]}")
-                
-                results.append(result)
-                
-                # Update counts
-                if result.status == 'passed':
-                    passed_count += 1
-                elif result.status == 'failed':
-                    failed_count += 1
-                elif result.status == 'error':
-                    error_count += 1
-                elif result.status == 'skipped':
-                    skipped_count += 1
-                elif result.status == 'timed_out':
-                    timed_out_count += 1
-                
-                # Store result
-                try:
-                    _store_test_result(run_id, result)
-                except Exception as e:
-                    print(f"[TestsAPI]   Failed to store result: {e}")
+    # When running under gevent, skip ThreadPoolExecutor entirely and run synchronously
+    if gevent_active:
+        for test, mode in test_executions:
+            completed += 1
+            try:
+                result = run_single_test((test, mode))
+            except Exception as e:
+                result = TestResult(
+                    test_id=test.test_id,
+                    test_type=test.test_type,
+                    test_group=test.test_group,
+                    test_name=test.test_name,
+                    description=test.description,
+                    source_file=test.source_file,
+                    source_line=test.source_line,
+                    sql_query=test.sql_query,
+                    validation_mode=mode,
+                    status='error',
+                    error_type=type(e).__name__,
+                    error_message=f"Test crashed: {str(e)}",
+                    error_traceback=traceback.format_exc(),
+                    duration_ms=0
+                )
+            
+            # Log progress
+            status_icons = {'passed': '✓', 'failed': '✗', 'skipped': '○', 'timed_out': '⏱', 'error': '!'}
+            status_icon = status_icons.get(result.status, '?')
+            mode_label = f"[{result.validation_mode}]" if result.validation_mode else ""
+            print(f"[TestsAPI] {status_icon} [{completed}/{len(test_executions)}] {result.test_id} {mode_label} ({result.duration_ms:.0f}ms)", flush=True)
+            if result.status in ('error', 'timed_out') and result.error_message:
+                print(f"[TestsAPI]   {result.status}: {result.error_message[:100]}", flush=True)
+            
+            results.append(result)
+            
+            # Update counts
+            if result.status == 'passed':
+                passed_count += 1
+            elif result.status == 'failed':
+                failed_count += 1
+            elif result.status == 'error':
+                error_count += 1
+            elif result.status == 'skipped':
+                skipped_count += 1
+            elif result.status == 'timed_out':
+                timed_out_count += 1
+            
+            # Store result
+            try:
+                _store_test_result(run_id, result)
+            except Exception as e:
+                print(f"[TestsAPI]   Failed to store result: {e}", flush=True)
+    else:
+        # Non-gevent: use ThreadPoolExecutor for parallel execution
+        with ThreadPoolExecutor(max_workers=num_workers) as executor:
+            # Submit all tasks and track them
+            future_to_test = {
+                executor.submit(run_single_test, args): args 
+                for args in test_executions
+            }
+            
+            try:
+                # Process results as they complete (not in order)
+                for future in as_completed(future_to_test, timeout=600):  # 10 min total timeout
+                    test, mode = future_to_test[future]
+                    completed += 1
                     
-        except TimeoutError:
-            # Global timeout reached - mark remaining tests as timed out
-            print(f"[TestsAPI] ⚠️ Global timeout reached after 600s. {len(test_executions) - completed} tests not completed.")
-            global_timeout_reached = True
-            timed_out_count += len(test_executions) - completed
+                    try:
+                        result = future.result(timeout=60)  # 60s per-test timeout
+                    except FuturesTimeoutError:
+                        result = TestResult(
+                            test_id=test.test_id,
+                            test_type=test.test_type,
+                            test_group=test.test_group,
+                            test_name=test.test_name,
+                            description=test.description,
+                            source_file=test.source_file,
+                            source_line=test.source_line,
+                            sql_query=test.sql_query,
+                            validation_mode=mode,
+                            status='timed_out',
+                            error_type='TimeoutError',
+                            error_message='Test timed out after 60 seconds',
+                            duration_ms=60000
+                        )
+                    except Exception as e:
+                        result = TestResult(
+                            test_id=test.test_id,
+                            test_type=test.test_type,
+                            test_group=test.test_group,
+                            test_name=test.test_name,
+                            description=test.description,
+                            source_file=test.source_file,
+                            source_line=test.source_line,
+                            sql_query=test.sql_query,
+                            validation_mode=mode,
+                            status='error',
+                            error_type=type(e).__name__,
+                            error_message=str(e),
+                            duration_ms=0
+                        )
+                    
+                    # Log progress
+                    status_icons = {'passed': '✓', 'failed': '✗', 'skipped': '○', 'timed_out': '⏱', 'error': '!'}
+                    status_icon = status_icons.get(result.status, '?')
+                    mode_label = f"[{result.validation_mode}]" if result.validation_mode else ""
+                    print(f"[TestsAPI] {status_icon} [{completed}/{len(test_executions)}] {result.test_id} {mode_label} ({result.duration_ms:.0f}ms)")
+                    if result.status in ('error', 'timed_out') and result.error_message:
+                        print(f"[TestsAPI]   {result.status}: {result.error_message[:100]}")
+                    
+                    results.append(result)
+                    
+                    # Update counts
+                    if result.status == 'passed':
+                        passed_count += 1
+                    elif result.status == 'failed':
+                        failed_count += 1
+                    elif result.status == 'error':
+                        error_count += 1
+                    elif result.status == 'skipped':
+                        skipped_count += 1
+                    elif result.status == 'timed_out':
+                        timed_out_count += 1
+                    
+                    # Store result
+                    try:
+                        _store_test_result(run_id, result)
+                    except Exception as e:
+                        print(f"[TestsAPI]   Failed to store result: {e}")
+                        
+            except TimeoutError:
+                # Global timeout reached - mark remaining tests as timed out
+                print(f"[TestsAPI] ⚠️ Global timeout reached after 600s. {len(test_executions) - completed} tests not completed.")
+                global_timeout_reached = True
+                timed_out_count += len(test_executions) - completed
 
     # Update run record (append new row with updated values - dedup view shows latest)
     completed_at = datetime.now(timezone.utc)
