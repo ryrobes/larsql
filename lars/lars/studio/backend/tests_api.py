@@ -401,14 +401,18 @@ def _execute_internal_sql(sql: str, timeout_seconds: int = 60) -> tuple:
             return None, None
         return df.iloc[0, 0], None
 
-    # Under gevent, ThreadPoolExecutor doesn't work - run directly without timeout
+    # Under gevent, ThreadPoolExecutor doesn't work - use gevent.Timeout instead
     if HAS_GEVENT:
         try:
             import gevent.monkey
             if gevent.monkey.is_module_patched('threading'):
-                print(f"[TestsAPI] DEBUG: gevent detected, running SQL directly (no timeout)", flush=True)
+                print(f"[TestsAPI] DEBUG: gevent detected, using gevent.Timeout ({timeout_seconds}s)", flush=True)
+                import gevent
                 try:
-                    return _run_sql()
+                    with gevent.Timeout(timeout_seconds):
+                        return _run_sql()
+                except gevent.Timeout:
+                    return None, f"Query timed out after {timeout_seconds}s (gevent)"
                 except Exception as e:
                     return None, str(e)
         except (ImportError, AttributeError):
