@@ -324,42 +324,45 @@ def discover_all_tests(filter_pattern: Optional[str] = None) -> Dict[str, List[T
 # Test Execution
 # =============================================================================
 
-# Module-level DuckDB connection and lock for internal tests
-_duckdb_conn = None
-_duckdb_lock = None
-_rewriter_func = None
-_duckdb_init_lock = threading.Lock()  # Thread-safe initialization
+# Thread-local DuckDB connections for parallel test execution
+# Each worker thread gets its own session to avoid file locking conflicts
+_thread_local = threading.local()
+_registry_initialized = False
+_registry_init_lock = threading.Lock()
 
 
 def _get_duckdb_executor():
-    """Get or create the DuckDB executor for internal tests."""
-    global _duckdb_conn, _duckdb_lock, _rewriter_func
-
-    if _duckdb_conn is None:
-        # Thread-safe double-checked locking
-        with _duckdb_init_lock:
-            if _duckdb_conn is None:
-                from lars.sql_tools.session_db import get_session_db, get_session_lock
-                from lars.sql_tools.udf import register_lars_udf, register_dynamic_sql_functions
+    """Get or create a thread-local DuckDB executor for internal tests."""
+    global _registry_initialized
+    
+    # Initialize registry once (thread-safe)
+    if not _registry_initialized:
+        with _registry_init_lock:
+            if not _registry_initialized:
                 from lars.semantic_sql.registry import initialize_registry
-                from lars.sql_rewriter import rewrite_lars_syntax
-
-                # Initialize registry for semantic SQL functions
                 initialize_registry(force=True)
-
-                # Use a special session for tests
-                session_id = '_tests_api_session'
-                _duckdb_conn = get_session_db(session_id)
-                _duckdb_lock = get_session_lock(session_id)
-
-                # Register all UDFs
-                with _duckdb_lock:
-                    register_lars_udf(_duckdb_conn)
-                    register_dynamic_sql_functions(_duckdb_conn)
-
-                _rewriter_func = rewrite_lars_syntax
-
-    return _duckdb_conn, _duckdb_lock, _rewriter_func
+                _registry_initialized = True
+    
+    # Check if this thread already has a connection
+    if not hasattr(_thread_local, 'conn') or _thread_local.conn is None:
+        from lars.sql_tools.session_db import get_session_db, get_session_lock
+        from lars.sql_tools.udf import register_lars_udf, register_dynamic_sql_functions
+        from lars.sql_rewriter import rewrite_lars_syntax
+        
+        # Create unique session ID per thread
+        thread_id = threading.current_thread().ident
+        session_id = f'_tests_api_{thread_id}'
+        
+        _thread_local.conn = get_session_db(session_id)
+        _thread_local.lock = get_session_lock(session_id)
+        _thread_local.rewriter = rewrite_lars_syntax
+        
+        # Register all UDFs for this connection
+        with _thread_local.lock:
+            register_lars_udf(_thread_local.conn)
+            register_dynamic_sql_functions(_thread_local.conn)
+    
+    return _thread_local.conn, _thread_local.lock, _thread_local.rewriter
 
 
 def _execute_internal_sql(sql: str, timeout_seconds: int = 120) -> tuple:
