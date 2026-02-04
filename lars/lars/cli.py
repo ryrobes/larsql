@@ -280,6 +280,7 @@ def main():
     ssql_test_parser.add_argument('--host', default='localhost', help='PostgreSQL host for psql/extended modes')
     ssql_test_parser.add_argument('--port', type=int, default=15432, help='PostgreSQL port for psql/extended modes')
     ssql_test_parser.add_argument('--database', '-d', default='lars', help='Database name for psql/extended modes')
+    ssql_test_parser.add_argument('--save', action='store_true', help='Save results to test_results database (like UI does)')
     ssql_test_parser.set_defaults(func=cmd_sql_test)
 
     # ssql list (list available operators)
@@ -2987,6 +2988,9 @@ def cmd_sql_test(args):
 
     # Track results per mode
     results_by_mode = {m: {'found': 0, 'passed': 0, 'failed': 0, 'failures': []} for m in modes_to_run}
+    
+    # Collect all test results for --save option
+    all_test_results = []
 
     console.print()
     mode_str = ', '.join(modes_to_run)
@@ -3066,6 +3070,21 @@ def cmd_sql_test(args):
                         'reason': reason,
                         'error': error
                     }
+                    
+                    # Collect result for --save
+                    all_test_results.append({
+                        'operator': fn_name,
+                        'test_index': i,
+                        'sql': sql,
+                        'expected': expect,
+                        'actual': actual,
+                        'passed': passed,
+                        'reason': reason,
+                        'error': error,
+                        'description': description,
+                        'mode': run_mode,
+                        'source_file': str(cascade_file),
+                    })
 
                     if passed:
                         results_by_mode[run_mode]['passed'] += 1
@@ -3204,6 +3223,71 @@ def cmd_sql_test(args):
                     console.print(f"    {f['reason']}")
                 if len(r['failures']) > 3:
                     console.print(f"  ... and {len(r['failures']) - 3} more")
+
+    # Save results to database if requested
+    if getattr(args, 'save', False):
+        try:
+            from lars.studio.backend.tests_api import _store_test_result, TestResult, _get_db
+            from datetime import datetime, timezone
+            import json
+            
+            db = _get_db()
+            run_id = f"cli_run_{uuid.uuid4().hex[:12]}"
+            started_at = datetime.now(timezone.utc)
+            
+            console.print()
+            console.print(f"[dim]Saving {len(all_test_results)} results to database (run_id: {run_id})...[/dim]")
+            
+            # Store all test results
+            for tr in all_test_results:
+                result = TestResult(
+                    test_id=f"semantic_sql/{tr['operator']}/{tr['test_index']}",
+                    test_type='semantic_sql',
+                    test_group=f"semantic_sql/{tr['operator']}",
+                    test_name=tr.get('description', 'CLI test'),
+                    description=tr.get('description', ''),
+                    source_file=tr.get('source_file', ''),
+                    sql_query=tr.get('sql', ''),
+                    expected_value=json.dumps(tr.get('expected')),
+                    actual_value=json.dumps(tr.get('actual')),
+                    status='passed' if tr['passed'] else ('error' if tr.get('error') else 'failed'),
+                    validation_mode=tr['mode'],
+                    failure_type='assertion' if not tr['passed'] and not tr.get('error') else '',
+                    failure_message=tr.get('reason', '') if not tr['passed'] else '',
+                    error_message=tr.get('error', '') or '',
+                )
+                _store_test_result(run_id, result)
+            
+            # Create run record
+            total_tests = len(all_test_results)
+            passed_tests = sum(1 for tr in all_test_results if tr['passed'])
+            failed_tests = sum(1 for tr in all_test_results if not tr['passed'] and not tr.get('error'))
+            error_tests = sum(1 for tr in all_test_results if tr.get('error'))
+            
+            db.insert_rows('test_runs', [{
+                'run_id': run_id,
+                'run_type': 'semantic_sql',
+                'started_at': started_at,
+                'completed_at': datetime.now(timezone.utc),
+                'duration_ms': 0,  # Not tracked in CLI currently
+                'status': 'passed' if failed_tests == 0 and error_tests == 0 else 'failed',
+                'total_tests': total_tests,
+                'passed_tests': passed_tests,
+                'failed_tests': failed_tests,
+                'error_tests': error_tests,
+                'skipped_tests': 0,
+                'trigger': 'cli',
+                'trigger_source': 'lars ssql test',
+                'test_filter': args.filter or '',
+                'run_options': json.dumps({'mode': mode, 'save': True})
+            }])
+            
+            console.print(f"[green]Saved {len(all_test_results)} test results to database[/green]")
+            
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            console.print(f"[yellow]Warning: Failed to save results: {e}[/yellow]")
 
     # Exit code - fail if any mode has failures
     total_failed = sum(results_by_mode[m]['failed'] for m in modes_to_run)
