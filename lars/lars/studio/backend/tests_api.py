@@ -24,6 +24,14 @@ from datetime import datetime, timezone
 from dataclasses import dataclass, field, asdict
 from typing import List, Dict, Any, Optional
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError, as_completed
+
+# Try to use gevent pool if available (for compatibility with gunicorn gevent workers)
+try:
+    from gevent.pool import Pool as GeventPool
+    from gevent import Timeout as GeventTimeout
+    HAS_GEVENT = True
+except ImportError:
+    HAS_GEVENT = False
 from flask import Blueprint, jsonify, request
 
 # Add lars to path for imports
@@ -918,7 +926,22 @@ def execute_tests(tests: List[TestDefinition], run_id: str, options: Dict[str, A
     
     # Run tests in parallel with 3 workers
     # Allow override via env var for debugging slow tests
+    # Also detect gevent and use serial execution to avoid greenlet/thread deadlocks
     max_workers = int(os.environ.get("LARS_TEST_WORKERS", "3"))
+    
+    # Detect if running under gevent (monkey-patched threading)
+    gevent_active = HAS_GEVENT and hasattr(threading, '_sleep') and 'gevent' in str(threading._sleep)
+    if not gevent_active and HAS_GEVENT:
+        try:
+            import gevent.monkey
+            gevent_active = gevent.monkey.is_module_patched('threading')
+        except (ImportError, AttributeError):
+            pass
+    
+    if gevent_active and max_workers > 1:
+        print(f"[TestsAPI] Detected gevent worker - forcing serial execution to avoid thread/greenlet deadlocks")
+        max_workers = 1
+    
     num_workers = min(max_workers, len(test_executions))
     print(f"[TestsAPI] Running {len(test_executions)} test executions with {num_workers} parallel workers...")
     
