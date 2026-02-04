@@ -716,6 +716,98 @@ const TestsView = () => {
       },
     },
     {
+      field: '_duration',
+      headerName: 'Duration',
+      width: 100,
+      cellRenderer: (params) => {
+        const result = lastRun?.results?.find(r => r.test_id === params.data?.test_id);
+        const duration = result?.duration_ms;
+        const avgDuration = result?.avg_duration_ms;
+        
+        if (!duration && !avgDuration) {
+          return <span style={{ color: '#475569', fontSize: '11px' }}>—</span>;
+        }
+        
+        const formatDuration = (ms) => {
+          if (ms < 1000) return `${Math.round(ms)}ms`;
+          return `${(ms / 1000).toFixed(1)}s`;
+        };
+        
+        // Color based on comparison to average
+        let color = '#94a3b8';
+        if (duration && avgDuration) {
+          if (duration > avgDuration * 1.5) color = '#fb923c'; // Slower
+          else if (duration < avgDuration * 0.75) color = '#34d399'; // Faster
+        }
+        
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+            <span style={{ color, fontSize: '12px', fontWeight: 500 }}>
+              {duration ? formatDuration(duration) : '—'}
+            </span>
+            {avgDuration && (
+              <span style={{ color: '#64748b', fontSize: '10px' }}>
+                avg: {formatDuration(avgDuration)}
+              </span>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      field: '_models',
+      headerName: 'Models',
+      width: 140,
+      cellRenderer: (params) => {
+        const result = lastRun?.results?.find(r => r.test_id === params.data?.test_id);
+        let models = [];
+        
+        try {
+          if (result?.models_used) {
+            models = JSON.parse(result.models_used);
+          }
+        } catch (e) {}
+        
+        if (models.length === 0) {
+          return <span style={{ color: '#475569', fontSize: '11px' }}>—</span>;
+        }
+        
+        // Shorten model names
+        const shortenModel = (name) => {
+          if (!name) return '?';
+          const parts = name.split('/');
+          const modelName = parts[parts.length - 1];
+          if (modelName.length > 15) return modelName.slice(0, 12) + '...';
+          return modelName;
+        };
+        
+        return (
+          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+            {models.slice(0, 2).map((model, i) => (
+              <span
+                key={i}
+                style={{
+                  background: '#1a1628',
+                  padding: '2px 6px',
+                  borderRadius: '4px',
+                  fontSize: '10px',
+                  color: '#a78bfa',
+                }}
+                title={model}
+              >
+                {shortenModel(model)}
+              </span>
+            ))}
+            {models.length > 2 && (
+              <span style={{ fontSize: '10px', color: '#64748b' }}>
+                +{models.length - 2}
+              </span>
+            )}
+          </div>
+        );
+      },
+    },
+    {
       field: 'source_file',
       headerName: 'Source',
       width: 180,
@@ -728,7 +820,7 @@ const TestsView = () => {
         return src;
       },
     },
-  ], [activeType, testHistory]);
+  ], [activeType, testHistory, lastRun]);
 
   // Get total count
   const getTotalCount = () => {
