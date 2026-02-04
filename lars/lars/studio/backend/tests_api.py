@@ -365,7 +365,7 @@ def _get_duckdb_executor():
     return _thread_local.conn, _thread_local.lock, _thread_local.rewriter
 
 
-def _execute_internal_sql(sql: str, timeout_seconds: int = 120) -> tuple:
+def _execute_internal_sql(sql: str, timeout_seconds: int = 60) -> tuple:
     """Execute SQL via internal DuckDB connection with timeout."""
     conn, lock, rewriter_func = _get_duckdb_executor()
 
@@ -414,7 +414,7 @@ def _execute_psql_simple_sql(sql: str, host: str = 'localhost', port: int = 1543
             ],
             capture_output=True,
             text=True,
-            timeout=120,
+            timeout=60,
             env={**os.environ, 'PGPASSWORD': 'admin'}
         )
 
@@ -432,7 +432,7 @@ def _execute_psql_simple_sql(sql: str, host: str = 'localhost', port: int = 1543
         return value, None
 
     except subprocess.TimeoutExpired:
-        return None, "Query timed out (120s)"
+        return None, "Query timed out (60s)"
     except FileNotFoundError:
         return None, "SKIP:psql not installed"
     except Exception as e:
@@ -456,7 +456,7 @@ def _execute_extended_sql(sql: str, host: str = 'localhost', port: int = 15433, 
             connect_timeout=10
         )
         # Set statement timeout to 120 seconds
-        conn.execute("SET statement_timeout = '120s'")
+        conn.execute("SET statement_timeout = '60s'")
 
         with conn.cursor() as cur:
             cur.execute(sql)
@@ -727,7 +727,7 @@ def _run_visual_test(test: TestDefinition, db) -> TestResult:
         ]
 
         print(f"[TestsAPI] Running visual test: {' '.join(cmd)}")
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
 
         if proc.returncode != 0:
             result.status = 'error'
@@ -783,7 +783,7 @@ def _run_visual_test(test: TestDefinition, db) -> TestResult:
     except subprocess.TimeoutExpired:
         result.status = 'error'
         result.error_type = 'Timeout'
-        result.error_message = 'Browser batch timed out after 120s'
+        result.error_message = 'Browser batch timed out after 60s'
     except Exception as e:
         result.status = 'error'
         result.error_type = type(e).__name__
@@ -845,6 +845,7 @@ def execute_tests(tests: List[TestDefinition], run_id: str, options: Dict[str, A
     failed_count = 0
     error_count = 0
     skipped_count = 0
+    timed_out_count = 0
     
     # Build list of (test, mode) tuples to execute
     test_executions = []
@@ -934,7 +935,7 @@ def execute_tests(tests: List[TestDefinition], run_id: str, options: Dict[str, A
                 completed += 1
                 
                 try:
-                    result = future.result(timeout=180)  # 3 min per-test timeout
+                    result = future.result(timeout=60)  # 60s per-test timeout
                 except FuturesTimeoutError:
                     result = TestResult(
                         test_id=test.test_id,
@@ -946,10 +947,10 @@ def execute_tests(tests: List[TestDefinition], run_id: str, options: Dict[str, A
                         source_line=test.source_line,
                         sql_query=test.sql_query,
                         validation_mode=mode,
-                        status='error',
+                        status='timed_out',
                         error_type='TimeoutError',
-                        error_message='Test timed out after 180 seconds',
-                        duration_ms=180000
+                        error_message='Test timed out after 60 seconds',
+                        duration_ms=60000
                     )
                 except Exception as e:
                     result = TestResult(
@@ -969,11 +970,12 @@ def execute_tests(tests: List[TestDefinition], run_id: str, options: Dict[str, A
                     )
                 
                 # Log progress
-                status_icon = "✓" if result.status == 'passed' else "✗" if result.status == 'failed' else "○" if result.status == 'skipped' else "!"
+                status_icons = {'passed': '✓', 'failed': '✗', 'skipped': '○', 'timed_out': '⏱', 'error': '!'}
+                status_icon = status_icons.get(result.status, '?')
                 mode_label = f"[{result.validation_mode}]" if result.validation_mode else ""
                 print(f"[TestsAPI] {status_icon} [{completed}/{len(test_executions)}] {result.test_id} {mode_label} ({result.duration_ms:.0f}ms)")
-                if result.status == 'error' and result.error_message:
-                    print(f"[TestsAPI]   Error: {result.error_message[:100]}")
+                if result.status in ('error', 'timed_out') and result.error_message:
+                    print(f"[TestsAPI]   {result.status}: {result.error_message[:100]}")
                 
                 results.append(result)
                 
@@ -986,6 +988,8 @@ def execute_tests(tests: List[TestDefinition], run_id: str, options: Dict[str, A
                     error_count += 1
                 elif result.status == 'skipped':
                     skipped_count += 1
+                elif result.status == 'timed_out':
+                    timed_out_count += 1
                 
                 # Store result
                 try:
@@ -997,19 +1001,21 @@ def execute_tests(tests: List[TestDefinition], run_id: str, options: Dict[str, A
             # Global timeout reached - mark remaining tests as timed out
             print(f"[TestsAPI] ⚠️ Global timeout reached after 600s. {len(test_executions) - completed} tests not completed.")
             global_timeout_reached = True
-            error_count += len(test_executions) - completed
+            timed_out_count += len(test_executions) - completed
 
     # Update run record (append new row with updated values - dedup view shows latest)
     completed_at = datetime.now(timezone.utc)
     duration_ms = (completed_at - started_at).total_seconds() * 1000
     if global_timeout_reached:
-        final_status = 'error'
-    elif failed_count == 0 and error_count == 0:
+        final_status = 'timed_out'
+    elif failed_count == 0 and error_count == 0 and timed_out_count == 0:
         final_status = 'passed'
+    elif timed_out_count > 0 and failed_count == 0 and error_count == 0:
+        final_status = 'timed_out'
     else:
         final_status = 'failed'
     
-    print(f"[TestsAPI] Run complete: {final_status} (passed={passed_count}, failed={failed_count}, errors={error_count}, skipped={skipped_count})")
+    print(f"[TestsAPI] Run complete: {final_status} (passed={passed_count}, failed={failed_count}, errors={error_count}, timed_out={timed_out_count}, skipped={skipped_count})")
 
     db.insert_rows('test_runs', [{
         'run_id': run_id,
@@ -1022,6 +1028,7 @@ def execute_tests(tests: List[TestDefinition], run_id: str, options: Dict[str, A
         'passed_tests': passed_count,
         'failed_tests': failed_count,
         'error_tests': error_count,
+        'timed_out_tests': timed_out_count,
         'skipped_tests': skipped_count,
         'trigger': options.get('trigger', 'manual'),
         'trigger_source': options.get('trigger_source', ''),
@@ -1037,6 +1044,7 @@ def execute_tests(tests: List[TestDefinition], run_id: str, options: Dict[str, A
         'passed': passed_count,
         'failed': failed_count,
         'error': error_count,
+        'timed_out': timed_out_count,
         'skipped': skipped_count,
         'results': [_json_safe(asdict(r)) for r in results]
     }

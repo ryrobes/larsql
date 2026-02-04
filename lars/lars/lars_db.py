@@ -1284,6 +1284,7 @@ SYSTEM_TABLES = {
             ("failed_tests", "UINTEGER"),
             ("skipped_tests", "UINTEGER"),
             ("error_tests", "UINTEGER"),
+            ("timed_out_tests", "UINTEGER"),
             ("trigger", "VARCHAR"),
             ("trigger_source", "VARCHAR"),
             ("git_commit", "VARCHAR"),
@@ -1551,6 +1552,7 @@ SYSTEM_TABLES = {
             ("failed_tests", "UINTEGER"),
             ("skipped_tests", "UINTEGER"),
             ("error_tests", "UINTEGER"),
+            ("timed_out_tests", "UINTEGER"),
             # Trigger info (manual, ci, scheduled, hook, api)
             ("trigger", "VARCHAR"),
             ("trigger_source", "VARCHAR"),
