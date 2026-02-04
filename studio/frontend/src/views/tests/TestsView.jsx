@@ -474,6 +474,7 @@ const TestsView = () => {
         setError(data.error);
       } else {
         console.log('[TestsView] Run complete:', data);
+        console.log('[TestsView] Sample result:', data.results?.[0]);
         setRunResult(data);
         setLastRun(data);  // Status computed via useMemo from lastRun
 
@@ -724,7 +725,8 @@ const TestsView = () => {
         const duration = result?.duration_ms;
         const avgDuration = result?.avg_duration_ms;
         
-        if (!duration && !avgDuration) {
+        // Check for null/undefined, not falsy (0ms is valid)
+        if (duration == null && avgDuration == null) {
           return <span style={{ color: '#475569', fontSize: '11px' }}>—</span>;
         }
         
