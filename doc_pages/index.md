@@ -49,6 +49,7 @@ Beyond SQL
 Resources
 
 [Documentation](docs.html)
+          [FAQ](docs.html#faq)
           [GitHub](https://github.com/ryrobes/larsql)
           [Contact](mailto:ryan.robitaille@gmail.com)
           [@ryrobes](https://twitter.com/ryrobes)

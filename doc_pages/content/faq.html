@@ -1,0 +1,931 @@
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     LARS FAQ - Frequently Asked Questions
+     Real answers to real questions. No marketing fluff.
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+<h1 id="top">Frequently Asked Questions</h1>
+<p class="section-intro">
+  Real answers to real questions. No marketing fluff.
+</p>
+
+<div class="toc">
+  <strong>On This Page</strong>
+  <ul>
+    <li><a href="#hard-questions">The Hard Questions</a></li>
+    <li><a href="#privacy">Data &amp; Privacy</a></li>
+    <li><a href="#cost">Cost &amp; Performance</a></li>
+    <li><a href="#technical">Technical Deep Dives</a></li>
+    <li><a href="#secret-sauce">The Secret Sauce</a></li>
+    <li><a href="#skeptics">The Skeptic's Corner</a></li>
+    <li><a href="#comparisons">Comparisons</a></li>
+  </ul>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     THE HARD QUESTIONS
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+<h2 id="hard-questions">The Hard Questions</h2>
+
+<h3 id="determinism">"LLMs are non-deterministic. How can this possibly work with SQL?"</h3>
+
+<p>You're right—they are. And here's the thing: <strong>your data isn't deterministic either.</strong></p>
+
+<p>Think about it. The same SQL query returns different results every time your data changes. The same analyst interprets data differently on different days. Business logic evolves. "Urgent" meant something different last quarter.</p>
+
+<p>LARS doesn't pretend LLMs are deterministic. Instead, we:</p>
+
+<ol>
+  <li><strong>Cache aggressively</strong> — Same input = same output (until you invalidate)</li>
+  <li><strong>Use Takes</strong> — Run 3-5 attempts in parallel, pick the best one. Random failures just don't win.</li>
+  <li><strong>Log everything</strong> — Every LLM call is recorded. You can audit exactly what happened.</li>
+  <li><strong>Let you tune consistency</strong> — Temperature, model choice, and prompt engineering are all exposed.</li>
+</ol>
+
+<p>The real question isn't "is it deterministic?" It's "is it <em>reliable enough</em> for my use case?" For most semantic queries, the answer is yes—and you can verify it.</p>
+
+
+<h3 id="expensive-regex">"Isn't this just expensive regex with extra steps?"</h3>
+
+<p>No. Regex matches patterns. LARS understands meaning.</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang sql">SQL</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Regex: catches "urgent", misses everything else</span>
+WHERE description ~ 'urgent|critical|asap'
+
+<span class="cmt">-- LARS: catches intent regardless of wording</span>
+WHERE description MEANS 'urgent customer issue'</pre>
+  </div>
+</div>
+
+<p>The second query catches:</p>
+<ul>
+  <li>"This is blocking our launch"</li>
+  <li>"Customer threatening to cancel"</li>
+  <li>"Need this fixed yesterday"</li>
+  <li>"P0 incident"</li>
+</ul>
+
+<p>None of those match your regex. All of them are urgent.</p>
+
+<p><strong>But yes, it costs more than regex.</strong> A semantic query might cost $0.001-0.01 depending on data volume. Regex costs nothing. The question is: what's the cost of <em>missing</em> those urgent tickets?</p>
+
+
+<h3 id="hallucinations">"What happens when the LLM hallucinates?"</h3>
+
+<p>Short answer: <strong>Takes catch most of it, wards catch the rest.</strong></p>
+
+<p>Longer answer:</p>
+
+<ol>
+  <li><strong>Takes</strong> — Run the same query multiple times with slight variations. An evaluator picks the best result. Hallucinations rarely win against correct answers.</li>
+  <li><strong>Wards</strong> — Validation rules that check outputs. "Must be valid JSON." "Must reference only existing columns." "Confidence must be > 0.8."</li>
+  <li><strong>Structured outputs</strong> — When you ask for TRUE/FALSE, you get TRUE or FALSE. Not a paragraph explaining why it might be true.</li>
+  <li><strong>The hybrid pattern</strong> — Vector search narrows to 100 candidates (no hallucination possible—they're real rows). LLM evaluates just those 100. Worst case: it picks a wrong row. It can't invent one.</li>
+</ol>
+
+<p>Hallucinations aren't eliminated. They're mitigated to the point where they're rarer than human analyst errors.</p>
+
+
+<h3 id="why-not-python">"Why not just use Python/pandas?"</h3>
+
+<p>You absolutely can. LARS isn't replacing Python—it's replacing the <em>glue code</em> between your SQL and your LLM.</p>
+
+<div class="comparison-grid">
+  <div class="comparison-item">
+    <div class="comparison-header bad">Without LARS</div>
+    <div class="comparison-content">
+      <code>47 lines of: query DB, loop rows, call API, handle errors, parse JSON, retry failures, cache results, track costs, rejoin to SQL...</code>
+    </div>
+  </div>
+  <div class="comparison-item">
+    <div class="comparison-header good">With LARS</div>
+    <div class="comparison-content">
+      <code>SELECT * FROM tickets WHERE description MEANS 'urgent'</code>
+    </div>
+  </div>
+</div>
+
+<p><strong>Use Python when:</strong></p>
+<ul>
+  <li>You need custom ML models</li>
+  <li>Complex data transformations</li>
+  <li>Notebook-style exploration</li>
+  <li>One-off analysis</li>
+</ul>
+
+<p><strong>Use LARS when:</strong></p>
+<ul>
+  <li>Your team knows SQL better than Python</li>
+  <li>You want results in your existing BI tools</li>
+  <li>You need production-grade reliability</li>
+  <li>You want cost tracking and audit logs built-in</li>
+</ul>
+
+
+<h3 id="production-ready">"Is this production-ready or a demo?"</h3>
+
+<p>Production-ready. Here's what that means:</p>
+
+<ul>
+  <li><strong>Auth</strong> — Username/password and connection-level security</li>
+  <li><strong>Cost tracking</strong> — Per-query, per-user, per-model attribution</li>
+  <li><strong>Caching</strong> — Content-addressed cache with configurable TTL</li>
+  <li><strong>Observability</strong> — Every LLM call logged with full context</li>
+  <li><strong>Error handling</strong> — Retries, fallbacks, graceful degradation</li>
+  <li><strong>Rate limiting</strong> — Per-connection query limits</li>
+</ul>
+
+<p>What we <em>don't</em> have (yet):</p>
+<ul>
+  <li>SOC2 certification (in progress)</li>
+  <li>Enterprise SSO (roadmap)</li>
+  <li>Multi-tenant SaaS (it's self-hosted)</li>
+</ul>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     DATA & PRIVACY
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+<h2 id="privacy">Data &amp; Privacy</h2>
+
+<h3 id="where-data">"Where does my data go?"</h3>
+
+<p><strong>Your data stays in your infrastructure.</strong> LARS is a query layer, not a data store.</p>
+
+<p>When you run a semantic query:</p>
+<ol>
+  <li>LARS pulls data from <em>your</em> database</li>
+  <li>Sends <em>only the relevant columns</em> to the LLM</li>
+  <li>LLM returns a result</li>
+  <li>Result is cached locally</li>
+</ol>
+
+<p>The LLM sees the data you query. It doesn't see your whole database. You control exactly what gets sent via column selection and WHERE clauses.</p>
+
+
+<h3 id="training">"Does my data train anyone's models?"</h3>
+
+<p><strong>No.</strong></p>
+
+<ul>
+  <li>OpenRouter: No training on API data</li>
+  <li>Anthropic (Claude): No training on API data</li>
+  <li>OpenAI: No training on API data (with data retention disabled)</li>
+  <li>Vertex AI / Bedrock / Azure: Enterprise data policies apply</li>
+</ul>
+
+<p>You can also run fully local models via Ollama. Zero data leaves your machine.</p>
+
+
+<h3 id="air-gapped">"Can I use this with air-gapped infrastructure?"</h3>
+
+<p>Yes. Two options:</p>
+
+<ol>
+  <li><strong>Local models</strong> — Run Ollama, vLLM, or any OpenAI-compatible server. LARS points to <code>localhost</code>.</li>
+  <li><strong>Private cloud</strong> — Deploy in your VPC with Vertex AI, Bedrock, or Azure OpenAI. Data never leaves your cloud.</li>
+</ol>
+
+<p>The PostgreSQL wire protocol means your SQL clients connect to LARS exactly like they connect to any other database.</p>
+
+
+<h3 id="pii">"What about PII in queries?"</h3>
+
+<p>LARS has an <code>ANONYMIZE</code> operator that strips PII before processing:</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang sql">SQL</span>
+  </div>
+  <div class="code-block-content">
+    <pre>SELECT ANONYMIZE(customer_feedback) AS safe_text,
+       SENTIMENT(ANONYMIZE(customer_feedback)) AS sentiment
+FROM feedback</pre>
+  </div>
+</div>
+
+<p>You can also:</p>
+<ul>
+  <li>Configure column-level redaction rules</li>
+  <li>Use views to pre-filter sensitive data</li>
+  <li>Run local models for PII-sensitive workloads</li>
+</ul>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     COST & PERFORMANCE
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+<h2 id="cost">Cost &amp; Performance</h2>
+
+<h3 id="cost-per-query">"How much does this actually cost per query?"</h3>
+
+<p>It depends on:</p>
+<ul>
+  <li><strong>Model</strong> — GPT-4o vs Claude Sonnet vs Gemini Flash (10x price difference)</li>
+  <li><strong>Data volume</strong> — 100 rows vs 10,000 rows</li>
+  <li><strong>Operator type</strong> — Simple filter vs complex aggregation</li>
+  <li><strong>Cache hit rate</strong> — Repeated queries are free</li>
+</ul>
+
+<p><strong>Typical costs:</strong></p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Query Type</th>
+      <th>Rows</th>
+      <th>Model</th>
+      <th>Cost</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>WHERE x MEANS 'y'</code></td>
+      <td>100</td>
+      <td>Gemini Flash</td>
+      <td>~$0.001</td>
+    </tr>
+    <tr>
+      <td><code>WHERE x MEANS 'y'</code></td>
+      <td>10,000</td>
+      <td>Gemini Flash</td>
+      <td>~$0.05</td>
+    </tr>
+    <tr>
+      <td><code>SUMMARIZE(comments)</code></td>
+      <td>50</td>
+      <td>Claude Sonnet</td>
+      <td>~$0.02</td>
+    </tr>
+    <tr>
+      <td><code>TOPICS(text, 5)</code></td>
+      <td>1,000</td>
+      <td>GPT-4o</td>
+      <td>~$0.15</td>
+    </tr>
+  </tbody>
+</table>
+
+<p><strong>The hybrid trick</strong> — Vector search first, then semantic:</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang sql">SQL</span>
+  </div>
+  <div class="code-block-content">
+    <pre>WITH candidates AS (
+  SELECT * FROM VECTOR_SEARCH('eco friendly', 'products', 100)
+)
+SELECT * FROM candidates WHERE description MEANS 'genuinely sustainable'</pre>
+  </div>
+</div>
+
+<p>This queries 1M rows but only sends 100 to the LLM. Cost: ~$0.002.</p>
+
+
+<h3 id="failure">"What if an LLM call fails mid-query?"</h3>
+
+<p>LARS handles this automatically:</p>
+
+<ol>
+  <li><strong>Retries</strong> — Transient failures retry with exponential backoff</li>
+  <li><strong>Fallback models</strong> — Configure backup models if primary fails</li>
+  <li><strong>Takes</strong> — If 1 of 3 attempts fails, the other 2 still compete</li>
+  <li><strong>Graceful degradation</strong> — Return partial results with error flags</li>
+</ol>
+
+<p>You never get a stack trace in your BI tool. You get a result (possibly partial) with metadata about what happened.</p>
+
+
+<h3 id="caching">"How does caching work?"</h3>
+
+<p>LARS uses <strong>content-addressed caching</strong>:</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang text">Cache Key</span>
+  </div>
+  <div class="code-block-content">
+    <pre>cache_key = hash(operator + input_text + model + prompt_version)</pre>
+  </div>
+</div>
+
+<p>Same input = same cache key = same result. The cache doesn't care about:</p>
+<ul>
+  <li>Query structure (SELECT vs CTE)</li>
+  <li>Column order</li>
+  <li>Whitespace</li>
+</ul>
+
+<p><strong>Cache TTL</strong> is configurable per-operator. Sentiment on tweets? Cache forever. Fraud detection? Cache for 1 hour.</p>
+
+<p><strong>Cache hit rates</strong> in practice: 60-90% for analytical workloads. Your second run of a dashboard is nearly free.</p>
+
+
+<h3 id="limits">"Can I set spending limits?"</h3>
+
+<p>Yes. Multiple levels:</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">YAML</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Per-query limit</span>
+-- @ max_cost: 0.50
+SELECT ...
+
+<span class="cmt"># Per-session limit (connection level)</span>
+max_cost_per_session: 10.00
+
+<span class="cmt"># Per-day limit (global)</span>
+daily_cost_limit: 100.00</pre>
+  </div>
+</div>
+
+<p>Queries that would exceed limits fail with a clear error before any LLM calls.</p>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     TECHNICAL DEEP DIVES
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+<h2 id="technical">Technical Deep Dives</h2>
+
+<h3 id="means-vs-similar">"What's the difference between MEANS and SIMILAR_TO?"</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Operator</th>
+      <th>How it works</th>
+      <th>Best for</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>MEANS</code></td>
+      <td>LLM evaluates each row</td>
+      <td>Nuanced interpretation, small datasets</td>
+    </tr>
+    <tr>
+      <td><code>SIMILAR_TO</code></td>
+      <td>Vector cosine similarity</td>
+      <td>Large datasets, fuzzy matching</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang sql">SQL</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- MEANS: "Does this text convey urgency?" (LLM judges)</span>
+WHERE description MEANS 'urgent issue'
+
+<span class="cmt">-- SIMILAR_TO: "Is this text close to 'urgent issue' in vector space?"</span>
+WHERE description SIMILAR_TO 'urgent issue'</pre>
+  </div>
+</div>
+
+<p><strong>SIMILAR_TO</strong> is faster and cheaper but less precise. <strong>MEANS</strong> understands context and nuance but costs more.</p>
+
+<div class="info-box tip">
+  <div class="info-box-title">Pro tip: Use both</div>
+  <div class="info-box-content">
+<pre>WITH candidates AS (
+  SELECT * FROM tickets WHERE description SIMILAR_TO 'urgent issue' LIMIT 100
+)
+SELECT * FROM candidates WHERE description MEANS 'truly urgent, not just flagged urgent'</pre>
+  </div>
+</div>
+
+
+<h3 id="vector-vs-semantic">"When should I use vector search vs semantic operators?"</h3>
+
+<p><strong>Vector search (<code>VECTOR_SEARCH</code>, <code>SIMILAR_TO</code>):</strong></p>
+<ul>
+  <li>Finding "more like this"</li>
+  <li>Large datasets (millions of rows)</li>
+  <li>Fuzzy matching where precision isn't critical</li>
+  <li>Building candidate sets for further filtering</li>
+</ul>
+
+<p><strong>Semantic operators (<code>MEANS</code>, <code>CLASSIFY</code>, <code>SUMMARIZE</code>):</strong></p>
+<ul>
+  <li>Nuanced judgment calls</li>
+  <li>Small-to-medium datasets (&lt; 10K rows per query)</li>
+  <li>When you need to explain <em>why</em> something matched</li>
+  <li>Aggregations that require understanding</li>
+</ul>
+
+
+<h3 id="chaining">"Can I chain multiple AI operators in one query?"</h3>
+
+<p>Yes. They compose like regular SQL functions:</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang sql">SQL</span>
+  </div>
+  <div class="code-block-content">
+    <pre>SELECT 
+  customer_id,
+  SENTIMENT(feedback) AS mood,
+  CLASSIFY(feedback, 'product', 'service', 'pricing') AS category,
+  SUMMARIZE(feedback) AS summary
+FROM customer_feedback
+WHERE feedback MEANS 'frustrated but still engaged'
+GROUP BY customer_id</pre>
+  </div>
+</div>
+
+<p>Each operator runs independently. Results are joined back to your query.</p>
+
+
+<h3 id="group-by">"What happens with GROUP BY and AI functions?"</h3>
+
+<p>AI aggregate functions work like <code>SUM()</code> or <code>COUNT()</code>:</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang sql">SQL</span>
+  </div>
+  <div class="code-block-content">
+    <pre>SELECT 
+  product_category,
+  COUNT(*) AS reviews,
+  SUMMARIZE(review_text) AS summary,    <span class="cmt">-- Aggregates all reviews in group</span>
+  CONSENSUS(review_text) AS agreement   <span class="cmt">-- Finds common ground</span>
+FROM reviews
+GROUP BY product_category</pre>
+  </div>
+</div>
+
+<p>The LLM sees all rows in each group and produces one output per group.</p>
+
+<p><strong>Row-level functions</strong> in GROUP BY work differently:</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang sql">SQL</span>
+  </div>
+  <div class="code-block-content">
+    <pre>SELECT 
+  TOPICS(description, 3) AS topic,  <span class="cmt">-- AI determines the grouping</span>
+  COUNT(*) AS count
+FROM tickets
+GROUP BY topic</pre>
+  </div>
+</div>
+
+<p>Here, LARS first clusters all rows into topics, then groups by those clusters.</p>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     THE SECRET SAUCE
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+<h2 id="secret-sauce">The Secret Sauce</h2>
+<p class="section-intro"><em>What actually makes this different.</em></p>
+
+<h3 id="sql-native">It's not the LLM call. Everyone can call an LLM.</h3>
+
+<p>The trick is making semantic operations <strong>feel like SQL</strong>.</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang sql">SQL</span>
+  </div>
+  <div class="code-block-content">
+    <pre>SELECT * FROM tickets 
+WHERE description MEANS 'urgent' 
+  AND status = 'open'
+ORDER BY created_at DESC</pre>
+  </div>
+</div>
+
+<p>That's not "SQL + AI bolted on." That's just SQL. The AI operator composes with <code>AND</code>, respects <code>ORDER BY</code>, works in subqueries, joins, CTEs—everything.</p>
+
+<p>This matters because:</p>
+<ul>
+  <li><strong>No context switching</strong> — Stay in SQL, stay in your mental model</li>
+  <li><strong>Declarative</strong> — Say <em>what</em> you want, not <em>how</em> to get it</li>
+  <li><strong>Composable</strong> — Chain operators like any other SQL function</li>
+  <li><strong>Tool-agnostic</strong> — Works in DBeaver, DataGrip, Tableau, psql, any SQL client</li>
+</ul>
+
+
+<h3 id="auditable">Fully declarative, fully auditable</h3>
+
+<p>Every other LLM integration we've seen:</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang python">Python</span>
+  </div>
+  <div class="code-block-content">
+    <pre>results = []
+for row in query_results:
+    response = llm.call(f"Is this urgent? {row['description']}")
+    if response == "yes":
+        results.append(row)</pre>
+  </div>
+</div>
+
+<p>That's imperative. It's a black box. Good luck explaining to your CFO why your LLM bill spiked.</p>
+
+<p>LARS:</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang sql">SQL</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- @ takes.factor: 3</span>
+SELECT * FROM tickets WHERE description MEANS 'urgent'</pre>
+  </div>
+</div>
+
+<p>Declarative. Auditable. You can see exactly:</p>
+<ul>
+  <li>What the LLM saw (input context)</li>
+  <li>What it returned (raw output)</li>
+  <li>Why it made that decision (reasoning, if enabled)</li>
+  <li>What it cost (per-query, per-operator)</li>
+  <li>How long it took (latency breakdown)</li>
+</ul>
+
+<p>All queryable. All in SQL tables. <code>SELECT * FROM lars_system.costs WHERE query_id = '...'</code></p>
+
+
+<h3 id="federation">Federation is the force multiplier</h3>
+
+<p>Your data lives in PostgreSQL (transactions), Snowflake (warehouse), S3 parquet files (logs), MongoDB (user profiles), and a random CSV your analyst emailed you.</p>
+
+<div class="comparison-grid">
+  <div class="comparison-item">
+    <div class="comparison-header bad">Without LARS</div>
+    <div class="comparison-content">
+      ETL everything into one place. Wait 6 hours. Query. Repeat when data changes.
+    </div>
+  </div>
+  <div class="comparison-item">
+    <div class="comparison-header good">With LARS</div>
+    <div class="comparison-content">
+      <pre>SELECT 
+    p.customer_id,
+    m.profile->>'tier' AS tier,
+    SUMMARIZE(s.support_tickets) AS issues
+FROM postgres.customers p
+JOIN mongo.profiles m ON p.id = m.customer_id  
+JOIN snowflake.tickets s ON p.id = s.customer_id
+GROUP BY p.customer_id, tier</pre>
+    </div>
+  </div>
+</div>
+
+<p>Query across sources. No ETL. No data movement. DuckDB handles the federation, LARS handles the semantics.</p>
+
+
+<h3 id="inspectable">The operators aren't magic—they're tiny debuggable machines</h3>
+
+<p>Every LARS operator is a YAML file:</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">cascades/semantic_sql/matches.cascade.yaml</span>
+  </div>
+  <div class="code-block-content">
+    <pre>cascade_id: semantic_matches
+sql_function:
+  operators: ["{{ text }} MEANS {{ criterion }}"]
+cells:
+  - name: evaluate
+    model: gemini-2.5-flash-lite
+    instructions: |
+      Does this text match the criterion?
+      Text: {{ input.text }}
+      Criterion: {{ input.criterion }}</pre>
+  </div>
+</div>
+
+<p>That's it. No hidden complexity. Want to know how <code>MEANS</code> works? Read the file.</p>
+
+<p>Want to customize it? Copy, edit, restart. Your operator now exists.</p>
+
+<p>Want to debug a weird result? The cascade execution is fully logged—every prompt, every response, every decision.</p>
+
+<p><strong>The abstraction is thin and inspectable.</strong> That's the point.</p>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     THE SKEPTIC'S CORNER
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+<h2 id="skeptics">The Skeptic's Corner</h2>
+<p class="section-intro"><em>For the Reddit thread you're about to post in.</em></p>
+
+<h3 id="wrapper">"This is just a wrapper around the ChatGPT API"</h3>
+
+<p>Yes. Also:</p>
+<ul>
+  <li>PostgreSQL is just a wrapper around disk I/O</li>
+  <li>React is just a wrapper around DOM manipulation</li>
+  <li>Kubernetes is just a wrapper around containers</li>
+</ul>
+
+<p>The value isn't in the API call. It's in:</p>
+<ul>
+  <li>SQL-native syntax that composes with your existing queries</li>
+  <li>Caching that makes repeated queries free</li>
+  <li>Takes that handle LLM unreliability</li>
+  <li>Cost tracking so you don't get a surprise $10K bill</li>
+  <li>Observability so you can debug production issues</li>
+</ul>
+
+<p>You <em>could</em> write all this yourself. You could also write your own database.</p>
+
+
+<h3 id="latency">"You're just adding latency to every query"</h3>
+
+<p>Only to queries that use semantic operators. Regular SQL passes through unchanged.</p>
+
+<p>And yes, an LLM call adds 200-2000ms. That's the trade-off for understanding <em>meaning</em> instead of just matching patterns.</p>
+
+<p>If sub-100ms latency is critical, LARS isn't for that query. Use it for analytics, batch processing, and dashboards—not your hot path.</p>
+
+
+<h3 id="scale">"This will never work at scale"</h3>
+
+<p>Define "scale."</p>
+
+<ul>
+  <li><strong>1M rows?</strong> Vector search first, semantic filter on top 100. Works fine.</li>
+  <li><strong>10K queries/day?</strong> Caching handles 70%+, actual LLM load is manageable.</li>
+  <li><strong>1000 concurrent users?</strong> Connection pooling, query queuing, rate limiting.</li>
+</ul>
+
+<p>"Scale" concerns usually assume every query hits an LLM. They don't. The hybrid approach means LLMs see a tiny fraction of your data.</p>
+
+<p>That said—if you're processing 100M events/second in real-time, this isn't your tool. But neither is any LLM-based approach.</p>
+
+
+<h3 id="real-engineers">"Real engineers write their own LLM pipelines"</h3>
+
+<p>Real engineers also write their own web frameworks, databases, and operating systems.</p>
+
+<p>Or—hear me out—they use tools so they can focus on their actual problem.</p>
+
+<p>You <em>can</em> build: prompt management, caching, retry logic, cost tracking, observability, error handling, connection pooling, query parsing, result stitching...</p>
+
+<p>Or you can write:</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang sql">SQL</span>
+  </div>
+  <div class="code-block-content">
+    <pre>WHERE description MEANS 'urgent'</pre>
+  </div>
+</div>
+
+<p>Your call.</p>
+
+
+<h3 id="downtime">"What happens when OpenAI/Anthropic goes down?"</h3>
+
+<p>Your queries wait, retry, or fail—same as when your database goes down.</p>
+
+<p>Mitigations:</p>
+<ul>
+  <li><strong>Fallback models</strong> — Primary fails, secondary takes over</li>
+  <li><strong>Caching</strong> — Recent queries still work</li>
+  <li><strong>Local models</strong> — Ollama doesn't depend on anyone's uptime</li>
+</ul>
+
+<p>If five-nines availability is required, run local models or multi-provider with automatic failover.</p>
+
+
+<h3 id="dangerous">"The LLM could return anything. This is dangerous."</h3>
+
+<p>The LLM returns <em>filtered rows</em> or <em>computed values</em>. It doesn't execute arbitrary code or modify your database.</p>
+
+<p>Worst case scenarios:</p>
+<ul>
+  <li><strong>Filter returns wrong rows</strong> — You see irrelevant data. Annoying, not dangerous.</li>
+  <li><strong>Aggregation hallucinates</strong> — Summary is wrong. Same risk as a human analyst misreading data.</li>
+  <li><strong>Classification is incorrect</strong> — Row gets wrong label. Validate with spot checks.</li>
+</ul>
+
+<p>LARS is read-only by default. The most damage a hallucination can do is show you wrong information—which is already a risk with dashboards, reports, and analysts.</p>
+
+
+<h3 id="weekend">"I could build this in a weekend"</h3>
+
+<p>Try it. Seriously.</p>
+
+<p>Build:</p>
+<ul>
+  <li>☐ SQL parser that handles CTEs, subqueries, and window functions</li>
+  <li>☐ Semantic operator extraction and replacement</li>
+  <li>☐ Parallel execution with result stitching</li>
+  <li>☐ Content-addressed caching with TTL</li>
+  <li>☐ Multi-model support with fallback</li>
+  <li>☐ Takes system with evaluator</li>
+  <li>☐ pgwire protocol server</li>
+  <li>☐ Cost tracking per query/user/model</li>
+  <li>☐ Observability UI</li>
+  <li>☐ Connection pooling for external data sources</li>
+</ul>
+
+<p>Then maintain it while also doing your actual job.</p>
+
+<p>The "weekend project" version works for demos. Production needs the other 90%.</p>
+
+
+<h3 id="hype">"This is AI hype / vaporware"</h3>
+
+<p>It's an open-source SQL server. You can:</p>
+<ol>
+  <li><code>pip install larsql</code></li>
+  <li><code>lars bootstrap</code></li>
+  <li><code>lars serve sql</code></li>
+  <li>Connect with psql</li>
+  <li>Run a query</li>
+</ol>
+
+<p>That's not hype. That's software you can run right now.</p>
+
+<p>Whether it's <em>useful for your use case</em> is a legitimate question. Whether it <em>exists and works</em> is not.</p>
+
+
+<h3 id="trust">"Why would I trust an LLM with my data analysis?"</h3>
+
+<p>You already trust:</p>
+<ul>
+  <li>Analysts who make mistakes</li>
+  <li>Dashboards with wrong formulas</li>
+  <li>Reports with bad assumptions</li>
+  <li>Data pipelines with silent failures</li>
+</ul>
+
+<p>The question isn't "is it perfect?" It's "is it better than the alternative?"</p>
+
+<p>For many tasks—semantic search, fuzzy matching, text classification—LLMs outperform keyword search and manual rules. Not because they're magic, but because they've seen more patterns than any human.</p>
+
+<p>Trust, but verify. That's what the observability layer is for.</p>
+
+
+<h3 id="just-use">"Just use [other tool]"</h3>
+
+<p>Maybe! Here's an honest comparison:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>If you need...</th>
+      <th>Consider</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Python-first LLM framework</td>
+      <td>LangChain, LlamaIndex</td>
+    </tr>
+    <tr>
+      <td>Managed text-to-SQL</td>
+      <td>AI2SQL, Vanna</td>
+    </tr>
+    <tr>
+      <td>Vector database</td>
+      <td>Pinecone, Weaviate</td>
+    </tr>
+    <tr>
+      <td>Data transformation</td>
+      <td>dbt</td>
+    </tr>
+    <tr>
+      <td>Pure SQL analytics</td>
+      <td>Just... SQL</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>LARS is for: <strong>SQL users who want semantic operators without leaving SQL.</strong></p>
+
+<p>If that's not you, use what fits. No tool is universal.</p>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     COMPARISONS
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+<h2 id="comparisons">Comparisons</h2>
+
+<h3 id="vs-text-to-sql">"How is this different from text-to-SQL tools?"</h3>
+
+<p>Text-to-SQL (like AI2SQL, SQLCoder) converts English → SQL.</p>
+
+<p>LARS extends SQL with semantic operators. You still write SQL—you just have superpowers.</p>
+
+<table>
+  <thead>
+    <tr>
+      <th></th>
+      <th>Text-to-SQL</th>
+      <th>LARS</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Input</td>
+      <td>"Show me urgent tickets"</td>
+      <td><code>WHERE desc MEANS 'urgent'</code></td>
+    </tr>
+    <tr>
+      <td>Output</td>
+      <td>SQL query</td>
+      <td>Query results</td>
+    </tr>
+    <tr>
+      <td>Control</td>
+      <td>Hope it generates right SQL</td>
+      <td>You write the SQL</td>
+    </tr>
+    <tr>
+      <td>Debugging</td>
+      <td>Black box</td>
+      <td>Full observability</td>
+    </tr>
+    <tr>
+      <td>Composability</td>
+      <td>Limited</td>
+      <td>Full SQL semantics</td>
+    </tr>
+  </tbody>
+</table>
+
+
+<h3 id="vs-langchain">"How does this compare to LangChain/LlamaIndex?"</h3>
+
+<p>LangChain/LlamaIndex are Python frameworks for building LLM apps.</p>
+
+<p>LARS is a SQL interface that happens to use LLMs internally.</p>
+
+<p><strong>Use LangChain when:</strong></p>
+<ul>
+  <li>Building custom AI applications</li>
+  <li>Need fine-grained control over prompts/chains</li>
+  <li>Python is your primary language</li>
+</ul>
+
+<p><strong>Use LARS when:</strong></p>
+<ul>
+  <li>Your users know SQL, not Python</li>
+  <li>You want AI in your existing BI stack</li>
+  <li>You need production observability out of the box</li>
+</ul>
+
+
+<h3 id="vs-dbt">"What about dbt + LLM integrations?"</h3>
+
+<p>dbt transforms data. LARS queries it.</p>
+
+<p>They're complementary:</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang sql">SQL</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- dbt model: clean and structure data</span>
+<span class="cmt">-- LARS query: add semantic understanding at read time</span>
+
+SELECT * FROM {{ ref('stg_tickets') }}
+WHERE description MEANS 'customer churn risk'</pre>
+  </div>
+</div>
+
+<p>You don't need LARS to use dbt. You don't need dbt to use LARS. They work great together.</p>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     FOOTER
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+<h2 id="contact">Still Have Questions?</h2>
+
+<ul>
+  <li><strong>Discord:</strong> <a href="https://discord.gg/lars" target="_blank">Join the community</a></li>
+  <li><strong>GitHub:</strong> <a href="https://github.com/ryrobes/larsql/issues" target="_blank">Open an issue</a></li>
+  <li><strong>Twitter:</strong> <a href="https://twitter.com/ryrobes" target="_blank">@ryrobes</a></li>
+</ul>

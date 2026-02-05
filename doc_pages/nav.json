@@ -390,6 +390,19 @@
       "color": "orange",
       "items": [
         {
+          "id": "faq",
+          "title": "FAQ",
+          "sections": [
+            { "anchor": "hard-questions", "title": "The Hard Questions" },
+            { "anchor": "privacy", "title": "Data & Privacy" },
+            { "anchor": "cost", "title": "Cost & Performance" },
+            { "anchor": "technical", "title": "Technical Deep Dives" },
+            { "anchor": "secret-sauce", "title": "The Secret Sauce" },
+            { "anchor": "skeptics", "title": "The Skeptic's Corner" },
+            { "anchor": "comparisons", "title": "Comparisons" }
+          ]
+        },
+        {
           "id": "competitive-analysis",
           "title": "Competitive Landscape",
           "sections": [
