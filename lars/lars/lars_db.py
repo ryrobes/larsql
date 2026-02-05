@@ -2343,7 +2343,9 @@ class LarsDB:
             return result
         
         # Non-partitioned table - compact the flat directory
-        return self._compact_directory(table_dir, schema_def, threshold, force)
+        dir_result = self._compact_directory(table_dir, schema_def, threshold, force)
+        result.update(dir_result)
+        return result
     
     def _compact_directory(self, table_dir: Path, schema_def: dict, threshold: int, force: bool) -> dict:
         """Compact parquet files in a single directory."""
