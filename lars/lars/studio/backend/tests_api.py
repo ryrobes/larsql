@@ -644,13 +644,10 @@ def _run_semantic_sql_test(test: TestDefinition, mode: str = 'internal') -> Test
     except:
         pass
     
-    # Clear litellm in-memory client cache
-    try:
-        import litellm
-        if hasattr(litellm, 'in_memory_llm_clients_cache'):
-            litellm.in_memory_llm_clients_cache.flush_cache()
-    except:
-        pass
+    # NOTE: Do NOT flush litellm.in_memory_llm_clients_cache here!
+    # Flushing closes httpx clients, but cached client references may still be
+    # in use by background workers (analytics, etc.). This causes "Cannot send
+    # a request, as the client has been closed" errors.
     
     import gc
     gc.collect()
