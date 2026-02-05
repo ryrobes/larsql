@@ -72,10 +72,12 @@ class DatabaseConnector:
 
             # Connect to persistent DuckDB file (creates if doesn't exist)
             self.conn = duckdb.connect(duckdb_path)
+            self.conn.execute("SET threads TO 4")  # Limit CPU usage
             print(f"[SQL] Using DuckDB cache: {duckdb_path}")
         else:
             # In-memory DuckDB (for .duckdb files - no caching needed)
             self.conn = duckdb.connect(':memory:')
+            self.conn.execute("SET threads TO 4")  # Limit CPU usage
             print(f"[SQL] Using in-memory DuckDB (no cache)")
 
     def attach(self, config: SqlConnectionConfig) -> str:
