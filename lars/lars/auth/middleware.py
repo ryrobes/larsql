@@ -40,8 +40,6 @@ def set_auth_context():
         g.user_id: User ID string (or 'anonymous')
         g.auth_token: The raw token (or None)
     """
-    import os
-    import sys
     from .manager import get_auth_manager
 
     auth_manager = get_auth_manager()
@@ -53,22 +51,18 @@ def set_auth_context():
 
     # Skip if auth disabled
     if not auth_manager.is_enabled():
-        print(f"[Auth middleware DEBUG] PID={os.getpid()} Auth disabled", file=sys.stderr, flush=True)
         return
 
     # Extract Bearer token
     auth_header = request.headers.get('Authorization', '')
     if not auth_header.startswith('Bearer '):
-        print(f"[Auth middleware DEBUG] PID={os.getpid()} No Bearer token in header", file=sys.stderr, flush=True)
         return
 
     token = auth_header[7:]  # Strip "Bearer "
     g.auth_token = token
-    print(f"[Auth middleware DEBUG] PID={os.getpid()} Token: {token[:30]}...", file=sys.stderr, flush=True)
 
     # Validate token
     user = auth_manager.validate_api_key(token)
-    print(f"[Auth middleware DEBUG] PID={os.getpid()} Validation result: {user}", file=sys.stderr, flush=True)
     if user:
         g.user = user
         g.user_id = user['user_id']
