@@ -1315,6 +1315,10 @@ SYSTEM_TABLES = {
             ("error_traceback", "VARCHAR"),
         ],
         "partition_by": None,
+        "dedup": {
+            "pk": "run_id",
+            "order_by": "started_at DESC"
+        },
     },
 
     "tool_manifest_vectors": {
