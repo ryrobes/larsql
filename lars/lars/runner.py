@@ -7617,10 +7617,16 @@ Use only numbers 0-100 for scores."""
                 if mutation_mode in ("rewrite", "rewrite_free"):
                     # For rewrite modes: use LLM to rewrite the prompt
                     console.print(f"{indent}  [dim]Pre-computing mutation {i+1}: rewriting prompt...[/dim]")
-                    mutation_applied = self._rewrite_prompt_with_llm(
-                        cell, input_data, mutation_template, takes_trace,
-                        mutation_mode=mutation_mode, species_hash=cell_species_hash
-                    )
+                    try:
+                        mutation_applied = self._rewrite_prompt_with_llm(
+                            cell, input_data, mutation_template, takes_trace,
+                            mutation_mode=mutation_mode, species_hash=cell_species_hash
+                        )
+                    except Exception as e:
+                        # Fall back to using template as augment on rewrite failure
+                        console.print(f"{indent}  [yellow]{S.WARN} Mutation rewrite failed: {e}, using template as-is[/yellow]")
+                        mutation_applied = mutation_template
+                        mutation_type = "augment"  # Downgrade to augment mode
                 else:
                     mutation_applied = mutation_template
 
@@ -7726,6 +7732,14 @@ Use only numbers 0-100 for scores."""
 
             except Exception as e:
                 console.print(f"{indent}    [red]✗ Take {i+1} failed: {e}[/red]")
+                
+                # Clean up ephemeral RAG if it was initialized
+                if hasattr(take_runner, '_ephemeral_rag_manager') and take_runner._ephemeral_rag_manager:
+                    try:
+                        take_runner._ephemeral_rag_manager.cleanup()
+                    except Exception:
+                        pass  # Best-effort cleanup
+                    take_runner._ephemeral_rag_manager = None
 
                 return {
                     "index": i,
