@@ -215,7 +215,9 @@ def analyze_cascade_execution(session_id: str) -> Dict:
 
         # CRITICAL: Wait for cost data to be populated in unified_logs
         # OpenRouter API calls take 3-4 seconds, so we poll until cost is available
-        session_data = _wait_for_cost_data(session_id, db, max_wait_seconds=10)
+        # Reduced wait time to avoid blocking tracking executor
+        # Cost data usually arrives within 3-4 seconds from OpenRouter
+        session_data = _wait_for_cost_data(session_id, db, max_wait_seconds=3)
 
         if not session_data:
             logger.debug(f"No session data found for {session_id} after waiting for cost")

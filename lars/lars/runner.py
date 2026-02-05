@@ -518,6 +518,10 @@ class LARSRunner:
                 logger = logging.getLogger(__name__)
                 logger.debug(f"Heartbeat failed for {self.session_id}: {e}")
 
+            # Check again after heartbeat (in case it took a while)
+            if not self._heartbeat_running:
+                break
+
             # Sleep in small increments to allow quick shutdown
             for _ in range(self._heartbeat_interval):
                 if not self._heartbeat_running:

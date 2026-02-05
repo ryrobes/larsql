@@ -424,11 +424,18 @@ class SessionStateManager:
     def heartbeat(self, session_id: str):
         """
         Update heartbeat timestamp to prove session is still alive.
+        
+        CRITICAL: This must be non-blocking to allow quick shutdown.
+        Only uses cache (no DB queries), fires DB write asynchronously.
 
         Args:
             session_id: Session to heartbeat
         """
-        state = self.get_session(session_id)
+        # Only check cache - don't do blocking DB query
+        # The session should already be cached if cascade is running
+        with self._lock:
+            state = self._cache.get(session_id)
+        
         if not state:
             return
 
@@ -439,7 +446,7 @@ class SessionStateManager:
             self._cache[session_id] = state
 
         if self.use_db:
-            self._save_state(state)
+            self._save_state(state)  # Already async (uses executor)
 
     def request_cancellation(self, session_id: str, reason: Optional[str] = None):
         """
