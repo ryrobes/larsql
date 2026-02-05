@@ -455,8 +455,8 @@ lars run examples/simple_flow.json \
     <span class="code-block-lang">SQL via CLI</span>
   </div>
   <div class="code-block-content">
-    <pre><span class="cmt"># Query ClickHouse via CLI</span>
-lars sql query <span class="str">"SELECT COUNT(*) FROM all_data"</span>
+    <pre><span class="cmt"># Query system data via CLI</span>
+lars sql query <span class="str">"SELECT COUNT(*) FROM unified_logs"</span>
 
 <span class="cmt"># View recent sessions with costs</span>
 lars sql query <span class="str">"SELECT session_id, phase_name, cost
