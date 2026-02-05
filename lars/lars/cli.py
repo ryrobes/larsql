@@ -3147,6 +3147,19 @@ def cmd_sql_test(args):
             
             import gc
             gc.collect()
+            
+            # Compact parquet files periodically to prevent DuckDB parallel read overhead
+            # Too many small files causes CPU spikes when DuckDB scans globs
+            _test_count = getattr(gc, '_lars_test_count', 0) + 1
+            gc._lars_test_count = _test_count  # Abuse gc as a global holder
+            if _test_count % 25 == 0:  # Compact every 25 tests
+                try:
+                    from lars.db_adapter import get_db
+                    db = get_db()
+                    if hasattr(db, 'compact_all'):
+                        db.compact_all(threshold=5)  # Compact tables with 5+ files
+                except:
+                    pass  # Non-critical
             # === END MEMORY CLEANUP ===
 
             # === THREAD DEBUG LOGGING ===
