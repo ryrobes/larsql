@@ -596,6 +596,30 @@ def _run_semantic_sql_test(test: TestDefinition, mode: str = 'internal') -> Test
     end_time = datetime.now(timezone.utc)
     result.duration_ms = (end_time - start_time).total_seconds() * 1000
 
+    # Try to capture models used from unified_logs (best-effort)
+    try:
+        db = _get_db()
+        # Query for models used in cascade executions during this test window
+        models_query = """
+            SELECT DISTINCT model
+            FROM unified_logs
+            WHERE timestamp >= %(start_time)s
+              AND timestamp <= %(end_time)s
+              AND model IS NOT NULL
+              AND model != ''
+              AND node_type = 'agent'
+            LIMIT 10
+        """
+        models_rows = db.query(models_query, {
+            'start_time': start_time,
+            'end_time': end_time
+        })
+        if models_rows:
+            models_list = [r['model'] for r in models_rows]
+            result.models_used = json.dumps(models_list)
+    except Exception:
+        pass  # Best effort - don't fail test if this doesn't work
+
     return result
 
 
