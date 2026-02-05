@@ -358,6 +358,7 @@ def query_echoes_parquet(where_clause: str | None = None) -> pd.DataFrame:
     parquet_dir = os.path.join(config.log_dir, "echoes")
 
     con = duckdb.connect()
+    con.execute("SET threads TO 4")  # Limit CPU usage
 
     try:
         if where_clause:
@@ -421,6 +422,7 @@ def query_echoes_jsonl_duckdb(where_clause: str | None = None) -> pd.DataFrame:
     jsonl_dir = os.path.join(config.log_dir, "echoes_jsonl")
 
     con = duckdb.connect()
+    con.execute("SET threads TO 4")  # Limit CPU usage
 
     try:
         # DuckDB can read JSONL directly

@@ -269,6 +269,7 @@ def execute_sql_fragment(
             # Use isolated in-memory connection for thread safety
             # This avoids "closed pending query result" errors from parallel execution
             conn = duckdb.connect(":memory:")
+            conn.execute("SET threads TO 4")  # Limit CPU usage
             result = conn.execute(sql).fetchone()
 
             if result is None:

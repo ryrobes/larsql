@@ -106,6 +106,7 @@ def _get_connection():
         
         # Use in-memory connection - we read/write parquet files directly
         _duckdb_conn = duckdb.connect(":memory:")
+        _duckdb_conn.execute("SET threads TO 4")  # Limit CPU usage
         
         # Install and load extensions
         _duckdb_conn.execute("INSTALL vss; LOAD vss")

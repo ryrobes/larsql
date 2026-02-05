@@ -645,6 +645,7 @@ def validate_sql(sql: str | None = None, connection: Optional[str] = None, *, co
         else:
             # Syntax-only validation (no schema context)
             conn = duckdb.connect(':memory:')
+            conn.execute("SET threads TO 4")  # Limit CPU usage
             conn.execute(f"EXPLAIN {sql}")
             conn.close()
 
