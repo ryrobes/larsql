@@ -2593,6 +2593,170 @@ class LarsDB:
 
 
 # =============================================================================
+# Attach System Views to External Connection
+# =============================================================================
+
+def attach_system_views(conn, data_root: Optional[Path] = None) -> int:
+    """
+    Attach LARS system table views to an external DuckDB connection.
+    
+    This is used by the pgwire server to expose system tables to SQL clients.
+    Creates views pointing to the same parquet files that LarsDB uses.
+    
+    Args:
+        conn: DuckDB connection to attach views to
+        data_root: Optional data root path (defaults to LARS_ROOT/data)
+        
+    Returns:
+        Number of views created
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    if data_root is None:
+        data_root = _get_data_root()
+    
+    system_dir = data_root / "system"
+    if not system_dir.exists():
+        logger.debug(f"[attach_system_views] System dir does not exist: {system_dir}")
+        return 0
+    
+    count = 0
+    
+    # Create lars_system schema
+    try:
+        conn.execute("CREATE SCHEMA IF NOT EXISTS lars_system")
+    except Exception:
+        pass
+    
+    # Map of view_name -> (parquet_glob_pattern, schema_def, has_dedup, dedup_config)
+    # Schema definitions match SYSTEM_TABLES in LarsDB
+    system_tables = {
+        "unified_logs_base": {
+            "glob": str(system_dir / "unified_logs_base" / "**" / "*.parquet"),
+            "hive": True,
+            "dedup": {"pk": "trace_id", "order_by": "logged_at_ms DESC"},
+        },
+        "costs": {
+            "glob": str(system_dir / "costs" / "**" / "*.parquet"),
+            "hive": True,
+            "dedup": {"pk": "trace_id", "order_by": "updated_at DESC"},
+        },
+        "session_state": {
+            "glob": str(system_dir / "session_state" / "*.parquet"),
+            "dedup": {"pk": "session_id", "order_by": "updated_at DESC"},
+        },
+        "checkpoints": {
+            "glob": str(system_dir / "checkpoints" / "*.parquet"),
+            "dedup": {"pk": "checkpoint_id", "order_by": "created_at DESC"},
+        },
+        "cascade_sessions": {
+            "glob": str(system_dir / "cascade_sessions" / "*.parquet"),
+            "dedup": {"pk": "session_id", "order_by": "started_at DESC"},
+        },
+        "ui_sql_log": {
+            "glob": str(system_dir / "ui_sql_log" / "*.parquet"),
+        },
+        "test_runs": {
+            "glob": str(system_dir / "test_runs" / "*.parquet"),
+            "dedup": {"pk": "run_id", "order_by": "started_at DESC"},
+        },
+        "test_results": {
+            "glob": str(system_dir / "test_results" / "*.parquet"),
+        },
+    }
+    
+    for table_name, config in system_tables.items():
+        glob_pattern = config["glob"]
+        
+        # Check if any parquet files exist
+        import glob as glob_module
+        files = glob_module.glob(glob_pattern, recursive=True)
+        if not files:
+            continue
+        
+        try:
+            # Create raw view
+            hive_opt = ", hive_partitioning=true" if config.get("hive") else ""
+            raw_view = f"_{table_name}_raw"
+            conn.execute(f"""
+                CREATE OR REPLACE VIEW {raw_view} AS
+                SELECT * FROM read_parquet('{glob_pattern}', union_by_name=true{hive_opt})
+            """)
+            
+            # Create dedup view if configured
+            dedup = config.get("dedup")
+            if dedup:
+                pk = dedup["pk"]
+                order_by = dedup["order_by"]
+                conn.execute(f"""
+                    CREATE OR REPLACE VIEW {table_name} AS
+                    SELECT * FROM (
+                        SELECT *, ROW_NUMBER() OVER (PARTITION BY {pk} ORDER BY {order_by}) as _rn
+                        FROM {raw_view}
+                    ) WHERE _rn = 1
+                """)
+            else:
+                conn.execute(f"CREATE OR REPLACE VIEW {table_name} AS SELECT * FROM {raw_view}")
+            
+            count += 1
+            logger.debug(f"[attach_system_views] Created view: {table_name}")
+            
+        except Exception as e:
+            logger.warning(f"[attach_system_views] Failed to create view {table_name}: {e}")
+    
+    # Create unified_logs (joins with costs)
+    try:
+        conn.execute("""
+            CREATE OR REPLACE VIEW unified_logs AS
+            SELECT 
+                ul.* EXCLUDE (cost, tokens_in, tokens_out, tokens_reasoning, parent_session_id),
+                COALESCE(c.cost, ul.cost) AS cost,
+                COALESCE(c.tokens_in, ul.tokens_in) AS tokens_in,
+                COALESCE(c.tokens_out, ul.tokens_out) AS tokens_out,
+                COALESCE(c.tokens_reasoning, ul.tokens_reasoning) AS tokens_reasoning,
+                CAST(ul.parent_session_id AS VARCHAR) AS parent_session_id
+            FROM unified_logs_base ul
+            LEFT JOIN costs c ON ul.trace_id = c.trace_id
+        """)
+        count += 1
+    except Exception as e:
+        # Fallback without costs join
+        try:
+            conn.execute("""
+                CREATE OR REPLACE VIEW unified_logs AS
+                SELECT 
+                    * EXCLUDE (parent_session_id),
+                    CAST(parent_session_id AS VARCHAR) AS parent_session_id
+                FROM unified_logs_base
+            """)
+            count += 1
+        except Exception:
+            pass
+    
+    # Create lars_system namespace aliases
+    lars_system_aliases = [
+        ("logs", "unified_logs"),
+        ("sessions", "session_state"),
+        ("costs", "costs"),
+        ("checkpoints", "checkpoints"),
+        ("cascades", "cascade_sessions"),
+        ("sql_log", "ui_sql_log"),
+        ("test_runs", "test_runs"),
+        ("test_results", "test_results"),
+    ]
+    
+    for alias, source in lars_system_aliases:
+        try:
+            conn.execute(f"CREATE OR REPLACE VIEW lars_system.{alias} AS SELECT * FROM {source}")
+        except Exception:
+            pass
+    
+    logger.info(f"[attach_system_views] Attached {count} system views")
+    return count
+
+
+# =============================================================================
 # Global Singleton Access
 # =============================================================================
 

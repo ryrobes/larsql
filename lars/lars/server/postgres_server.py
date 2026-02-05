@@ -450,6 +450,25 @@ class ClientConnection:
                     event="shared_tables_sync_failed",
                 )
 
+            # Attach LARS system tables (unified_logs, costs, sessions, etc.)
+            try:
+                from ..lars_db import attach_system_views
+                with self.db_lock:
+                    system_count = attach_system_views(self.duckdb_conn)
+                    if system_count > 0:
+                        self._runtime_log(
+                            "INFO",
+                            f"Attached {system_count} system table(s)",
+                            event="system_tables_attached",
+                            system_table_count=system_count,
+                        )
+            except Exception as e:
+                self._runtime_log(
+                    "WARN",
+                    f"System tables attach failed: {e}",
+                    event="system_tables_attach_failed",
+                )
+
             # DuckDB v1.4.2+ has built-in pg_catalog support
             self._runtime_log(
                 "DEBUG",
