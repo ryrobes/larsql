@@ -1483,7 +1483,7 @@ def list_runs():
                 'passed_tests': _json_safe(row.get('passed_tests')) or 0,
                 'failed_tests': _json_safe(row.get('failed_tests')) or 0,
                 'error_tests': _json_safe(row.get('error_tests')) or 0,
-                'skipped_tests': row.get('skipped_tests'),
+                'skipped_tests': _json_safe(row.get('skipped_tests')) or 0,
                 'trigger': row.get('trigger'),
                 'trigger_source': row.get('trigger_source'),
                 'test_filter': row.get('test_filter')
@@ -1533,9 +1533,9 @@ def get_run(run_id: str):
             'status': row['status'],
             'total_tests': row.get('total_tests'),
             'passed_tests': row.get('passed_tests'),
-            'failed_tests': row.get('failed_tests'),
-            'error_tests': row.get('error_tests'),
-            'skipped_tests': row.get('skipped_tests'),
+            'failed_tests': _json_safe(row.get('failed_tests')) or 0,
+            'error_tests': _json_safe(row.get('error_tests')) or 0,
+            'skipped_tests': _json_safe(row.get('skipped_tests')) or 0,
             'trigger': row.get('trigger'),
             'trigger_source': row.get('trigger_source'),
             'test_filter': row.get('test_filter'),
@@ -1636,12 +1636,12 @@ def get_run(run_id: str):
                 'actual_value': row.get('actual_value'),
                 'expect_type': row.get('expect_type'),
                 'validation_mode': row.get('validation_mode'),
-                'cells_validated': row.get('cells_validated'),
-                'contracts_checked': row.get('contracts_checked'),
-                'contracts_passed': row.get('contracts_passed'),
-                'anchors_checked': row.get('anchors_checked'),
-                'anchors_passed': row.get('anchors_passed'),
-                'judge_score': row.get('judge_score'),
+                'cells_validated': _json_safe(row.get('cells_validated')),
+                'contracts_checked': _json_safe(row.get('contracts_checked')),
+                'contracts_passed': _json_safe(row.get('contracts_passed')),
+                'anchors_checked': _json_safe(row.get('anchors_checked')),
+                'anchors_passed': _json_safe(row.get('anchors_passed')),
+                'judge_score': _json_safe(row.get('judge_score')),
                 'judge_reasoning': row.get('judge_reasoning'),
                 'failure_type': row.get('failure_type'),
                 'failure_message': row.get('failure_message'),
@@ -1654,7 +1654,7 @@ def get_run(run_id: str):
             if has_visual_columns:
                 result['session_id'] = row.get('session_id')
                 result['previous_session_id'] = row.get('previous_session_id')
-                result['overall_score'] = row.get('overall_score')
+                result['overall_score'] = _json_safe(row.get('overall_score'))
                 result['is_baseline'] = bool(row.get('is_baseline'))
                 result['screenshots_compared'] = row.get('screenshots_compared')
             results.append(result)
@@ -1906,7 +1906,7 @@ def get_test_history(test_id: str):
                 'run_id': row['run_id'],
                 'started_at': _json_safe(row.get('started_at')),
                 'status': row['status'],
-                'duration_ms': row.get('duration_ms'),
+                'duration_ms': _json_safe(row.get('duration_ms')),
                 'failure_message': row.get('failure_message'),
                 'error_message': row.get('error_message')
             }
