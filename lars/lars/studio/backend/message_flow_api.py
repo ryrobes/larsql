@@ -642,9 +642,8 @@ def get_running_sessions():
 
             age_seconds = round(current_time - start_ts, 1)
 
-            # SAFETY: If age is negative or astronomical, something is wrong
+            # Clamp negative ages to 0 (can happen with parallel execution race conditions)
             if age_seconds < 0:
-                print(f"[WARNING] Negative age_seconds for session {session_id}: {age_seconds} (current_time={current_time}, start_ts={start_ts})")
                 age_seconds = 0
             elif age_seconds > 86400:  # More than 24 hours
                 print(f"[WARNING] age_seconds > 24 hours for session {session_id}: {age_seconds} (current_time={current_time}, start_ts={start_ts})")
