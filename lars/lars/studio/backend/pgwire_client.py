@@ -54,8 +54,9 @@ def _run_in_thread(fn: Callable[..., T], *args, **kwargs) -> T:
 # Default PGwire port (same as `lars serve sql`)
 DEFAULT_PGWIRE_PORT = 15432
 
-# Internal PGwire port when Studio spawns its own
-INTERNAL_PGWIRE_PORT = 15433
+# Legacy: Internal port was 15433, now unified to DEFAULT_PGWIRE_PORT
+# Studio now spawns pgwire on 15432 like everything else - one port to rule them all
+INTERNAL_PGWIRE_PORT = DEFAULT_PGWIRE_PORT
 
 # Environment variable to communicate PGwire port to workers
 PGWIRE_PORT_ENV = 'LARS_STUDIO_PGWIRE_PORT'
@@ -96,10 +97,9 @@ def check_pgwire_available(host: str = 'localhost', port: int = DEFAULT_PGWIRE_P
 def get_pgwire_port() -> Optional[int]:
     """
     Get the PGwire port to use, checking in order:
-    1. Environment variable (set by Studio master process)
-    2. Default port 15432 (external server - preferred)
-    3. Internal Studio port 15433 (fallback)
-    4. None (no PGwire available)
+    1. Environment variable (explicit override)
+    2. Default port 15432
+    3. None (no PGwire available)
     """
     global _invalid_env_port_logged
 
@@ -114,13 +114,9 @@ def get_pgwire_port() -> Optional[int]:
         elif check_pgwire_available(port=port):
             return port
 
-    # Check default port FIRST (external server is preferred - more reliable)
+    # Check default port (15432 - the one true port)
     if check_pgwire_available(port=DEFAULT_PGWIRE_PORT):
         return DEFAULT_PGWIRE_PORT
-
-    # Fallback to internal port (Studio-spawned server)
-    if check_pgwire_available(port=INTERNAL_PGWIRE_PORT):
-        return INTERNAL_PGWIRE_PORT
 
     return None
 

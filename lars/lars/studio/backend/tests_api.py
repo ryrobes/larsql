@@ -443,7 +443,7 @@ def _execute_psql_simple_sql(sql: str, host: str = 'localhost', port: int = None
     if port is None:
         port = get_pgwire_port()
         if port is None:
-            return None, "SKIP:No pgwire server available (tried 15432, 15433)"
+            return None, "SKIP:No pgwire server available on port 15432"
     
     try:
         result = subprocess.run(
@@ -502,7 +502,7 @@ def _execute_extended_sql(sql: str, host: str = 'localhost', port: int = None, d
     if port is None:
         port = get_pgwire_port()
         if port is None:
-            return None, "SKIP:No pgwire server available (tried 15432, 15433)"
+            return None, "SKIP:No pgwire server available on port 15432"
     
     try:
         conn = psycopg.connect(

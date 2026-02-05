@@ -6748,7 +6748,6 @@ def cmd_serve_studio(args):
 
     # Check if external PGwire is already running on default port
     DEFAULT_PGWIRE_PORT = 15432
-    INTERNAL_PGWIRE_PORT = 15433
 
     if chdb_backend_active:
         # CHDB mode: do not spawn internal PGwire subprocess.
@@ -6759,13 +6758,14 @@ def cmd_serve_studio(args):
         pgwire_port = DEFAULT_PGWIRE_PORT
         styled_print(f"{S.DB} Using existing PGwire server on port {pgwire_port}")
     else:
-        # Start internal PGwire server for Studio
-        styled_print(f"{S.RUN} Starting internal PGwire server on port {INTERNAL_PGWIRE_PORT}...")
+        # Start internal PGwire server for Studio on the SAME default port
+        # No more separate 15433 - one port to rule them all
+        styled_print(f"{S.RUN} Starting internal PGwire server on port {DEFAULT_PGWIRE_PORT}...")
 
         pgwire_cmd = [
             sys.executable, '-m', 'lars.cli',
             'serve', 'sql',
-            '--port', str(INTERNAL_PGWIRE_PORT),
+            '--port', str(DEFAULT_PGWIRE_PORT),
             '--host', args.host,
         ]
 
@@ -6780,8 +6780,8 @@ def cmd_serve_studio(args):
         import time
         start_time = time.time()
         while time.time() - start_time < 10:
-            if check_port(INTERNAL_PGWIRE_PORT):
-                pgwire_port = INTERNAL_PGWIRE_PORT
+            if check_port(DEFAULT_PGWIRE_PORT):
+                pgwire_port = DEFAULT_PGWIRE_PORT
                 styled_print(f"{S.OK} Internal PGwire server ready")
                 break
             if pgwire_process.poll() is not None:
