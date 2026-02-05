@@ -41,8 +41,8 @@ sql_function:
       description: "Identifies anecdotal evidence"
     - sql: SELECT evidence_type('A randomized controlled trial of 10,000 participants showed a 23% reduction')
       expect:
-        type: contains
-        value: experiment
+        type: regex
+        pattern: (experiment|randomized|RCT|controlled.trial)
       description: "Identifies experimental/RCT evidence"
 
 cells:

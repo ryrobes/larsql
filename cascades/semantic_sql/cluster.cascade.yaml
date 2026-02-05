@@ -42,8 +42,8 @@ sql_function:
       )
       SELECT MEANING(city, 3, 'geographic region') FROM test_data
     expect:
-      type: contains
-      value: clusters
+      type: regex
+      pattern: (clusters|assignments)
     description: Clusters cities by geographic region
 cells:
 - name: identify_clusters

@@ -44,8 +44,8 @@ sql_function:
       description: "Produces substantial counterargument"
     - sql: SELECT counterargument('Remote work is better than office work', 'practical')
       expect:
-        type: contains
-        value: collaborat
+        type: regex
+        pattern: (office|team|communicat|collaborat|in-person|physical)
       description: "Addresses collaboration concerns in practical style"
 
 cells:

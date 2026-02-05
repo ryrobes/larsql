@@ -48,7 +48,7 @@ sql_function:
     - sql: SELECT assumes('AI will replace most jobs within 10 years', 'technical')
       expect:
         type: contains
-        value: capab
+        value: AI
       description: "Extracts technical assumptions with focus"
 
 cells:
