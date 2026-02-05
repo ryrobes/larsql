@@ -641,7 +641,16 @@ def execute_cascade_udf(
             sql_fragment = str(output).strip()
             log.debug(f"[cascade_udf] sql_execute mode - executing: {sql_fragment[:100]}...")
 
-            # Cache the SQL fragment - skip if error
+            # Bind and execute FIRST (before caching) to verify SQL is valid
+            bound_sql = bind_sql_parameters(sql_fragment, cleaned_inputs, fn.args)
+            try:
+                result_value = execute_sql_fragment(bound_sql, fn.returns)
+            except Exception as e:
+                # SQL execution failed - don't cache invalid SQL
+                log.warning(f"[cascade_udf] SQL execution failed, not caching: {e}")
+                return json.dumps({"error": str(e)})
+
+            # Cache the SQL fragment AFTER successful execution
             if use_cache and not takes_config and not is_error:
                 if use_fingerprint_cache and fingerprint_cache_key:
                     cache = get_cache()
@@ -649,9 +658,6 @@ def execute_cascade_udf(
                 else:
                     set_cached_result(cache_name, cleaned_inputs, sql_fragment)
 
-            # Bind and execute
-            bound_sql = bind_sql_parameters(sql_fragment, cleaned_inputs, fn.args)
-            result_value = execute_sql_fragment(bound_sql, fn.returns)
             return str(result_value) if result_value is not None else ""
 
         # Handle output_mode: sql_raw returns SQL as-is
