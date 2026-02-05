@@ -2737,13 +2737,20 @@ def attach_system_views(conn, data_root: Optional[Path] = None) -> int:
     # Create lars_system namespace aliases
     lars_system_aliases = [
         ("logs", "unified_logs"),
+        ("logs_raw", "_unified_logs_base_raw"),
         ("sessions", "session_state"),
+        ("sessions_raw", "_session_state_raw"),
         ("costs", "costs"),
+        ("costs_raw", "_costs_raw"),
         ("checkpoints", "checkpoints"),
         ("cascades", "cascade_sessions"),
+        ("cascades_raw", "_cascade_sessions_raw"),
         ("sql_log", "ui_sql_log"),
+        ("sql_log_raw", "_ui_sql_log_raw"),
         ("test_runs", "test_runs"),
+        ("test_runs_raw", "_test_runs_raw"),
         ("test_results", "test_results"),
+        ("test_results_raw", "_test_results_raw"),
     ]
     
     for alias, source in lars_system_aliases:
