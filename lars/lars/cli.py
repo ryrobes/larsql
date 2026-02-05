@@ -8248,9 +8248,9 @@ def bootstrap_wizard():
                 pw_method = inquirer.select(
                     message="  Password method:",
                     choices=[
-                        ("Enter password directly (stored in .env)", "literal"),
-                        ("Use existing environment variable", "env_var"),
-                        ("No password needed", "none"),
+                        {"name": "Enter password directly (stored in .env)", "value": "literal"},
+                        {"name": "Use existing environment variable", "value": "env_var"},
+                        {"name": "No password needed", "value": "none"},
                     ]
                 ).execute()
                 
@@ -8279,9 +8279,9 @@ def bootstrap_wizard():
                 token_method = inquirer.select(
                     message="  Token method:",
                     choices=[
-                        ("Enter token directly (stored in .env)", "literal"),
-                        ("Use existing environment variable", "env_var"),
-                        ("No token (anonymous)", "none"),
+                        {"name": "Enter token directly (stored in .env)", "value": "literal"},
+                        {"name": "Use existing environment variable", "value": "env_var"},
+                        {"name": "No token (anonymous)", "value": "none"},
                     ]
                 ).execute()
                 
