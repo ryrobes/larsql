@@ -481,7 +481,12 @@ def _execute_psql_simple_sql(sql: str, host: str = 'localhost', port: int = None
     except FileNotFoundError:
         return None, "SKIP:psql not installed"
     except Exception as e:
-        return None, str(e)
+        error_msg = str(e)
+        # Add small delay on connection errors to prevent CPU spin
+        if 'connection' in error_msg.lower() or 'refused' in error_msg.lower():
+            import time
+            time.sleep(0.1)  # 100ms backoff on connection failures
+        return None, error_msg
 
 
 def _execute_extended_sql(sql: str, host: str = 'localhost', port: int = None, database: str = 'lars') -> tuple:
@@ -522,7 +527,12 @@ def _execute_extended_sql(sql: str, host: str = 'localhost', port: int = None, d
         return row[0], None
 
     except Exception as e:
-        return None, str(e)
+        error_msg = str(e)
+        # Add small delay on connection errors to prevent CPU spin
+        if 'connection' in error_msg.lower() or 'refused' in error_msg.lower():
+            import time
+            time.sleep(0.1)  # 100ms backoff on connection failures
+        return None, error_msg
 
 
 def _run_semantic_sql_test(test: TestDefinition, mode: str = 'internal') -> TestResult:
