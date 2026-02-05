@@ -8166,55 +8166,172 @@ def bootstrap_wizard():
     from rich.panel import Panel
     from rich.prompt import Prompt, Confirm
     from InquirerPy import inquirer
+    from .bootstrap_providers import (
+        validate_openrouter_key,
+        validate_ollama_host,
+        fetch_openrouter_models,
+        fetch_ollama_models,
+        get_recommended_defaults,
+        filter_models_for_tier,
+        sort_models_for_display,
+        format_model_choice,
+    )
 
     console = Console()
 
     # Welcome banner
     console.print()
     console.print(Panel.fit(
-        "[bold cyan]🚀 LARS Setup Wizard[/bold cyan]\n\n"
+        "[bold cyan]🐇 LARS Setup Wizard[/bold cyan]\n\n"
         "Let's get you set up with LARS.\n"
         "Press Ctrl+C at any time to exit.",
         border_style="cyan"
     ))
 
+    # ==========================================================================
     # 1. LARS_ROOT selection
+    # ==========================================================================
     default_root = os.environ.get('LARS_ROOT', str(Path.home() / '.lars'))
     lars_root = Prompt.ask(
-        "\n[bold]Where should LARS store data?[/bold]",
+        "\n[bold]📁 Where should LARS store data?[/bold]",
         default=default_root
     )
 
-    # 2. OpenRouter API key
+    # ==========================================================================
+    # 2. Provider Configuration
+    # ==========================================================================
+    console.print("\n[bold cyan]🔑 Configure Providers[/bold cyan]")
+    console.print("[dim]─" * 50 + "[/dim]")
+    
+    all_models = []
+    api_key = None
+    ollama_hosts = {}
+    openrouter_enabled = False
+    ollama_enabled = False
+    
+    # --- OpenRouter ---
     existing_key = os.environ.get('OPENROUTER_API_KEY', '')
-    if existing_key:
-        console.print(f"\n[bold]OpenRouter API key[/bold] [dim](current: ...{existing_key[-8:]})[/dim]")
-        api_key = Prompt.ask("  API Key (Enter to keep current)", password=True, default="")
-        if not api_key:
-            api_key = existing_key
-    else:
-        console.print("\n[bold]OpenRouter API key[/bold] [dim](get one at openrouter.ai/keys)[/dim]")
-        api_key = Prompt.ask("  API Key", password=True, default="")
-
-    # Validate API key
-    if api_key and api_key != existing_key:
-        console.print("  Validating key...", end="")
-        try:
-            import httpx
-            resp = httpx.get(
-                "https://openrouter.ai/api/v1/models",
-                headers={"Authorization": f"Bearer {api_key}"},
-                timeout=10
-            )
-            if resp.status_code == 200:
-                console.print(" [green]✓ Valid[/green]")
+    add_openrouter = Confirm.ask(
+        "\n[bold]Add OpenRouter?[/bold] [dim](300+ cloud models)[/dim]",
+        default=True
+    )
+    
+    if add_openrouter:
+        if existing_key:
+            console.print(f"  [dim]Current key: ...{existing_key[-8:]}[/dim]")
+            api_key = Prompt.ask("  API Key (Enter to keep current)", password=True, default="")
+            if not api_key:
+                api_key = existing_key
+        else:
+            console.print("  [dim]Get a key at openrouter.ai/keys[/dim]")
+            api_key = Prompt.ask("  API Key", password=True, default="")
+        
+        if api_key:
+            console.print("  Validating...", end="")
+            is_valid, message = validate_openrouter_key(api_key)
+            if is_valid:
+                console.print(f" [green]✓ {message}[/green]")
+                openrouter_enabled = True
+                # Fetch models
+                console.print("  Fetching models...", end="")
+                or_models = fetch_openrouter_models(api_key)
+                console.print(f" [green]✓ {len(or_models)} models[/green]")
+                all_models.extend(or_models)
             else:
-                console.print(f" [red]✗ Invalid (HTTP {resp.status_code})[/red]")
+                console.print(f" [red]✗ {message}[/red]")
                 api_key = None
-        except Exception as e:
-            console.print(f" [yellow]⚠ Could not validate: {e}[/yellow]")
-    elif api_key == existing_key:
-        console.print("  [dim]Using existing key[/dim]")
+    
+    # --- Ollama ---
+    add_ollama = Confirm.ask(
+        "\n[bold]Add Ollama?[/bold] [dim](local models, no API key)[/dim]",
+        default=not openrouter_enabled  # Default yes if no OpenRouter
+    )
+    
+    if add_ollama:
+        while True:
+            host_alias = "default" if not ollama_hosts else Prompt.ask("  Host alias", default=f"host{len(ollama_hosts)+1}")
+            default_url = "http://localhost:11434" if host_alias == "default" else ""
+            host_url = Prompt.ask(f"  Ollama URL", default=default_url)
+            
+            console.print("  Connecting...", end="")
+            is_valid, message = validate_ollama_host(host_url)
+            if is_valid:
+                console.print(f" [green]✓ {message}[/green]")
+                ollama_hosts[host_alias] = host_url
+                ollama_enabled = True
+                # Fetch models
+                console.print("  Fetching models...", end="")
+                ollama_models = fetch_ollama_models(host_url, host_alias)
+                console.print(f" [green]✓ {len(ollama_models)} models[/green]")
+                all_models.extend(ollama_models)
+            else:
+                console.print(f" [red]✗ {message}[/red]")
+            
+            if not Confirm.ask("  Add another Ollama host?", default=False):
+                break
+    
+    # Check that we have at least one provider
+    if not openrouter_enabled and not ollama_enabled:
+        console.print("\n[yellow]⚠ No providers configured. You'll need to edit models.yaml manually.[/yellow]")
+    
+    # ==========================================================================
+    # 3. Model Tier Assignment
+    # ==========================================================================
+    defaults = get_recommended_defaults()
+    model_tiers = {}
+    
+    if all_models:
+        console.print("\n[bold cyan]📊 Assign Model Tiers[/bold cyan]")
+        console.print("[dim]─" * 50 + "[/dim]")
+        console.print("[dim]Type to search, ↑↓ to navigate, Enter to select[/dim]\n")
+        
+        tier_descriptions = {
+            "embedding": "Vector embeddings (RAG, SIMILAR_TO)",
+            "fast": "Quick/cheap (MEANS, parsing, high-volume)",
+            "standard": "Balanced (default for most operators)",
+            "quality": "Complex analysis (SUMMARIZE, ANALYZE)",
+            "flagship": "Best available (critical decisions)",
+        }
+        
+        for tier in ["embedding", "fast", "standard", "quality", "flagship"]:
+            tier_models = filter_models_for_tier(all_models, tier)
+            
+            if not tier_models:
+                console.print(f"  [yellow]⚠ No {tier} models available[/yellow]")
+                model_tiers[tier] = defaults.get(tier, "")
+                continue
+            
+            sorted_models = sort_models_for_display(tier_models, tier, defaults)
+            
+            # Build choices for InquirerPy
+            choices = []
+            for m in sorted_models[:50]:  # Limit to 50 for performance
+                display = format_model_choice(m)
+                choices.append({"name": display, "value": m.id})
+            
+            # Find default in choices
+            default_id = defaults.get(tier, "")
+            default_choice = None
+            for c in choices:
+                if c["value"] == default_id:
+                    default_choice = c["value"]
+                    break
+            if not default_choice and choices:
+                default_choice = choices[0]["value"]
+            
+            selected = inquirer.fuzzy(
+                message=f"{tier.upper()} [{tier_descriptions[tier]}]:",
+                choices=choices,
+                default=default_choice,
+                max_height="40%",
+            ).execute()
+            
+            model_tiers[tier] = selected
+            console.print(f"  [green]✓[/green] {tier}: {selected}")
+    else:
+        # No models discovered, use defaults
+        console.print("\n[dim]Using default model assignments (requires OpenRouter)[/dim]")
+        model_tiers = dict(defaults)
 
     # 3. SQL Connections
     sql_connections = []
@@ -8309,7 +8426,12 @@ def bootstrap_wizard():
         "lars_root": lars_root,
         "api_key": api_key,
         "sql_connections": sql_connections,
-        "passwords_for_env": passwords_for_env
+        "passwords_for_env": passwords_for_env,
+        # New provider/model config
+        "openrouter_enabled": openrouter_enabled,
+        "ollama_enabled": ollama_enabled,
+        "ollama_hosts": ollama_hosts,
+        "model_tiers": model_tiers,
     }
 
 
@@ -8356,6 +8478,20 @@ def cmd_bootstrap(args):
             
             env_path.write_text('\n'.join(env_lines) + '\n')
             print(f"\n✓ Wrote {env_path}")
+
+            # Write models.yaml
+            from .models import ModelsConfig, ProvidersConfig, write_models_yaml
+            models_config = ModelsConfig(
+                providers=ProvidersConfig(
+                    openrouter_enabled=wizard_config.get('openrouter_enabled', False),
+                    openrouter_api_key_env="OPENROUTER_API_KEY",
+                    ollama_enabled=wizard_config.get('ollama_enabled', False),
+                    ollama_hosts=wizard_config.get('ollama_hosts', {}),
+                ),
+                models=wizard_config.get('model_tiers', {}),
+            )
+            models_yaml_path = write_models_yaml(models_config, lars_root / 'models.yaml')
+            print(f"✓ Wrote {models_yaml_path}")
 
             # Write sql_connections as YAML files
             import ruamel.yaml
