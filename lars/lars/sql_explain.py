@@ -8,7 +8,7 @@ Provides comprehensive cost estimates and execution plan details for:
 
 Key features:
 - Executes DISTINCT queries to get actual unique value counts
-- Queries historical cost data from ClickHouse (unified_logs, cascade_template_vectors)
+- Queries historical cost data from DuckDB (unified_logs, cascade_template_vectors)
 - Checks cache hit rates from semantic_sql_cache
 - Provides optimization hints (prewarm suggestions, parallel annotations)
 """
@@ -2086,7 +2086,7 @@ def _estimate_group_count(query: str, duckdb_conn) -> Tuple[int, int, int]:
 
 def _get_historical_aggregate_stats(impl_function: str, canonical_name: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """
-    Get historical cost statistics for an aggregate function from ClickHouse.
+    Get historical cost statistics for an aggregate function from DuckDB.
 
     Uses cascade_id for precise matching instead of loose pattern matching.
     Falls back to pattern matching only if cascade_id lookup returns no data.
@@ -2588,7 +2588,7 @@ def _check_cache_for_function(
 
 def _get_historical_cascade_stats(cascade_id: str) -> Optional[Dict[str, Any]]:
     """
-    Get historical cost statistics for a cascade from ClickHouse.
+    Get historical cost statistics for a cascade from DuckDB.
 
     Queries unified_logs to aggregate actual costs.
 

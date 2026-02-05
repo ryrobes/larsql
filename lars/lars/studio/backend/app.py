@@ -1,7 +1,7 @@
 """
 LARS UI Backend - Flask server for cascade exploration and analytics
 
-Data source: ClickHouse unified_logs table (real-time + historical)
+Data source: DuckDB unified_logs table (real-time + historical)
 
 The unified_logs.py writes directly to ClickHouse with ~1 second latency.
 Checkpoint caching (live_store.py) is used only for HITL workflows.
@@ -1139,7 +1139,7 @@ def get_cascade_instances(cascade_id):
     """
     Get all run instances for a specific cascade definition.
 
-    Data source: ClickHouse unified_logs table (real-time with ~1s latency)
+    Data source: DuckDB unified_logs table (real-time with ~1s latency)
 
     Query params:
         limit: Max instances to return (default: 50)
@@ -2866,7 +2866,7 @@ def get_takes_tree(session_id):
     Shows all takes across all cells, evaluator reasoning,
     and the winner path through the cascade execution.
 
-    Data source: ClickHouse unified_logs table
+    Data source: DuckDB unified_logs table
     """
     try:
         # Query ClickHouse for takes data
@@ -6560,7 +6560,7 @@ if __name__ == '__main__':
             FROM unified_logs
         """).fetchone()
 
-        print(f"📊 ClickHouse Data:")
+        print(f"📊 Session Data:")
         print(f"   Sessions: {stats[0]}, Cascades: {stats[1]}, Messages: {stats[2]}")
         print(f"   Total Cost: ${stats[3]:.4f}" if stats[3] else "   Total Cost: $0.0000")
         print()

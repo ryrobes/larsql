@@ -11,7 +11,7 @@ runtime_logs_bp = Blueprint("runtime_logs", __name__)
 
 
 def _get_db():
-    """Get ClickHouse database adapter."""
+    """Get DuckDB database adapter."""
     try:
         from lars.db_adapter import get_db as lars_get_db
         return lars_get_db()
@@ -24,7 +24,7 @@ def _format_timestamp_utc(ts):
     """
     Format a timestamp as ISO string with UTC timezone indicator.
 
-    ClickHouse returns naive datetime objects. Adding 'Z' tells the browser
+    DuckDB returns naive datetime objects. Adding 'Z' tells the browser
     to interpret it as UTC and convert to local time for display.
     """
     if ts is None:
@@ -72,7 +72,7 @@ def _add_in_filter(where_clauses: list[str], params: dict, *, col: str, values: 
 @runtime_logs_bp.route("/api/runtime-logs", methods=["GET"])
 def list_runtime_logs():
     """
-    List runtime log rows from ClickHouse.
+    List runtime log rows from DuckDB.
 
     Query params:
       - hours: lookback window (default 24, max 720)

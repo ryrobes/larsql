@@ -543,7 +543,7 @@ class AppSession:
         }
 
 
-# In-memory session store (TODO: migrate to ClickHouse)
+# In-memory session store (TODO: migrate to DuckDB)
 _sessions: Dict[str, AppSession] = {}
 _session_lock = threading.Lock()
 
@@ -570,7 +570,7 @@ def get_or_create_session(cascade_id: str, session_id: str) -> Optional[AppSessi
     # Check if there's a checkpoint for this session (means it's a real LARS session)
     checkpoint = get_pending_checkpoint(session_id)
 
-    # Also check if we can find session logs in ClickHouse to confirm it exists
+    # Also check if we can find session logs in DuckDB to confirm it exists
     # For now, just check checkpoint existence
     if checkpoint:
         # Load the cascade to get cell info
@@ -698,7 +698,7 @@ def respond_to_checkpoint(checkpoint_id: str, response: dict) -> bool:
 
 def get_cascade_state_from_clickhouse(session_id: str) -> dict:
     """
-    Query ClickHouse for the cascade's current state.
+    Query DuckDB for the cascade's current state.
 
     Returns dict with:
     - status: 'running', 'completed', 'error', 'cancelled', 'orphaned'
@@ -755,13 +755,13 @@ def get_cascade_state_from_clickhouse(session_id: str) -> dict:
         }
 
     except Exception as e:
-        print(f"[apps_api] Error querying ClickHouse for cascade state: {e}")
+        print(f"[apps_api] Error querying DuckDB for cascade state: {e}")
         return {'status': 'running', 'current_cell': None, 'error_message': None}
 
 
 def sync_session_with_cascade(session: 'AppSession', cascade: Any) -> None:
     """
-    Sync AppSession state with the actual cascade state from ClickHouse.
+    Sync AppSession state with the actual cascade state from DuckDB.
 
     This updates:
     - session.status based on session_state table
@@ -776,7 +776,7 @@ def sync_session_with_cascade(session: 'AppSession', cascade: Any) -> None:
 
     print(f"[apps_api] sync_session: CH status={ch_status}, cell={ch_cell}, session.status={session.status}, session.cell={session.current_cell}")
 
-    # Map ClickHouse status to AppSession status
+    # Map DuckDB status to AppSession status
     if ch_status == 'completed':
         session.status = 'completed'
         print(f"[apps_api] sync_session: Cascade completed!")
@@ -788,7 +788,7 @@ def sync_session_with_cascade(session: 'AppSession', cascade: Any) -> None:
     else:
         session.status = 'running'
 
-    # Update current cell if we have info from ClickHouse
+    # Update current cell if we have info from DuckDB
     if ch_cell:
         # Validate cell exists in cascade
         cell = get_cell_by_name(cascade, ch_cell)
@@ -1260,7 +1260,7 @@ def execute_tool_cell(cell, session: AppSession, cascade) -> Tuple[Any, Optional
                 session.state[key] = value
                 result = {'status': 'ok', 'key': key, 'message': f'State updated: {key}'}
 
-                # Log to ClickHouse for visibility
+                # Log to DuckDB for visibility
                 _log_app_execution(session, cell.name, tool_name, rendered_inputs, result)
         else:
             # Try to execute via deterministic module
@@ -1311,7 +1311,7 @@ def execute_tool_cell(cell, session: AppSession, cascade) -> Tuple[Any, Optional
 
 
 def _log_app_execution(session: AppSession, cell_name: str, tool_name: str, inputs: dict, result: Any):
-    """Log app tool execution to ClickHouse for visibility in LARS UI."""
+    """Log app tool execution to DuckDB for visibility in LARS UI."""
     try:
         from lars.unified_logs import log_unified
 
@@ -2201,7 +2201,7 @@ def status(cascade_id: str, session_id: str):
     if not cascade:
         return jsonify({'error': 'Cascade not found'}), 404
 
-    # Sync session state with actual cascade state from ClickHouse
+    # Sync session state with actual cascade state from DuckDB
     # This updates status (running/completed/error) and current_cell
     sync_session_with_cascade(session, cascade)
 
