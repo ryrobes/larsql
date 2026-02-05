@@ -1076,8 +1076,15 @@ def _convert_pg_booleans(result_df):
 
         # Convert boolean dtype columns to integers (preserving NULLs)
         if 'bool' in dtype_str:
-            # Use nullable Int64 to preserve NULLs, or map True/False manually
-            df[col] = df[col].map(lambda x: 1 if x is True else (0 if x is False else None))
+            # Use nullable Int64 to preserve NULLs
+            # Check for NA/None first to avoid "boolean value of NA is ambiguous" error
+            # Then use == comparison (not 'is') because np.True_/np.False_ are different objects
+            import pandas as pd
+            def _bool_to_int(x):
+                if pd.isna(x):
+                    return None
+                return 1 if x == True else 0
+            df[col] = df[col].map(_bool_to_int)
             continue
 
         # Only convert object (string) columns
