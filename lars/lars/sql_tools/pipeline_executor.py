@@ -200,7 +200,7 @@ def _execute_table_sql(
         should_close = False
     else:
         conn = duckdb.connect()
-        conn.execute("SET threads TO 4")  # Limit CPU usage
+        conn.execute("SET threads TO 2")  # Limit CPU usage
         should_close = True
 
     try:
@@ -236,7 +236,7 @@ def _validate_sql_with_table(sql: str, df: pd.DataFrame) -> Optional[str]:
     import duckdb
 
     conn = duckdb.connect()
-    conn.execute("SET threads TO 4")  # Limit CPU usage
+    conn.execute("SET threads TO 2")  # Limit CPU usage
     try:
         conn.register("_input_table", df)
         # Try to execute - this validates both syntax and semantics

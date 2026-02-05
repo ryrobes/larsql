@@ -1708,7 +1708,11 @@ class LarsDB:
             DuckDB connection ready for queries
         """
         conn = duckdb.connect()  # In-memory, stateless
-        conn.execute("SET threads TO 4")  # Limit CPU usage
+        # Limit CPU usage - default 2 threads per connection to prevent parallel query explosion
+        # Override with LARS_DUCKDB_THREADS env var
+        import os
+        duckdb_threads = int(os.environ.get("LARS_DUCKDB_THREADS", "2"))
+        conn.execute(f"SET threads TO {duckdb_threads}")
         self._load_extensions(conn)
         self._register_system_views(conn)
         self._register_derived_views(conn)

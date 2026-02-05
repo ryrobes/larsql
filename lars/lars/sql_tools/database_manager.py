@@ -148,7 +148,7 @@ def _open_database_with_fallback(db_path: str, db_key: str) -> Tuple[duckdb.Duck
     # Strategy 1: Try normal read/write
     try:
         conn = duckdb.connect(db_path)
-        conn.execute("SET threads TO 4")  # Limit CPU usage
+        conn.execute("SET threads TO 2")  # Limit CPU usage
         log.info(f"[database_manager] Opened persistent database: {db_path}")
         return conn, False
     except duckdb.IOException as e:
@@ -160,7 +160,7 @@ def _open_database_with_fallback(db_path: str, db_key: str) -> Tuple[duckdb.Duck
     # Strategy 2: Try read-only mode
     try:
         conn = duckdb.connect(db_path, read_only=True)
-        conn.execute("SET threads TO 4")  # Limit CPU usage
+        conn.execute("SET threads TO 2")  # Limit CPU usage
         log.info(f"[database_manager] Opened {db_key} in read-only mode (locked by another process)")
         return conn, True
     except duckdb.IOException as e:
@@ -183,7 +183,7 @@ def _open_database_with_fallback(db_path: str, db_key: str) -> Tuple[duckdb.Duck
     _snapshot_paths[db_key] = snapshot_path
 
     conn = duckdb.connect(snapshot_path)
-    conn.execute("SET threads TO 4")  # Limit CPU usage
+    conn.execute("SET threads TO 2")  # Limit CPU usage
     log.info(f"[database_manager] Opened snapshot copy of {db_key} (original locked)")
     return conn, False  # Snapshot is writable but changes won't persist to original
 
@@ -242,7 +242,7 @@ def get_database_connection(
             conn, _is_readonly = _open_database_with_fallback(db_path, db_key)
 
         # Configure DuckDB
-        conn.execute("SET threads TO 4")
+        conn.execute("SET threads TO 2")
 
         # Cache connection and create lock
         _database_connections[db_key] = conn
@@ -354,7 +354,7 @@ def get_fresh_connection(
             raise
 
     # Configure DuckDB
-    conn.execute("SET threads TO 4")
+    conn.execute("SET threads TO 2")
 
     # Run initialization
     if initialize:

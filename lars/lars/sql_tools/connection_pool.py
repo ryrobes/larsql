@@ -91,7 +91,7 @@ def _create_warmed_connection() -> duckdb.DuckDBPyConnection:
     a ready-to-use connection.
     """
     conn = duckdb.connect(':memory:')
-    conn.execute("SET threads TO 4")
+    conn.execute("SET threads TO 2")
 
     # Load extensions
     _load_extensions(conn)

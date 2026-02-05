@@ -86,7 +86,7 @@ def validate_parse_expression(content: str, text: str = None, instruction: str =
     try:
         # Execute the bound expression
         conn = duckdb.connect(':memory:')
-        conn.execute("SET threads TO 4")  # Limit CPU usage
+        conn.execute("SET threads TO 2")  # Limit CPU usage
         result = conn.execute(test_sql).fetchone()
         conn.close()
         
@@ -186,7 +186,7 @@ def validate_sql_expression(content: str, **kwargs) -> Dict[str, Any]:
     
     try:
         conn = duckdb.connect(':memory:')
-        conn.execute("SET threads TO 4")  # Limit CPU usage
+        conn.execute("SET threads TO 2")  # Limit CPU usage
         result = conn.execute(test_sql).fetchone()
         conn.close()
         
