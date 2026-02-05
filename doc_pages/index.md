@@ -50,6 +50,7 @@ Resources
 
 [Documentation](docs.html)
           [GitHub](https://github.com/ryrobes/larsql)
+          [Contact](mailto:ryan.robitaille@gmail.com)
           [@ryrobes](https://twitter.com/ryrobes)
 
 [Get Started](#get-started)
@@ -1136,8 +1137,8 @@ Drop a YAML cascade. Get a new SQL operator. Your team extends the language.
 ## 100+ AI operators. Still just SQL.
 
 
-Semantic filtering. Logic checking. Text aggregation. Data quality scoring.
-              Deduplication. PII removal. MDM. All as SQL functions.
+Semantic filtering. Argumentation analysis. Knowledge graphs. Text aggregation.
+              Data quality. MDM. Critical thinking as SQL functions.
 SQL
               analyst_research.sql
 ```
@@ -1315,6 +1316,42 @@ in (n rows)
             
               GOLDEN_RECORD
               MDM merge
+            
+
+            
+            
+              STEELMAN
+              best-case argument
+            
+            
+              WEAKNESSES
+              find logical flaws
+            
+            
+              FALLACY
+              detect fallacies
+            
+            
+              SUPPORTS
+              evidence scoring
+            
+
+            
+            
+              TRIPLES
+              knowledge graph
+            
+            
+              TIMELINE
+              event extraction
+            
+            
+              ASSUMES
+              hidden premises
+            
+            
+              EVIDENCE_TYPE
+              tier classification
 ## What's happening under the hood?
 
 
@@ -1656,7 +1693,7 @@ Returns:
 >               Your CFO gets the receipts.
 > [View on GitHub](https://github.com/ryrobes/larsql)
 >               [Read the Docs](docs.html)
-> `pip install larsql`
+> `pip install larsql && lars bootstrap`
 > 
 > LARS — AI that speaks SQL
 > 
@@ -1816,7 +1853,7 @@ Parallel Execution
 
 
 > Failed queries auto-debug and repair themselves with LLM assistance.
-> `pip install larsql && lars serve sql`
+> `pip install larsql && lars bootstrap && lars serve sql`
 >                 
 >                   
 >                   Copy
