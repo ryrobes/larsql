@@ -1209,6 +1209,26 @@ def execute_tests(tests: List[TestDefinition], run_id: str, options: Dict[str, A
                                     duration_ms=0
                                 )
                             
+                            # Safety check: handle unexpected result types (e.g., CompletedProcess from subprocess leak)
+                            if not isinstance(result, TestResult):
+                                print(f"[TestsAPI] ⚠️ WARNING: Got unexpected result type {type(result).__name__} for {test.test_id}")
+                                print(f"[TestsAPI]   Result value: {result}")
+                                result = TestResult(
+                                    test_id=test.test_id,
+                                    test_type=test.test_type,
+                                    test_group=test.test_group,
+                                    test_name=test.test_name,
+                                    description=test.description,
+                                    source_file=test.source_file,
+                                    source_line=test.source_line,
+                                    sql_query=test.sql_query,
+                                    validation_mode=mode,
+                                    status='error',
+                                    error_type='UnexpectedResultType',
+                                    error_message=f"Worker returned {type(result).__name__} instead of TestResult",
+                                    duration_ms=0
+                                )
+                            
                             # Log progress
                             status_icons = {'passed': '✓', 'failed': '✗', 'skipped': '○', 'timed_out': '⏱', 'error': '!'}
                             status_icon = status_icons.get(result.status, '?')
