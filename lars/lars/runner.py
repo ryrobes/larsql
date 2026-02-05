@@ -497,7 +497,13 @@ class LARSRunner:
         """Stop the heartbeat thread."""
         self._heartbeat_running = False
         if self._heartbeat_thread and self._heartbeat_thread.is_alive():
-            self._heartbeat_thread.join(timeout=2)
+            self._heartbeat_thread.join(timeout=5)  # Increased timeout
+            if self._heartbeat_thread.is_alive():
+                # Thread didn't stop - log warning but continue
+                import logging
+                logging.getLogger(__name__).warning(
+                    f"Heartbeat thread {self._heartbeat_thread.name} did not stop after 5s"
+                )
         self._heartbeat_thread = None
 
     def _heartbeat_loop(self):

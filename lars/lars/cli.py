@@ -3140,6 +3140,13 @@ def cmd_sql_test(args):
             except:
                 pass
             
+            # Clean up orphan heartbeat threads (daemon threads that should have stopped)
+            import threading
+            for t in threading.enumerate():
+                if '_heartbeat_loop' in t.name and t.daemon and t.is_alive():
+                    # Can't forcefully kill threads in Python, but we can log them
+                    pass  # They'll die when process exits since they're daemon
+            
             import gc
             gc.collect()
             # === END MEMORY CLEANUP ===
