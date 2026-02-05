@@ -97,13 +97,13 @@ def get_pgwire_port() -> Optional[int]:
     """
     Get the PGwire port to use, checking in order:
     1. Environment variable (set by Studio master process)
-    2. Internal Studio port 15433 (if listening)
-    3. Default port 15432 (if server is running there)
+    2. Default port 15432 (external server - preferred)
+    3. Internal Studio port 15433 (fallback)
     4. None (no PGwire available)
     """
     global _invalid_env_port_logged
 
-    # Check environment variable first (internal server)
+    # Check environment variable first (explicit override)
     env_port = os.environ.get(PGWIRE_PORT_ENV)
     if env_port:
         port = _parse_pgwire_port(env_port)
@@ -114,13 +114,13 @@ def get_pgwire_port() -> Optional[int]:
         elif check_pgwire_available(port=port):
             return port
 
-    # Check internal port (Studio-spawned server)
-    if check_pgwire_available(port=INTERNAL_PGWIRE_PORT):
-        return INTERNAL_PGWIRE_PORT
-
-    # Check default port (external server)
+    # Check default port FIRST (external server is preferred - more reliable)
     if check_pgwire_available(port=DEFAULT_PGWIRE_PORT):
         return DEFAULT_PGWIRE_PORT
+
+    # Fallback to internal port (Studio-spawned server)
+    if check_pgwire_available(port=INTERNAL_PGWIRE_PORT):
+        return INTERNAL_PGWIRE_PORT
 
     return None
 
