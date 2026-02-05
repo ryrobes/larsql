@@ -57,6 +57,18 @@ def sanitize_for_json(obj):
     return obj
 
 
+def _safe_list(val) -> list:
+    """Safely convert a value to a list, filtering nulls. Handles numpy arrays."""
+    if val is None:
+        return []
+    # Handle numpy arrays (can't use `or` with them)
+    if hasattr(val, 'tolist'):
+        val = val.tolist()
+    if not isinstance(val, (list, tuple)):
+        return []
+    return [m for m in val if m is not None]
+
+
 def _to_iso_string(ts) -> str | None:
     """Convert a timestamp-like value to an ISO string (works for CH + CHDB)."""
     if ts is None:
@@ -501,7 +513,7 @@ def _include_virtual_sessions(existing_sessions: list, cascade_id_filter: str | 
                 'total_cost': float(row.get('total_cost', 0) or 0),
                 'total_duration_ms': 0,  # Not available for virtual sessions
                 'message_count': int(row.get('message_count', 0) or 0),
-                'models': [m for m in (row.get('models') or []) if m],  # Filter nulls
+                'models': _safe_list(row.get('models')),  # Filter nulls, handle numpy arrays
                 # Flags for UI
                 'is_dynamic': True,
                 'description': description,
