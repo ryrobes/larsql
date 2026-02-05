@@ -42,11 +42,22 @@ tests_bp = Blueprint('tests', __name__)
 
 def _json_safe(value: Any) -> Any:
     """Convert numpy/pandas types to Python native types for JSON serialization."""
+    import math
+    
     if value is None:
         return None
+    # Handle float NaN/Inf (not valid JSON)
+    if isinstance(value, float):
+        if math.isnan(value) or math.isinf(value):
+            return None
+        return value
     # Handle numpy scalars (bool_, int64, float64, etc.)
     if hasattr(value, 'item'):
-        return value.item()
+        item = value.item()
+        # Check for NaN in numpy scalars
+        if isinstance(item, float) and (math.isnan(item) or math.isinf(item)):
+            return None
+        return item
     # Handle numpy arrays
     if hasattr(value, 'tolist'):
         return value.tolist()
@@ -1466,12 +1477,12 @@ def list_runs():
                 'run_type': row['run_type'],
                 'started_at': _json_safe(row.get('started_at')),
                 'completed_at': _json_safe(row.get('completed_at')),
-                'duration_ms': row.get('duration_ms'),
+                'duration_ms': _json_safe(row.get('duration_ms')),
                 'status': row['status'],
-                'total_tests': row.get('total_tests'),
-                'passed_tests': row.get('passed_tests'),
-                'failed_tests': row.get('failed_tests'),
-                'error_tests': row.get('error_tests'),
+                'total_tests': _json_safe(row.get('total_tests')) or 0,
+                'passed_tests': _json_safe(row.get('passed_tests')) or 0,
+                'failed_tests': _json_safe(row.get('failed_tests')) or 0,
+                'error_tests': _json_safe(row.get('error_tests')) or 0,
                 'skipped_tests': row.get('skipped_tests'),
                 'trigger': row.get('trigger'),
                 'trigger_source': row.get('trigger_source'),
@@ -1617,8 +1628,8 @@ def get_run(run_id: str):
                 'test_description': row.get('test_description'),
                 'source_file': row.get('source_file'),
                 'source_line': row.get('source_line'),
-                'duration_ms': row.get('duration_ms'),
-                'avg_duration_ms': avg_duration_map.get(test_id, row.get('duration_ms')),
+                'duration_ms': _json_safe(row.get('duration_ms')),
+                'avg_duration_ms': _json_safe(avg_duration_map.get(test_id, row.get('duration_ms'))),
                 'status': row['status'],
                 'sql_query': row.get('sql_query'),
                 'expected_value': row.get('expected_value'),
@@ -1695,11 +1706,11 @@ def get_test_stats():
             if run_type not in recent_stats:
                 recent_stats[run_type] = {}
             recent_stats[run_type][row['status']] = {
-                'run_count': row['run_count'],
-                'total_passed': row['total_passed'],
-                'total_failed': row['total_failed'],
-                'total_errors': row['total_errors'],
-                'avg_duration_ms': row['avg_duration_ms']
+                'run_count': _json_safe(row['run_count']) or 0,
+                'total_passed': _json_safe(row['total_passed']) or 0,
+                'total_failed': _json_safe(row['total_failed']) or 0,
+                'total_errors': _json_safe(row['total_errors']) or 0,
+                'avg_duration_ms': _json_safe(row['avg_duration_ms']) or 0
             }
 
         # Daily trends
@@ -1720,10 +1731,10 @@ def get_test_stats():
         daily_trends = [
             {
                 'date': _json_safe(row.get('date')),
-                'passed': row.get('passed', 0),
-                'failed': row.get('failed', 0),
-                'errors': row.get('errors', 0),
-                'run_count': row.get('run_count', 0)
+                'passed': _json_safe(row.get('passed', 0)) or 0,
+                'failed': _json_safe(row.get('failed', 0)) or 0,
+                'errors': _json_safe(row.get('errors', 0)) or 0,
+                'run_count': _json_safe(row.get('run_count', 0)) or 0
             }
             for row in trend_rows
         ]
