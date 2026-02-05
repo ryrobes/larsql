@@ -3132,13 +3132,11 @@ def cmd_sql_test(args):
             except:
                 pass
             
-            # Clear litellm in-memory client cache
-            try:
-                import litellm
-                if hasattr(litellm, 'in_memory_llm_clients_cache'):
-                    litellm.in_memory_llm_clients_cache.flush_cache()
-            except:
-                pass
+            # NOTE: Do NOT flush litellm.in_memory_llm_clients_cache here!
+            # Flushing closes httpx clients, but cached client references may still be
+            # in use by other code paths. This causes "Cannot send a request, as the
+            # client has been closed" errors on subsequent LLM calls.
+            # Let LiteLLM manage its own client lifecycle.
             
             # Clean up orphan heartbeat threads (daemon threads that should have stopped)
             import threading
