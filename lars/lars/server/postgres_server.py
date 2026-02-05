@@ -3619,7 +3619,7 @@ class ClientConnection:
                             WHEN setting_name = 'client_encoding' THEN 'UTF8'
                             WHEN setting_name = 'DateStyle' THEN 'ISO, MDY'
                             WHEN setting_name = 'TimeZone' THEN 'UTC'
-                            WHEN setting_name = 'search_path' THEN 'main, pg_catalog'
+                            WHEN setting_name = 'search_path' THEN 'lars_system, main, pg_catalog'
                             ELSE ''
                         END
                 """)
@@ -6618,7 +6618,7 @@ class ClientConnection:
 
         # SHOW search_path
         if 'SEARCH_PATH' in query_upper:
-            result_df = pd.DataFrame({'search_path': ['main, pg_catalog']})
+            result_df = pd.DataFrame({'search_path': ['lars_system, main, pg_catalog']})
         # SHOW timezone
         elif 'TIMEZONE' in query_upper or 'TIME ZONE' in query_upper:
             result_df = pd.DataFrame({'TimeZone': ['UTC']})
@@ -6734,7 +6734,7 @@ class ClientConnection:
         try:
             # SHOW search_path - schema search order
             if 'SEARCH_PATH' in query_upper:
-                result_df = pd.DataFrame({'search_path': ['main, pg_catalog']})
+                result_df = pd.DataFrame({'search_path': ['lars_system, main, pg_catalog']})
                 send_query_results(self.sock, result_df, self.transaction_status)
                 self._runtime_log("DEBUG", "SHOW search_path handled", event="show_result", setting="search_path")
                 return
