@@ -707,6 +707,7 @@ SYSTEM_TABLES = {
             ("provider", "VARCHAR"),
         ],
         "partition_by": None,
+        "hive_partition_by": ["session_id"],  # Match unified_logs partitioning
         "dedup": {
             "pk": "trace_id",
             "order_by": "timestamp"
@@ -1660,13 +1661,14 @@ class LarsDB:
     DuckDB + Parquet persistence layer for LARS.
     
     Thread-safe singleton that manages:
-    - DuckDB connections with pre-registered views
+    - DuckDB connections with pre-registered views (cached per-thread)
     - Parquet file writes (append-only, no locks)
     - File compaction (merge small files)
     """
     
     _instance = None
     _lock = threading.Lock()
+    _thread_local = threading.local()  # Per-thread connection cache
     
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
@@ -1729,7 +1731,6 @@ class LarsDB:
         conn = duckdb.connect()  # In-memory, stateless
         # Limit CPU usage - default 2 threads per connection to prevent parallel query explosion
         # Override with LARS_DUCKDB_THREADS env var
-        import os
         duckdb_threads = int(os.environ.get("LARS_DUCKDB_THREADS", "2"))
         conn.execute(f"SET threads TO {duckdb_threads}")
         self._load_extensions(conn)
@@ -1737,6 +1738,32 @@ class LarsDB:
         self._register_derived_views(conn)
         self._attach_scratch_db(conn)
         return conn
+    
+    def get_cached_connection(self) -> duckdb.DuckDBPyConnection:
+        """
+        Get a thread-local cached DuckDB connection.
+        
+        Reuses an existing connection for the current thread, avoiding
+        the overhead of re-registering views on every query.
+        
+        Returns:
+            DuckDB connection ready for queries
+        """
+        conn = getattr(LarsDB._thread_local, 'conn', None)
+        if conn is None:
+            conn = self.connect()
+            LarsDB._thread_local.conn = conn
+        return conn
+    
+    def clear_cached_connection(self):
+        """Clear the thread-local cached connection (e.g., after schema changes)."""
+        conn = getattr(LarsDB._thread_local, 'conn', None)
+        if conn:
+            try:
+                conn.close()
+            except:
+                pass
+            LarsDB._thread_local.conn = None
     
     def _attach_scratch_db(self, conn: duckdb.DuckDBPyConnection):
         """Attach the scratch SQLite database for ephemeral storage."""
@@ -2488,7 +2515,8 @@ class LarsDB:
         start_time = time.time()
         rows = 0
         
-        conn = self.connect()
+        # Use cached connection to avoid view re-registration overhead
+        conn = self.get_cached_connection()
         try:
             if params:
                 result = conn.execute(sql, params)
@@ -2508,7 +2536,7 @@ class LarsDB:
                 rows = len(data) if data else 0
                 return data
         finally:
-            conn.close()
+            # Don't close - it's cached for reuse
             # Debug file logging (when LARS_QUERY_DEBUG=1)
             duration_ms = (time.time() - start_time) * 1000
             if os.environ.get("LARS_QUERY_DEBUG"):
