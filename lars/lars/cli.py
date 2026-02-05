@@ -8333,7 +8333,7 @@ def cmd_bootstrap(args):
             yaml.default_flow_style = False
             
             for conn in wizard_config.get('sql_connections', []):
-                conn_name = conn.pop('connection_name')
+                conn_name = conn.get('connection_name')
                 conn_path = lars_root / 'sql_connections' / f"{conn_name}.yaml"
                 conn_path.parent.mkdir(parents=True, exist_ok=True)
                 with open(conn_path, 'w') as f:

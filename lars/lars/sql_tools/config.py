@@ -350,6 +350,23 @@ def load_sql_connections() -> Dict[str, SqlConnectionConfig]:
 
     cfg = get_config()
     sql_dir = os.path.join(cfg.root_dir, "sql_connections")
+    
+    # Load .env file from LARS_ROOT if it exists (for password_env resolution)
+    env_file = os.path.join(cfg.root_dir, ".env")
+    if os.path.exists(env_file):
+        try:
+            with open(env_file) as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith('#') and '=' in line:
+                        key, _, value = line.partition('=')
+                        key = key.strip()
+                        value = value.strip()
+                        # Don't override existing env vars
+                        if key and key not in os.environ:
+                            os.environ[key] = value
+        except Exception:
+            pass  # Silently ignore .env parsing errors
 
     connections = {}
 
