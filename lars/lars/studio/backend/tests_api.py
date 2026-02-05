@@ -433,7 +433,7 @@ def _execute_internal_sql(sql: str, timeout_seconds: int = 300) -> tuple:
 def _execute_psql_simple_sql(sql: str, host: str = 'localhost', port: int = None, database: str = 'lars') -> tuple:
     """Execute SQL via psql CLI (Simple Query Protocol)."""
     import shutil
-    from .pgwire_client import get_pgwire_port
+    from lars.studio.backend.pgwire_client import get_pgwire_port
     
     # Skip gracefully if psql not installed
     if not shutil.which('psql'):
@@ -486,7 +486,7 @@ def _execute_psql_simple_sql(sql: str, host: str = 'localhost', port: int = None
 
 def _execute_extended_sql(sql: str, host: str = 'localhost', port: int = None, database: str = 'lars') -> tuple:
     """Execute SQL via psycopg (Extended Query Protocol)."""
-    from .pgwire_client import get_pgwire_port
+    from lars.studio.backend.pgwire_client import get_pgwire_port
     
     try:
         import psycopg
