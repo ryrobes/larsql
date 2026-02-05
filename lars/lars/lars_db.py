@@ -2635,12 +2635,12 @@ def attach_system_views(conn, data_root: Optional[Path] = None) -> int:
         "unified_logs_base": {
             "glob": str(system_dir / "unified_logs_base" / "**" / "*.parquet"),
             "hive": True,
-            "dedup": {"pk": "trace_id", "order_by": "logged_at_ms DESC"},
+            "dedup": {"pk": "trace_id", "order_by": "timestamp DESC"},
         },
         "costs": {
             "glob": str(system_dir / "costs" / "**" / "*.parquet"),
             "hive": True,
-            "dedup": {"pk": "trace_id", "order_by": "updated_at DESC"},
+            "dedup": {"pk": "trace_id", "order_by": "timestamp DESC"},
         },
         "session_state": {
             "glob": str(system_dir / "session_state" / "*.parquet"),
@@ -2652,7 +2652,7 @@ def attach_system_views(conn, data_root: Optional[Path] = None) -> int:
         },
         "cascade_sessions": {
             "glob": str(system_dir / "cascade_sessions" / "*.parquet"),
-            "dedup": {"pk": "session_id", "order_by": "started_at DESC"},
+            "dedup": {"pk": "session_id", "order_by": "created_at DESC"},
         },
         "ui_sql_log": {
             "glob": str(system_dir / "ui_sql_log" / "*.parquet"),
