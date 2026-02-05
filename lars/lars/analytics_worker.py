@@ -17,11 +17,16 @@ import json
 import hashlib
 import logging
 import os
+import threading
 from datetime import datetime, timezone
 from functools import lru_cache
 from typing import Dict, List, Optional, Any
 
 logger = logging.getLogger(__name__)
+
+# Semaphore to limit concurrent relevance analysis cascades
+# Prevents CPU spikes from too many parallel background analytics
+_relevance_semaphore = threading.Semaphore(int(os.getenv('LARS_MAX_CONCURRENT_RELEVANCE', '2')))
 
 import math
 
@@ -1410,7 +1415,16 @@ def _analyze_context_relevance(session_id: str, cascade_id: str, cell_name: str,
     Updates cell_context_breakdown with relevance_score and relevance_reasoning.
 
     Cost: ~$0.0001 per cell (using gemini-flash-lite)
+    
+    Note: Uses _relevance_semaphore to limit concurrent analyses (default: 2)
+    to prevent CPU spikes from parallel background analytics.
     """
+    # Acquire semaphore to limit concurrent relevance analyses
+    # This prevents CPU spikes when many cascades complete in rapid succession
+    if not _relevance_semaphore.acquire(blocking=False):
+        logger.debug(f"Skipping relevance analysis for {cell_name}: too many concurrent analyses")
+        return
+    
     try:
         from .runner import LARSRunner
         import json as json_module
@@ -1678,6 +1692,9 @@ def _analyze_context_relevance(session_id: str, cascade_id: str, cell_name: str,
         logger.warning(f"Relevance analysis failed for {cell_name}: {e}")
         import traceback
         traceback.print_exc()
+    finally:
+        # Always release the semaphore
+        _relevance_semaphore.release()
 
 
 def _create_context_breakdown(session_id: str, cell_name: str, cell_index: int,
