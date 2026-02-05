@@ -139,7 +139,7 @@ cells:
     handoffs: [reconcile_scores]
 
   - name: reconcile_scores
-    model: google/gemini-3-flash-preview
+    model: "{{ models.fast }}"
     rules:
       max_attempts: 2
     context:

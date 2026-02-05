@@ -233,13 +233,13 @@ This design is intentional and provides several advantages over automatic memory
 Context cards (used by [auto-context](#auto-context)) and memory banks serve different purposes:
 
 
-| Aspect      | Context Cards             | Memory Banks                 |
-|-------------|---------------------------|------------------------------|
-| **Scope**   | Single session            | Cross-session, persistent    |
-| **Access**  | Automatic (inter-cell)    | Explicit tool call           |
-| **Purpose** | Short-term working memory | Long-term knowledge base     |
-| **Sharing** | Session-isolated          | Shared across cascades       |
-| **Storage** | DuckDB (unified_logs)     | Files + DuckDB vector index  |
+| Aspect      | Context Cards             | Memory Banks                |
+|-------------|---------------------------|-----------------------------|
+| **Scope**   | Single session            | Cross-session, persistent   |
+| **Access**  | Automatic (inter-cell)    | Explicit tool call          |
+| **Purpose** | Short-term working memory | Long-term knowledge base    |
+| **Sharing** | Session-isolated          | Shared across cascades      |
+| **Storage** | DuckDB (unified_logs)     | Files + DuckDB vector index |
 
 
 > **TIP: Best Practices**

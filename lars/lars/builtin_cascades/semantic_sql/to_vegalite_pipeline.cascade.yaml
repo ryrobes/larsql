@@ -39,7 +39,7 @@ sql_function:
 
 cells:
   - name: generate_sql
-    model: anthropic/claude-sonnet-4
+    model: "{{ models.quality }}"
     instructions: |
       Generate a SQL query that produces chart-ready data for Vega-Lite.
 

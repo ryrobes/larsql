@@ -32,7 +32,7 @@ sql_function:
 
 cells:
   - name: enrich_rows
-    model: google/gemini-3-flash-preview
+    model: "{{ models.fast }}"
     instructions: |
       Enrich the provided data by adding new computed columns.
 

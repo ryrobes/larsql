@@ -32,7 +32,7 @@ sql_function:
 
 cells:
   - name: analyze
-    model: google/gemini-3-flash-preview
+    model: "{{ models.fast }}"
     instructions: |
       You are a data analyst. Analyze the provided query results based on the user's question.
 

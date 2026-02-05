@@ -34,7 +34,7 @@ sql_function:
     description: Quantity normalized
 cells:
 - name: parse_quantity
-  model: google/gemini-3-flash-preview
+  model: "{{ models.fast }}"
   instructions: "Parse this quantity expression into structured format.\n\nVALUE:\
     \ {{ input.value }}\nSYSTEM PREFERENCE: {{ input.system | default('auto') }}\n\
     \nReturn a JSON object:\n{\n  \"value\": 500,\n  \"unit\": \"mg\",\n  \"unit_type\"\

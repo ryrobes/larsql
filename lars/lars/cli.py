@@ -7947,6 +7947,59 @@ def cmd_doctor(args):
     print()
 
     # -------------------------------------------------------------------------
+    # 2b. Check Models Configuration (models.yaml)
+    # -------------------------------------------------------------------------
+    print(f"{BOLD}{BLUE}🤖 Model Configuration{RESET}")
+    print(f"{DIM}{'─' * 50}{RESET}")
+
+    try:
+        from .models import load_models_config, validate_config, get_models_yaml_path
+        
+        models_yaml_path = get_models_yaml_path(root_path)
+        models_config = load_models_config(root_path)
+        
+        if models_yaml_path.exists():
+            print(f"   {OK} models.yaml    {DIM}{models_yaml_path}{RESET}")
+            
+            # Show provider status
+            if models_config.providers.openrouter_enabled:
+                has_key = bool(models_config.providers.openrouter_api_key)
+                status = f"{OK}" if has_key else f"{WARN}"
+                key_status = "key set" if has_key else "key missing"
+                print(f"   {status} OpenRouter     {DIM}enabled ({key_status}){RESET}")
+            else:
+                print(f"   {DIM}   OpenRouter     disabled{RESET}")
+            
+            if models_config.providers.ollama_enabled:
+                host_count = len(models_config.providers.ollama_hosts)
+                print(f"   {OK} Ollama         {DIM}enabled ({host_count} host(s)){RESET}")
+            else:
+                print(f"   {DIM}   Ollama         disabled{RESET}")
+            
+            # Show tier assignments
+            if verbose:
+                print(f"   {INFO} Tiers:")
+                for tier in ["embedding", "fast", "standard", "quality", "flagship"]:
+                    model = models_config.models.get(tier, "not set")
+                    print(f"      {tier:12} → {DIM}{model}{RESET}")
+            
+            # Validate config
+            config_issues = validate_config(models_config)
+            for issue in config_issues:
+                print(f"   {WARN} {issue}")
+                warnings.append(f"Model config: {issue}")
+        else:
+            print(f"   {WARN} models.yaml    {DIM}Not found - using defaults{RESET}")
+            warnings.append("No models.yaml found. Run 'lars bootstrap' to configure providers.")
+            if verbose:
+                print(f"   {INFO} Using defaults (requires OpenRouter)")
+    except Exception as e:
+        print(f"   {ERR} models.yaml    {RED}Error loading: {e}{RESET}")
+        issues.append(f"Failed to load models.yaml: {e}")
+
+    print()
+
+    # -------------------------------------------------------------------------
     # 3. Check Database (DuckDB/Parquet)
     # -------------------------------------------------------------------------
     print(f"{BOLD}{BLUE}🗄️  Database (DuckDB/Parquet){RESET}")

@@ -31,7 +31,7 @@ inputs_schema:
 
 cells:
   - name: interpret
-    model: anthropic/claude-sonnet-4
+    model: "{{ models.quality }}"
     skills: [validate_cascade_overrides]
     rules:
       max_turns: 3
@@ -197,7 +197,7 @@ cells:
       - "run N takes" → cascade_overrides.takes.factor: N
       - "pick the best" → cascade_overrides.takes.mode: "evaluate"
       - "combine/aggregate all" → cascade_overrides.takes.mode: "aggregate"
-      - "cheap/fast model" → cell_overrides.default.model: "google/gemini-3-flash-preview"
+      - "cheap/fast model" → cell_overrides.default.model: "{{ models.fast }}"
       - "claude haiku" → cell_overrides.default.model: "anthropic/claude-3-5-haiku-latest"
       - "claude sonnet" → cell_overrides.default.model: "anthropic/claude-sonnet-4"
       - "gpt-4o" → cell_overrides.default.model: "openai/gpt-4o"

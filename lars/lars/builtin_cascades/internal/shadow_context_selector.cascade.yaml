@@ -27,7 +27,7 @@ inputs_schema:
 
 cells:
   - name: select_context
-    model: google/gemini-3-flash-preview
+    model: "{{ models.fast }}"
     rules:
       max_attempts: 2
       max_turns: 1

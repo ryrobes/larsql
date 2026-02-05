@@ -59,7 +59,7 @@ sql_function:
 
 cells:
   - name: score_support
-    model: google/gemini-3-flash-preview
+    model: "{{ models.fast }}"
     instructions: |
       How strongly does this EVIDENCE support this CLAIM?
 

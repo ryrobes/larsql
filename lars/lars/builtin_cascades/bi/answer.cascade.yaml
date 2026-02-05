@@ -36,7 +36,7 @@ sql_function:
 
 cells:
   - name: investigate
-    model: anthropic/claude-sonnet-4
+    model: "{{ models.quality }}"
     skills:
       - find_understanding
       - smart_sql_search

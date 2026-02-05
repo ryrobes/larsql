@@ -32,7 +32,7 @@ sql_function:
 
 cells:
   - name: filter_rows
-    model: google/gemini-3-flash-preview
+    model: "{{ models.fast }}"
     instructions: |
       Filter the provided data based on the semantic criteria.
 

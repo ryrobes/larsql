@@ -61,7 +61,7 @@ sql_function:
 
 cells:
   - name: extract_timeline
-    model: google/gemini-3-flash-preview
+    model: "{{ models.fast }}"
     instructions: |
       Extract a chronological timeline of events from this text.
 

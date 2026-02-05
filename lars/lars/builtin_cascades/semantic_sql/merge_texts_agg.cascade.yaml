@@ -43,7 +43,7 @@ sql_function:
     description: Deduplicates similar shipping comments
 cells:
 - name: intelligent_merge
-  model: google/gemini-3-flash-preview
+  model: "{{ models.fast }}"
   instructions: "Merge these text values according to the specified mode.\n\nTEXTS:\n\
     {{ input.texts }}\n\nMODE: {{ input.mode | default('deduplicate') }}\n\nReturn\
     \ a JSON object:\n{\n  \"merged\": \"The combined/processed text output...\",\n\

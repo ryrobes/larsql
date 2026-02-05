@@ -173,14 +173,14 @@ FROM startup_pitches;
 ```
 
 
-| Property | Value                                         |
-|----------|-----------------------------------------------|
-| Shape    | SCALAR                                        |
-| Returns  | JSON (array of assumption strings)            |
-| Args     | `(argument VARCHAR, focus VARCHAR = NULL)`    |
+| Property | Value                                      |
+|----------|--------------------------------------------|
+| Shape    | SCALAR                                     |
+| Returns  | JSON (array of assumption strings)         |
+| Args     | `(argument VARCHAR, focus VARCHAR = NULL)` |
 
-Focus areas: `economic`, `technical`, `ethical`, `causal`, `political`
 
+*Focus areas: `economic`, `technical`, `ethical`, `causal`, `political`*
 
 ### WEAKNESSES
 
@@ -198,14 +198,14 @@ FROM investment_memos;
 ```
 
 
-| Property | Value                                         |
-|----------|-----------------------------------------------|
-| Shape    | SCALAR                                        |
+| Property | Value                                            |
+|----------|--------------------------------------------------|
+| Shape    | SCALAR                                           |
 | Returns  | JSON (array: type, description, severity, quote) |
-| Args     | `(argument VARCHAR, severity VARCHAR = 'all')` |
+| Args     | `(argument VARCHAR, severity VARCHAR = 'all')`   |
 
-Severity levels: `minor`, `moderate`, `major`, `all`
 
+*Severity levels: `minor`, `moderate`, `major`, `all`*
 
 ### STEELMAN
 
@@ -223,11 +223,11 @@ FROM peer_reviews;
 ```
 
 
-| Property | Value                                         |
-|----------|-----------------------------------------------|
-| Shape    | SCALAR                                        |
-| Returns  | VARCHAR (the strengthened argument)           |
-| Args     | `(argument VARCHAR, context VARCHAR = NULL)`  |
+| Property | Value                                        |
+|----------|----------------------------------------------|
+| Shape    | SCALAR                                       |
+| Returns  | VARCHAR (the strengthened argument)          |
+| Args     | `(argument VARCHAR, context VARCHAR = NULL)` |
 
 
 ### COUNTERARGUMENT / REBUT
@@ -246,14 +246,14 @@ FROM research_claims;
 ```
 
 
-| Property | Value                                            |
-|----------|--------------------------------------------------|
-| Shape    | SCALAR                                           |
-| Returns  | VARCHAR (the counterargument)                    |
-| Args     | `(argument VARCHAR, style VARCHAR = NULL)`       |
+| Property | Value                                      |
+|----------|--------------------------------------------|
+| Shape    | SCALAR                                     |
+| Returns  | VARCHAR (the counterargument)              |
+| Args     | `(argument VARCHAR, style VARCHAR = NULL)` |
 
-Styles: `academic`, `practical`, `philosophical`, `empirical`
 
+*Styles: `academic`, `practical`, `philosophical`, `empirical`*
 
 ### SUPPORTS
 
@@ -275,11 +275,11 @@ LIMIT 5;
 ```
 
 
-| Property | Value                                  |
-|----------|----------------------------------------|
-| Shape    | SCALAR                                 |
-| Returns  | DOUBLE (0.0 - 1.0)                     |
-| Args     | `(evidence VARCHAR, claim VARCHAR)`    |
+| Property | Value                               |
+|----------|-------------------------------------|
+| Shape    | SCALAR                              |
+| Returns  | DOUBLE (0.0 - 1.0)                  |
+| Args     | `(evidence VARCHAR, claim VARCHAR)` |
 
 
 ### FALLACY / FALLACIES
@@ -292,18 +292,18 @@ Detect named logical fallacies in an argument. Returns structured analysis ident
 -- Detect fallacies
 SELECT FALLACY(argument) AS detected_fallacies
 FROM social_media_posts;
--- Filter to major fallacies
+-- Filter to posts with fallacies
 SELECT *
 FROM debate_transcripts
 WHERE json_array_length(FALLACY(statement)) > 0;
 ```
 
 
-| Property | Value                                            |
-|----------|--------------------------------------------------|
-| Shape    | SCALAR                                           |
+| Property | Value                                               |
+|----------|-----------------------------------------------------|
+| Shape    | SCALAR                                              |
 | Returns  | JSON (array: fallacy, explanation, quote, severity) |
-| Args     | `(argument VARCHAR)`                             |
+| Args     | `(argument VARCHAR)`                                |
 
 
 ### EVIDENCE_TYPE
@@ -325,19 +325,23 @@ WHERE (EVIDENCE_TYPE(quote) ->> 'tier')::INT > 4;  -- Tier 5-6 = weak
 ```
 
 
-| Property | Value                                                        |
-|----------|--------------------------------------------------------------|
-| Shape    | SCALAR                                                       |
+| Property | Value                                                         |
+|----------|---------------------------------------------------------------|
+| Shape    | SCALAR                                                        |
 | Returns  | JSON (primary_type, tier, strength, description, limitations) |
-| Args     | `(text VARCHAR, claim VARCHAR = NULL)`                       |
+| Args     | `(text VARCHAR, claim VARCHAR = NULL)`                        |
 
-Evidence Tiers:
-1. Meta-analysis, RCT, systematic review
-2. Experimental, longitudinal, large observational
-3. Peer-reviewed, expert consensus, statistical
-4. Expert opinion, case study, survey
-5. Anecdotal, testimonial, common sense
-6. Speculation, assertion, rhetorical
+
+> **NOTE: Evidence Tiers**
+>
+> 
+> 1. **Tier 1:** Meta-analysis, RCT, systematic review
+> 2. **Tier 2:** Experimental, longitudinal, large observational
+> 3. **Tier 3:** Peer-reviewed, expert consensus, statistical
+> 4. **Tier 4:** Expert opinion, case study, survey
+> 5. **Tier 5:** Anecdotal, testimonial, common sense
+> 6. **Tier 6:** Speculation, assertion, rhetorical
+> 
 
 
 ## Knowledge Extraction
@@ -362,14 +366,14 @@ FROM news_articles;
 ```
 
 
-| Property | Value                                         |
-|----------|-----------------------------------------------|
-| Shape    | SCALAR                                        |
-| Returns  | JSON (array: subject, predicate, object)      |
-| Args     | `(text VARCHAR, focus VARCHAR = NULL)`        |
+| Property | Value                                    |
+|----------|------------------------------------------|
+| Shape    | SCALAR                                   |
+| Returns  | JSON (array: subject, predicate, object) |
+| Args     | `(text VARCHAR, focus VARCHAR = NULL)`   |
 
-Focus areas: `people`, `organizations`, `decisions`, `events`, `all`
 
+*Focus areas: `people`, `organizations`, `decisions`, `events`, `all`*
 
 ### triples_rows (TABLE macro)
 
@@ -385,18 +389,18 @@ SELECT subject, object
 FROM documents, LATERAL triples_rows(content) t
 WHERE predicate = 'works_at';
 -- Build knowledge graph with aggregation
-SELECT subject, predicate, object, COUNT(*) as mentions
+SELECT subject, predicate, object, COUNT(*) AS mentions
 FROM corpus, LATERAL triples_rows(text) t
 GROUP BY 1, 2, 3
 ORDER BY mentions DESC;
 ```
 
 
-| Property | Value                                                     |
-|----------|-----------------------------------------------------------|
-| Shape    | TABLE (macro)                                             |
-| Returns  | Rows with columns: subject, predicate, object             |
-| Args     | `(text VARCHAR)`                                          |
+| Property | Value                            |
+|----------|----------------------------------|
+| Shape    | TABLE (macro)                    |
+| Returns  | Rows: subject, predicate, object |
+| Args     | `(text VARCHAR)`                 |
 
 
 ### TIMELINE
@@ -415,14 +419,14 @@ FROM emails;
 ```
 
 
-| Property | Value                                                     |
-|----------|-----------------------------------------------------------|
-| Shape    | SCALAR                                                    |
-| Returns  | JSON (array: timestamp, event, actors, type, sequence)    |
-| Args     | `(text VARCHAR, reference_date VARCHAR = NULL)`           |
+| Property | Value                                                  |
+|----------|--------------------------------------------------------|
+| Shape    | SCALAR                                                 |
+| Returns  | JSON (array: timestamp, event, actors, type, sequence) |
+| Args     | `(text VARCHAR, reference_date VARCHAR = NULL)`        |
 
-Event types: `communication`, `decision`, `action`, `milestone`, `incident`, `change`, `plan`
 
+*Event types: `communication`, `decision`, `action`, `milestone`, `incident`, `change`, `plan`*
 
 ### timeline_rows (TABLE macro)
 
@@ -446,11 +450,11 @@ ORDER BY timestamp;
 ```
 
 
-| Property | Value                                                     |
-|----------|-----------------------------------------------------------|
-| Shape    | TABLE (macro)                                             |
-| Returns  | Rows: timestamp, event, actors, type, sequence            |
-| Args     | `(text VARCHAR, reference_date VARCHAR = NULL)`           |
+| Property | Value                                           |
+|----------|-------------------------------------------------|
+| Shape    | TABLE (macro)                                   |
+| Returns  | Rows: timestamp, event, actors, type, sequence  |
+| Args     | `(text VARCHAR, reference_date VARCHAR = NULL)` |
 
 
 ## Text Transformation

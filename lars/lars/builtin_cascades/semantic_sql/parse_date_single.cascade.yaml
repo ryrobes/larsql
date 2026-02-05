@@ -39,7 +39,7 @@ sql_function:
     skip: true  # sql_execute mode requires LLM to generate valid SQL expressions
 cells:
 - name: parse
-  #model: google/gemini-3-flash-preview
+  #model: "{{ models.fast }}"
   instructions: |
     Generate a DuckDB SQL expression that parses this date format into a JSON object.
 

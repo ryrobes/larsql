@@ -481,3 +481,31 @@ def flagship_model() -> str:
 def embedding_model() -> str:
     """Shortcut to get the embedding tier model."""
     return get_model_for_tier("embedding")
+
+
+def resolve_cell_model(cell_model: Optional[str], default_model: str) -> str:
+    """
+    Resolve a cell's model specification to an actual model ID.
+    
+    This is the main entry point for resolving model references in cascades.
+    Handles:
+    - None → use default_model
+    - "{{ models.fast }}" → resolve tier template
+    - "ollama/mistral:7b" → return as-is
+    
+    Args:
+        cell_model: The model field from CellConfig (may be None or template)
+        default_model: The fallback model (usually runner's self.model)
+    
+    Returns:
+        Resolved model ID ready to use with LLM provider
+    """
+    if cell_model is None:
+        return default_model
+    
+    # Check for tier template
+    if "{{" in cell_model and "models." in cell_model:
+        return resolve_model(cell_model)
+    
+    # Literal model ID
+    return cell_model

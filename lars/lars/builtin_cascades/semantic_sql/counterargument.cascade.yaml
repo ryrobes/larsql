@@ -50,7 +50,7 @@ sql_function:
 
 cells:
   - name: generate_counter
-    model: google/gemini-3-flash-preview
+    model: "{{ models.fast }}"
     instructions: |
       Generate the STRONGEST counterargument to this position.
 

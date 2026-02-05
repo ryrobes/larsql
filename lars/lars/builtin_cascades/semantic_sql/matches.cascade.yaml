@@ -58,7 +58,7 @@ sql_function:
     description: "Infix MEANS: returns false for unrelated"
 cells:
 - name: evaluate
-  model: google/gemini-3-flash-preview
+  model: "{{ models.fast }}"
   use_training: true
   training_limit: 5
   training_strategy: recent

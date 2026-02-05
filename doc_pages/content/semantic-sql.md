@@ -31,7 +31,7 @@ On This Page
 
 LARS's semantic SQL doesn't modify your database engine. Instead, it uses **query rewriting**
   to transform semantic operators into standard SQL + UDF calls that execute on DuckDB (in-process) or
-  ClickHouse (persistence layer).
+  DuckDB + Parquet (persistence layer).
 
 
 #### Query Rewriting
@@ -466,7 +466,7 @@ LARS uses multiple caching layers to minimize LLM calls and maximize performance
                      │ miss
                      ▼
 ┌─────────────────────────────────────────┐
-│ Level 2: ClickHouse (persistent)        │
+│ Level 2: DuckDB (persistent)        │
 │ - Survives restarts, shared across      │
 │ - TTL support: '1d', '2h', '30m'        │
 └────────────────────┬────────────────────┘

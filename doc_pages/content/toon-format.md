@@ -185,7 +185,7 @@ Use filters in templates for explicit control:
 ## Telemetry & Analytics
 
 
-TOON usage and savings are tracked in ClickHouse for analysis:
+TOON usage and savings are tracked in DuckDB for analysis:
 
 ```view toon savings
 SELECT

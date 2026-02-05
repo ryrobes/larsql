@@ -43,7 +43,7 @@ sql_function:
 
 cells:
   - name: check_looks_like
-    model: google/gemini-3-flash-preview
+    model: "{{ models.fast }}"
 
     instructions: |
       Does this value LOOK LIKE a {{ input.expected_type }}?

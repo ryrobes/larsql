@@ -47,7 +47,7 @@ sql_function:
 
 cells:
   - name: classify_evidence
-    model: google/gemini-3-flash-preview
+    model: "{{ models.fast }}"
     instructions: |
       Classify the type and strength of evidence in this text.
 

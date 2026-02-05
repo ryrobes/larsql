@@ -6,6 +6,8 @@ from contextvars import ContextVar
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import logging
 
+from .models import resolve_cell_model
+
 # NOTE: litellm is NOT imported here - it's only needed in agent.py
 # Removing this saves nothing directly, but keeps the module cleaner
 
@@ -4962,7 +4964,7 @@ Refinement directive: {reforge_config.honing_prompt}
 
             # Hook: Cell Complete
             # Skip if this was an image generation cell (it already called hooks.on_cell_complete)
-            cell_model = cell.model or self.model
+            cell_model = resolve_cell_model(cell.model, self.model)
             is_image_gen_cell = Agent.is_image_generation_model(cell_model)
             if not is_image_gen_cell:
                 self.hooks.on_cell_complete(cell.name, self.session_id, {
@@ -9354,7 +9356,7 @@ Refinement directive: {reforge_config.honing_prompt}
                 return self._execute_deterministic_cell(cell, input_data, trace)
 
             # Check if this is an image generation cell (uses image model like FLUX, SDXL)
-            cell_model = cell.model or self.model
+            cell_model = resolve_cell_model(cell.model, self.model)
             if Agent.is_image_generation_model(cell_model):
                 return self._execute_image_generation_cell(cell, input_data, trace)
 
@@ -9549,7 +9551,7 @@ Refinement directive: {reforge_config.honing_prompt}
 
         indent = "  " * self.depth
         start_time = time.time()
-        cell_model = cell.model or self.model
+        cell_model = resolve_cell_model(cell.model, self.model)
 
         # Log cell start
         log_message(self.session_id, "cell_start", cell.name,
@@ -11032,8 +11034,8 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
             schema_attempts = cell.rules.max_attempts if cell.rules.max_attempts else 1
             rendered_instructions += f"\n\n---\n**OUTPUT FORMAT REQUIREMENT:**\nYour response must contain valid JSON matching this schema:\n```json\n{schema_json}\n```\nYou have {schema_attempts} attempt(s) to produce valid output.\n---"
 
-        # Determine model to use (cell override or default)
-        cell_model = cell.model if cell.model else self.model
+        # Determine model to use (cell override or default), resolving any tier templates
+        cell_model = resolve_cell_model(cell.model, self.model)
 
         console.print(f"\n{indent}[bold magenta]{S.PIN} Bearing (Cell): {cell.name}[/bold magenta] [bold cyan]{S.AGENT} {cell_model}[/bold cyan]")
         console.print(f"{indent}[italic]{rendered_instructions[:100]}...[/italic]")

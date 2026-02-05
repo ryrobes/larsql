@@ -53,7 +53,7 @@ sql_function:
     description: "Alias aligns(): detects thematic alignment"
 cells:
 - name: evaluate_alignment
-  model: google/gemini-3-flash-preview
+  model: "{{ models.fast }}"
   instructions: "Rate how well this text aligns with the given narrative.\n\nTEXT:\n\
     {{ input.text }}\n\nNARRATIVE:\n{{ input.narrative }}\n\nConsider multiple dimensions:\n\
     - **Thematic alignment**: Does the text support the narrative's core themes?\n\

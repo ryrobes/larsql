@@ -44,7 +44,7 @@ sql_function:
 
 cells:
   - name: assess_formality
-    model: google/gemini-3-flash-preview
+    model: "{{ models.fast }}"
 
     instructions: |
       Assess the formality level of this text.

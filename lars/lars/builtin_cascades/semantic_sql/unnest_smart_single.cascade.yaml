@@ -33,7 +33,7 @@ sql_function:
     description: JSON array unnested
 cells:
 - name: smart_unnest
-  model: google/gemini-3-flash-preview
+  model: "{{ models.fast }}"
   instructions: "Expand this value into separate elements.\n\nVALUE: {{ input.value\
     \ }}\nMODE: {{ input.mode | default('auto') }}\n\nReturn a JSON object with expansion\
     \ details.\n\n**Input formats handled**:\n\nActual JSON array:\n[\"a\", \"b\"\

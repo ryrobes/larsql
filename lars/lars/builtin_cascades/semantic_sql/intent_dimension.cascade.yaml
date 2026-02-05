@@ -45,7 +45,7 @@ sql_function:
     description: Intent detected
 cells:
 - name: classify_intent
-  model: google/gemini-3-flash-preview
+  model: "{{ models.fast }}"
   instructions: "Classify the communicative INTENT of these {{ input.texts | length\
     \ }} social media posts.\nWhat is each author trying to accomplish?\n\n{% if input.intents\
     \ %}\nUSE THESE INTENT CATEGORIES:\n{% for intent in input.intents.split(',')\

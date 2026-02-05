@@ -300,20 +300,20 @@ pip install -e .
 # LLM Provider (OpenRouter is default)
 OPENROUTER_API_KEY=sk-or-...
 
+# Optional: Workspace location (defaults to ~/.lars)
+LARS_ROOT=~/.lars
+
 # Optional: Customize models
 LARS_DEFAULT_MODEL=x-ai/grok-4.1-fast
 LARS_DEFAULT_EMBED_MODEL=qwen/qwen3-embedding-8b
-
-# Optional: Elasticsearch for hybrid search
-LARS_ELASTICSEARCH_HOST=http://localhost:9200
 ```
 
 
-> **TIP: Zero Infrastructure Required**
+> **NOTE: No External Database Required**
 >
 > 
-> LARS uses embedded DuckDB for all logging, analytics, and vector search.
->     No external databases required to get started. Just set your API key and run `lars bootstrap`.
+> LARS uses **DuckDB + Parquet** for all storage. No need to install
+>     any external database. Just run `lars bootstrap` to get started.
 > 
 
 
@@ -340,8 +340,8 @@ lars run examples/simple_flow.json \
 
 
 ```sql via cli
-# Query ClickHouse via CLI
-lars sql query "SELECT COUNT(*) FROM all_data"
+# Query system data via CLI
+lars sql query "SELECT COUNT(*) FROM unified_logs"
 
 # View recent sessions with costs
 lars sql query "SELECT session_id, phase_name, cost

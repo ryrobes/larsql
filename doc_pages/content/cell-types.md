@@ -157,7 +157,7 @@ Execute code in multiple languages using the data tools:
 #### sql_data
 
 
-Execute SQL against ClickHouse or DuckDB
+Execute SQL against DuckDB or attached databases
 
 
 #### python_data

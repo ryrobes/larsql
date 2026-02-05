@@ -37,7 +37,7 @@ sql_function:
     description: Summarizes multiple texts about weather into overview
 cells:
 - name: summarize
-  model: google/gemini-3-flash-preview
+  model: "{{ models.fast }}"
   instructions: 'Summarize these texts into a concise overview.
 
 

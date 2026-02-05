@@ -48,7 +48,7 @@ sql_function:
 
 cells:
   - name: detect_fallacies
-    model: google/gemini-3-flash-preview
+    model: "{{ models.fast }}"
     instructions: |
       Identify any logical fallacies in this argument.
 

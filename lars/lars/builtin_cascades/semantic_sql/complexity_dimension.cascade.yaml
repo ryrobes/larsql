@@ -28,7 +28,7 @@ sql_function:
     description: Complexity assessed
 cells:
 - name: assess_complexity
-  model: google/gemini-3-flash-preview
+  model: "{{ models.fast }}"
   instructions: 'Assess the complexity level of this text/content.
 
 

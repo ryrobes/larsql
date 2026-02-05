@@ -33,7 +33,7 @@ sql_function:
     description: Informal text formalized
 cells:
 - name: make_formal
-  model: google/gemini-3-flash-preview
+  model: "{{ models.fast }}"
   instructions: "Formalize this text to {{ input.style | default('business') }} style.\n\
     \nTEXT: {{ input.text }}\nTARGET STYLE: {{ input.style | default('business') }}\n\
     \nReturn a JSON object:\n{\n  \"original\": \"hey so the thing is totally broken\

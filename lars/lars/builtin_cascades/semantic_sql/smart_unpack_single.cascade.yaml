@@ -32,7 +32,7 @@ sql_function:
     description: Email and phone unpacked
 cells:
 - name: extract_values
-  model: google/gemini-3-flash-preview
+  model: "{{ models.fast }}"
   instructions: "Extract distinct values from this compound field.\n\nVALUE: {{ input.value\
     \ }}\n{% if input.extract %}EXTRACT: {{ input.extract }}{% endif %}\n\nReturn\
     \ a JSON object with all extracted components.\n\n**Auto-detection (no extract\

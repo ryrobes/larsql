@@ -68,8 +68,8 @@ cells:
       - extract_triples
 
   - name: extract_triples
-    #model: google/gemini-3-flash-preview
-    #model: x-ai/grok-4
+    #model: "{{ models.fast }}"
+    #model: "{{ models.quality }}"
     instructions: |
       Extract knowledge graph triples from this text.
 

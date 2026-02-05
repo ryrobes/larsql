@@ -42,7 +42,7 @@ sql_function:
 
 cells:
   - name: merge_timelines
-    model: google/gemini-3-flash-preview
+    model: "{{ models.fast }}"
     instructions: |
       Merge these timelines from multiple sources into one unified chronological sequence.
 

@@ -40,7 +40,7 @@ sql_function:
 
 cells:
   - name: investigate
-    model: anthropic/claude-sonnet-4
+    model: "{{ models.quality }}"
     skills:
       - sql_search       # Introspect available tables/columns
       - smart_sql_run    # Run follow-up queries

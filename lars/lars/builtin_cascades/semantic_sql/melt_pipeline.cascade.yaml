@@ -55,7 +55,7 @@ sql_function:
 
 cells:
   - name: generate_melt_sql
-    #model: google/gemini-3-flash-preview
+    #model: "{{ models.fast }}"
     instructions: |
       You are a SQL expert. Generate a DuckDB UNPIVOT query for the given table schema.
 

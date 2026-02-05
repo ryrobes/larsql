@@ -25,7 +25,7 @@ inputs_schema:
 
 cells:
   - name: filter_and_rank
-    model: google/gemini-3-flash-preview
+    model: "{{ models.fast }}"
     instructions: |
       You are a search result evaluator. Your job is to filter and rank RAG search results
       based on TRUE relevance to the query - not just vector similarity scores.

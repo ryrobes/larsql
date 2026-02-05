@@ -27,7 +27,7 @@ Optional installation variants:
 # With browser automation (Playwright)
 pip install larsql[browser]
 
-# With local models support (HuggingFace)
+# With local models (HuggingFace)
 pip install larsql[local-models]
 
 # Everything
@@ -66,30 +66,38 @@ This single command handles everything:
 > 
 > Skip specific steps if needed:
 > 
-> ```bash
-> lars bootstrap --skip-workspace  # Skip directory creation
-> lars bootstrap --skip-db         # Skip database initialization
-> lars bootstrap --skip-tools      # Skip tool downloads
-> lars bootstrap --skip-models     # Skip model setup
-> lars bootstrap --skip-sql-crawl  # Skip schema discovery
-> lars bootstrap --skip-verification  # Skip verification step
-> ```
-> 
+```
+lars bootstrap --skip-workspace  # Skip directory creation
+lars bootstrap --skip-db         # Skip database initialization
+lars bootstrap --skip-tools      # Skip tool downloads
+lars bootstrap --skip-models     # Skip model setup
+lars bootstrap --skip-sql-crawl  # Skip schema discovery
+```
 
 
 After bootstrap completes, you'll have this structure:
 
 ```
-./
+~/.lars/                  # Default LARS_ROOT location
 ├── .env                  # Environment config (auto-generated)
 ├── cascades/             # Workflow definitions
 │   └── examples/         # Sample cascades
 ├── skills/               # Custom tools
 ├── sql_connections/      # Database connections
-├── data/                 # Local data files
+├── data/                 # Parquet data storage
+│   └── system/           # Logs, sessions, analytics
 ├── session_dbs/          # Persistent session databases
 └── logs/                 # Execution logs
 ```
+
+
+> **NOTE: No External Database Required**
+>
+> 
+> LARS uses **DuckDB + Parquet** for all storage. No need to install 
+>     ClickHouse, PostgreSQL, or any other database. Everything is stored locally in 
+>     the `~/.lars/data/` directory.
+> 
 
 
 ## Start SQL Server
@@ -102,12 +110,22 @@ Start the PostgreSQL wire-protocol server. This lets any SQL client
 lars serve sql --port 15432
 ```
 
+
+> **NOTE: Authentication Enabled**
+>
+> 
+> LARS has authentication **enabled by default**. The default credentials are
+>     `admin` / `admin`. See [Authentication](#authentication)
+>     for user management and API keys.
+> 
+
+
 ### Connect with psql
 
 
 ```bash
-# Connect (default credentials: lars/lars)
-psql postgresql://localhost:15432/default
+# Connect (default credentials: admin/admin)
+psql postgresql://admin:admin@localhost:15432/default
 ```
 
 ### Connect with Any SQL Client
@@ -121,8 +139,8 @@ Use these connection settings in DBeaver, DataGrip, or any PostgreSQL client:
 | Host     | `localhost` |
 | Port     | `15432`     |
 | Database | `default`   |
-| Username | `lars`      |
-| Password | `lars`      |
+| Username | `admin`     |
+| Password | `admin`     |
 
 
 ### Try a Semantic Query
@@ -161,6 +179,15 @@ lars serve studio
 
 Open your browser to [http://localhost:5050](http://localhost:5050)
 
+
+> **NOTE: Studio Login**
+>
+> 
+> Studio uses the same authentication as the SQL server. Log in with 
+>     `admin` / `admin` or any user you've created.
+> 
+
+
 ### Studio Features
 
 
@@ -169,10 +196,12 @@ Open your browser to [http://localhost:5050](http://localhost:5050)
 
 Write and execute SQL with schema browser and semantic operators
 
+
 #### Session Explorer
 
 
 Browse execution history, costs, and "what the model saw"
+
 
 #### Cascade Runner
 
@@ -183,43 +212,47 @@ Run and visualize multi-step workflows with takes evaluation
 
 
 You now have a working LARS installation. Here's what to explore next:
-
-
-#### [Semantic SQL](#semantic-sql)
+[
+#### Semantic SQL
 
 
 Query rewriting, caching, and all the semantic operators
-
-#### [Built-in Operators](#operators)
+](#semantic-sql)
+  [
+#### Built-in Operators
 
 
 100+ operators for filtering, logic, aggregation, and more
-
-#### [SQL Connections](#sql-connections)
+](#operators)
+  [
+#### SQL Connections
 
 
 Connect PostgreSQL, BigQuery, Snowflake, S3, and more
-
-#### [Cascade DSL](#cascade-dsl)
+](#sql-connections)
+  [
+#### Cascade DSL
 
 
 Build multi-step LLM workflows in YAML
-
-#### [AI Providers](#providers)
+](#cascade-dsl)
+  [
+#### AI Providers
 
 
 Configure Ollama, Vertex AI, AWS Bedrock, or Azure
-
-#### [Vector Search](#embedding)
+](#providers)
+  [
+#### Vector Search
 
 
 Embed data and use SIMILAR_TO for similarity search
-
+](#embedding)
 ## Elasticsearch (Optional)
 
 
 <details>
-<summary>Optional Setup — Add Elasticsearch for Hybrid Search</summary>
+<summary>Add Elasticsearch for Hybrid Search</summary>
 
 
 **Elasticsearch is optional** but enables powerful additional features:
@@ -263,55 +296,6 @@ done
 echo "Elasticsearch is ready!"
 ```
 
-### Docker Compose (With Kibana UI)
-
-
-For a complete setup including Kibana for monitoring:
-
-```docker-compose.elastic.yml
-version: '3.8'
-
-services:
-  elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.3
-    container_name: lars-elasticsearch
-    environment:
-      - discovery.type=single-node
-      - xpack.security.enabled=false
-      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
-      - cluster.routing.allocation.disk.threshold_enabled=false
-    ports:
-      - "9200:9200"   # HTTP API
-      - "9300:9300"   # Transport protocol
-    volumes:
-      - lars-es-data:/usr/share/elasticsearch/data
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  kibana:
-    image: docker.elastic.co/kibana/kibana:8.11.3
-    container_name: lars-kibana
-    environment:
-      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
-      - xpack.security.enabled=false
-    ports:
-      - "5601:5601"   # Kibana UI
-    depends_on:
-      elasticsearch:
-        condition: service_healthy
-
-volumes:
-  lars-es-data:
-```
-
-```bash
-# Start with Docker Compose
-docker compose -f docker-compose.elastic.yml up -d
-```
-
 ### Configure Environment Variable
 
 
@@ -332,25 +316,7 @@ LARS_ELASTICSEARCH_HOST=http://localhost:9200
 > - Uses Elasticsearch for SQL schema search (better autocomplete and discovery)
 > 
 > If the environment variable is not set, these features simply won't be available,
->     and LARS will use DuckDB for all vector search operations.
-> 
-
-
-### Verify Elasticsearch
-
-
-```bash
-# Check cluster health
-curl http://localhost:9200/_cluster/health | jq
-```
-
-
-> **NOTE: Elasticsearch Ports**
->
-> 
-> - **9200**: HTTP API (used by LARS)
-> - **9300**: Transport protocol (internal cluster communication)
-> - **5601**: Kibana UI (if using docker-compose)
+>         and LARS will use DuckDB for all vector search operations.
 > 
 
 
@@ -372,7 +338,7 @@ curl http://localhost:9200/_cluster/health | jq
 echo $OPENROUTER_API_KEY
 
 # Or add to .env file
-echo "OPENROUTER_API_KEY=sk-or-v1-your-key" >> .env
+echo "OPENROUTER_API_KEY=sk-or-v1-your-key" >> ~/.lars/.env
 
 # Verify setup
 lars doctor

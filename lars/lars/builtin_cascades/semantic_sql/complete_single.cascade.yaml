@@ -31,7 +31,7 @@ sql_function:
     description: Partial phone completed
 cells:
 - name: fill_missing
-  model: google/gemini-3-flash-preview
+  model: "{{ models.fast }}"
   instructions: 'Complete this partial value by filling in missing components.
 
 

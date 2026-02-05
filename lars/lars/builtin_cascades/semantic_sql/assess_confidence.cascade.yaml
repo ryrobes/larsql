@@ -27,7 +27,7 @@ inputs_schema:
 
 cells:
   - name: score_confidence
-    model: google/gemini-3-flash-preview
+    model: "{{ models.fast }}"
     instructions: |
       Assess the quality and confidence of this AI assistant response.
 

@@ -33,7 +33,7 @@ sql_function:
 
 cells:
   - name: generate_speech
-    model: google/gemini-3-flash-preview
+    model: "{{ models.fast }}"
     instructions: |
       Generate a concise, natural-sounding summary of this data for text-to-speech.
 

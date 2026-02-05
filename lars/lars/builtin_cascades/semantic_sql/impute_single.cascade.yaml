@@ -32,7 +32,7 @@ sql_function:
     description: First name imputed from context
 cells:
 - name: statistical_impute
-  model: google/gemini-3-flash-preview
+  model: "{{ models.fast }}"
   instructions: 'Impute the missing value using statistical reasoning.
 
 

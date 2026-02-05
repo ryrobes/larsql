@@ -43,7 +43,7 @@ sql_function:
 
 cells:
   - name: detect_language
-    model: google/gemini-3-flash-preview
+    model: "{{ models.fast }}"
 
     instructions: |
       Detect the language of this text.

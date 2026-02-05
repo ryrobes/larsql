@@ -27,7 +27,7 @@ cells:
     #use_training: true
     #training_limit: 4
     #training_strategy: semantic
-    model: anthropic/claude-sonnet-4.5
+    model: "{{ models.quality }}"
     #model: openai/gpt-5.2::high
     parallel_tools: false
 

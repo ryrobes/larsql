@@ -34,7 +34,7 @@ sql_function:
     description: Negative sentiment returns negative score
 cells:
 - name: analyze_sentiment
-  model: google/gemini-3-flash-preview
+  model: "{{ models.fast }}"
   instructions: 'Analyze the sentiment of this text.
 
 

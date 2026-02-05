@@ -63,7 +63,7 @@ sql_function:
 
 cells:
   - name: standardize
-    model: google/gemini-3-flash-preview
+    model: "{{ models.fast }}"
 
     instructions: |
       Normalize this {{ input.type }} to its canonical/standard form.

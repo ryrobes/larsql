@@ -55,7 +55,7 @@ sql_function:
     description: "Function: tech relevance score"
 cells:
 - name: score
-  model: google/gemini-3-flash-preview
+  model: "{{ models.fast }}"
   instructions: 'Rate how well this text matches the semantic criterion on a scale
     from 0.0 to 1.0.
 

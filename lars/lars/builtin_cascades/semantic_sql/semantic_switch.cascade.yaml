@@ -57,7 +57,7 @@ sql_function:
     description: Semantic SWITCH matches fruit pattern
 cells:
 - name: match
-  model: google/gemini-3-flash-preview
+  model: "{{ models.fast }}"
   instructions: 'Match this text against the patterns below IN ORDER.
 
     Return the yield value for the FIRST matching pattern.

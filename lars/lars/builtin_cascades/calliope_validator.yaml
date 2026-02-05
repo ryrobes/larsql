@@ -25,7 +25,7 @@ cells:
 
   # Step 2: LLM judges if the screenshot matches the request
   - name: judge
-    model: anthropic/claude-sonnet-4.5
+    model: "{{ models.quality }}"
 
     instructions: |
       You are a visual QA judge for a dashboard builder. Your job is to determine if

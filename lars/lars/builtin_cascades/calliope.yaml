@@ -7,7 +7,7 @@ description: >
 inputs_schema:
   goal: What the user wants to build (optional - Calliope will ask if not provided)
 
-#model: anthropic/claude-sonnet-4
+#model: "{{ models.quality }}"
 #model: anthropic/claude-opus-4.5::high
 model: openrouter/auto
 

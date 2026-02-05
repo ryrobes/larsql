@@ -44,7 +44,7 @@ sql_function:
     description: Extracts themes from AI/healthcare articles
 cells:
 - name: extract_topics
-  model: google/gemini-3-flash-preview
+  model: "{{ models.fast }}"
   instructions: 'Analyze these texts and identify the {{ input.num_topics | default(5)
     }} main topics.
 

@@ -28,7 +28,7 @@ sql_function:
     description: Natural language to SQL
 cells:
 - name: generate_expression
-  model: google/gemini-3-flash-preview
+  model: "{{ models.fast }}"
   rules:
     max_turns: 1
   instructions: 'Generate a DuckDB SQL expression for the following request.

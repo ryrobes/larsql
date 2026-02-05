@@ -29,7 +29,7 @@ sql_function:
     description: Empty string filled
 cells:
 - name: contextual_fill
-  model: google/gemini-3-flash-preview
+  model: "{{ models.fast }}"
   instructions: 'If the value is null/empty, fill it using the context. Otherwise
     return as-is.
 

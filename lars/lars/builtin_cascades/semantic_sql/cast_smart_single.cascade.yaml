@@ -33,7 +33,7 @@ sql_function:
     description: String to integer
 cells:
 - name: smart_cast
-  model: google/gemini-3-flash-preview
+  model: "{{ models.fast }}"
   instructions: 'Cast this value to {{ input.target_type }}, handling messy formats.
 
 

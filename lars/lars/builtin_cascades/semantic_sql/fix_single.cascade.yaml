@@ -32,7 +32,7 @@ sql_function:
     description: Email typo fixed
 cells:
 - name: auto_fix
-  model: google/gemini-3-flash-preview
+  model: "{{ models.fast }}"
   instructions: 'Fix this value if it has common data quality issues.
 
 

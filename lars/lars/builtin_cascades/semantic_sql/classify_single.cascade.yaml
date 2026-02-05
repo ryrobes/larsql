@@ -47,7 +47,7 @@ sql_function:
     description: "Alias classify(): Business news classified"
 cells:
 - name: classify
-  model: google/gemini-3-flash-preview
+  model: "{{ models.fast }}"
   instructions: 'Classify this text into ONE of the provided topics.
 
 

@@ -15,14 +15,14 @@ On This Page
 ## Overview
 
 
-Signals are named events that cascades can wait for or fire. They're stored durably in ClickHouse
+Signals are named events that cascades can wait for or fire. They're stored durably in DuckDB
   and support payloads for passing data between workflows.
 
 
 #### Durable
 
 
-Signals survive restarts and are tracked in ClickHouse
+Signals survive restarts and are tracked in DuckDB
 
 
 #### Timeout Support
@@ -163,7 +163,7 @@ lars signals cancel signal_abc123 --reason "timeout"
 ## Signal Storage
 
 
-Signals are stored in ClickHouse with the following properties:
+Signals are stored in DuckDB with the following properties:
 - **Durability** - Survives process restarts
 - **HTTP callbacks** - Sub-second wake-up latency
 - **Polling fallback** - Reliability if callbacks are missed

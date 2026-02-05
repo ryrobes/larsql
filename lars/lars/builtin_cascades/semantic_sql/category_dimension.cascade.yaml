@@ -42,7 +42,7 @@ sql_function:
     description: Category assigned
 cells:
 - name: categorize
-  model: google/gemini-3-flash-preview
+  model: "{{ models.fast }}"
   instructions: "Categorize these {{ input.texts | length }} texts.\n\n{% if input.categories\
     \ %}\nUSE THESE SPECIFIC CATEGORIES:\n{% for cat in input.categories.split(',')\
     \ %}\n- {{ cat | trim }}\n{% endfor %}\n{% if input.allow_other | default(true)\

@@ -50,7 +50,7 @@ sql_function:
 
 cells:
   - name: parse
-    #model: google/gemini-3-flash-preview
+    #model: "{{ models.fast }}"
 
     instructions: |
       Generate a DuckDB SQL expression that parses this address format into a JSON object.
