@@ -8243,11 +8243,26 @@ def bootstrap_wizard():
                 conn["port"] = int(Prompt.ask("  Port", default=default_port))
                 conn["database"] = Prompt.ask("  Database")
                 conn["user"] = Prompt.ask("  User", default="")
-                password = Prompt.ask("  Password", password=True, default="")
-                if password:
-                    env_var = f"{conn_type.upper()}_PASSWORD"
+                
+                # Ask how they want to provide the password
+                pw_method = inquirer.select(
+                    message="  Password method:",
+                    choices=[
+                        ("Enter password directly (stored in .env)", "literal"),
+                        ("Use existing environment variable", "env_var"),
+                        ("No password needed", "none"),
+                    ]
+                ).execute()
+                
+                if pw_method == "literal":
+                    password = Prompt.ask("  Password", password=True, default="")
+                    if password:
+                        env_var = f"{conn_type.upper()}_PASSWORD"
+                        conn["password_env"] = env_var
+                        passwords_for_env[env_var] = password
+                elif pw_method == "env_var":
+                    env_var = Prompt.ask("  Environment variable name", default=f"{conn_type.upper()}_PASSWORD")
                     conn["password_env"] = env_var
-                    passwords_for_env[env_var] = password
             elif conn_type == "sqlite":
                 conn["database"] = Prompt.ask("  Database file path")
             elif conn_type == "bigquery":
@@ -8259,10 +8274,25 @@ def bootstrap_wizard():
                 conn["warehouse"] = Prompt.ask("  Warehouse", default="")
             elif conn_type == "motherduck":
                 conn["database"] = Prompt.ask("  Database name", default="my_db")
-                token = Prompt.ask("  MotherDuck token", password=True, default="")
-                if token:
-                    passwords_for_env["MOTHERDUCK_TOKEN"] = token
-                    conn["token_env"] = "MOTHERDUCK_TOKEN"
+                
+                # Ask how they want to provide the token
+                token_method = inquirer.select(
+                    message="  Token method:",
+                    choices=[
+                        ("Enter token directly (stored in .env)", "literal"),
+                        ("Use existing environment variable", "env_var"),
+                        ("No token (anonymous)", "none"),
+                    ]
+                ).execute()
+                
+                if token_method == "literal":
+                    token = Prompt.ask("  MotherDuck token", password=True, default="")
+                    if token:
+                        passwords_for_env["MOTHERDUCK_TOKEN"] = token
+                        conn["token_env"] = "MOTHERDUCK_TOKEN"
+                elif token_method == "env_var":
+                    env_var = Prompt.ask("  Environment variable name", default="MOTHERDUCK_TOKEN")
+                    conn["token_env"] = env_var
             elif conn_type in ("s3", "gcs", "azure"):
                 conn["bucket"] = Prompt.ask("  Bucket/container name")
                 conn["prefix"] = Prompt.ask("  Path prefix", default="")
