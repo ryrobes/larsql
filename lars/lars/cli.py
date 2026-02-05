@@ -8384,7 +8384,9 @@ def bootstrap_wizard():
             if not default_choice and choices:
                 default_choice = choices[0]["value"]
             
-            selected = inquirer.fuzzy(
+            # Use select instead of fuzzy - fuzzy has bugs with arrow keys
+            # in some Python versions (division by zero on empty filter)
+            selected = inquirer.select(
                 message=f"{tier.upper()} [{tier_descriptions[tier]}]:",
                 choices=choices,
                 default=default_choice,
