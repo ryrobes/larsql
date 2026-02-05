@@ -171,7 +171,7 @@ def list_runtime_logs():
         # Rows
         query = f"""
             SELECT
-                toString(event_id) as event_id,
+                CAST(event_id AS VARCHAR) as event_id,
                 timestamp,
                 timestamp_iso,
                 connection_id,

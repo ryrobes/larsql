@@ -372,7 +372,7 @@ def get_queries():
         # Cost data is derived at query time - sql_query_log.total_cost is not used.
         query = f"""
             SELECT
-                toString(q.query_id) as query_id,
+                CAST(q.query_id AS VARCHAR) as query_id,
                 q.caller_id,
                 q.query_raw,
                 substring(q.query_raw, 1, 200) as query_preview,
@@ -874,7 +874,7 @@ def get_cache_stats():
 
         ts_query = f"""
             SELECT
-                toDate(timestamp) as date,
+                CAST(timestamp AS DATE) as date,
                 SUM(cache_hits) as hits,
                 SUM(cache_misses) as misses
             FROM sql_query_log
@@ -957,7 +957,7 @@ def get_time_series():
         elif granularity == 'weekly':
             date_fn = "toStartOfWeek(timestamp)"
         else:  # daily
-            date_fn = "toDate(timestamp)"
+            date_fn = "CAST(timestamp AS DATE)"
 
         # Join with unified_logs for live cost/LLM call data
         # We aggregate costs by caller_id, then join to sql_query_log

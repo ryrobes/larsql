@@ -128,7 +128,7 @@ def get_message_flow(session_id):
         # Query all messages for this session
         query = f"""
         SELECT
-            toUnixTimestamp64Micro(timestamp) / 1000000.0 as timestamp,
+            epoch(timestamp) as timestamp,
             role,
             node_type,
             take_index,
@@ -543,8 +543,8 @@ def get_running_sessions():
             session_id,
             argMax(cascade_id, timestamp) as cascade_id,
             argMax(cascade_file, timestamp) as cascade_file,
-            toUnixTimestamp(MIN(timestamp)) as start_time,
-            toUnixTimestamp(MAX(timestamp)) as last_activity,
+            epoch(MIN(timestamp)) as start_time,
+            epoch(MAX(timestamp)) as last_activity,
             COUNT(*) as message_count,
             SUM(cost) as total_cost
         FROM unified_logs
@@ -594,12 +594,12 @@ def get_running_sessions():
         for row in results:
             session_id, cascade_id, cascade_file, start_time, last_activity, msg_count, total_cost = row
 
-            # Parse timestamps (should now be Unix timestamps in seconds from toUnixTimestamp())
+            # Parse timestamps (should now be Unix timestamps in seconds from epoch())
             # ClickHouse can return datetime objects or numeric timestamps
             if hasattr(start_time, 'timestamp'):
                 start_ts = start_time.timestamp()
             elif start_time is not None:
-                # Should be Unix timestamp in seconds from toUnixTimestamp()
+                # Should be Unix timestamp in seconds from epoch()
                 start_ts = float(start_time)
             else:
                 start_ts = current_time

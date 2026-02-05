@@ -1656,7 +1656,7 @@ def get_test_stats():
         # Daily trends
         trend_query = """
             SELECT
-                toDate(started_at) as date,
+                CAST(started_at AS DATE) as date,
                 sum(passed_tests) as passed,
                 sum(failed_tests) as failed,
                 sum(error_tests) as errors,

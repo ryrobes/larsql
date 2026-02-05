@@ -247,7 +247,7 @@ def _enrich_sessions_with_metrics(sessions: list) -> list:
         cascade_sessions_query = f"""
             SELECT
                 session_id,
-                LEFT(toString(input_data), 300) as input_data_truncated,
+                LEFT(CAST(input_data AS VARCHAR), 300) as input_data_truncated,
                 LEFT(output, 300) as output_truncated
             FROM cascade_sessions
             WHERE session_id IN ('{session_ids_str}')

@@ -802,8 +802,8 @@ def get_time_series():
             bucket_func = 'toStartOfMonth(timestamp)'
             analytics_bucket_func = 'toStartOfMonth(created_at)'
         else:  # daily (default)
-            bucket_func = 'toDate(timestamp)'
-            analytics_bucket_func = 'toDate(created_at)'
+            bucket_func = 'CAST(timestamp AS DATE)'
+            analytics_bucket_func = 'CAST(created_at AS DATE)'
 
         # IMPORTANT: Query unified_logs for cost data to include ALL sessions (including in-progress)
         query = f"""

@@ -27,14 +27,14 @@ def _determine_time_bucket(earliest_ts, latest_ts):
     Returns: ('hour'|'day'|'week'|'month', bucket_sql_expression)
     """
     if not earliest_ts or not latest_ts:
-        return ('day', "toDate(timestamp)")
+        return ('day', "CAST(timestamp AS DATE)")
 
     delta = latest_ts - earliest_ts
 
     if delta < timedelta(hours=24):
         return ('hour', "toStartOfHour(timestamp)")
     elif delta < timedelta(days=30):
-        return ('day', "toDate(timestamp)")
+        return ('day', "CAST(timestamp AS DATE)")
     elif delta < timedelta(days=90):
         return ('week', "toMonday(timestamp)")  # Start of week
     else:
@@ -127,7 +127,7 @@ def get_cost_timeline():
             bucket_type = granularity
             bucket_expressions = {
                 'hour': "toStartOfHour(timestamp)",
-                'day': "toDate(timestamp)",
+                'day': "CAST(timestamp AS DATE)",
                 'week': "toMonday(timestamp)",
                 'month': "toStartOfMonth(timestamp)"
             }

@@ -378,7 +378,7 @@ def detect_and_mark_orphaned_cascades():
             WHERE node_type IN ('cascade_complete', 'cascade_completed', 'cascade_failed', 'cascade_error', 'cascade_killed')
         ),
         session_last_activity AS (
-            SELECT session_id, MAX(toUnixTimestamp64Micro(timestamp) / 1000000.0) as last_activity
+            SELECT session_id, MAX(epoch(timestamp)) as last_activity
             FROM unified_logs
             GROUP BY session_id
         )
@@ -390,7 +390,7 @@ def detect_and_mark_orphaned_cascades():
         LEFT JOIN terminal_sessions t ON s.session_id = t.session_id
         JOIN session_last_activity la ON s.session_id = la.session_id
         WHERE t.session_id IS NULL
-          AND la.last_activity < (toUnixTimestamp(now()) - {ORPHAN_THRESHOLD_SECONDS})
+          AND la.last_activity < (epoch(now()) - {ORPHAN_THRESHOLD_SECONDS})
         """
 
         orphaned = db.query(orphan_query)
@@ -2472,7 +2472,7 @@ def get_session_execution_flow(session_id):
                 model,
                 tokens_in,
                 tokens_out,
-                SUBSTRING(toString(content_json), 1, 500) as content_preview,
+                SUBSTRING(CAST(content_json AS VARCHAR), 1, 500) as content_preview,
                 image_paths,
                 timestamp
             FROM unified_logs
@@ -4492,7 +4492,7 @@ def playground_session_stream(session_id):
         # This gives us full visibility into sub-cascade launches
         query = f"""
             SELECT
-                toString(message_id) as message_id,
+                CAST(message_id AS VARCHAR) as message_id,
                 timestamp,
                 timestamp_iso,
                 session_id,
