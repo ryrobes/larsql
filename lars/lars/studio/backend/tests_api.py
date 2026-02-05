@@ -655,16 +655,16 @@ def _run_semantic_sql_test(test: TestDefinition, mode: str = 'internal') -> Test
 
     # === THREAD DEBUG LOGGING ===
     import threading
-    import os
-    import subprocess
+    import os as _os
+    import subprocess as _subprocess
     threads = threading.enumerate()
-    log_path = os.path.expanduser("~/thread_debug.log")
+    log_path = _os.path.expanduser("~/thread_debug.log")
     with open(log_path, "a") as f:
         import time
         try:
-            result = subprocess.run(['ps', '-o', 'rss=', '-p', str(os.getpid())], 
+            _ps_result = _subprocess.run(['ps', '-o', 'rss=', '-p', str(_os.getpid())], 
                                   capture_output=True, text=True, timeout=1)
-            mem_kb = int(result.stdout.strip())
+            mem_kb = int(_ps_result.stdout.strip())
             mem_mb = mem_kb / 1024
         except:
             mem_mb = 0
@@ -952,6 +952,13 @@ def execute_tests(tests: List[TestDefinition], run_id: str, options: Dict[str, A
     snapshot_mode = options.get('snapshot_mode', 'structure')
 
     db = _get_db()
+    
+    # Clear any cached DuckDB connections to ensure fresh views (prevents stale schema errors)
+    try:
+        from lars.lars_db import get_lars_db
+        get_lars_db().clear_cached_connection()
+    except Exception:
+        pass
 
     # Determine run type
     types = set(t.test_type for t in tests)
