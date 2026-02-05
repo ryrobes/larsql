@@ -1150,6 +1150,7 @@ class DuckDBAdapter:
 
     def mark_take_winner(
         self,
+        table: str,
         session_id: str,
         cell_name: str,
         take_index: int,
@@ -1158,23 +1159,19 @@ class DuckDBAdapter:
         """
         Mark a take as the winner (append-only pattern).
         
-        Instead of UPDATE, we write a record to track winners.
-        Queries join against this to find winning takes.
+        Writes a winner record to the take_winners table.
+        Queries should join against this to determine winning takes.
         """
-        # For now, we'll update unified_logs directly since it has is_winner column
-        # In a full migration, we might want a separate winners table
         winner_record = {
             'id': uuid.uuid4().hex,
             'timestamp': datetime.now(timezone.utc),
             'session_id': session_id,
             'cell_name': cell_name,
-            'take_index': take_index,
-            'is_winner': True,
+            'winning_take_index': take_index,
         }
         
-        # Could write to a separate 'take_winners' table
-        # For now, callers should handle winner tracking differently
-        print(f"[DuckDB] mark_take_winner called but not fully implemented for parquet")
+        # Write to take_winners table (creates table if needed)
+        self._db.write('take_winners', [winner_record])
 
     # =========================================================================
     # Vector Search (delegates to DuckDB VSS)

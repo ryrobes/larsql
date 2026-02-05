@@ -713,6 +713,23 @@ SYSTEM_TABLES = {
         },
     },
 
+    # Take winners - tracks which take was selected as winner (append-only)
+    # Written by mark_take_winner(), used to determine is_winner in queries
+    "take_winners": {
+        "columns": [
+            ("id", "VARCHAR"),
+            ("timestamp", "TIMESTAMP"),
+            ("session_id", "VARCHAR"),
+            ("cell_name", "VARCHAR"),
+            ("winning_take_index", "INTEGER"),
+        ],
+        "partition_by": None,
+        "dedup": {
+            "pk": "session_id, cell_name",
+            "order_by": "timestamp DESC"
+        },
+    },
+
     "deref_log": {
         "columns": [
             ("deref_id", "VARCHAR"),
