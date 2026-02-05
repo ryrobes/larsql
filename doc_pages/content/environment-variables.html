@@ -55,15 +55,14 @@
 <h2 id="core">Core Configuration (Required)</h2>
 
 <p>
-  These variables configure essential LARS services. At minimum, you need an <code>OPENROUTER_API_KEY</code>
-  and a running ClickHouse instance.
+  These variables configure essential LARS services. At minimum, you need an <code>OPENROUTER_API_KEY</code>.
 </p>
 
-<div class="info-box warning">
-  <div class="info-box-title">Required Services</div>
+<div class="info-box note">
+  <div class="info-box-title">Minimal Setup</div>
   <p>
-    LARS requires both an LLM provider (OpenRouter by default) and ClickHouse for logging and analytics.
-    See the <a href="#/quickstart">Quickstart Guide</a> for setup instructions.
+    LARS only requires an LLM provider (OpenRouter by default). All storage uses DuckDB + Parquet locally.
+    Run <code>lars bootstrap</code> to set up your workspace.
   </p>
 </div>
 
@@ -92,29 +91,14 @@
       <td>Default LLM model used everywhere a model isn't explicitly specified. Only set if you want to override the default.</td>
     </tr>
     <tr>
-      <td><code>LARS_CLICKHOUSE_HOST</code></td>
-      <td><code>localhost</code></td>
-      <td>ClickHouse server hostname</td>
+      <td><code>LARS_AUTH_ENABLED</code></td>
+      <td><code>1</code></td>
+      <td>Enable authentication (default: enabled)</td>
     </tr>
     <tr>
-      <td><code>LARS_CLICKHOUSE_PORT</code></td>
-      <td><code>9000</code></td>
-      <td>ClickHouse native protocol port</td>
-    </tr>
-    <tr>
-      <td><code>LARS_CLICKHOUSE_DATABASE</code></td>
-      <td><code>lars</code></td>
-      <td>ClickHouse database name</td>
-    </tr>
-    <tr>
-      <td><code>LARS_CLICKHOUSE_USER</code></td>
-      <td><code>lars</code></td>
-      <td>ClickHouse username</td>
-    </tr>
-    <tr>
-      <td><code>LARS_CLICKHOUSE_PASSWORD</code></td>
-      <td><code>lars</code></td>
-      <td>ClickHouse password</td>
+      <td><code>LARS_ELASTICSEARCH_HOST</code></td>
+      <td><em>Not set</em></td>
+      <td>Optional: Elasticsearch URL for hybrid search</td>
     </tr>
   </tbody>
 </table>

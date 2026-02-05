@@ -407,12 +407,8 @@ pip install -e .</pre>
     <pre><span class="cmt"># LLM Provider (OpenRouter is default)</span>
 <span class="key">OPENROUTER_API_KEY</span>=<span class="str">sk-or-...</span>
 
-<span class="cmt"># ClickHouse (Required for logging and SQL features)</span>
-<span class="key">LARS_CLICKHOUSE_HOST</span>=<span class="str">localhost</span>
-<span class="key">LARS_CLICKHOUSE_PORT</span>=<span class="num">9000</span>
-<span class="key">LARS_CLICKHOUSE_DATABASE</span>=<span class="str">lars</span>
-<span class="key">LARS_CLICKHOUSE_USER</span>=<span class="str">lars</span>      <span class="cmt"># Default: lars</span>
-<span class="key">LARS_CLICKHOUSE_PASSWORD</span>=<span class="str">lars</span>  <span class="cmt"># Default: lars</span>
+<span class="cmt"># Optional: Workspace location (defaults to ~/.lars)</span>
+<span class="key">LARS_ROOT</span>=<span class="str">~/.lars</span>
 
 <span class="cmt"># Optional: Customize models</span>
 <span class="key">LARS_DEFAULT_MODEL</span>=<span class="str">x-ai/grok-4.1-fast</span>
@@ -420,12 +416,11 @@ pip install -e .</pre>
   </div>
 </div>
 
-<div class="info-box warning">
-  <div class="info-box-title">Required Infrastructure</div>
+<div class="info-box note">
+  <div class="info-box-title">No External Database Required</div>
   <p>
-    LARS requires a running ClickHouse instance. There is no embedded fallback.
-    See the <a href="https://clickhouse.com/docs/en/getting-started/install" target="_blank">ClickHouse installation guide</a>
-    to set up locally.
+    LARS uses <strong>DuckDB + Parquet</strong> for all storage. No need to install
+    any external database. Just run <code>lars bootstrap</code> to get started.
   </p>
 </div>
 
