@@ -8336,6 +8336,11 @@ def bootstrap_wizard():
     if all_models:
         console.print("\n[bold cyan]📊 Assign Model Tiers[/bold cyan]")
         console.print("[dim]─" * 50 + "[/dim]")
+        
+        # Debug: show breakdown of discovered models
+        chat_count = sum(1 for m in all_models if m.is_chat)
+        embed_count = sum(1 for m in all_models if m.is_embedding)
+        console.print(f"[dim]Found {len(all_models)} models: {chat_count} chat, {embed_count} embedding[/dim]")
         console.print("[dim]Type to search, ↑↓ to navigate, Enter to select[/dim]\n")
         
         tier_descriptions = {
@@ -8361,6 +8366,12 @@ def bootstrap_wizard():
             for m in sorted_models[:50]:  # Limit to 50 for performance
                 display = format_model_choice(m)
                 choices.append({"name": display, "value": m.id})
+            
+            # Safety check - InquirerPy crashes on empty choice lists
+            if not choices:
+                console.print(f"  [yellow]⚠️ No {tier} models could be displayed[/yellow]")
+                model_tiers[tier] = defaults.get(tier, "")
+                continue
             
             # Find default in choices
             default_id = defaults.get(tier, "")
