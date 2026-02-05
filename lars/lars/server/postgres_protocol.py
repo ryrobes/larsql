@@ -1074,9 +1074,10 @@ def _convert_pg_booleans(result_df):
     for col in df.columns:
         dtype_str = str(df[col].dtype).lower()
 
-        # Convert boolean dtype columns to integers
+        # Convert boolean dtype columns to integers (preserving NULLs)
         if 'bool' in dtype_str:
-            df[col] = df[col].astype(int)
+            # Use nullable Int64 to preserve NULLs, or map True/False manually
+            df[col] = df[col].map(lambda x: 1 if x is True else (0 if x is False else None))
             continue
 
         # Only convert object (string) columns
