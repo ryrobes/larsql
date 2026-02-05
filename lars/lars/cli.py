@@ -3157,9 +3157,11 @@ def cmd_sql_test(args):
             log_path = os.path.expanduser("~/thread_debug.log")
             with open(log_path, "a") as f:
                 import time
+                pid = os.getpid()
+                
                 # Get actual RSS and CPU via ps
                 try:
-                    result = subprocess.run(['ps', '-o', 'rss=,%cpu=', '-p', str(os.getpid())], 
+                    result = subprocess.run(['ps', '-o', 'rss=,%cpu=', '-p', str(pid)], 
                                           capture_output=True, text=True, timeout=1)
                     parts = result.stdout.strip().split()
                     mem_kb = int(parts[0]) if parts else 0
@@ -3168,10 +3170,33 @@ def cmd_sql_test(args):
                 except:
                     mem_mb = 0
                     cpu_pct = 0.0
-                f.write(f"\n=== {time.strftime('%H:%M:%S')} | {fn_name} test {i} | Threads: {len(threads)} | Mem: {mem_mb:.0f}MB | CPU: {cpu_pct:.1f}% ===\n")
-                # Show FULL thread names to identify source
+                
+                # Get per-thread CPU via ps -M (macOS specific)
+                hot_threads = []
+                try:
+                    result = subprocess.run(['ps', '-M', '-p', str(pid)], 
+                                          capture_output=True, text=True, timeout=1)
+                    for line in result.stdout.strip().split('\n')[1:]:  # Skip header
+                        parts = line.split()
+                        if len(parts) >= 4:
+                            thread_cpu = float(parts[3]) if parts[3].replace('.', '').isdigit() else 0.0
+                            if thread_cpu > 5.0:  # Only show threads using >5% CPU
+                                hot_threads.append(thread_cpu)
+                except:
+                    pass
+                
+                hot_str = f" | Hot: {len(hot_threads)} threads" if hot_threads else ""
+                f.write(f"\n=== {time.strftime('%H:%M:%S')} | {fn_name} test {i} | Threads: {len(threads)} | Mem: {mem_mb:.0f}MB | CPU: {cpu_pct:.1f}%{hot_str} ===\n")
+                
+                # Show hot thread details if any
+                if hot_threads:
+                    hot_threads.sort(reverse=True)
+                    f.write(f"  [HOT THREADS] {', '.join(f'{c:.1f}%' for c in hot_threads[:5])}\n")
+                
+                # Show FULL thread names with native IDs to help correlation
                 for t in sorted(threads, key=lambda x: x.name):
-                    f.write(f"  {t.name} (daemon={t.daemon}, alive={t.is_alive()})\n")
+                    native_id = getattr(t, 'native_id', None) or 'N/A'
+                    f.write(f"  {t.name} (daemon={t.daemon}, alive={t.is_alive()}, native_id={native_id})\n")
             # === END THREAD DEBUG ===
 
             # Display result
