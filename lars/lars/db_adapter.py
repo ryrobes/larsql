@@ -131,6 +131,35 @@ def _clickhouse_server_reachable(
 # Async Query Logger
 # =============================================================================
 
+def _log_query_debug(query_type: str, sql: str, duration_ms: float, rows: int = 0):
+    """
+    Write query to debug log file when LARS_QUERY_DEBUG=1.
+    Useful for identifying which queries are slow during cascade execution.
+    """
+    import os
+    if not os.environ.get("LARS_QUERY_DEBUG"):
+        return
+    
+    log_path = os.path.expanduser("~/query_debug.log")
+    try:
+        # Extract table name from SQL for quick scanning
+        sql_lower = sql.lower()
+        table = "?"
+        if " from " in sql_lower:
+            parts = sql_lower.split(" from ")[1].split()[0]
+            table = parts.strip("(").split(".")[0] if parts else "?"
+        
+        # Truncate SQL for readability
+        sql_preview = sql.replace("\n", " ")[:200]
+        
+        with open(log_path, "a") as f:
+            from datetime import datetime
+            ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+            f.write(f"[{ts}] {duration_ms:7.1f}ms | {rows:5d} rows | {table:30s} | {query_type:7s} | {sql_preview}\n")
+    except Exception:
+        pass  # Don't let logging errors affect queries
+
+
 class QueryLogger:
     """
     Async fire-and-forget query logger that writes to ui_sql_log table.
@@ -546,8 +575,11 @@ class DuckDBAdapter:
             print(f"[DuckDB Error] SQL: {sql[:500]}...")
             raise
         finally:
+            duration_ms = (time.time() - start_time) * 1000
+            # Debug file logging (when LARS_QUERY_DEBUG=1)
+            _log_query_debug('query', sql, duration_ms, rows_returned)
+            
             if log_query:
-                duration_ms = (time.time() - start_time) * 1000
                 logger = get_query_logger()
                 if logger:
                     logger.log_query(
@@ -589,8 +621,11 @@ class DuckDBAdapter:
                 print(f"[DuckDB Error] Execute failed: {e}")
             raise
         finally:
+            duration_ms = (time.time() - start_time) * 1000
+            # Debug file logging (when LARS_QUERY_DEBUG=1)
+            _log_query_debug('execute', sql, duration_ms, 0)
+            
             if log_query:
-                duration_ms = (time.time() - start_time) * 1000
                 logger = get_query_logger()
                 if logger:
                     logger.log_query(

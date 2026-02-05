@@ -1698,6 +1698,24 @@ class LarsDB:
             (system_dir / table_name).mkdir(parents=True, exist_ok=True)
         (self.root / "user").mkdir(parents=True, exist_ok=True)
     
+    def _log_query_debug(self, query_type: str, sql: str, duration_ms: float, rows: int = 0):
+        """Write query to debug log file when LARS_QUERY_DEBUG=1."""
+        log_path = os.path.expanduser("~/query_debug.log")
+        try:
+            sql_lower = sql.lower()
+            table = "?"
+            if " from " in sql_lower:
+                parts = sql_lower.split(" from ")[1].split()[0]
+                table = parts.strip("(").split(".")[0] if parts else "?"
+            
+            sql_preview = sql.replace("\n", " ")[:200]
+            
+            with open(log_path, "a") as f:
+                ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+                f.write(f"[{ts}] {duration_ms:7.1f}ms | {rows:5d} rows | {table:30s} | {query_type:7s} | {sql_preview}\n")
+        except Exception:
+            pass
+    
     def connect(self) -> duckdb.DuckDBPyConnection:
         """
         Get a DuckDB connection with all system views registered.
@@ -2464,6 +2482,10 @@ class LarsDB:
         Returns:
             Query results in requested format
         """
+        import time
+        start_time = time.time()
+        rows = 0
+        
         conn = self.connect()
         try:
             if params:
@@ -2472,14 +2494,23 @@ class LarsDB:
                 result = conn.execute(sql)
             
             if output_format == "dataframe":
-                return result.fetchdf()
+                df = result.fetchdf()
+                rows = len(df)
+                return df
             elif output_format == "dict":
                 df = result.fetchdf()
+                rows = len(df)
                 return df.to_dict(orient="records")
             else:
-                return result.fetchall()
+                data = result.fetchall()
+                rows = len(data) if data else 0
+                return data
         finally:
             conn.close()
+            # Debug file logging (when LARS_QUERY_DEBUG=1)
+            duration_ms = (time.time() - start_time) * 1000
+            if os.environ.get("LARS_QUERY_DEBUG"):
+                self._log_query_debug('query', sql, duration_ms, rows)
     
     def execute(self, sql: str, params: Optional[List[Any]] = None):
         """
