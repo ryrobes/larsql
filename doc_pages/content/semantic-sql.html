@@ -34,7 +34,7 @@
 <p>
   LARS's semantic SQL doesn't modify your database engine. Instead, it uses <strong>query rewriting</strong>
   to transform semantic operators into standard SQL + UDF calls that execute on DuckDB (in-process) or
-  ClickHouse (persistence layer).
+  DuckDB + Parquet (persistence layer).
 </p>
 
 <div class="feature-grid">
@@ -701,7 +701,7 @@ conn = psycopg2.connect(host=<span class="str">"localhost"</span>, port=<span cl
                      │ miss
                      ▼
 ┌─────────────────────────────────────────┐
-│ Level 2: ClickHouse (persistent)        │
+│ Level 2: DuckDB (persistent)        │
 │ - Survives restarts, shared across      │
 │ - TTL support: '1d', '2h', '30m'        │
 └────────────────────┬────────────────────┘

@@ -19,7 +19,7 @@
 <h2 id="overview">Overview</h2>
 
 <p>
-  Signals are named events that cascades can wait for or fire. They're stored durably in ClickHouse
+  Signals are named events that cascades can wait for or fire. They're stored durably in DuckDB
   and support payloads for passing data between workflows.
 </p>
 
@@ -27,7 +27,7 @@
   <div class="feature-card">
     <div class="feature-card-icon"><iconify-icon icon="mdi:bell-ring-outline"></iconify-icon></div>
     <h4>Durable</h4>
-    <p>Signals survive restarts and are tracked in ClickHouse</p>
+    <p>Signals survive restarts and are tracked in DuckDB</p>
   </div>
   <div class="feature-card">
     <div class="feature-card-icon magenta"><iconify-icon icon="mdi:clock-outline"></iconify-icon></div>
@@ -203,7 +203,7 @@ lars signals cancel signal_abc123 --reason <span class="str">"timeout"</span></p
 <h2 id="storage">Signal Storage</h2>
 
 <p>
-  Signals are stored in ClickHouse with the following properties:
+  Signals are stored in DuckDB with the following properties:
 </p>
 
 <ul>
