@@ -2458,7 +2458,9 @@ class LarsDB:
                 unique_id = uuid.uuid4().hex[:8]
                 compacted_path = table_dir / f"compacted_{timestamp}_{unique_id}.parquet"
                 
-                table_data = pa.Table.from_pandas(df, preserve_index=False)
+                # Use explicit schema to preserve column types (prevents NULL → wrong type inference)
+                arrow_schema = _schema_to_pyarrow(schema_def)
+                table_data = pa.Table.from_pandas(df, schema=arrow_schema, preserve_index=False)
                 pq.write_table(table_data, compacted_path, compression="snappy")
                 
                 # Remove original files (but not the one we just wrote)
