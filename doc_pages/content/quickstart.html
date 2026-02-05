@@ -1,6 +1,6 @@
 <!-- ═══════════════════════════════════════════════════════════════════════════
      LARS QUICKSTART GUIDE
-     Streamlined setup matching README
+     Streamlined setup with bootstrap
      ═══════════════════════════════════════════════════════════════════════════ -->
 
 <h1 id="top">Quickstart Guide</h1>
@@ -13,8 +13,7 @@
   <ul>
     <li><a href="#install">Install</a></li>
     <li><a href="#configure">Configure</a></li>
-    <li><a href="#clickhouse">Start ClickHouse</a></li>
-    <li><a href="#initialize">Initialize Project</a></li>
+    <li><a href="#bootstrap">Bootstrap</a></li>
     <li><a href="#sql-server">Start SQL Server</a></li>
     <li><a href="#studio">Launch Studio (Optional)</a></li>
     <li><a href="#next-steps">Next Steps</a></li>
@@ -74,89 +73,72 @@ pip install larsql[all]</pre>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
-     CLICKHOUSE
+     BOOTSTRAP
      ═══════════════════════════════════════════════════════════════════════════ -->
 
-<h2 id="clickhouse">Start ClickHouse</h2>
+<h2 id="bootstrap">Bootstrap</h2>
 
-<p>
-  LARS requires <strong>ClickHouse</strong> for logging, analytics, and vector search.
-  Run it with Docker:
-</p>
+<p>Run the bootstrap command to set up your LARS workspace in one step:</p>
 
 <div class="code-block">
   <div class="code-block-header">
     <span class="code-block-lang bash">Bash</span>
   </div>
   <div class="code-block-content">
-    <pre>docker run -d \
-  --name lars-clickhouse \
-  --ulimit nofile=262144:262144 \
-  -p 8123:8123 \
-  -p 9000:9000 \
-  -p 9009:9009 \
-  -v clickhouse-data:/var/lib/clickhouse \
-  -v clickhouse-logs:/var/log/clickhouse-server \
-  -e CLICKHOUSE_USER=lars \
-  -e CLICKHOUSE_PASSWORD=lars \
-  clickhouse/clickhouse-server:25.11</pre>
+    <pre>lars bootstrap</pre>
   </div>
 </div>
 
-<div class="info-box note">
-  <div class="info-box-title">ClickHouse Ports</div>
-  <ul>
-    <li><strong>9000</strong>: Native protocol (used by LARS)</li>
-    <li><strong>8123</strong>: HTTP interface (useful for debugging)</li>
-  </ul>
-</div>
+<p>This single command handles everything:</p>
 
-<!-- ═══════════════════════════════════════════════════════════════════════════
-     INITIALIZE
-     ═══════════════════════════════════════════════════════════════════════════ -->
+<ul>
+  <li>Creates workspace directories (cascades, skills, data, logs, etc.)</li>
+  <li>Initializes the DuckDB database schema</li>
+  <li>Downloads and registers built-in tools</li>
+  <li>Sets up model configurations</li>
+  <li>Runs initial SQL schema discovery</li>
+</ul>
 
-<h2 id="initialize">Initialize Project</h2>
-
-<p>Create a project directory with starter files and initialize the database:</p>
-
-<div class="code-block">
-  <div class="code-block-header">
-    <span class="code-block-lang bash">Bash</span>
-  </div>
-  <div class="code-block-content">
-    <pre><span class="cmt"># Create and enter project directory</span>
-lars init my_lars_project ; cd my_lars_project
-
-<span class="cmt"># Initialize the database schema</span>
-lars db init</pre>
+<div class="info-box tip">
+  <div class="info-box-title">Bootstrap Options</div>
+  <p>Skip specific steps if needed:</p>
+  <div class="code-block">
+    <div class="code-block-content">
+      <pre>lars bootstrap --skip-workspace  <span class="cmt"># Skip directory creation</span>
+lars bootstrap --skip-db         <span class="cmt"># Skip database initialization</span>
+lars bootstrap --skip-tools      <span class="cmt"># Skip tool downloads</span>
+lars bootstrap --skip-models     <span class="cmt"># Skip model setup</span>
+lars bootstrap --skip-sql-crawl  <span class="cmt"># Skip schema discovery</span></pre>
+    </div>
   </div>
 </div>
 
-<p>This creates the following structure:</p>
+<p>After bootstrap completes, you'll have this structure:</p>
 
 <div class="code-block">
   <div class="code-block-header">
     <span class="code-block-lang">Directory Structure</span>
   </div>
   <div class="code-block-content">
-    <pre>my_lars_project/
+    <pre>~/.lars/                  <span class="cmt"># Default LARS_ROOT location</span>
 ├── .env                  <span class="cmt"># Environment config (auto-generated)</span>
 ├── cascades/             <span class="cmt"># Workflow definitions</span>
 │   └── examples/         <span class="cmt"># Sample cascades</span>
 ├── skills/               <span class="cmt"># Custom tools</span>
 ├── sql_connections/      <span class="cmt"># Database connections</span>
-├── data/                 <span class="cmt"># Local data files</span>
+├── data/                 <span class="cmt"># Parquet data storage</span>
+│   └── system/           <span class="cmt"># Logs, sessions, analytics</span>
 ├── session_dbs/          <span class="cmt"># Persistent session databases</span>
 └── logs/                 <span class="cmt"># Execution logs</span></pre>
   </div>
 </div>
 
-<div class="info-box tip">
-  <div class="info-box-title">Auto-Configuration</div>
+<div class="info-box note">
+  <div class="info-box-title">No External Database Required</div>
   <p>
-    <code>lars init</code> automatically creates a <code>.env</code> file with
-    <code>LARS_ROOT</code> set to your project's absolute path. Just add your API key
-    if you haven't already exported it.
+    LARS uses <strong>DuckDB + Parquet</strong> for all storage. No need to install 
+    ClickHouse, PostgreSQL, or any other database. Everything is stored locally in 
+    the <code>~/.lars/data/</code> directory.
   </p>
 </div>
 
@@ -245,9 +227,9 @@ psql postgresql://admin:admin@localhost:15432/default</pre>
   <div class="code-block-content">
     <pre><span class="cmt">-- Create a test table</span>
 <span class="kw">CREATE TABLE</span> products (
-  id <span class="kw">INTEGER</span>,
-  name <span class="kw">VARCHAR</span>,
-  description <span class="kw">TEXT</span>
+  id <span class="type">INTEGER</span>,
+  name <span class="type">VARCHAR</span>,
+  description <span class="type">TEXT</span>
 );
 
 <span class="kw">INSERT INTO</span> products <span class="kw">VALUES</span>
@@ -264,7 +246,7 @@ psql postgresql://admin:admin@localhost:15432/default</pre>
 <p>That's it! You're running semantic queries from a standard SQL client.</p>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
-     STUDIO (OPTIONAL)
+     STUDIO
      ═══════════════════════════════════════════════════════════════════════════ -->
 
 <h2 id="studio">Launch Studio (Optional)</h2>
@@ -281,34 +263,30 @@ psql postgresql://admin:admin@localhost:15432/default</pre>
   </div>
 </div>
 
-<p>
-  Open your browser to <a href="http://localhost:5050" target="_blank">http://localhost:5050</a>
-  and log in with the default credentials (<code>admin</code> / <code>admin</code>).
-</p>
+<p>Open your browser to <a href="http://localhost:5050" target="_blank">http://localhost:5050</a></p>
+
+<div class="info-box note">
+  <div class="info-box-title">Studio Login</div>
+  <p>
+    Studio uses the same authentication as the SQL server. Log in with 
+    <code>admin</code> / <code>admin</code> or any user you've created.
+  </p>
+</div>
 
 <h3>Studio Features</h3>
 
 <div class="feature-grid">
-  <div class="feature-item">
-    <iconify-icon icon="mdi:database-search" class="feature-icon"></iconify-icon>
-    <div class="feature-content">
-      <h4>SQL Query IDE</h4>
-      <p>Write and execute SQL with schema browser and semantic operators</p>
-    </div>
+  <div class="feature-card">
+    <h4>SQL Query IDE</h4>
+    <p>Write and execute SQL with schema browser and semantic operators</p>
   </div>
-  <div class="feature-item">
-    <iconify-icon icon="mdi:history" class="feature-icon"></iconify-icon>
-    <div class="feature-content">
-      <h4>Session Explorer</h4>
-      <p>Browse execution history, costs, and "what the model saw"</p>
-    </div>
+  <div class="feature-card">
+    <h4>Session Explorer</h4>
+    <p>Browse execution history, costs, and "what the model saw"</p>
   </div>
-  <div class="feature-item">
-    <iconify-icon icon="mdi:graph" class="feature-icon"></iconify-icon>
-    <div class="feature-content">
-      <h4>Cascade Runner</h4>
-      <p>Run and visualize multi-step workflows with takes evaluation</p>
-    </div>
+  <div class="feature-card">
+    <h4>Cascade Runner</h4>
+    <p>Run and visualize multi-step workflows with takes evaluation</p>
   </div>
 </div>
 
@@ -320,102 +298,74 @@ psql postgresql://admin:admin@localhost:15432/default</pre>
 
 <p>You now have a working LARS installation. Here's what to explore next:</p>
 
-<div class="feature-grid">
-  <div class="feature-item">
-    <iconify-icon icon="mdi:shield-account" class="feature-icon"></iconify-icon>
-    <div class="feature-content">
-      <h4><a href="#authentication" data-link>Authentication</a></h4>
-      <p>User management, API keys, and securing your LARS instance</p>
-    </div>
-  </div>
-  <div class="feature-item">
-    <iconify-icon icon="mdi:brain" class="feature-icon"></iconify-icon>
-    <div class="feature-content">
-      <h4><a href="#semantic-sql" data-link>Semantic SQL</a></h4>
-      <p>Query rewriting, caching, and all the semantic operators</p>
-    </div>
-  </div>
-  <div class="feature-item">
-    <iconify-icon icon="mdi:function" class="feature-icon"></iconify-icon>
-    <div class="feature-content">
-      <h4><a href="#operators" data-link>Built-in Operators</a></h4>
-      <p>100+ operators for filtering, logic, aggregation, and more</p>
-    </div>
-  </div>
-  <div class="feature-item">
-    <iconify-icon icon="mdi:database-cog" class="feature-icon"></iconify-icon>
-    <div class="feature-content">
-      <h4><a href="#sql-connections" data-link>SQL Connections</a></h4>
-      <p>Connect PostgreSQL, BigQuery, Snowflake, S3, and more</p>
-    </div>
-  </div>
-  <div class="feature-item">
-    <iconify-icon icon="mdi:code-json" class="feature-icon"></iconify-icon>
-    <div class="feature-content">
-      <h4><a href="#cascade-dsl" data-link>Cascade DSL</a></h4>
-      <p>Build multi-step LLM workflows in YAML</p>
-    </div>
-  </div>
-  <div class="feature-item">
-    <iconify-icon icon="mdi:server" class="feature-icon"></iconify-icon>
-    <div class="feature-content">
-      <h4><a href="#providers" data-link>AI Providers</a></h4>
-      <p>Configure Ollama, Vertex AI, AWS Bedrock, or Azure</p>
-    </div>
-  </div>
-  <div class="feature-item">
-    <iconify-icon icon="mdi:vector-combine" class="feature-icon"></iconify-icon>
-    <div class="feature-content">
-      <h4><a href="#embedding" data-link>Vector Search</a></h4>
-      <p>Embed data and use SIMILAR_TO for similarity search</p>
-    </div>
-  </div>
+<div class="next-steps-grid">
+  <a href="#semantic-sql" data-link class="next-step-card">
+    <h4>Semantic SQL</h4>
+    <p>Query rewriting, caching, and all the semantic operators</p>
+  </a>
+  <a href="#operators" data-link class="next-step-card">
+    <h4>Built-in Operators</h4>
+    <p>100+ operators for filtering, logic, aggregation, and more</p>
+  </a>
+  <a href="#sql-connections" data-link class="next-step-card">
+    <h4>SQL Connections</h4>
+    <p>Connect PostgreSQL, BigQuery, Snowflake, S3, and more</p>
+  </a>
+  <a href="#cascade-dsl" data-link class="next-step-card">
+    <h4>Cascade DSL</h4>
+    <p>Build multi-step LLM workflows in YAML</p>
+  </a>
+  <a href="#providers" data-link class="next-step-card">
+    <h4>AI Providers</h4>
+    <p>Configure Ollama, Vertex AI, AWS Bedrock, or Azure</p>
+  </a>
+  <a href="#embedding" data-link class="next-step-card">
+    <h4>Vector Search</h4>
+    <p>Embed data and use SIMILAR_TO for similarity search</p>
+  </a>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
-     ELASTICSEARCH (OPTIONAL - EXPANDABLE)
+     ELASTICSEARCH (OPTIONAL)
      ═══════════════════════════════════════════════════════════════════════════ -->
 
 <h2 id="elasticsearch">Elasticsearch (Optional)</h2>
 
-<details class="expandable-section">
+<details class="expandable">
   <summary>
-    <span class="expandable-label">Optional Setup</span>
     <span class="expandable-title">Add Elasticsearch for Hybrid Search</span>
   </summary>
   <div class="expandable-content">
-
-<p>
-  <strong>Elasticsearch is optional</strong> but enables powerful additional features:
-</p>
-
-<ul>
-  <li><strong>Hybrid Search</strong>: Combine semantic (vector) search with keyword (BM25) matching</li>
-  <li><strong>Better RAG</strong>: More precise document retrieval for SQL schema and document search</li>
-  <li><strong>KEYWORD_SEARCH</strong>: Pure BM25 search for exact term matching (SKUs, model numbers, codes)</li>
-  <li><strong>HYBRID_SEARCH</strong>: Tunable blend of semantic understanding + exact keyword matches</li>
-</ul>
-
-<div class="info-box tip">
-  <div class="info-box-title">When to Add Elasticsearch</div>
-  <p>
-    Skip this for now if you're just getting started. You can add Elasticsearch later when you need:
-  </p>
-  <ul>
-    <li>Hybrid semantic + keyword search (e.g., finding products by concept AND model number)</li>
-    <li>Better RAG precision for document Q&A systems</li>
-    <li>SQL schema search across large databases</li>
-  </ul>
-</div>
-
-<h3>Start Elasticsearch with Docker</h3>
-
-<div class="code-block">
-  <div class="code-block-header">
-    <span class="code-block-lang bash">Bash</span>
-  </div>
-  <div class="code-block-content">
-    <pre><span class="cmt"># Start Elasticsearch with single-node mode</span>
+    <p>
+      <strong>Elasticsearch is optional</strong> but enables powerful additional features:
+    </p>
+    <ul>
+      <li><strong>Hybrid Search</strong>: Combine semantic (vector) search with keyword (BM25) matching</li>
+      <li><strong>Better RAG</strong>: More precise document retrieval for SQL schema and document search</li>
+      <li><strong>KEYWORD_SEARCH</strong>: Pure BM25 search for exact term matching (SKUs, model numbers, codes)</li>
+      <li><strong>HYBRID_SEARCH</strong>: Tunable blend of semantic understanding + exact keyword matches</li>
+    </ul>
+    
+    <div class="info-box tip">
+      <div class="info-box-title">When to Add Elasticsearch</div>
+      <p>
+        Skip this for now if you're just getting started. You can add Elasticsearch later when you need:
+      </p>
+      <ul>
+        <li>Hybrid semantic + keyword search (e.g., finding products by concept AND model number)</li>
+        <li>Better RAG precision for document Q&A systems</li>
+        <li>SQL schema search across large databases</li>
+      </ul>
+    </div>
+    
+    <h3>Start Elasticsearch with Docker</h3>
+    
+    <div class="code-block">
+      <div class="code-block-header">
+        <span class="code-block-lang bash">Bash</span>
+      </div>
+      <div class="code-block-content">
+        <pre><span class="cmt"># Start Elasticsearch with single-node mode</span>
 docker run -d --name lars-elasticsearch \
   -p 9200:9200 \
   -p 9300:9300 \
@@ -432,117 +382,37 @@ until curl -s http://localhost:9200/_cluster/health > /dev/null 2>&1; do
   sleep 2
 done
 echo "Elasticsearch is ready!"</pre>
-  </div>
-</div>
-
-<h3>Docker Compose (With Kibana UI)</h3>
-
-<p>For a complete setup including Kibana for monitoring:</p>
-
-<div class="code-block">
-  <div class="code-block-header">
-    <span class="code-block-lang yaml">docker-compose.elastic.yml</span>
-  </div>
-  <div class="code-block-content">
-    <pre><span class="key">version</span>: <span class="str">'3.8'</span>
-
-<span class="key">services</span>:
-  <span class="key">elasticsearch</span>:
-    <span class="key">image</span>: <span class="str">docker.elastic.co/elasticsearch/elasticsearch:8.11.3</span>
-    <span class="key">container_name</span>: <span class="str">lars-elasticsearch</span>
-    <span class="key">environment</span>:
-      - <span class="str">discovery.type=single-node</span>
-      - <span class="str">xpack.security.enabled=false</span>
-      - <span class="str">"ES_JAVA_OPTS=-Xms512m -Xmx512m"</span>
-      - <span class="str">cluster.routing.allocation.disk.threshold_enabled=false</span>
-    <span class="key">ports</span>:
-      - <span class="str">"9200:9200"</span>   <span class="cmt"># HTTP API</span>
-      - <span class="str">"9300:9300"</span>   <span class="cmt"># Transport protocol</span>
-    <span class="key">volumes</span>:
-      - <span class="str">lars-es-data:/usr/share/elasticsearch/data</span>
-    <span class="key">healthcheck</span>:
-      <span class="key">test</span>: [<span class="str">"CMD-SHELL"</span>, <span class="str">"curl -f http://localhost:9200/_cluster/health || exit 1"</span>]
-      <span class="key">interval</span>: <span class="str">10s</span>
-      <span class="key">timeout</span>: <span class="str">5s</span>
-      <span class="key">retries</span>: <span class="num">5</span>
-
-  <span class="key">kibana</span>:
-    <span class="key">image</span>: <span class="str">docker.elastic.co/kibana/kibana:8.11.3</span>
-    <span class="key">container_name</span>: <span class="str">lars-kibana</span>
-    <span class="key">environment</span>:
-      - <span class="str">ELASTICSEARCH_HOSTS=http://elasticsearch:9200</span>
-      - <span class="str">xpack.security.enabled=false</span>
-    <span class="key">ports</span>:
-      - <span class="str">"5601:5601"</span>   <span class="cmt"># Kibana UI</span>
-    <span class="key">depends_on</span>:
-      <span class="key">elasticsearch</span>:
-        <span class="key">condition</span>: <span class="str">service_healthy</span>
-
-<span class="key">volumes</span>:
-  <span class="key">lars-es-data</span>:</pre>
-  </div>
-</div>
-
-<div class="code-block">
-  <div class="code-block-header">
-    <span class="code-block-lang bash">Bash</span>
-  </div>
-  <div class="code-block-content">
-    <pre><span class="cmt"># Start with Docker Compose</span>
-docker compose -f docker-compose.elastic.yml up -d</pre>
-  </div>
-</div>
-
-<h3>Configure Environment Variable</h3>
-
-<p>Add this to your <code>.env</code> file to enable Elasticsearch:</p>
-
-<div class="code-block">
-  <div class="code-block-header">
-    <span class="code-block-lang config">.env</span>
-  </div>
-  <div class="code-block-content">
-    <pre><span class="key">LARS_ELASTICSEARCH_HOST</span>=<span class="str">http://localhost:9200</span></pre>
-  </div>
-</div>
-
-<div class="info-box note">
-  <div class="info-box-title">Automatic Detection</div>
-  <p>
-    When <code>LARS_ELASTICSEARCH_HOST</code> is set, LARS automatically:
-  </p>
-  <ul>
-    <li>Registers <code>HYBRID_SEARCH</code>, <code>KEYWORD_SEARCH</code>, and <code>ELASTIC_SEARCH</code> functions</li>
-    <li>Enables the <code>backend='elastic'</code> option for <code>LARS EMBED</code> statements</li>
-    <li>Uses Elasticsearch for SQL schema search (better autocomplete and discovery)</li>
-  </ul>
-  <p>
-    If the environment variable is not set, these features simply won't be available,
-    and LARS will use ClickHouse for all vector search operations.
-  </p>
-</div>
-
-<h3>Verify Elasticsearch</h3>
-
-<div class="code-block">
-  <div class="code-block-header">
-    <span class="code-block-lang bash">Bash</span>
-  </div>
-  <div class="code-block-content">
-    <pre><span class="cmt"># Check cluster health</span>
-curl http://localhost:9200/_cluster/health | jq</pre>
-  </div>
-</div>
-
-<div class="info-box note">
-  <div class="info-box-title">Elasticsearch Ports</div>
-  <ul>
-    <li><strong>9200</strong>: HTTP API (used by LARS)</li>
-    <li><strong>9300</strong>: Transport protocol (internal cluster communication)</li>
-    <li><strong>5601</strong>: Kibana UI (if using docker-compose)</li>
-  </ul>
-</div>
-
+      </div>
+    </div>
+    
+    <h3>Configure Environment Variable</h3>
+    
+    <p>Add this to your <code>.env</code> file to enable Elasticsearch:</p>
+    
+    <div class="code-block">
+      <div class="code-block-header">
+        <span class="code-block-lang env">.env</span>
+      </div>
+      <div class="code-block-content">
+        <pre>LARS_ELASTICSEARCH_HOST=http://localhost:9200</pre>
+      </div>
+    </div>
+    
+    <div class="info-box note">
+      <div class="info-box-title">Automatic Detection</div>
+      <p>
+        When <code>LARS_ELASTICSEARCH_HOST</code> is set, LARS automatically:
+      </p>
+      <ul>
+        <li>Registers <code>HYBRID_SEARCH</code>, <code>KEYWORD_SEARCH</code>, and <code>ELASTIC_SEARCH</code> functions</li>
+        <li>Enables the <code>backend='elastic'</code> option for <code>LARS EMBED</code> statements</li>
+        <li>Uses Elasticsearch for SQL schema search (better autocomplete and discovery)</li>
+      </ul>
+      <p>
+        If the environment variable is not set, these features simply won't be available,
+        and LARS will use DuckDB for all vector search operations.
+      </p>
+    </div>
   </div>
 </details>
 
@@ -551,34 +421,6 @@ curl http://localhost:9200/_cluster/health | jq</pre>
      ═══════════════════════════════════════════════════════════════════════════ -->
 
 <h2 id="troubleshooting">Troubleshooting</h2>
-
-<h3>ClickHouse Connection Errors</h3>
-
-<div class="info-box warning">
-  <div class="info-box-title">Error: Connection refused</div>
-  <div class="code-block">
-    <div class="code-block-content">
-      <pre><span class="cmt"># Check if ClickHouse is running</span>
-docker ps | grep clickhouse
-
-<span class="cmt"># Check logs</span>
-docker logs lars-clickhouse
-
-<span class="cmt"># Restart if needed</span>
-docker restart lars-clickhouse</pre>
-    </div>
-  </div>
-</div>
-
-<div class="info-box warning">
-  <div class="info-box-title">Error: Table doesn't exist</div>
-  <p>Run database initialization:</p>
-  <div class="code-block">
-    <div class="code-block-content">
-      <pre>lars db init</pre>
-    </div>
-  </div>
-</div>
 
 <h3>API Key Issues</h3>
 
@@ -591,7 +433,7 @@ docker restart lars-clickhouse</pre>
 echo $OPENROUTER_API_KEY
 
 <span class="cmt"># Or add to .env file</span>
-echo "OPENROUTER_API_KEY=sk-or-v1-your-key" >> .env
+echo "OPENROUTER_API_KEY=sk-or-v1-your-key" >> ~/.lars/.env
 
 <span class="cmt"># Verify setup</span>
 lars doctor</pre>
@@ -622,7 +464,7 @@ lars serve studio --port 5051</pre>
 
 <div class="code-block">
   <div class="code-block-header">
-    <span class="code-block-lang bash">Common Commands</span>
+    <span class="code-block-lang bash">Bash</span>
   </div>
   <div class="code-block-content">
     <pre><span class="cmt"># Health check</span>
