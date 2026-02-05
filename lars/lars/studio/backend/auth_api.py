@@ -168,8 +168,23 @@ def get_current_user():
     """
     try:
         from lars.auth import get_auth_manager
+        import os
+        import sys
 
         auth = get_auth_manager()
+        
+        # Debug: Log auth context
+        auth_header = request.headers.get('Authorization', '')
+        print(f"[Auth/me DEBUG] PID={os.getpid()} Auth header present: {bool(auth_header)}", file=sys.stderr, flush=True)
+        print(f"[Auth/me DEBUG] g.user={getattr(g, 'user', 'NOT SET')}", file=sys.stderr, flush=True)
+        print(f"[Auth/me DEBUG] g.user_id={getattr(g, 'user_id', 'NOT SET')}", file=sys.stderr, flush=True)
+        
+        # Try manual validation if g.user is not set
+        if not getattr(g, 'user', None) and auth_header.startswith('Bearer '):
+            token = auth_header[7:]
+            print(f"[Auth/me DEBUG] Trying manual validation for token: {token[:30]}...", file=sys.stderr, flush=True)
+            manual_result = auth.validate_api_key(token)
+            print(f"[Auth/me DEBUG] Manual validation result: {manual_result}", file=sys.stderr, flush=True)
 
         # Check if auth is enabled
         if not auth.is_enabled():
