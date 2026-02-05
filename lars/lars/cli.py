@@ -3185,7 +3185,14 @@ def cmd_sql_test(args):
                     cpu_pct = 0.0
                 
                 # Get per-thread CPU via ps -M (macOS specific)
-                hot_threads = []
+                # Build native_id -> thread name mapping
+                native_to_name = {}
+                for t in threads:
+                    nid = getattr(t, 'native_id', None)
+                    if nid:
+                        native_to_name[nid] = t.name
+                
+                hot_threads = []  # List of (cpu%, native_id, name)
                 try:
                     result = subprocess.run(['ps', '-M', '-p', str(pid)], 
                                           capture_output=True, text=True, timeout=1)
@@ -3193,18 +3200,23 @@ def cmd_sql_test(args):
                         parts = line.split()
                         if len(parts) >= 4:
                             thread_cpu = float(parts[3]) if parts[3].replace('.', '').isdigit() else 0.0
+                            # Try to get native thread ID from ps output (varies by macOS version)
+                            # Format is usually: USER PID TT %CPU STAT ... or similar
                             if thread_cpu > 5.0:  # Only show threads using >5% CPU
-                                hot_threads.append(thread_cpu)
+                                hot_threads.append((thread_cpu, None, "native"))
                 except:
                     pass
                 
                 hot_str = f" | Hot: {len(hot_threads)} threads" if hot_threads else ""
                 f.write(f"\n=== {time.strftime('%H:%M:%S')} | {fn_name} test {i} | Threads: {len(threads)} | Mem: {mem_mb:.0f}MB | CPU: {cpu_pct:.1f}%{hot_str} ===\n")
                 
-                # Show hot thread details if any
+                # Show hot thread details - note: can't correlate native threads to Python threads easily
                 if hot_threads:
                     hot_threads.sort(reverse=True)
-                    f.write(f"  [HOT THREADS] {', '.join(f'{c:.1f}%' for c in hot_threads[:5])}\n")
+                    cpu_vals = [h[0] for h in hot_threads[:5]]
+                    f.write(f"  [HOT THREADS] {', '.join(f'{c:.1f}%' for c in cpu_vals)}\n")
+                    # Note: Hot threads are native threads (DuckDB internal, etc.) - not visible as Python threads
+                    f.write(f"  (Note: High CPU likely from DuckDB native threads, not Python threads)\n")
                 
                 # Show FULL thread names with native IDs to help correlation
                 for t in sorted(threads, key=lambda x: x.name):
