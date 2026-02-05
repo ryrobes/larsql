@@ -430,13 +430,20 @@ def _execute_internal_sql(sql: str, timeout_seconds: int = 300) -> tuple:
         return None, str(e)
 
 
-def _execute_psql_simple_sql(sql: str, host: str = 'localhost', port: int = 15433, database: str = 'lars') -> tuple:
+def _execute_psql_simple_sql(sql: str, host: str = 'localhost', port: int = None, database: str = 'lars') -> tuple:
     """Execute SQL via psql CLI (Simple Query Protocol)."""
     import shutil
+    from .pgwire_client import get_pgwire_port
     
     # Skip gracefully if psql not installed
     if not shutil.which('psql'):
         return None, "SKIP:psql not installed"
+    
+    # Dynamically determine port if not specified
+    if port is None:
+        port = get_pgwire_port()
+        if port is None:
+            return None, "SKIP:No pgwire server available (tried 15432, 15433)"
     
     try:
         result = subprocess.run(
@@ -477,12 +484,20 @@ def _execute_psql_simple_sql(sql: str, host: str = 'localhost', port: int = 1543
         return None, str(e)
 
 
-def _execute_extended_sql(sql: str, host: str = 'localhost', port: int = 15433, database: str = 'lars') -> tuple:
+def _execute_extended_sql(sql: str, host: str = 'localhost', port: int = None, database: str = 'lars') -> tuple:
     """Execute SQL via psycopg (Extended Query Protocol)."""
+    from .pgwire_client import get_pgwire_port
+    
     try:
         import psycopg
     except ImportError as e:
         return None, f"SKIP:psycopg not installed ({e})"
+    
+    # Dynamically determine port if not specified
+    if port is None:
+        port = get_pgwire_port()
+        if port is None:
+            return None, "SKIP:No pgwire server available (tried 15432, 15433)"
     
     try:
         conn = psycopg.connect(
