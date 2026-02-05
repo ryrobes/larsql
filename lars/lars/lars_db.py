@@ -1708,6 +1708,7 @@ class LarsDB:
             DuckDB connection ready for queries
         """
         conn = duckdb.connect()  # In-memory, stateless
+        conn.execute("SET threads TO 4")  # Limit CPU usage
         self._load_extensions(conn)
         self._register_system_views(conn)
         self._register_derived_views(conn)
@@ -2245,6 +2246,7 @@ class LarsDB:
             try:
                 # Read via DuckDB for better dedup support
                 conn = duckdb.connect()
+                conn.execute("SET threads TO 4")  # Limit CPU usage
                 parquet_glob = str(table_dir / "*.parquet")
                 
                 # Count rows before

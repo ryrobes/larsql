@@ -3157,15 +3157,18 @@ def cmd_sql_test(args):
             log_path = os.path.expanduser("~/thread_debug.log")
             with open(log_path, "a") as f:
                 import time
-                # Get actual RSS via ps (ru_maxrss is peak, not current)
+                # Get actual RSS and CPU via ps
                 try:
-                    result = subprocess.run(['ps', '-o', 'rss=', '-p', str(os.getpid())], 
+                    result = subprocess.run(['ps', '-o', 'rss=,%cpu=', '-p', str(os.getpid())], 
                                           capture_output=True, text=True, timeout=1)
-                    mem_kb = int(result.stdout.strip())
+                    parts = result.stdout.strip().split()
+                    mem_kb = int(parts[0]) if parts else 0
                     mem_mb = mem_kb / 1024
+                    cpu_pct = float(parts[1]) if len(parts) > 1 else 0.0
                 except:
                     mem_mb = 0
-                f.write(f"\n=== {time.strftime('%H:%M:%S')} | {fn_name} test {i} | Threads: {len(threads)} | Mem: {mem_mb:.0f}MB ===\n")
+                    cpu_pct = 0.0
+                f.write(f"\n=== {time.strftime('%H:%M:%S')} | {fn_name} test {i} | Threads: {len(threads)} | Mem: {mem_mb:.0f}MB | CPU: {cpu_pct:.1f}% ===\n")
                 # Show FULL thread names to identify source
                 for t in sorted(threads, key=lambda x: x.name):
                     f.write(f"  {t.name} (daemon={t.daemon}, alive={t.is_alive()})\n")
