@@ -831,23 +831,21 @@ class EphemeralRagManager:
 
     def cleanup(self):
         """
-        Delete all ephemeral indexes created by this manager.
+        Clean up ephemeral RAG tracking state.
 
         This should be called when the cell execution completes (success or failure).
+        
+        Note: rag_chunks rows are NOT deleted - they accumulate in parquet files
+        (append-only storage). Periodic offline compaction can remove old data.
+        DuckDB vector store entries ARE cleaned up since that uses a real table.
         """
         if not self.replacements:
             return
 
         rag_ids = list(self.replacements.keys())
 
+        # Clean up DuckDB vector store entries (these CAN be deleted)
         for rag_id in rag_ids:
-            try:
-                self.db.execute(f"DELETE FROM rag_chunks WHERE rag_id = '{rag_id}'")
-                logger.debug(f"[Ephemeral-RAG] Cleaned up: {rag_id}")
-            except Exception as e:
-                logger.warning(f"[Ephemeral-RAG] Cleanup failed for {rag_id}: {e}")
-
-            # Best-effort delete vectors from DuckDB store.
             try:
                 if self._embedding_dim:
                     from .config import get_config
@@ -855,15 +853,16 @@ class EphemeralRagManager:
 
                     embed_model = get_config().default_embed_model
                     delete_by_rag_id(embed_model, int(self._embedding_dim), rag_id)
+                    logger.debug(f"[Ephemeral-RAG] Cleaned up vectors for: {rag_id}")
             except Exception as e:
                 logger.debug(f"[Ephemeral-RAG] DuckDB cleanup failed for {rag_id}: {e}")
 
-        # Clear tracking
+        # Clear in-memory tracking
         self.replacements.clear()
         self._tools.clear()
         self._used_tool_names.clear()
 
-        logger.info(f"[Ephemeral-RAG] Cleaned up {len(rag_ids)} ephemeral indexes")
+        logger.debug(f"[Ephemeral-RAG] Cleared tracking for {len(rag_ids)} ephemeral indexes")
 
     def get_stats(self) -> Dict[str, Any]:
         """Get statistics about this manager's activity."""
