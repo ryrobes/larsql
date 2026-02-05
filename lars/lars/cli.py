@@ -3118,6 +3118,54 @@ def cmd_sql_test(args):
                         'mode': run_mode
                     })
 
+            # === MEMORY CLEANUP ===
+            # Clean up echo sessions to prevent memory leak
+            from lars.echo import cleanup_all_echoes
+            cleanup_all_echoes()
+            
+            # Clear L1 semantic cache
+            try:
+                from lars.sql_tools.cache_adapter import SemanticCache
+                cache = SemanticCache.get_instance()
+                with cache._l1_lock:
+                    cache._l1_cache.clear()
+            except:
+                pass
+            
+            # Clear litellm in-memory client cache
+            try:
+                import litellm
+                if hasattr(litellm, 'in_memory_llm_clients_cache'):
+                    litellm.in_memory_llm_clients_cache.flush_cache()
+            except:
+                pass
+            
+            import gc
+            gc.collect()
+            # === END MEMORY CLEANUP ===
+
+            # === THREAD DEBUG LOGGING ===
+            import threading
+            import os
+            import subprocess
+            threads = threading.enumerate()
+            log_path = os.path.expanduser("~/thread_debug.log")
+            with open(log_path, "a") as f:
+                import time
+                # Get actual RSS via ps (ru_maxrss is peak, not current)
+                try:
+                    result = subprocess.run(['ps', '-o', 'rss=', '-p', str(os.getpid())], 
+                                          capture_output=True, text=True, timeout=1)
+                    mem_kb = int(result.stdout.strip())
+                    mem_mb = mem_kb / 1024
+                except:
+                    mem_mb = 0
+                f.write(f"\n=== {time.strftime('%H:%M:%S')} | {fn_name} test {i} | Threads: {len(threads)} | Mem: {mem_mb:.0f}MB ===\n")
+                # Show FULL thread names to identify source
+                for t in sorted(threads, key=lambda x: x.name):
+                    f.write(f"  {t.name} (daemon={t.daemon}, alive={t.is_alive()})\n")
+            # === END THREAD DEBUG ===
+
             # Display result
             if len(modes_to_run) == 1:
                 # Single mode - simple display

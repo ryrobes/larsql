@@ -631,6 +631,55 @@ def _run_semantic_sql_test(test: TestDefinition, mode: str = 'internal') -> Test
     except Exception:
         pass  # Best effort - don't fail test if this doesn't work
 
+    # === MEMORY CLEANUP ===
+    from lars.echo import cleanup_all_echoes
+    cleanup_all_echoes()
+    
+    # Clear L1 semantic cache
+    try:
+        from lars.sql_tools.cache_adapter import SemanticCache
+        cache = SemanticCache.get_instance()
+        with cache._l1_lock:
+            cache._l1_cache.clear()
+    except:
+        pass
+    
+    # Clear litellm in-memory client cache
+    try:
+        import litellm
+        if hasattr(litellm, 'in_memory_llm_clients_cache'):
+            litellm.in_memory_llm_clients_cache.flush_cache()
+    except:
+        pass
+    
+    import gc
+    gc.collect()
+    # === END MEMORY CLEANUP ===
+
+    # === THREAD DEBUG LOGGING ===
+    import threading
+    import os
+    import subprocess
+    threads = threading.enumerate()
+    log_path = os.path.expanduser("~/thread_debug.log")
+    with open(log_path, "a") as f:
+        import time
+        try:
+            result = subprocess.run(['ps', '-o', 'rss=', '-p', str(os.getpid())], 
+                                  capture_output=True, text=True, timeout=1)
+            mem_kb = int(result.stdout.strip())
+            mem_mb = mem_kb / 1024
+        except:
+            mem_mb = 0
+        f.write(f"\n=== {time.strftime('%H:%M:%S')} | {test.test_id} | Threads: {len(threads)} | Mem: {mem_mb:.0f}MB ===\n")
+        thread_names = {}
+        for t in threads:
+            name = t.name.split('-')[0] if '-' in t.name else t.name
+            thread_names[name] = thread_names.get(name, 0) + 1
+        for name, count in sorted(thread_names.items(), key=lambda x: -x[1]):
+            f.write(f"  {name}: {count}\n")
+    # === END THREAD DEBUG ===
+
     return result
 
 

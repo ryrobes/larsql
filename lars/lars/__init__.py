@@ -24,6 +24,8 @@ _LAZY_IMPORTS = {
     "TraceContext": (".checkpoints", "TraceContext"),
     "create_eddy": (".skills.base", "create_eddy"),
     "get_echo": (".echo", "get_echo"),
+    "cleanup_echo": (".echo", "cleanup_echo"),
+    "cleanup_all_echoes": (".echo", "cleanup_all_echoes"),
     # Browser management
     "BrowserSession": (".browser_manager", "BrowserSession"),
     "BrowserSessionManager": (".browser_manager", "BrowserSessionManager"),
@@ -341,6 +343,8 @@ __all__ = [
     "register_cascade_as_tool",
     "create_eddy",
     "get_echo",
+    "cleanup_echo",
+    "cleanup_all_echoes",
     "get_checkpoint_manager",
     "CheckpointStatus",
     "CheckpointType",

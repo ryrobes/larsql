@@ -9,13 +9,9 @@ import re
 import asyncio
 import copy
 from typing import Any, Dict, Optional, List, Tuple, Union
-from concurrent.futures import ThreadPoolExecutor
 import logging
 
 log = logging.getLogger(__name__)
-
-# Shared thread pool for cascade execution
-_executor = ThreadPoolExecutor(max_workers=8)
 
 # Pattern for takes config embedded in criterion strings
 # Format: __LARS_TAKES:{"factor":3,"evaluator":"..."}__

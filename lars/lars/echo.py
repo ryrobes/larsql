@@ -284,6 +284,23 @@ class SessionManager:
     def __init__(self):
         self.sessions: Dict[str, Echo] = {}
 
+    def cleanup_session(self, session_id: str) -> bool:
+        """Remove a session from the manager to free memory."""
+        if session_id in self.sessions:
+            del self.sessions[session_id]
+            if _DEBUG:
+                print(f"[SessionManager] Cleaned up session {session_id}")
+            return True
+        return False
+
+    def cleanup_all(self) -> int:
+        """Remove all sessions. Returns count of sessions cleaned."""
+        count = len(self.sessions)
+        self.sessions.clear()
+        if _DEBUG:
+            print(f"[SessionManager] Cleaned up all {count} sessions")
+        return count
+
     def get_session(self, session_id: str, parent_session_id: str | None = None,
                    caller_id: str | None = None, invocation_metadata: Dict | None = None) -> Echo:
         if session_id not in self.sessions:
@@ -314,3 +331,13 @@ _session_manager = SessionManager()
 def get_echo(session_id: str, parent_session_id: str | None = None,
             caller_id: str | None = None, invocation_metadata: Dict | None = None) -> Echo:
     return _session_manager.get_session(session_id, parent_session_id, caller_id, invocation_metadata)
+
+
+def cleanup_echo(session_id: str) -> bool:
+    """Clean up an echo session to free memory. Call after cascade completion."""
+    return _session_manager.cleanup_session(session_id)
+
+
+def cleanup_all_echoes() -> int:
+    """Clean up all echo sessions. Returns count cleaned."""
+    return _session_manager.cleanup_all()
