@@ -1499,6 +1499,7 @@ SYSTEM_TABLES = {
             ("data_columns", "INTEGER"),
         ],
         "partition_by": None,
+        "hive_partition_by": ["caller_id", "session_id"],  # Hive-style folder partitioning
     },
 
     "watch_executions": {
@@ -1747,7 +1748,17 @@ class LarsDB:
         
         for table_name, schema in SYSTEM_TABLES.items():
             table_dir = system_dir / table_name
-            parquet_glob = str(table_dir / "*.parquet")
+            
+            # Check if table uses Hive-style partitioning
+            hive_partition_cols = schema.get("hive_partition_by", [])
+            if hive_partition_cols:
+                # Recursive glob for partitioned tables
+                parquet_glob = str(table_dir / "**" / "*.parquet")
+                read_opts = "union_by_name=true, filename=true, hive_partitioning=true"
+            else:
+                # Flat glob for non-partitioned tables
+                parquet_glob = str(table_dir / "*.parquet")
+                read_opts = "union_by_name=true, filename=true"
             
             # Build column list for the view
             columns = ", ".join(f'"{col}"' for col, _ in schema["columns"])
@@ -1764,7 +1775,7 @@ class LarsDB:
                 raw_view_sql = f"""
                     CREATE OR REPLACE VIEW {raw_view_name} AS
                     SELECT *
-                    FROM read_parquet('{parquet_glob}', union_by_name=true, filename=true)
+                    FROM read_parquet('{parquet_glob}', {read_opts})
                 """
                 
                 try:
@@ -1821,7 +1832,7 @@ class LarsDB:
                 view_sql = f"""
                     CREATE OR REPLACE VIEW {table_name} AS
                     SELECT *
-                    FROM read_parquet('{parquet_glob}', union_by_name=true, filename=true)
+                    FROM read_parquet('{parquet_glob}', {read_opts})
                 """
                 
                 try:
@@ -2074,56 +2085,14 @@ class LarsDB:
         except Exception:
             pass
     
-    def write(
-        self, 
-        table: str, 
-        rows: List[Dict[str, Any]], 
-        partition_key: Optional[str] = None
-    ) -> str:
+    def _write_rows_to_file(self, filepath: Path, rows: List[Dict[str, Any]], schema_def: dict) -> str:
         """
-        Append rows to a table (writes new parquet file).
+        Write rows to a parquet file. Internal helper for write().
         
-        Each write creates a new parquet file with a unique name.
-        Multiple processes can write simultaneously without coordination.
-        
-        Args:
-            table: Table name (e.g., 'unified_logs', 'session_state')
-            rows: List of row dictionaries
-            partition_key: Optional partition key for file naming
-            
-        Returns:
-            Path to the written parquet file
+        Handles normalization, type coercion, and atomic write.
         """
-        if not rows:
-            return ""
-        
-        # Determine output directory
-        if table in SYSTEM_TABLES:
-            table_dir = self.root / "system" / table
-        else:
-            # User table - expect format "dbname.tablename"
-            parts = table.split(".", 1)
-            if len(parts) == 2:
-                db_name, tbl_name = parts
-            else:
-                db_name, tbl_name = "default", table
-            table_dir = self.root / "user" / db_name / tbl_name
-        
-        table_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Generate unique filename
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        unique_id = uuid.uuid4().hex[:8]
-        partition_suffix = f"_{partition_key}" if partition_key else ""
-        filename = f"{timestamp}_{unique_id}{partition_suffix}.parquet"
-        filepath = table_dir / filename
-        
-        # Get schema if known
-        schema_def = SYSTEM_TABLES.get(table, {})
-        
-        # Convert rows to PyArrow table
         # Normalize rows to ensure all columns are present
-        if schema_def:
+        if schema_def and schema_def.get("columns"):
             normalized_rows = []
             column_names = [col for col, _ in schema_def["columns"]]
             for row in rows:
@@ -2155,7 +2124,7 @@ class LarsDB:
         rows = [{k: _sanitize_nat(v) for k, v in row.items()} for row in rows]
         
         # Convert to Arrow and write with explicit schema (prevents type inference mismatches)
-        if schema_def:
+        if schema_def and schema_def.get("columns"):
             # Coerce values to match schema types (PyArrow doesn't auto-coerce)
             type_map = {col: dtype for col, dtype in schema_def["columns"]}
             coerced_rows = []
@@ -2202,6 +2171,98 @@ class LarsDB:
         
         return str(filepath)
     
+    def write(
+        self, 
+        table: str, 
+        rows: List[Dict[str, Any]], 
+        partition_key: Optional[str] = None
+    ) -> str:
+        """
+        Append rows to a table (writes new parquet file).
+        
+        Each write creates a new parquet file with a unique name.
+        Multiple processes can write simultaneously without coordination.
+        
+        Args:
+            table: Table name (e.g., 'unified_logs', 'session_state')
+            rows: List of row dictionaries
+            partition_key: Optional partition key for file naming
+            
+        Returns:
+            Path to the written parquet file
+        """
+        if not rows:
+            return ""
+        
+        # Get schema if known
+        schema_def = SYSTEM_TABLES.get(table, {})
+        
+        # Check for Hive-style partitioning
+        hive_partition_cols = schema_def.get("hive_partition_by", [])
+        
+        # Determine base output directory
+        if table in SYSTEM_TABLES:
+            base_table_dir = self.root / "system" / table
+        else:
+            # User table - expect format "dbname.tablename"
+            parts = table.split(".", 1)
+            if len(parts) == 2:
+                db_name, tbl_name = parts
+            else:
+                db_name, tbl_name = "default", table
+            base_table_dir = self.root / "user" / db_name / tbl_name
+        
+        # If Hive partitioning is enabled, group rows by partition values
+        if hive_partition_cols:
+            from collections import defaultdict
+            partitioned_rows = defaultdict(list)
+            
+            for row in rows:
+                # Build partition path from column values
+                partition_parts = []
+                for col in hive_partition_cols:
+                    val = row.get(col)
+                    # Handle None/NULL values with Hive default partition name
+                    if val is None or val == "":
+                        val = "__HIVE_DEFAULT_PARTITION__"
+                    # Sanitize value for filesystem (replace / and other problematic chars)
+                    val_str = str(val).replace("/", "_").replace("\\", "_").replace(":", "_")
+                    partition_parts.append(f"{col}={val_str}")
+                
+                partition_path = "/".join(partition_parts)
+                partitioned_rows[partition_path].append(row)
+            
+            # Write each partition separately
+            written_paths = []
+            for partition_path, partition_rows in partitioned_rows.items():
+                table_dir = base_table_dir / partition_path
+                table_dir.mkdir(parents=True, exist_ok=True)
+                
+                # Generate unique filename
+                timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+                unique_id = uuid.uuid4().hex[:8]
+                filename = f"{timestamp}_{unique_id}.parquet"
+                filepath = table_dir / filename
+                
+                # Write this partition's rows (reuse the logic below via recursion-safe flag)
+                self._write_rows_to_file(filepath, partition_rows, schema_def)
+                written_paths.append(str(filepath))
+            
+            return ",".join(written_paths)  # Return all written paths
+        
+        # Non-partitioned write
+        table_dir = base_table_dir
+        table_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Generate unique filename
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        unique_id = uuid.uuid4().hex[:8]
+        partition_suffix = f"_{partition_key}" if partition_key else ""
+        filename = f"{timestamp}_{unique_id}{partition_suffix}.parquet"
+        filepath = table_dir / filename
+        
+        return self._write_rows_to_file(filepath, rows, schema_def)
+    
     def compact(self, table: str, threshold: int = 2, force: bool = False) -> dict:
         """
         Merge parquet files into larger ones, applying dedup for tables with PK.
@@ -2235,6 +2296,42 @@ class LarsDB:
         if not table_dir.exists():
             return result
         
+        # Check if this table uses Hive partitioning
+        hive_partition_cols = schema_def.get("hive_partition_by", [])
+        
+        if hive_partition_cols:
+            # For partitioned tables, compact within each partition directory
+            # Find all leaf partition directories (containing .parquet files)
+            all_parquet_files = list(table_dir.glob("**/*.parquet"))
+            partition_dirs = set(f.parent for f in all_parquet_files)
+            
+            total_before = 0
+            total_after = 0
+            rows_before = 0
+            rows_after = 0
+            
+            for part_dir in partition_dirs:
+                part_result = self._compact_directory(part_dir, schema_def, threshold, force)
+                total_before += part_result.get("files_before", 0)
+                total_after += part_result.get("files_after", 0)
+                rows_before += part_result.get("rows_before", 0)
+                rows_after += part_result.get("rows_after", 0)
+            
+            result["files_before"] = total_before
+            result["files_after"] = total_after
+            result["rows_before"] = rows_before
+            result["rows_after"] = rows_after
+            result["partitions_compacted"] = len(partition_dirs)
+            return result
+        
+        # Non-partitioned table - compact the flat directory
+        return self._compact_directory(table_dir, schema_def, threshold, force)
+    
+    def _compact_directory(self, table_dir: Path, schema_def: dict, threshold: int, force: bool) -> dict:
+        """Compact parquet files in a single directory."""
+        result = {"files_before": 0, "files_after": 0, 
+                  "rows_before": 0, "rows_after": 0, "dedup_applied": False}
+        
         parquet_files = list(table_dir.glob("*.parquet"))
         result["files_before"] = len(parquet_files)
         
@@ -2250,7 +2347,9 @@ class LarsDB:
             try:
                 # Read via DuckDB for better dedup support
                 conn = duckdb.connect()
-                conn.execute("SET threads TO 4")  # Limit CPU usage
+                import os
+                duckdb_threads = int(os.environ.get("LARS_DUCKDB_THREADS", "2"))
+                conn.execute(f"SET threads TO {duckdb_threads}")
                 parquet_glob = str(table_dir / "*.parquet")
                 
                 # Count rows before
