@@ -2467,6 +2467,10 @@ class LarsDB:
                         f.unlink()
                 
                 result["files_after"] = 1
+                
+                # Clear cached connections so they re-register views with new files
+                self.clear_cached_connection()
+                
                 return result
                 
             except Exception as e:
@@ -2516,31 +2520,38 @@ class LarsDB:
         rows = 0
         
         # Use cached connection to avoid view re-registration overhead
-        conn = self.get_cached_connection()
-        try:
-            if params:
-                result = conn.execute(sql, params)
-            else:
-                result = conn.execute(sql)
-            
-            if output_format == "dataframe":
-                df = result.fetchdf()
-                rows = len(df)
-                return df
-            elif output_format == "dict":
-                df = result.fetchdf()
-                rows = len(df)
-                return df.to_dict(orient="records")
-            else:
-                data = result.fetchall()
-                rows = len(data) if data else 0
-                return data
-        finally:
-            # Don't close - it's cached for reuse
-            # Debug file logging (when LARS_QUERY_DEBUG=1)
-            duration_ms = (time.time() - start_time) * 1000
-            if os.environ.get("LARS_QUERY_DEBUG"):
-                self._log_query_debug('query', sql, duration_ms, rows)
+        # Retry once with fresh connection if stale (e.g., after compaction deleted files)
+        for attempt in range(2):
+            conn = self.get_cached_connection()
+            try:
+                if params:
+                    result = conn.execute(sql, params)
+                else:
+                    result = conn.execute(sql)
+                
+                if output_format == "dataframe":
+                    df = result.fetchdf()
+                    rows = len(df)
+                    return df
+                elif output_format == "dict":
+                    df = result.fetchdf()
+                    rows = len(df)
+                    return df.to_dict(orient="records")
+                else:
+                    data = result.fetchall()
+                    rows = len(data) if data else 0
+                    return data
+            except Exception as e:
+                # If file not found (stale connection after compaction), retry with fresh connection
+                if attempt == 0 and ("No such file" in str(e) or "Could not" in str(e)):
+                    self.clear_cached_connection()
+                    continue
+                raise
+            finally:
+                # Debug file logging (when LARS_QUERY_DEBUG=1)
+                duration_ms = (time.time() - start_time) * 1000
+                if os.environ.get("LARS_QUERY_DEBUG"):
+                    self._log_query_debug('query', sql, duration_ms, rows)
     
     def execute(self, sql: str, params: Optional[List[Any]] = None):
         """
