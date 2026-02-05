@@ -8353,9 +8353,10 @@ def bootstrap_wizard():
         
         for tier in ["embedding", "fast", "standard", "quality", "flagship"]:
             tier_models = filter_models_for_tier(all_models, tier)
+            console.print(f"[dim]  {tier}: {len(tier_models)} candidates[/dim]")
             
             if not tier_models:
-                console.print(f"  [yellow]⚠ No {tier} models available[/yellow]")
+                console.print(f"  [yellow]⚠️ No {tier} models available[/yellow]")
                 model_tiers[tier] = defaults.get(tier, "")
                 continue
             
