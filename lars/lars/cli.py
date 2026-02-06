@@ -1390,6 +1390,11 @@ def main():
         action='store_true',
         help='Skip interactive wizard, use defaults/env vars'
     )
+    bootstrap_parser.add_argument(
+        '--cli',
+        action='store_true',
+        help='Force CLI wizard (skip TUI even if terminal supports it)'
+    )
 
     # TUI command group - Visual terminal interfaces
     tui_parser = subparsers.add_parser('tui', help='Visual terminal interfaces (TUI)')
@@ -8761,6 +8766,18 @@ def cmd_bootstrap(args):
     import time
     import shutil
     from pathlib import Path
+
+    # Check if we should launch TUI instead of CLI wizard
+    if not getattr(args, 'non_interactive', False) and not getattr(args, 'cli', False):
+        try:
+            from lars.tui.utils import can_run_tui
+            if can_run_tui():
+                # Launch TUI bootstrap instead
+                print("Launching visual setup wizard...")
+                os.execlp('lars', 'lars', 'tui', 'bootstrap')
+                # execlp replaces the process, so we won't reach here
+        except ImportError:
+            pass  # TUI deps not available, continue with CLI
 
     # Interactive wizard unless --non-interactive or not a TTY
     wizard_config = None

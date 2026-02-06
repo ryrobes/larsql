@@ -31,6 +31,17 @@ from enum import Enum
 from .framework import ReactiveGlassApp, Action
 from .framework.dynamic_colors import DynamicColorManager
 
+# Import SQL connection utilities
+from .utils.sql_connections import (
+    CONNECTION_TYPES,
+    ConnectionField,
+    get_fields_for_type,
+    build_connection_yaml,
+    save_connection,
+    test_connection,
+    list_connection_types,
+)
+
 # Import bootstrap providers (the real implementations)
 from ..bootstrap_providers import (
     DiscoveredModel,
@@ -53,6 +64,7 @@ class Screen(Enum):
     WELCOME = "welcome"
     PROVIDERS = "providers"
     MODELS = "models"
+    SQL = "sql"
     SUMMARY = "summary"
 
 
@@ -223,7 +235,21 @@ class LarsBootstrapTUI(ReactiveGlassApp):
             "model_selector_index": 0,
             "available_models_for_tier": [],  # Filtered models for current tier
             
-            # Step 4: Summary / Execute
+            # Step 4: SQL Connection
+            "sql_skip": False,
+            "sql_type_index": 0,
+            "sql_conn_name": "",
+            "sql_conn_name_editing": False,
+            "sql_conn_name_buffer": "",
+            "sql_fields": [],  # List of ConnectionField
+            "sql_field_index": 0,
+            "sql_field_editing": False,
+            "sql_field_buffer": "",
+            "sql_test_status": "none",  # none, pending, ok, error
+            "sql_test_message": "",
+            "sql_saved_connections": [],  # List of saved connection names
+            
+            # Step 5: Summary / Execute
             "bootstrap_running": False,
             "bootstrap_complete": False,
             "bootstrap_log": [],
@@ -388,6 +414,85 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                 new_state["model_tiers"][tier] = model.id
             new_state["model_selector_open"] = False
         
+        # === SQL CONNECTION ===
+        elif action.type == "TOGGLE_SQL_SKIP":
+            new_state["sql_skip"] = not new_state["sql_skip"]
+        
+        elif action.type == "NAVIGATE_SQL_TYPE":
+            types = list(CONNECTION_TYPES.keys())
+            delta = action.payload
+            idx = new_state["sql_type_index"] + delta
+            idx = max(0, min(len(types) - 1, idx))
+            new_state["sql_type_index"] = idx
+            # Update fields for new type
+            conn_type = types[idx]
+            new_state["sql_fields"] = get_fields_for_type(conn_type)
+            new_state["sql_field_index"] = 0
+        
+        elif action.type == "NAVIGATE_SQL_FIELD":
+            # +1 for connection name field at start, +1 for test/save buttons at end
+            max_idx = len(new_state.get("sql_fields", [])) + 2
+            delta = action.payload
+            idx = new_state["sql_field_index"] + delta
+            new_state["sql_field_index"] = max(0, min(max_idx, idx))
+        
+        elif action.type == "START_EDIT_SQL_NAME":
+            new_state["sql_conn_name_editing"] = True
+            new_state["sql_conn_name_buffer"] = new_state["sql_conn_name"]
+        
+        elif action.type == "FINISH_EDIT_SQL_NAME":
+            new_state["sql_conn_name"] = new_state["sql_conn_name_buffer"]
+            new_state["sql_conn_name_editing"] = False
+        
+        elif action.type == "CANCEL_EDIT_SQL_NAME":
+            new_state["sql_conn_name_editing"] = False
+        
+        elif action.type == "EDIT_SQL_NAME_CHAR":
+            new_state["sql_conn_name_buffer"] += action.payload
+        
+        elif action.type == "EDIT_SQL_NAME_BACKSPACE":
+            new_state["sql_conn_name_buffer"] = new_state["sql_conn_name_buffer"][:-1]
+        
+        elif action.type == "START_EDIT_SQL_FIELD":
+            new_state["sql_field_editing"] = True
+            fields = new_state.get("sql_fields", [])
+            field_idx = new_state["sql_field_index"] - 1  # -1 for name field
+            if 0 <= field_idx < len(fields):
+                new_state["sql_field_buffer"] = fields[field_idx].value or fields[field_idx].default
+        
+        elif action.type == "FINISH_EDIT_SQL_FIELD":
+            fields = new_state.get("sql_fields", [])
+            field_idx = new_state["sql_field_index"] - 1
+            if 0 <= field_idx < len(fields):
+                fields[field_idx].value = new_state["sql_field_buffer"]
+            new_state["sql_field_editing"] = False
+        
+        elif action.type == "CANCEL_EDIT_SQL_FIELD":
+            new_state["sql_field_editing"] = False
+        
+        elif action.type == "EDIT_SQL_FIELD_CHAR":
+            new_state["sql_field_buffer"] += action.payload
+        
+        elif action.type == "EDIT_SQL_FIELD_BACKSPACE":
+            new_state["sql_field_buffer"] = new_state["sql_field_buffer"][:-1]
+        
+        elif action.type == "SQL_TEST_RESULT":
+            new_state["sql_test_status"] = "ok" if action.payload["success"] else "error"
+            new_state["sql_test_message"] = action.payload["message"]
+        
+        elif action.type == "SQL_CONNECTION_SAVED":
+            saved = new_state.get("sql_saved_connections", [])
+            saved.append(action.payload)
+            new_state["sql_saved_connections"] = saved
+            # Reset form for next connection
+            new_state["sql_conn_name"] = ""
+            new_state["sql_field_index"] = 0
+            new_state["sql_test_status"] = "none"
+            new_state["sql_test_message"] = ""
+            types = list(CONNECTION_TYPES.keys())
+            conn_type = types[new_state["sql_type_index"]]
+            new_state["sql_fields"] = get_fields_for_type(conn_type)
+        
         # === FIELD NAVIGATION ===
         elif action.type == "NAVIGATE_FIELD":
             new_state["focused_field"] += action.payload
@@ -427,6 +532,7 @@ class LarsBootstrapTUI(ReactiveGlassApp):
         widgets.extend(self._create_welcome_screen(colors, screen == Screen.WELCOME))
         widgets.extend(self._create_providers_screen(colors, screen == Screen.PROVIDERS))
         widgets.extend(self._create_models_screen(colors, screen == Screen.MODELS))
+        widgets.extend(self._create_sql_screen(colors, screen == Screen.SQL))
         widgets.extend(self._create_summary_screen(colors, screen == Screen.SUMMARY))
         
         # Status bar
@@ -740,6 +846,152 @@ class LarsBootstrapTUI(ReactiveGlassApp):
         
         return widgets
     
+    def _create_sql_screen(self, colors: Dict, visible: bool) -> List[Dict]:
+        """Create SQL connection screen."""
+        x = 2 if visible else 9999
+        widgets = []
+        
+        skip_mode = self.state.get("sql_skip", False)
+        types = list(CONNECTION_TYPES.keys())
+        type_idx = self.state.get("sql_type_index", 0)
+        field_idx = self.state.get("sql_field_index", 0)
+        fields = self.state.get("sql_fields", [])
+        conn_name = self.state.get("sql_conn_name", "")
+        saved_conns = self.state.get("sql_saved_connections", [])
+        
+        if not fields:
+            # Initialize fields for current type
+            fields = get_fields_for_type(types[type_idx])
+        
+        current_type = types[type_idx]
+        type_def = CONNECTION_TYPES[current_type]
+        
+        # Skip option panel
+        skip_content = [
+            f"[bold {colors['accent']}]🔌 SQL Connection[/bold {colors['accent']}]",
+            separator(45),
+            "",
+        ]
+        
+        skip_selected = field_idx == 0 and not self.state.get("sql_conn_name_editing") and not self.state.get("sql_field_editing")
+        skip_prefix = f"[{colors['accent']}]▶[/{colors['accent']}]" if skip_selected else " "
+        skip_icon = "[green]✓[/green]" if skip_mode else "○"
+        skip_content.append(f"{skip_prefix} {skip_icon} Skip (I'll add connections later)")
+        skip_content.append("")
+        
+        if saved_conns:
+            skip_content.append(f"[bold]Saved connections:[/bold]")
+            for name in saved_conns[-3:]:  # Show last 3
+                skip_content.append(f"  [green]✓[/green] {name}")
+            if len(saved_conns) > 3:
+                skip_content.append(f"  [dim]... and {len(saved_conns) - 3} more[/dim]")
+        
+        widgets.append(glass_panel("sql_skip_panel", skip_content, x, 3, 50, 14, colors, "primary"))
+        
+        if not skip_mode:
+            # Type selector
+            type_content = [
+                f"[bold {colors['light']}]Connection Type[/bold {colors['light']}]",
+                separator(25),
+                "",
+                f"[bold]{type_def['icon']} {type_def['label']}[/bold]",
+                "",
+                "[dim]← → to change type[/dim]",
+            ]
+            
+            widgets.append(glass_panel("sql_type_panel", type_content, x, 18, 25, 10, colors, "subtle"))
+            
+            # Form fields
+            form_content = [
+                f"[bold {colors['accent']}]Configuration[/bold {colors['accent']}]",
+                separator(40),
+                "",
+            ]
+            
+            # Connection name (always first)
+            is_name_selected = field_idx == 1
+            prefix = f"[{colors['accent']}]▶[/{colors['accent']}]" if is_name_selected else " "
+            
+            if self.state.get("sql_conn_name_editing"):
+                name_display = f"[on {colors['primary']}]{self.state.get('sql_conn_name_buffer', '')}█[/on {colors['primary']}]"
+            else:
+                name_display = conn_name or "[dim](required)[/dim]"
+            
+            form_content.append(f"{prefix} [bold]Name*:[/bold] {name_display}")
+            form_content.append("")
+            
+            # Type-specific fields
+            for i, field in enumerate(fields):
+                is_selected = field_idx == i + 2  # +2 for skip and name
+                prefix = f"[{colors['accent']}]▶[/{colors['accent']}]" if is_selected else " "
+                req = "*" if field.required else ""
+                
+                if is_selected and self.state.get("sql_field_editing"):
+                    value_display = f"[on {colors['primary']}]{self.state.get('sql_field_buffer', '')}█[/on {colors['primary']}]"
+                elif field.value:
+                    value_display = field.value
+                else:
+                    value_display = f"[dim]{field.default or '(optional)'}[/dim]"
+                
+                form_content.append(f"{prefix} {field.label}{req}: {value_display}")
+            
+            form_content.append("")
+            
+            # Test & Save buttons
+            test_idx = len(fields) + 2
+            save_idx = len(fields) + 3
+            
+            test_selected = field_idx == test_idx
+            save_selected = field_idx == save_idx
+            
+            test_status = self.state.get("sql_test_status", "none")
+            test_msg = self.state.get("sql_test_message", "")
+            
+            if test_selected:
+                form_content.append(f"[bold {colors['accent']}]  [ TEST CONNECTION ][/bold {colors['accent']}]")
+            else:
+                form_content.append(f"[dim]  [ Test Connection ][/dim]")
+            
+            if test_status == "ok":
+                form_content.append(f"  [green]✓ {test_msg}[/green]")
+            elif test_status == "error":
+                form_content.append(f"  [red]✗ {test_msg[:40]}[/red]")
+            elif test_status == "pending":
+                form_content.append(f"  [yellow]⏳ Testing...[/yellow]")
+            
+            form_content.append("")
+            
+            if save_selected:
+                form_content.append(f"[bold {colors['accent']}]  [ SAVE & ADD ANOTHER ][/bold {colors['accent']}]")
+            else:
+                form_content.append(f"[dim]  [ Save & Add Another ][/dim]")
+            
+            widgets.append(glass_panel("sql_form_panel", form_content, x + 28, 18, 48, 22, colors, "secondary"))
+        
+        # Help panel
+        help_content = [
+            f"[bold {colors['light']}]SQL Connections[/bold {colors['light']}]",
+            separator(30),
+            "",
+            "Connect to databases for",
+            "schema discovery & querying.",
+            "",
+            "[bold]Controls:[/bold]",
+            "  j/k: navigate fields",
+            "  ←/→: change type",
+            "  Enter: edit/save",
+            "  e: toggle skip",
+            "",
+            "[dim]You can add more",
+            "connections later via",
+            "lars tui config[/dim]",
+        ]
+        
+        help_x = x + 78 if visible else 9999
+        widgets.append(glass_panel("sql_help_panel", help_content, help_x, 3, 30, 20, colors, "subtle"))
+        
+        return widgets
+    
     def _create_summary_screen(self, colors: Dict, visible: bool) -> List[Dict]:
         """Create summary/execute screen."""
         x = 2 if visible else 9999
@@ -772,7 +1024,20 @@ class LarsBootstrapTUI(ReactiveGlassApp):
             short_model = model.split("/")[-1] if "/" in model else model
             summary_content.append(f"  {tier}: {short_model}")
         
-        widgets.append(glass_panel("summary_panel", summary_content, x, 3, 55, 25, colors, "primary"))
+        summary_content.append("")
+        summary_content.append("[bold]SQL Connections:[/bold]")
+        saved_conns = self.state.get("sql_saved_connections", [])
+        if saved_conns:
+            for name in saved_conns[:5]:
+                summary_content.append(f"  [green]✓[/green] {name}")
+            if len(saved_conns) > 5:
+                summary_content.append(f"  [dim]... +{len(saved_conns) - 5} more[/dim]")
+        elif self.state.get("sql_skip"):
+            summary_content.append("  [dim]Skipped (add later)[/dim]")
+        else:
+            summary_content.append("  [dim]None configured[/dim]")
+        
+        widgets.append(glass_panel("summary_panel", summary_content, x, 3, 55, 30, colors, "primary"))
         
         # Action panel
         if self.state.get("bootstrap_running"):
@@ -856,6 +1121,28 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                 self.dispatch(Action("EDIT_OLLAMA_HOST_CHAR", key))
             return
         
+        if self.state.get("sql_conn_name_editing"):
+            if key == "escape":
+                self.dispatch(Action("CANCEL_EDIT_SQL_NAME"))
+            elif key == "enter":
+                self.dispatch(Action("FINISH_EDIT_SQL_NAME"))
+            elif key == "backspace":
+                self.dispatch(Action("EDIT_SQL_NAME_BACKSPACE"))
+            elif len(key) == 1 and key.isprintable():
+                self.dispatch(Action("EDIT_SQL_NAME_CHAR", key))
+            return
+        
+        if self.state.get("sql_field_editing"):
+            if key == "escape":
+                self.dispatch(Action("CANCEL_EDIT_SQL_FIELD"))
+            elif key == "enter":
+                self.dispatch(Action("FINISH_EDIT_SQL_FIELD"))
+            elif key == "backspace":
+                self.dispatch(Action("EDIT_SQL_FIELD_BACKSPACE"))
+            elif len(key) == 1 and key.isprintable():
+                self.dispatch(Action("EDIT_SQL_FIELD_CHAR", key))
+            return
+        
         # Global keys
         if key == "q":
             self.exit()
@@ -926,6 +1213,32 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                 elif key == "enter":
                     self.dispatch(Action("OPEN_MODEL_SELECTOR"))
         
+        elif screen == Screen.SQL:
+            skip_mode = self.state.get("sql_skip", False)
+            field_idx = self.state.get("sql_field_index", 0)
+            fields = self.state.get("sql_fields", [])
+            
+            if key == "e":
+                self.dispatch(Action("TOGGLE_SQL_SKIP"))
+            elif key in ("left", "h"):
+                self.dispatch(Action("NAVIGATE_SQL_TYPE", -1))
+            elif key in ("right", "l"):
+                self.dispatch(Action("NAVIGATE_SQL_TYPE", 1))
+            elif not skip_mode:
+                if key in ("j", "down"):
+                    self.dispatch(Action("NAVIGATE_SQL_FIELD", 1))
+                elif key in ("k", "up"):
+                    self.dispatch(Action("NAVIGATE_SQL_FIELD", -1))
+                elif key == "enter":
+                    if field_idx == 1:  # Connection name
+                        self.dispatch(Action("START_EDIT_SQL_NAME"))
+                    elif 2 <= field_idx < len(fields) + 2:  # Form fields
+                        self.dispatch(Action("START_EDIT_SQL_FIELD"))
+                    elif field_idx == len(fields) + 2:  # Test button
+                        self._test_sql_connection()
+                    elif field_idx == len(fields) + 3:  # Save button
+                        self._save_sql_connection()
+        
         elif screen == Screen.SUMMARY:
             if key == "enter" and not self.state.get("bootstrap_running"):
                 self._run_bootstrap()
@@ -976,6 +1289,70 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                 self.call_later(lambda: self.dispatch(Action("SET_STATUS", f"Loaded {len(models)} Ollama models")))
         
         threading.Thread(target=do_validate, daemon=True).start()
+    
+    def _test_sql_connection(self):
+        """Test SQL connection in background."""
+        def do_test():
+            conn_name = self.state.get("sql_conn_name", "")
+            if not conn_name:
+                self.call_later(lambda: self.dispatch(Action("SQL_TEST_RESULT", {
+                    "success": False,
+                    "message": "Connection name required",
+                })))
+                return
+            
+            # Build and save temp connection for testing
+            types = list(CONNECTION_TYPES.keys())
+            type_idx = self.state.get("sql_type_index", 0)
+            conn_type = types[type_idx]
+            fields = self.state.get("sql_fields", [])
+            lars_root = self.state.get("lars_root", "")
+            
+            config = build_connection_yaml(conn_type, conn_name, fields)
+            success, path = save_connection(config, lars_root)
+            
+            if not success:
+                self.call_later(lambda: self.dispatch(Action("SQL_TEST_RESULT", {
+                    "success": False,
+                    "message": f"Save failed: {path}",
+                })))
+                return
+            
+            self.call_later(lambda: self.dispatch(Action("SET_STATUS", f"Testing {conn_name}...")))
+            
+            # Test the connection
+            result = test_connection(conn_name, lars_root)
+            self.call_later(lambda: self.dispatch(Action("SQL_TEST_RESULT", result)))
+            
+            if result.get("success"):
+                self.call_later(lambda: self.dispatch(Action("SET_STATUS", f"✓ {conn_name} connected!")))
+            else:
+                self.call_later(lambda: self.dispatch(Action("SET_STATUS", f"✗ {conn_name} failed")))
+        
+        self.dispatch(Action("SQL_TEST_RESULT", {"success": False, "message": "Testing..."}))
+        threading.Thread(target=do_test, daemon=True).start()
+    
+    def _save_sql_connection(self):
+        """Save SQL connection and reset form for another."""
+        conn_name = self.state.get("sql_conn_name", "")
+        if not conn_name:
+            self.dispatch(Action("SET_STATUS", "Connection name required"))
+            return
+        
+        types = list(CONNECTION_TYPES.keys())
+        type_idx = self.state.get("sql_type_index", 0)
+        conn_type = types[type_idx]
+        fields = self.state.get("sql_fields", [])
+        lars_root = self.state.get("lars_root", "")
+        
+        config = build_connection_yaml(conn_type, conn_name, fields)
+        success, path = save_connection(config, lars_root)
+        
+        if success:
+            self.dispatch(Action("SQL_CONNECTION_SAVED", conn_name))
+            self.dispatch(Action("SET_STATUS", f"✓ Saved: {conn_name}"))
+        else:
+            self.dispatch(Action("SET_STATUS", f"Save failed: {path}"))
     
     def _run_bootstrap(self):
         """Run bootstrap in background."""
