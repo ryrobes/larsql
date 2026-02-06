@@ -2672,17 +2672,30 @@ def attach_system_views(conn, data_root: Optional[Path] = None) -> int:
         # Check if any parquet files exist
         import glob as glob_module
         files = glob_module.glob(glob_pattern, recursive=True)
-        if not files:
-            continue
         
         try:
-            # Create raw view
             hive_opt = ", hive_partitioning=true" if config.get("hive") else ""
             raw_view = f"_{table_name}_raw"
-            conn.execute(f"""
-                CREATE OR REPLACE VIEW {raw_view} AS
-                SELECT * FROM read_parquet('{glob_pattern}', union_by_name=true{hive_opt})
-            """)
+            
+            if not files:
+                # No files yet - create empty view with schema from SYSTEM_TABLES
+                # This ensures the view exists for all workers even before data is written
+                schema_def = SYSTEM_TABLES.get(table_name, {}).get("columns", [])
+                if schema_def:
+                    cols = ", ".join(f"CAST(NULL AS {dtype}) AS {name}" for name, dtype in schema_def)
+                    conn.execute(f"""
+                        CREATE OR REPLACE VIEW {raw_view} AS
+                        SELECT {cols} WHERE false
+                    """)
+                else:
+                    # No schema definition, skip
+                    continue
+            else:
+                # Files exist - create view from parquet
+                conn.execute(f"""
+                    CREATE OR REPLACE VIEW {raw_view} AS
+                    SELECT * FROM read_parquet('{glob_pattern}', union_by_name=true{hive_opt})
+                """)
             
             # Create dedup view if configured
             dedup = config.get("dedup")
