@@ -7925,14 +7925,24 @@ def cmd_doctor(args):
     print(f"{BOLD}{BLUE}🔑 Environment{RESET}")
     print(f"{DIM}{'─' * 50}{RESET}")
 
-    # Required
+    # Check if OpenRouter is needed (based on models.yaml)
+    openrouter_needed = True  # Assume needed unless models.yaml says otherwise
+    try:
+        from .models import load_models_config
+        models_cfg = load_models_config(root_path)
+        openrouter_needed = models_cfg.providers.openrouter_enabled
+    except Exception:
+        pass  # Fall back to assuming needed
+    
     openrouter_key = os.environ.get('OPENROUTER_API_KEY')
     if openrouter_key:
         masked = openrouter_key[:10] + '...' + openrouter_key[-4:] if len(openrouter_key) > 14 else '***'
         print(f"   {OK} OPENROUTER_API_KEY  {DIM}{masked}{RESET}")
-    else:
+    elif openrouter_needed:
         print(f"   {ERR} OPENROUTER_API_KEY  {RED}NOT SET{RESET}")
-        issues.append("OPENROUTER_API_KEY is not set. LLM calls will fail.")
+        issues.append("OPENROUTER_API_KEY is not set but OpenRouter is enabled. LLM calls will fail.")
+    else:
+        print(f"   {DIM}   OPENROUTER_API_KEY  Not needed (Ollama-only){RESET}")
 
     # Optional keys
     hf_token = os.environ.get('HF_TOKEN')
