@@ -326,12 +326,14 @@ def ensure_rag_index(
     from .duckdb_store import Chunk as ChromaChunk, delete_by_doc_id, upsert_chunks
 
     abs_dir = _resolve_directory(rag_config, cascade_path)
+    cfg = get_config()
+    embed_model_preview = rag_config.model or cfg.default_embed_model
     console.print(f"[bold cyan][INFO] Building RAG index[/bold cyan] for [white]{abs_dir}[/white] (recursive={rag_config.recursive})")
+    console.print(f"[dim]   Using model: {embed_model_preview}[/dim]")
 
     if not os.path.isdir(abs_dir):
         raise FileNotFoundError(f"RAG directory not found: {abs_dir}")
 
-    cfg = get_config()
     db = get_db()
 
     include = rag_config.include or RagConfig.model_fields["include"].default_factory()

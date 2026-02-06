@@ -190,7 +190,8 @@ def sync_tools_to_db(force: bool = False):
         console.print("[yellow][FAST][/yellow] Force mode - syncing all tools")
 
     # Step 2: Generate embeddings for all tool descriptions
-    console.print("[cyan]Generating embeddings for tool descriptions...[/cyan]")
+    console.print(f"[cyan]Generating embeddings for tool descriptions...[/cyan]")
+    console.print(f"[dim]   Using model: {config.default_embed_model}[/dim]")
 
     try:
         from .rag.indexer import embed_texts
