@@ -982,9 +982,9 @@ class LarsBootstrapTUI(ReactiveGlassApp):
             "  Enter: edit/save",
             "  e: toggle skip",
             "",
-            "[dim]You can add more",
-            "connections later via",
-            "lars tui config[/dim]",
+            "[dim]You can add more[/dim]",
+            "[dim]connections later via[/dim]",
+            "[dim]lars tui config[/dim]",
         ]
         
         help_x = x + 78 if visible else 9999
