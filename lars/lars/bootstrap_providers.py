@@ -208,8 +208,13 @@ def fetch_ollama_models(url: str, host_alias: str = "default") -> List[Discovere
                 model_id = f"ollama@{host_alias}/{name}"
             
             # Determine capabilities from model name
-            is_embedding = "embed" in name.lower() or "nomic" in name.lower()
-            supports_vision = "vision" in name.lower() or "llava" in name.lower()
+            name_lower = name.lower()
+            is_embedding = any(x in name_lower for x in [
+                "embed", "nomic", "bge", "gte", "e5-", "minilm"
+            ])
+            supports_vision = any(x in name_lower for x in [
+                "vision", "llava", "bakllava", "moondream"
+            ])
             supports_reasoning = any(x in name.lower() for x in [
                 "deepseek-r1", "qwq", "thinking"
             ])
@@ -250,6 +255,46 @@ def get_recommended_defaults() -> Dict[str, str]:
         "quality": "anthropic/claude-sonnet-4",
         "flagship": "anthropic/claude-opus-4",
     }
+
+
+def get_openrouter_embedding_models() -> List[DiscoveredModel]:
+    """
+    Return known embedding models available on OpenRouter.
+    
+    OpenRouter doesn't list embedding models in their /models API,
+    but they work via the embeddings endpoint. This returns a curated
+    list of known working embedding models.
+    """
+    known_models = [
+        # Qwen embeddings (recommended - good quality, reasonable price)
+        ("qwen/qwen3-embedding-8b", "Qwen3 Embedding 8B", 8192, 0.02),
+        ("qwen/qwen3-embedding-4b", "Qwen3 Embedding 4B", 8192, 0.01),
+        ("qwen/qwen3-embedding-0.6b", "Qwen3 Embedding 0.6B", 8192, 0.005),
+        # OpenAI embeddings
+        ("openai/text-embedding-3-small", "OpenAI text-embedding-3-small", 8191, 0.02),
+        ("openai/text-embedding-3-large", "OpenAI text-embedding-3-large", 8191, 0.13),
+        ("openai/text-embedding-ada-002", "OpenAI text-embedding-ada-002", 8191, 0.10),
+        # Voyage embeddings (high quality)
+        ("voyageai/voyage-3", "Voyage 3", 32000, 0.06),
+        ("voyageai/voyage-3-lite", "Voyage 3 Lite", 32000, 0.02),
+        ("voyageai/voyage-code-3", "Voyage Code 3", 32000, 0.06),
+        # Cohere embeddings
+        ("cohere/embed-english-v3.0", "Cohere Embed English v3", 512, 0.10),
+        ("cohere/embed-multilingual-v3.0", "Cohere Embed Multilingual v3", 512, 0.10),
+    ]
+    
+    return [
+        DiscoveredModel(
+            id=model_id,
+            name=name,
+            provider="openrouter",
+            is_embedding=True,
+            is_chat=False,
+            context_length=ctx_len,
+            pricing_input=price,
+        )
+        for model_id, name, ctx_len, price in known_models
+    ]
 
 
 def filter_models_for_tier(

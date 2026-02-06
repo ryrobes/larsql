@@ -8225,6 +8225,7 @@ def bootstrap_wizard():
         fetch_openrouter_models,
         fetch_ollama_models,
         get_recommended_defaults,
+        get_openrouter_embedding_models,
         filter_models_for_tier,
         sort_models_for_display,
         format_model_choice,
@@ -8290,6 +8291,10 @@ def bootstrap_wizard():
                 or_models = fetch_openrouter_models(api_key)
                 console.print(f" [green]✓ {len(or_models)} models[/green]")
                 all_models.extend(or_models)
+                # Add known embedding models (not enumerable via API)
+                embed_models = get_openrouter_embedding_models()
+                all_models.extend(embed_models)
+                console.print(f"  [dim]+ {len(embed_models)} embedding models[/dim]")
             else:
                 console.print(f" [red]✗ {message}[/red]")
                 api_key = None
