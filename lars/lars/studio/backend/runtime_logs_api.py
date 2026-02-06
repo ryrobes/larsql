@@ -84,6 +84,13 @@ def list_runtime_logs():
       - include_facets: "0" to disable facet counts (default enabled)
     """
     try:
+        # Clear cached connection to ensure fresh view of parquet files
+        try:
+            from lars.lars_db import get_lars_db
+            get_lars_db().clear_cached_connection()
+        except Exception:
+            pass
+        
         db = _get_db()
         if db is None:
             return jsonify({"error": "Database not available"}), 500
