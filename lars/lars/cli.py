@@ -7634,17 +7634,13 @@ def cmd_tui(args):
     tui_command = getattr(args, 'tui_command', None)
     
     if tui_command == 'bootstrap':
-        # Run bootstrap TUI via subprocess for isolation
-        from pathlib import Path
-        tui_module = Path(__file__).parent / 'tui' / 'bootstrap.py'
-        result = subprocess.run([sys.executable, str(tui_module)])
+        # Run bootstrap TUI as module for proper relative imports
+        result = subprocess.run([sys.executable, '-m', 'lars.tui.bootstrap'])
         sys.exit(result.returncode)
     
     elif tui_command == 'config':
-        # Run config panel TUI via subprocess
-        from pathlib import Path
-        tui_module = Path(__file__).parent / 'tui' / 'config.py'
-        result = subprocess.run([sys.executable, str(tui_module)])
+        # Run config panel TUI as module for proper relative imports
+        result = subprocess.run([sys.executable, '-m', 'lars.tui.config'])
         sys.exit(result.returncode)
     
     else:

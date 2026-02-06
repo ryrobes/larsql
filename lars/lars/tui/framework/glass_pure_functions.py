@@ -10,14 +10,14 @@ import numpy as np
 # Import safe functions that can be compiled with Cython
 try:
     # Try to import Cython-compiled versions
-    from glass_pure_functions_safe_cython import (
+    from .glass_pure_functions_safe_cython import (
         color_to_rgb, rgb_to_hex, parse_ansi_line, 
         get_content_hash, calculate_image_region
     )
     _using_cython = True
 except ImportError:
     # Fall back to pure Python versions
-    from glass_pure_functions_safe import (
+    from .glass_pure_functions_safe import (
         color_to_rgb, rgb_to_hex, parse_ansi_line,
         get_content_hash, calculate_image_region
     )
