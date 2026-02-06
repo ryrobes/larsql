@@ -669,6 +669,19 @@ def get_config() -> Config:
     return _global_config
 
 
+def reload_config():
+    """
+    Reload the global configuration from environment variables.
+    
+    Call this after modifying os.environ to pick up new values.
+    Typically used after bootstrap wizard writes .env and sets env vars.
+    """
+    global _global_config
+    _global_config = Config()
+    _normalize_chdb_path(_global_config)
+    _ensure_directories(_global_config)
+
+
 def set_provider(
     base_url: str | None = None,
     api_key: str | None = None,

@@ -8548,8 +8548,10 @@ def cmd_bootstrap(args):
             model_tiers = wizard_config.get('model_tiers', {})
             if model_tiers.get('embedding'):
                 env_lines.append(f"LARS_DEFAULT_EMBED_MODEL={model_tiers['embedding']}")
+                os.environ['LARS_DEFAULT_EMBED_MODEL'] = model_tiers['embedding']
             if model_tiers.get('standard'):
                 env_lines.append(f"LARS_DEFAULT_MODEL={model_tiers['standard']}")
+                os.environ['LARS_DEFAULT_MODEL'] = model_tiers['standard']
             
             # Add Ollama hosts if configured
             ollama_hosts = wizard_config.get('ollama_hosts', {})
@@ -8557,6 +8559,7 @@ def cmd_bootstrap(args):
                 # Format: host1=url1,host2=url2
                 hosts_str = ','.join(f"{k}={v}" for k, v in ollama_hosts.items())
                 env_lines.append(f"LARS_OLLAMA_HOSTS={hosts_str}")
+                os.environ['LARS_OLLAMA_HOSTS'] = hosts_str
             
             # Add any collected passwords
             for env_var, value in wizard_config.get('passwords_for_env', {}).items():
@@ -8578,6 +8581,10 @@ def cmd_bootstrap(args):
             )
             models_yaml_path = write_models_yaml(models_config, lars_root / 'models.yaml')
             print(f"✓ Wrote {models_yaml_path}")
+            
+            # Reload config to pick up new env vars
+            from .config import reload_config
+            reload_config()
 
             # Write sql_connections as YAML files
             import ruamel.yaml
