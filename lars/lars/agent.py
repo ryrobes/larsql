@@ -929,9 +929,14 @@ class Agent:
                             if attempt < max_retries - 1:
                                 delay = base_delay * (2 ** attempt)
                                 print(f"[Embed] Retry {attempt + 1}/{max_retries} after {delay}s: {type(e).__name__}")
+                                # Show which text caused the error on first retry
+                                if attempt == 0:
+                                    text_preview = text[:100] + "..." if len(text) > 100 else text
+                                    print(f"[Embed] Failed on text {i}/{len(texts)}: {text_preview}")
                                 time.sleep(delay)
                             else:
-                                raise RuntimeError(f"Embedding failed after {max_retries} retries: {e}") from e
+                                text_preview = text[:200] + "..." if len(text) > 200 else text
+                                raise RuntimeError(f"Embedding failed after {max_retries} retries on text {i}: '{text_preview}' - {e}") from e
             else:
                 # OpenRouter/OpenAI format: batch requests
                 for batch_start in range(0, len(texts), batch_size):
