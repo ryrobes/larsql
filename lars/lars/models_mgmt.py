@@ -1248,12 +1248,27 @@ def refresh_models(skip_verification: bool = False, workers: int = 10):
     console.print("[bold cyan]║  Model Refresh (OpenRouter + Ollama + Vertex AI + Bedrock)     ║[/bold cyan]")
     console.print("[bold cyan]╚════════════════════════════════════════════════════════════════╝[/bold cyan]\n")
 
-    # Step 1a: Fetch models from OpenRouter
+    # Check which providers are enabled via models.yaml
     try:
-        openrouter_models = fetch_models_from_openrouter()
+        from .models import load_models_config
+        models_config = load_models_config()
+        openrouter_enabled = models_config.providers.openrouter_enabled
+        # Also check if API key is actually present
+        if openrouter_enabled and not models_config.providers.openrouter_api_key:
+            openrouter_enabled = False
     except Exception:
-        console.print("\n[red]✗ OpenRouter fetch failed - keeping existing data[/red]")
-        return
+        # Fall back to checking env var directly
+        openrouter_enabled = bool(config.provider_api_key)
+    
+    # Step 1a: Fetch models from OpenRouter (if enabled)
+    openrouter_models = []
+    if openrouter_enabled:
+        try:
+            openrouter_models = fetch_models_from_openrouter()
+        except Exception as e:
+            console.print(f"\n[yellow]⚠ OpenRouter fetch failed: {e}[/yellow]")
+    else:
+        console.print("[dim]   OpenRouter     disabled (skipping)[/dim]")
 
     # Step 1b: Fetch models from Ollama (non-fatal if unavailable)
     ollama_models = fetch_models_from_ollama()
