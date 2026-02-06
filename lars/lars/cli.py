@@ -8544,6 +8544,20 @@ def cmd_bootstrap(args):
             if wizard_config.get('api_key'):
                 env_lines.append(f"OPENROUTER_API_KEY={wizard_config['api_key']}")
             
+            # Set default models from tier selections (used by config.py)
+            model_tiers = wizard_config.get('model_tiers', {})
+            if model_tiers.get('embedding'):
+                env_lines.append(f"LARS_DEFAULT_EMBED_MODEL={model_tiers['embedding']}")
+            if model_tiers.get('standard'):
+                env_lines.append(f"LARS_DEFAULT_MODEL={model_tiers['standard']}")
+            
+            # Add Ollama hosts if configured
+            ollama_hosts = wizard_config.get('ollama_hosts', {})
+            if ollama_hosts:
+                # Format: host1=url1,host2=url2
+                hosts_str = ','.join(f"{k}={v}" for k, v in ollama_hosts.items())
+                env_lines.append(f"LARS_OLLAMA_HOSTS={hosts_str}")
+            
             # Add any collected passwords
             for env_var, value in wizard_config.get('passwords_for_env', {}).items():
                 env_lines.append(f"{env_var}={value}")

@@ -859,11 +859,35 @@ class Agent:
         # Direct HTTP call to embeddings endpoint - same pattern as chat completions
         import httpx
 
-        url = f"{cfg.provider_base_url.rstrip('/')}/embeddings"
-        headers = {
-            "Authorization": f"Bearer {cfg.provider_api_key}",
-            "Content-Type": "application/json",
-        }
+        # Detect provider from model name and route accordingly
+        # Format: "ollama/model-name" or "ollama@host/model-name"
+        is_ollama = embed_model.startswith("ollama/") or embed_model.startswith("ollama@")
+        
+        if is_ollama:
+            # Parse Ollama model: "ollama/model" or "ollama@host/model"
+            if embed_model.startswith("ollama@"):
+                # Format: ollama@hostname/model
+                parts = embed_model[7:].split("/", 1)  # Remove "ollama@"
+                host_alias = parts[0]
+                model_name = parts[1] if len(parts) > 1 else parts[0]
+                # Look up host URL from config (or use default)
+                ollama_url = cfg.ollama_hosts.get(host_alias, f"http://{host_alias}:11434")
+            else:
+                # Format: ollama/model
+                model_name = embed_model[7:]  # Remove "ollama/"
+                ollama_url = cfg.ollama_hosts.get("default", "http://localhost:11434")
+            
+            url = f"{ollama_url.rstrip('/')}/api/embeddings"
+            headers = {"Content-Type": "application/json"}
+            use_ollama_format = True
+        else:
+            # OpenRouter or other OpenAI-compatible provider
+            url = f"{cfg.provider_base_url.rstrip('/')}/embeddings"
+            headers = {
+                "Authorization": f"Bearer {cfg.provider_api_key}",
+                "Content-Type": "application/json",
+            }
+            use_ollama_format = False
 
         # Process in batches with retry logic
         all_vectors = []
@@ -874,52 +898,88 @@ class Agent:
 
         # Use longer timeout (5 minutes) for embedding requests which can be slow
         with httpx.Client(timeout=300.0) as client:
-            for batch_start in range(0, len(texts), batch_size):
-                batch_texts = texts[batch_start:batch_start + batch_size]
-                payload = {
-                    "model": embed_model,
-                    "input": batch_texts,
-                }
-
-                # Retry loop with exponential backoff
-                last_error = None
-                for attempt in range(max_retries):
-                    try:
-                        resp = client.post(url, json=payload, headers=headers)
-                        resp.raise_for_status()
+            if use_ollama_format:
+                # Ollama: one text at a time, different request/response format
+                for i, text in enumerate(texts):
+                    payload = {
+                        "model": model_name,  # Ollama uses just the model name, not the full ID
+                        "prompt": text,
+                    }
+                    
+                    last_error = None
+                    for attempt in range(max_retries):
                         try:
+                            resp = client.post(url, json=payload, headers=headers)
+                            resp.raise_for_status()
                             data = resp.json()
-                        except Exception as e:
-                            raise RuntimeError(f"Failed to parse embedding response as JSON. Status: {resp.status_code}, Body: {resp.text[:500]}") from e
+                            
+                            embedding = data.get("embedding")
+                            if not embedding:
+                                raise RuntimeError(f"No embedding returned from Ollama: {data}")
+                            
+                            all_vectors.append(embedding)
+                            
+                            if dim is None:
+                                dim = len(embedding)
+                            
+                            break  # Success
+                            
+                        except (httpx.TimeoutException, httpx.HTTPStatusError) as e:
+                            last_error = e
+                            if attempt < max_retries - 1:
+                                delay = base_delay * (2 ** attempt)
+                                print(f"[Embed] Retry {attempt + 1}/{max_retries} after {delay}s: {type(e).__name__}")
+                                time.sleep(delay)
+                            else:
+                                raise RuntimeError(f"Embedding failed after {max_retries} retries: {e}") from e
+            else:
+                # OpenRouter/OpenAI format: batch requests
+                for batch_start in range(0, len(texts), batch_size):
+                    batch_texts = texts[batch_start:batch_start + batch_size]
+                    payload = {
+                        "model": embed_model,
+                        "input": batch_texts,
+                    }
 
-                        embeddings_data = data.get("data", [])
-                        if not embeddings_data:
-                            raise RuntimeError(f"No embedding data returned: {data}")
+                    # Retry loop with exponential backoff
+                    last_error = None
+                    for attempt in range(max_retries):
+                        try:
+                            resp = client.post(url, json=payload, headers=headers)
+                            resp.raise_for_status()
+                            try:
+                                data = resp.json()
+                            except Exception as e:
+                                raise RuntimeError(f"Failed to parse embedding response as JSON. Status: {resp.status_code}, Body: {resp.text[:500]}") from e
 
-                        batch_vectors = [d["embedding"] for d in embeddings_data]
-                        if not batch_vectors or not batch_vectors[0]:
-                            raise RuntimeError("Empty embedding response")
+                            embeddings_data = data.get("data", [])
+                            if not embeddings_data:
+                                raise RuntimeError(f"No embedding data returned: {data}")
 
-                        all_vectors.extend(batch_vectors)
+                            batch_vectors = [d["embedding"] for d in embeddings_data]
+                            if not batch_vectors or not batch_vectors[0]:
+                                raise RuntimeError("Empty embedding response")
 
-                        # Track metadata from last successful batch
-                        if dim is None:
-                            dim = len(batch_vectors[0])
-                        last_request_id = data.get("id")
-                        usage = data.get("usage", {})
-                        total_tokens += usage.get("total_tokens", 0)
-                        model_used = data.get("model", embed_model)
+                            all_vectors.extend(batch_vectors)
 
-                        break  # Success - exit retry loop
+                            # Track metadata from last successful batch
+                            if dim is None:
+                                dim = len(batch_vectors[0])
+                            last_request_id = data.get("id")
+                            usage = data.get("usage", {})
+                            total_tokens += usage.get("total_tokens", 0)
+                            model_used = data.get("model", embed_model)
 
-                    except (httpx.TimeoutException, httpx.HTTPStatusError) as e:
-                        last_error = e
-                        if attempt < max_retries - 1:
-                            delay = base_delay * (2 ** attempt)
-                            print(f"[Embed] Retry {attempt + 1}/{max_retries} after {delay}s: {type(e).__name__}")
-                            time.sleep(delay)
-                        else:
-                            raise RuntimeError(f"Embedding failed after {max_retries} retries: {e}") from e
+                            break  # Success - exit retry loop
+
+                        except (httpx.TimeoutException, httpx.HTTPStatusError) as e:
+                            last_error = e
+                            if attempt < max_retries - 1:
+                                delay = base_delay * (2 ** attempt)
+                                print(f"[Embed] Retry {attempt + 1}/{max_retries} after {delay}s: {type(e).__name__}")
+                                time.sleep(delay)
+                            else:
+                                raise RuntimeError(f"Embedding failed after {max_retries} retries: {e}") from e
 
         if not all_vectors:
             raise RuntimeError("No embeddings generated")

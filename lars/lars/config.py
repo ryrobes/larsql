@@ -179,6 +179,19 @@ def _parse_ollama_hosts() -> Dict[str, str]:
     except Exception:
         pass
 
+    # Try simple comma-separated format: default=http://localhost:11434,gpu=http://10.0.0.5:11434
+    try:
+        hosts = {}
+        for part in hosts_str.split(','):
+            part = part.strip()
+            if '=' in part:
+                alias, url = part.split('=', 1)
+                hosts[alias.strip()] = url.strip()
+        if hosts:
+            return hosts
+    except Exception:
+        pass
+
     return {}
 
 
