@@ -900,11 +900,20 @@ class Agent:
         with httpx.Client(timeout=300.0) as client:
             if use_ollama_format:
                 # Ollama: one text at a time, different request/response format
+                # Most Ollama embedding models have limited context (e.g., 2048 tokens)
+                # Truncate long texts to avoid "input length exceeds context length" errors
+                # Conservative limit: ~6000 chars ≈ 1500 tokens for most models
+                max_chars = int(os.getenv("LARS_OLLAMA_EMBED_MAX_CHARS", "6000"))
+                
                 total = len(texts)
                 for i, text in enumerate(texts):
                     # Progress indicator for large batches
                     if total > 10 and (i % 10 == 0 or i == total - 1):
                         print(f"[Embed] Progress: {i+1}/{total}", end="\r")
+                    
+                    # Truncate if needed
+                    if len(text) > max_chars:
+                        text = text[:max_chars]
                     
                     payload = {
                         "model": model_name,  # Ollama uses just the model name, not the full ID
