@@ -900,29 +900,26 @@ class Agent:
         with httpx.Client(timeout=300.0) as client:
             if use_ollama_format:
                 # Ollama: one text at a time, different request/response format
-                # Most Ollama embedding models have limited context (e.g., 2048 tokens)
-                # Truncate long texts to avoid "input length exceeds context length" errors
-                # Conservative limit: ~6000 chars ≈ 1500 tokens for most models
-                max_chars = int(os.getenv("LARS_OLLAMA_EMBED_MAX_CHARS", "6000"))
-                
                 total = len(texts)
+                truncate_limit = None  # Will be set if we hit context length errors
+                
                 for i, text in enumerate(texts):
                     # Progress indicator for large batches
                     if total > 10 and (i % 10 == 0 or i == total - 1):
                         print(f"[Embed] Progress: {i+1}/{total}", end="\r")
                     
-                    # Truncate if needed
-                    if len(text) > max_chars:
-                        text = text[:max_chars]
-                    
-                    payload = {
-                        "model": model_name,  # Ollama uses just the model name, not the full ID
-                        "prompt": text,
-                    }
+                    original_text = text
+                    # Apply truncation if we've learned the model needs it
+                    if truncate_limit and len(text) > truncate_limit:
+                        text = text[:truncate_limit]
                     
                     last_error = None
                     for attempt in range(max_retries):
                         try:
+                            payload = {
+                                "model": model_name,
+                                "prompt": text,
+                            }
                             resp = client.post(url, json=payload, headers=headers)
                             resp.raise_for_status()
                             data = resp.json()
@@ -952,10 +949,23 @@ class Agent:
                                 except:
                                     pass
                             
+                            # Check if it's a context length error - truncate and retry immediately
+                            if "context length" in error_body.lower() or "input length" in error_body.lower():
+                                # Set truncation limit for this and future texts
+                                # Start with 6000 chars (~1500 tokens), halve if still failing
+                                if truncate_limit is None:
+                                    truncate_limit = 6000
+                                    print(f"[Embed] Context length exceeded, enabling truncation ({truncate_limit} chars)")
+                                elif attempt > 0:
+                                    truncate_limit = truncate_limit // 2
+                                    print(f"[Embed] Still too long, reducing to {truncate_limit} chars")
+                                
+                                text = original_text[:truncate_limit]
+                                continue  # Retry with truncated text (don't count as retry)
+                            
                             if attempt < max_retries - 1:
                                 delay = base_delay * (2 ** attempt)
                                 print(f"[Embed] Retry {attempt + 1}/{max_retries} after {delay}s: {type(e).__name__}")
-                                # Show which text caused the error on first retry
                                 if attempt == 0:
                                     text_preview = text[:100] + "..." if len(text) > 100 else text
                                     print(f"[Embed] Failed on text {i}/{len(texts)}: {text_preview}")
