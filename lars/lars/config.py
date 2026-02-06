@@ -664,6 +664,45 @@ _normalize_chdb_path(_global_config)
 _ensure_directories(_global_config)
 
 
+def _apply_models_yaml(config: Config):
+    """
+    Apply settings from models.yaml to config.
+    
+    models.yaml is the primary source of truth for model configuration.
+    This overrides default/env-var values with models.yaml settings.
+    """
+    from pathlib import Path
+    
+    models_yaml_path = Path(config.root_dir) / "models.yaml"
+    if not models_yaml_path.exists():
+        return
+    
+    try:
+        from .models import load_models_config
+        models_config = load_models_config(Path(config.root_dir))
+        
+        # Apply model tiers
+        if models_config.models.get("embedding"):
+            config.default_embed_model = models_config.models["embedding"]
+        if models_config.models.get("standard"):
+            config.default_model = models_config.models["standard"]
+        
+        # Apply Ollama settings
+        config.ollama_enabled = models_config.providers.ollama_enabled
+        if models_config.providers.ollama_hosts:
+            config.ollama_hosts = models_config.providers.ollama_hosts
+            # Set default ollama URL from 'default' host
+            if "default" in models_config.providers.ollama_hosts:
+                config.ollama_base_url = models_config.providers.ollama_hosts["default"]
+    except Exception as e:
+        import warnings
+        warnings.warn(f"Failed to load models.yaml: {e}")
+
+
+# Apply models.yaml settings
+_apply_models_yaml(_global_config)
+
+
 def get_config() -> Config:
     """Get the global configuration instance."""
     return _global_config
@@ -671,15 +710,16 @@ def get_config() -> Config:
 
 def reload_config():
     """
-    Reload the global configuration from environment variables.
+    Reload the global configuration from environment variables and models.yaml.
     
-    Call this after modifying os.environ to pick up new values.
-    Typically used after bootstrap wizard writes .env and sets env vars.
+    Call this after modifying os.environ or models.yaml to pick up new values.
+    Typically used after bootstrap wizard writes configuration.
     """
     global _global_config
     _global_config = Config()
     _normalize_chdb_path(_global_config)
     _ensure_directories(_global_config)
+    _apply_models_yaml(_global_config)
 
 
 def set_provider(
