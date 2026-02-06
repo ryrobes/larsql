@@ -927,10 +927,22 @@ class Agent:
                             if dim is None:
                                 dim = len(embedding)
                             
+                            # Small delay between Ollama requests to avoid overwhelming server
+                            if total > 5:
+                                time.sleep(0.05)  # 50ms
+                            
                             break  # Success
                             
                         except (httpx.TimeoutException, httpx.HTTPStatusError) as e:
                             last_error = e
+                            # Try to get error details from response body
+                            error_body = ""
+                            if hasattr(e, 'response') and e.response is not None:
+                                try:
+                                    error_body = e.response.text[:200]
+                                except:
+                                    pass
+                            
                             if attempt < max_retries - 1:
                                 delay = base_delay * (2 ** attempt)
                                 print(f"[Embed] Retry {attempt + 1}/{max_retries} after {delay}s: {type(e).__name__}")
@@ -938,10 +950,12 @@ class Agent:
                                 if attempt == 0:
                                     text_preview = text[:100] + "..." if len(text) > 100 else text
                                     print(f"[Embed] Failed on text {i}/{len(texts)}: {text_preview}")
+                                    if error_body:
+                                        print(f"[Embed] Error body: {error_body}")
                                 time.sleep(delay)
                             else:
                                 text_preview = text[:200] + "..." if len(text) > 200 else text
-                                raise RuntimeError(f"Embedding failed after {max_retries} retries on text {i}: '{text_preview}' - {e}") from e
+                                raise RuntimeError(f"Embedding failed after {max_retries} retries on text {i}: '{text_preview}' - {e} - Body: {error_body}") from e
             else:
                 # OpenRouter/OpenAI format: batch requests
                 for batch_start in range(0, len(texts), batch_size):
