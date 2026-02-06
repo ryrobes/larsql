@@ -900,7 +900,12 @@ class Agent:
         with httpx.Client(timeout=300.0) as client:
             if use_ollama_format:
                 # Ollama: one text at a time, different request/response format
+                total = len(texts)
                 for i, text in enumerate(texts):
+                    # Progress indicator for large batches
+                    if total > 10 and (i % 10 == 0 or i == total - 1):
+                        print(f"[Embed] Progress: {i+1}/{total}", end="\r")
+                    
                     payload = {
                         "model": model_name,  # Ollama uses just the model name, not the full ID
                         "prompt": text,
