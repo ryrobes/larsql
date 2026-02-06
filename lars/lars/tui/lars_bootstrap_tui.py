@@ -49,6 +49,10 @@ from ..bootstrap_providers import (
     fetch_openrouter_models as _fetch_openrouter_models,
     validate_ollama_host as _validate_ollama_host,
     fetch_ollama_models as _fetch_ollama_models,
+    validate_gemini_key as _validate_gemini_key,
+    fetch_gemini_models as _fetch_gemini_models,
+    validate_bedrock_credentials as _validate_bedrock_credentials,
+    fetch_bedrock_models as _fetch_bedrock_models,
     get_recommended_defaults,
     get_openrouter_embedding_models,
     filter_models_for_tier,
@@ -124,6 +128,28 @@ def validate_ollama_host(url: str) -> Tuple[bool, str]:
 def fetch_ollama_models(url: str, host_alias: str = "default") -> List[DiscoveredModel]:
     """Fetch models from Ollama."""
     return _fetch_ollama_models(url, host_alias)
+
+
+def validate_gemini_key(api_key: str) -> Tuple[bool, str]:
+    """Validate Gemini API key."""
+    if not api_key or len(api_key) < 10:
+        return False, "Key too short"
+    return _validate_gemini_key(api_key)
+
+
+def fetch_gemini_models(api_key: str) -> List[DiscoveredModel]:
+    """Fetch models from Gemini."""
+    return _fetch_gemini_models(api_key)
+
+
+def validate_bedrock_credentials(region: str = "us-east-1") -> Tuple[bool, str]:
+    """Validate AWS Bedrock credentials."""
+    return _validate_bedrock_credentials(region=region)
+
+
+def fetch_bedrock_models(region: str = "us-east-1") -> List[DiscoveredModel]:
+    """Fetch models from AWS Bedrock."""
+    return _fetch_bedrock_models(region=region)
 
 
 def get_default_lars_root() -> str:
@@ -226,6 +252,22 @@ class LarsBootstrapTUI(ReactiveGlassApp):
             "ollama_status": "none",
             "ollama_message": "",
             "ollama_models": [],
+            
+            "gemini_enabled": False,
+            "gemini_key": os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_AI_API_KEY", ""),
+            "gemini_key_editing": False,
+            "gemini_key_buffer": "",
+            "gemini_status": "none",
+            "gemini_message": "",
+            "gemini_models": [],
+            
+            "bedrock_enabled": False,
+            "bedrock_region": "us-east-1",
+            "bedrock_region_editing": False,
+            "bedrock_region_buffer": "",
+            "bedrock_status": "none",
+            "bedrock_message": "",
+            "bedrock_models": [],
             
             # Step 3: Model Tiers
             "model_tiers": dict(DEFAULT_MODELS),
@@ -362,6 +404,74 @@ class LarsBootstrapTUI(ReactiveGlassApp):
         elif action.type == "SET_OLLAMA_MODELS":
             new_state["ollama_models"] = action.payload
         
+        # === GEMINI ===
+        elif action.type == "TOGGLE_GEMINI":
+            new_state["gemini_enabled"] = not new_state["gemini_enabled"]
+        
+        elif action.type == "START_EDIT_GEMINI_KEY":
+            new_state["gemini_key_editing"] = True
+            new_state["gemini_key_buffer"] = ""
+        
+        elif action.type == "FINISH_EDIT_GEMINI_KEY":
+            new_state["gemini_key"] = new_state["gemini_key_buffer"]
+            new_state["gemini_key_editing"] = False
+            new_state["gemini_status"] = "pending"
+            new_state["gemini_message"] = "Validating..."
+        
+        elif action.type == "CANCEL_EDIT_GEMINI_KEY":
+            new_state["gemini_key_editing"] = False
+        
+        elif action.type == "EDIT_GEMINI_KEY_CHAR":
+            new_state["gemini_key_buffer"] += action.payload
+        
+        elif action.type == "EDIT_GEMINI_KEY_BACKSPACE":
+            new_state["gemini_key_buffer"] = new_state["gemini_key_buffer"][:-1]
+        
+        elif action.type == "VALIDATE_GEMINI_RESULT":
+            new_state["gemini_status"] = "ok" if action.payload["valid"] else "error"
+            new_state["gemini_message"] = action.payload["message"]
+            if action.payload["valid"]:
+                new_state["gemini_enabled"] = True
+        
+        elif action.type == "SET_GEMINI_MODELS":
+            new_state["gemini_models"] = action.payload
+        
+        # === BEDROCK ===
+        elif action.type == "TOGGLE_BEDROCK":
+            new_state["bedrock_enabled"] = not new_state["bedrock_enabled"]
+            if new_state["bedrock_enabled"] and new_state["bedrock_status"] == "none":
+                # Auto-validate when enabling
+                new_state["bedrock_status"] = "pending"
+                new_state["bedrock_message"] = "Checking AWS credentials..."
+        
+        elif action.type == "START_EDIT_BEDROCK_REGION":
+            new_state["bedrock_region_editing"] = True
+            new_state["bedrock_region_buffer"] = new_state["bedrock_region"]
+        
+        elif action.type == "FINISH_EDIT_BEDROCK_REGION":
+            new_state["bedrock_region"] = new_state["bedrock_region_buffer"]
+            new_state["bedrock_region_editing"] = False
+            new_state["bedrock_status"] = "pending"
+            new_state["bedrock_message"] = "Validating..."
+        
+        elif action.type == "CANCEL_EDIT_BEDROCK_REGION":
+            new_state["bedrock_region_editing"] = False
+        
+        elif action.type == "EDIT_BEDROCK_REGION_CHAR":
+            new_state["bedrock_region_buffer"] += action.payload
+        
+        elif action.type == "EDIT_BEDROCK_REGION_BACKSPACE":
+            new_state["bedrock_region_buffer"] = new_state["bedrock_region_buffer"][:-1]
+        
+        elif action.type == "VALIDATE_BEDROCK_RESULT":
+            new_state["bedrock_status"] = "ok" if action.payload["valid"] else "error"
+            new_state["bedrock_message"] = action.payload["message"]
+            if action.payload["valid"]:
+                new_state["bedrock_enabled"] = True
+        
+        elif action.type == "SET_BEDROCK_MODELS":
+            new_state["bedrock_models"] = action.payload
+        
         # === MODEL TIERS ===
         elif action.type == "SELECT_TIER":
             new_state["selected_tier"] = action.payload
@@ -389,10 +499,12 @@ class LarsBootstrapTUI(ReactiveGlassApp):
         
         elif action.type == "OPEN_MODEL_SELECTOR":
             tier = new_state["selected_tier"]
-            # Combine all available models
+            # Combine all available models from all providers
             all_models = (
                 new_state.get("openrouter_models", []) + 
-                new_state.get("ollama_models", [])
+                new_state.get("ollama_models", []) +
+                new_state.get("gemini_models", []) +
+                new_state.get("bedrock_models", [])
             )
             # Filter for this tier
             filtered = filter_models_for_tier(all_models, tier)
@@ -718,25 +830,94 @@ class LarsBootstrapTUI(ReactiveGlassApp):
         if ol_model_count > 0:
             ol_content.append(f"  [green]✓ {ol_model_count} models available[/green]")
         
-        widgets.append(glass_panel("ollama_panel", ol_content, x, 25, 50, 12, colors, "secondary"))
+        widgets.append(glass_panel("ollama_panel", ol_content, x, 24, 50, 11, colors, "secondary"))
+        
+        # Gemini
+        gm_content = [
+            f"[bold {colors['accent']}]♊ Gemini[/bold {colors['accent']}]",
+            separator(40),
+            "",
+        ]
+        
+        gm_enabled = self.state.get("gemini_enabled", False)
+        gm_status = self.state.get("gemini_status", "none")
+        gm_msg = self.state.get("gemini_message", "")
+        
+        is_focused = self.state.get("focused_field") == 5
+        prefix = f"[{colors['accent']}]▶[/{colors['accent']}]" if is_focused else " "
+        
+        enabled_txt = "[green]Enabled[/green]" if gm_enabled else "[dim]Disabled[/dim]"
+        gm_content.append(f"{prefix} Status: {enabled_txt}  [dim](e to toggle)[/dim]")
+        
+        # API Key field
+        is_focused = self.state.get("focused_field") == 6
+        prefix = f"[{colors['accent']}]▶[/{colors['accent']}]" if is_focused else " "
+        
+        if self.state.get("gemini_key_editing"):
+            key_display = f"[on {colors['primary']}]{'*' * len(self.state.get('gemini_key_buffer', ''))}█[/on {colors['primary']}]"
+        else:
+            key = self.state.get("gemini_key", "")
+            key_display = f"...{key[-8:]}" if len(key) > 8 else ("(not set)" if not key else "*" * len(key))
+        
+        gm_content.append(f"{prefix} API Key: {key_display}")
+        gm_content.append(f"  {status_icon(gm_status)} {gm_msg}" if gm_msg else "")
+        
+        gm_model_count = len(self.state.get("gemini_models", []))
+        if gm_model_count > 0:
+            gm_content.append(f"  [green]✓ {gm_model_count} models available[/green]")
+        
+        widgets.append(glass_panel("gemini_panel", gm_content, x + 55, 3, 45, 10, colors, "secondary"))
+        
+        # Bedrock
+        br_content = [
+            f"[bold {colors['accent']}]☁️ AWS Bedrock[/bold {colors['accent']}]",
+            separator(40),
+            "",
+        ]
+        
+        br_enabled = self.state.get("bedrock_enabled", False)
+        br_status = self.state.get("bedrock_status", "none")
+        br_msg = self.state.get("bedrock_message", "")
+        
+        is_focused = self.state.get("focused_field") == 7
+        prefix = f"[{colors['accent']}]▶[/{colors['accent']}]" if is_focused else " "
+        
+        enabled_txt = "[green]Enabled[/green]" if br_enabled else "[dim]Disabled[/dim]"
+        br_content.append(f"{prefix} Status: {enabled_txt}  [dim](e to toggle)[/dim]")
+        
+        # Region field
+        is_focused = self.state.get("focused_field") == 8
+        prefix = f"[{colors['accent']}]▶[/{colors['accent']}]" if is_focused else " "
+        
+        if self.state.get("bedrock_region_editing"):
+            region_display = f"[on {colors['primary']}]{self.state.get('bedrock_region_buffer', '')}█[/on {colors['primary']}]"
+        else:
+            region_display = self.state.get('bedrock_region', 'us-east-1')
+        
+        br_content.append(f"{prefix} Region: {region_display}")
+        br_content.append(f"  {status_icon(br_status)} {br_msg}" if br_msg else "")
+        br_content.append("  [dim]Uses ~/.aws/credentials[/dim]")
+        
+        br_model_count = len(self.state.get("bedrock_models", []))
+        if br_model_count > 0:
+            br_content.append(f"  [green]✓ {br_model_count} models available[/green]")
+        
+        widgets.append(glass_panel("bedrock_panel", br_content, x + 55, 14, 45, 11, colors, "secondary"))
         
         # Help panel
         help_content = [
-            f"[bold {colors['light']}]Provider Info[/bold {colors['light']}]",
+            f"[bold {colors['light']}]Keys & Setup[/bold {colors['light']}]",
             separator(30),
+            "OpenRouter: openrouter.ai/keys",
+            "Gemini: aistudio.google.com",
+            "Bedrock: AWS credentials file",
             "",
-            "[bold]OpenRouter[/bold]",
-            "  300+ cloud models",
-            "  Pay per token",
-            "  openrouter.ai/keys",
-            "",
-            "[bold]Ollama[/bold]",
-            "  Run models locally",
-            "  No API key needed",
-            "  ollama.ai",
+            "[dim]j/k: navigate fields[/dim]",
+            "[dim]e: toggle provider[/dim]",
+            "[dim]Enter: edit value[/dim]",
         ]
         
-        widgets.append(glass_panel("help_panel", help_content, x + 55, 3, 35, 18, colors, "accent"))
+        widgets.append(glass_panel("help_panel", help_content, x + 55, 26, 45, 12, colors, "accent"))
         
         return widgets
     
@@ -821,6 +1002,8 @@ class LarsBootstrapTUI(ReactiveGlassApp):
             # Count available models
             or_count = len(self.state.get("openrouter_models", []))
             ol_count = len(self.state.get("ollama_models", []))
+            gm_count = len(self.state.get("gemini_models", []))
+            br_count = len(self.state.get("bedrock_models", []))
             
             help_content = [
                 f"[bold {colors['light']}]Model Selection[/bold {colors['light']}]",
@@ -832,8 +1015,10 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                 f"[dim]Selected: {selected_tier}[/dim]",
                 "",
                 "[bold]Available Models:[/bold]",
-                f"  OpenRouter: {or_count}" if or_count else "  [dim]OpenRouter: not configured[/dim]",
-                f"  Ollama: {ol_count}" if ol_count else "  [dim]Ollama: not configured[/dim]",
+                f"  OpenRouter: {or_count}" if or_count else "  [dim]OpenRouter: ×[/dim]",
+                f"  Ollama: {ol_count}" if ol_count else "  [dim]Ollama: ×[/dim]",
+                f"  Gemini: {gm_count}" if gm_count else "  [dim]Gemini: ×[/dim]",
+                f"  Bedrock: {br_count}" if br_count else "  [dim]Bedrock: ×[/dim]",
                 "",
                 "[bold]Defaults:[/bold]",
             ]
@@ -1017,6 +1202,16 @@ class LarsBootstrapTUI(ReactiveGlassApp):
         else:
             summary_content.append(f"  [dim]○[/dim] Ollama (disabled)")
         
+        if self.state.get("gemini_enabled"):
+            summary_content.append(f"  [green]✓[/green] Gemini (API key set)")
+        else:
+            summary_content.append(f"  [dim]○[/dim] Gemini (disabled)")
+        
+        if self.state.get("bedrock_enabled"):
+            summary_content.append(f"  [green]✓[/green] Bedrock ({self.state.get('bedrock_region')})")
+        else:
+            summary_content.append(f"  [dim]○[/dim] Bedrock (disabled)")
+        
         summary_content.append("")
         summary_content.append("[bold]Model Tiers:[/bold]")
         
@@ -1179,6 +1374,14 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                     self.dispatch(Action("TOGGLE_OLLAMA"))
                     if self.state.get("ollama_enabled"):
                         self._validate_ollama_host()
+                elif field == 5:
+                    self.dispatch(Action("TOGGLE_GEMINI"))
+                    if self.state.get("gemini_enabled"):
+                        self._validate_gemini_key()
+                elif field == 7:
+                    self.dispatch(Action("TOGGLE_BEDROCK"))
+                    if self.state.get("bedrock_enabled"):
+                        self._validate_bedrock_credentials()
             elif key == "enter":
                 field = self.state.get("focused_field", 0)
                 if field == 0:
@@ -1187,6 +1390,10 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                     self.dispatch(Action("START_EDIT_KEY"))
                 elif field == 4:
                     self.dispatch(Action("START_EDIT_OLLAMA_HOST"))
+                elif field == 6:
+                    self.dispatch(Action("START_EDIT_GEMINI_KEY"))
+                elif field == 8:
+                    self.dispatch(Action("START_EDIT_BEDROCK_REGION"))
             elif key == "v":
                 # Manual validation trigger
                 field = self.state.get("focused_field", 0)
@@ -1194,6 +1401,10 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                     self._validate_openrouter_key()
                 elif field in (3, 4):
                     self._validate_ollama_host()
+                elif field in (5, 6) and self.state.get("gemini_key"):
+                    self._validate_gemini_key()
+                elif field in (7, 8):
+                    self._validate_bedrock_credentials()
         
         elif screen == Screen.MODELS:
             if self.state.get("model_selector_open"):
@@ -1287,6 +1498,51 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                 models = fetch_ollama_models(host)
                 self.call_later(lambda: self.dispatch(Action("SET_OLLAMA_MODELS", models)))
                 self.call_later(lambda: self.dispatch(Action("SET_STATUS", f"Loaded {len(models)} Ollama models")))
+        
+        threading.Thread(target=do_validate, daemon=True).start()
+    
+    def _validate_gemini_key(self):
+        """Validate Gemini API key in background."""
+        def do_validate():
+            key = self.state.get("gemini_key", "")
+            if not key:
+                self.call_later(lambda: self.dispatch(Action("VALIDATE_GEMINI_RESULT", {
+                    "valid": False,
+                    "message": "No API key set",
+                })))
+                return
+            
+            valid, message = validate_gemini_key(key)
+            self.call_later(lambda: self.dispatch(Action("VALIDATE_GEMINI_RESULT", {
+                "valid": valid,
+                "message": message,
+            })))
+            
+            if valid:
+                # Fetch models
+                self.call_later(lambda: self.dispatch(Action("SET_STATUS", "Fetching Gemini models...")))
+                models = fetch_gemini_models(key)
+                self.call_later(lambda: self.dispatch(Action("SET_GEMINI_MODELS", models)))
+                self.call_later(lambda: self.dispatch(Action("SET_STATUS", f"Loaded {len(models)} Gemini models")))
+        
+        threading.Thread(target=do_validate, daemon=True).start()
+    
+    def _validate_bedrock_credentials(self):
+        """Validate AWS Bedrock credentials in background."""
+        def do_validate():
+            region = self.state.get("bedrock_region", "us-east-1")
+            valid, message = validate_bedrock_credentials(region)
+            self.call_later(lambda: self.dispatch(Action("VALIDATE_BEDROCK_RESULT", {
+                "valid": valid,
+                "message": message,
+            })))
+            
+            if valid:
+                # Fetch models
+                self.call_later(lambda: self.dispatch(Action("SET_STATUS", "Fetching Bedrock models...")))
+                models = fetch_bedrock_models(region)
+                self.call_later(lambda: self.dispatch(Action("SET_BEDROCK_MODELS", models)))
+                self.call_later(lambda: self.dispatch(Action("SET_STATUS", f"Loaded {len(models)} Bedrock models")))
         
         threading.Thread(target=do_validate, daemon=True).start()
     

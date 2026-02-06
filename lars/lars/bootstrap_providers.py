@@ -42,6 +42,10 @@ class DiscoveredModel:
         """Format source for display."""
         if self.provider == "ollama":
             return self.host or "localhost"
+        elif self.provider == "gemini":
+            return "Google AI"
+        elif self.provider == "bedrock":
+            return "AWS Bedrock"
         return "OpenRouter"
 
 
@@ -240,6 +244,278 @@ def fetch_ollama_models(url: str, host_alias: str = "default") -> List[Discovere
         return models
     except Exception as e:
         print(f"Error fetching Ollama models from {url}: {e}")
+        return []
+
+
+# ============================================================================
+# Gemini (Google AI) Provider
+# ============================================================================
+
+def validate_gemini_key(api_key: str) -> Tuple[bool, str]:
+    """
+    Validate a Google AI (Gemini) API key.
+    
+    Returns:
+        (is_valid, message)
+    """
+    try:
+        resp = httpx.get(
+            f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}",
+            timeout=10
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            model_count = len(data.get("models", []))
+            return True, f"Valid! {model_count} models available"
+        elif resp.status_code == 400:
+            error = resp.json().get("error", {})
+            return False, error.get("message", "Invalid API key")
+        elif resp.status_code == 403:
+            return False, "API key invalid or lacking permissions"
+        else:
+            return False, f"HTTP {resp.status_code}"
+    except httpx.TimeoutException:
+        return False, "Timeout connecting to Google AI"
+    except Exception as e:
+        return False, str(e)
+
+
+def fetch_gemini_models(api_key: str) -> List[DiscoveredModel]:
+    """
+    Fetch available models from Google AI (Gemini).
+    
+    Args:
+        api_key: Google AI API key
+    
+    Returns:
+        List of discovered models
+    """
+    # Known pricing (per 1M tokens) - Google AI pricing
+    GEMINI_PRICING = {
+        "gemini-2.5-flash": (0.15, 0.60),
+        "gemini-2.5-flash-lite": (0.075, 0.30),
+        "gemini-2.5-pro": (1.25, 5.00),
+        "gemini-2.0-flash": (0.10, 0.40),
+        "gemini-2.0-flash-lite": (0.075, 0.30),
+        "gemini-1.5-flash": (0.075, 0.30),
+        "gemini-1.5-pro": (1.25, 5.00),
+        "text-embedding-004": (0.00, 0.00),  # Free tier
+    }
+    
+    try:
+        resp = httpx.get(
+            f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}",
+            timeout=30
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        
+        models = []
+        for m in data.get("models", []):
+            # Extract model ID from "models/gemini-2.5-flash" format
+            name = m.get("name", "")
+            model_id = name.replace("models/", "") if name.startswith("models/") else name
+            
+            if not model_id:
+                continue
+            
+            # Skip deprecated/old models
+            if any(x in model_id for x in ["gemini-pro", "gemini-1.0", "aqa"]):
+                continue
+            
+            # Determine capabilities
+            methods = m.get("supportedGenerationMethods", [])
+            is_embedding = "embedContent" in methods or "embedding" in model_id.lower()
+            supports_vision = "generateContent" in methods  # Gemini models are multimodal
+            
+            # Get pricing
+            pricing_input, pricing_output = None, None
+            for key, (inp, out) in GEMINI_PRICING.items():
+                if key in model_id:
+                    pricing_input, pricing_output = inp, out
+                    break
+            
+            models.append(DiscoveredModel(
+                id=f"gemini/{model_id}",
+                name=m.get("displayName", model_id),
+                provider="gemini",
+                is_embedding=is_embedding,
+                is_chat=not is_embedding,
+                supports_vision=supports_vision and not is_embedding,
+                context_length=m.get("inputTokenLimit"),
+                pricing_input=pricing_input,
+                pricing_output=pricing_output,
+            ))
+        
+        return models
+    except Exception as e:
+        print(f"Error fetching Gemini models: {e}")
+        return []
+
+
+# ============================================================================
+# AWS Bedrock Provider
+# ============================================================================
+
+def validate_bedrock_credentials(
+    access_key: Optional[str] = None,
+    secret_key: Optional[str] = None,
+    region: str = "us-east-1"
+) -> Tuple[bool, str]:
+    """
+    Validate AWS Bedrock credentials.
+    
+    Can use:
+    - Explicit access_key/secret_key
+    - Environment variables (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
+    - AWS credentials file (~/.aws/credentials)
+    - IAM role (if running on AWS)
+    
+    Returns:
+        (is_valid, message)
+    """
+    try:
+        import boto3
+        from botocore.exceptions import ClientError, NoCredentialsError
+    except ImportError:
+        return False, "boto3 not installed - run: pip install boto3"
+    
+    try:
+        # Create client with explicit creds or fall back to defaults
+        if access_key and secret_key:
+            client = boto3.client(
+                'bedrock',
+                region_name=region,
+                aws_access_key_id=access_key,
+                aws_secret_access_key=secret_key
+            )
+        else:
+            client = boto3.client('bedrock', region_name=region)
+        
+        # Try to list models to validate access
+        response = client.list_foundation_models(byOutputModality="TEXT")
+        model_count = len(response.get('modelSummaries', []))
+        return True, f"Connected! {model_count} text models available"
+    
+    except NoCredentialsError:
+        return False, "No AWS credentials found"
+    except ClientError as e:
+        error_code = e.response.get('Error', {}).get('Code', '')
+        if error_code == 'AccessDeniedException':
+            return False, "Access denied - check IAM permissions for Bedrock"
+        elif error_code == 'UnrecognizedClientException':
+            return False, "Invalid AWS credentials"
+        else:
+            return False, f"AWS error: {error_code}"
+    except Exception as e:
+        return False, str(e)
+
+
+def fetch_bedrock_models(
+    access_key: Optional[str] = None,
+    secret_key: Optional[str] = None,
+    region: str = "us-east-1"
+) -> List[DiscoveredModel]:
+    """
+    Fetch available models from AWS Bedrock.
+    
+    Args:
+        access_key: AWS access key (optional, falls back to env/credentials file)
+        secret_key: AWS secret key (optional)
+        region: AWS region
+    
+    Returns:
+        List of discovered models
+    """
+    # Known pricing (per 1M tokens) for common Bedrock models
+    BEDROCK_PRICING = {
+        "anthropic.claude-3-5-sonnet": (3.00, 15.00),
+        "anthropic.claude-3-5-haiku": (0.80, 4.00),
+        "anthropic.claude-3-sonnet": (3.00, 15.00),
+        "anthropic.claude-3-haiku": (0.25, 1.25),
+        "anthropic.claude-3-opus": (15.00, 75.00),
+        "amazon.titan-text-premier": (0.50, 1.50),
+        "amazon.titan-text-express": (0.20, 0.60),
+        "amazon.titan-text-lite": (0.15, 0.20),
+        "amazon.titan-embed-text": (0.10, 0.00),
+        "amazon.nova-pro": (0.80, 3.20),
+        "amazon.nova-lite": (0.06, 0.24),
+        "amazon.nova-micro": (0.035, 0.14),
+        "meta.llama3-1-70b": (0.99, 0.99),
+        "meta.llama3-1-8b": (0.22, 0.22),
+        "meta.llama3-2-90b": (2.00, 2.00),
+        "mistral.mistral-large": (4.00, 12.00),
+        "mistral.mistral-small": (1.00, 3.00),
+        "cohere.command-r-plus": (3.00, 15.00),
+        "cohere.command-r": (0.50, 1.50),
+        "cohere.embed-english": (0.10, 0.00),
+    }
+    
+    try:
+        import boto3
+    except ImportError:
+        print("boto3 not installed - run: pip install boto3")
+        return []
+    
+    try:
+        # Create client
+        if access_key and secret_key:
+            client = boto3.client(
+                'bedrock',
+                region_name=region,
+                aws_access_key_id=access_key,
+                aws_secret_access_key=secret_key
+            )
+        else:
+            client = boto3.client('bedrock', region_name=region)
+        
+        # List foundation models
+        response = client.list_foundation_models()
+        foundation_models = response.get('modelSummaries', [])
+        
+        models = []
+        for m in foundation_models:
+            model_id = m.get('modelId', '')
+            if not model_id:
+                continue
+            
+            # Check if model supports on-demand inference
+            inference_types = m.get('inferenceTypesSupported', [])
+            if 'ON_DEMAND' not in inference_types:
+                continue  # Skip models that require provisioned throughput
+            
+            # Determine provider from model ID
+            provider_name = m.get('providerName', '')
+            
+            # Determine capabilities
+            input_mods = m.get('inputModalities', [])
+            output_mods = m.get('outputModalities', [])
+            
+            is_embedding = 'EMBEDDING' in output_mods
+            supports_vision = 'IMAGE' in input_mods
+            is_chat = 'TEXT' in output_mods and not is_embedding
+            
+            # Get pricing
+            pricing_input, pricing_output = None, None
+            for key, (inp, out) in BEDROCK_PRICING.items():
+                if key in model_id.lower():
+                    pricing_input, pricing_output = inp, out
+                    break
+            
+            models.append(DiscoveredModel(
+                id=f"bedrock/{model_id}",
+                name=m.get('modelName', model_id),
+                provider="bedrock",
+                is_embedding=is_embedding,
+                is_chat=is_chat,
+                supports_vision=supports_vision,
+                pricing_input=pricing_input,
+                pricing_output=pricing_output,
+            ))
+        
+        return models
+    except Exception as e:
+        print(f"Error fetching Bedrock models: {e}")
         return []
 
 

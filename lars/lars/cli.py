@@ -8472,8 +8472,12 @@ def bootstrap_wizard():
     from .bootstrap_providers import (
         validate_openrouter_key,
         validate_ollama_host,
+        validate_gemini_key,
+        validate_bedrock_credentials,
         fetch_openrouter_models,
         fetch_ollama_models,
+        fetch_gemini_models,
+        fetch_bedrock_models,
         get_recommended_defaults,
         get_openrouter_embedding_models,
         filter_models_for_tier,
@@ -8578,8 +8582,67 @@ def bootstrap_wizard():
             if not Confirm.ask("  Add another Ollama host?", default=False):
                 break
     
+    # --- Google AI (Gemini) ---
+    gemini_key = None
+    gemini_enabled = False
+    existing_gemini = os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_AI_API_KEY', '')
+    add_gemini = Confirm.ask(
+        "\n[bold]Add Gemini?[/bold] [dim](Google AI models)[/dim]",
+        default=False
+    )
+    
+    if add_gemini:
+        if existing_gemini:
+            console.print(f"  [dim]Current key: ...{existing_gemini[-8:]}[/dim]")
+            gemini_key = Prompt.ask("  API Key (Enter to keep current)", password=True, default="")
+            if not gemini_key:
+                gemini_key = existing_gemini
+        else:
+            console.print("  [dim]Get a key at aistudio.google.com/apikey[/dim]")
+            gemini_key = Prompt.ask("  API Key", password=True, default="")
+        
+        if gemini_key:
+            console.print("  Validating...", end="")
+            is_valid, message = validate_gemini_key(gemini_key)
+            if is_valid:
+                console.print(f" [green]✓ {message}[/green]")
+                gemini_enabled = True
+                # Fetch models
+                console.print("  Fetching models...", end="")
+                gemini_models = fetch_gemini_models(gemini_key)
+                console.print(f" [green]✓ {len(gemini_models)} models[/green]")
+                all_models.extend(gemini_models)
+            else:
+                console.print(f" [red]✗ {message}[/red]")
+                gemini_key = None
+    
+    # --- AWS Bedrock ---
+    bedrock_enabled = False
+    bedrock_region = "us-east-1"
+    add_bedrock = Confirm.ask(
+        "\n[bold]Add AWS Bedrock?[/bold] [dim](Claude, Nova, Titan, etc.)[/dim]",
+        default=False
+    )
+    
+    if add_bedrock:
+        console.print("  [dim]Uses AWS credentials from env vars, ~/.aws/credentials, or IAM role[/dim]")
+        bedrock_region = Prompt.ask("  AWS Region", default="us-east-1")
+        
+        console.print("  Validating credentials...", end="")
+        is_valid, message = validate_bedrock_credentials(region=bedrock_region)
+        if is_valid:
+            console.print(f" [green]✓ {message}[/green]")
+            bedrock_enabled = True
+            # Fetch models
+            console.print("  Fetching models...", end="")
+            bedrock_models = fetch_bedrock_models(region=bedrock_region)
+            console.print(f" [green]✓ {len(bedrock_models)} models[/green]")
+            all_models.extend(bedrock_models)
+        else:
+            console.print(f" [red]✗ {message}[/red]")
+    
     # Check that we have at least one provider
-    if not openrouter_enabled and not ollama_enabled:
+    if not openrouter_enabled and not ollama_enabled and not gemini_enabled and not bedrock_enabled:
         console.print("\n[yellow]⚠ No providers configured. You'll need to edit models.yaml manually.[/yellow]")
     
     # ==========================================================================
@@ -8753,6 +8816,10 @@ def bootstrap_wizard():
         "openrouter_enabled": openrouter_enabled,
         "ollama_enabled": ollama_enabled,
         "ollama_hosts": ollama_hosts,
+        "gemini_enabled": gemini_enabled,
+        "gemini_key": gemini_key,
+        "bedrock_enabled": bedrock_enabled,
+        "bedrock_region": bedrock_region,
         "model_tiers": model_tiers,
     }
 
@@ -8799,6 +8866,8 @@ def cmd_bootstrap(args):
             os.environ['LARS_ROOT'] = str(lars_root)
             if wizard_config.get('api_key'):
                 os.environ['OPENROUTER_API_KEY'] = wizard_config['api_key']
+            if wizard_config.get('gemini_key'):
+                os.environ['GEMINI_API_KEY'] = wizard_config['gemini_key']
 
             # Write .env file (minimal - just secrets, not model config)
             # Model configuration lives in models.yaml
@@ -8806,6 +8875,8 @@ def cmd_bootstrap(args):
             env_lines = [f"LARS_ROOT={lars_root}"]
             if wizard_config.get('api_key'):
                 env_lines.append(f"OPENROUTER_API_KEY={wizard_config['api_key']}")
+            if wizard_config.get('gemini_key'):
+                env_lines.append(f"GEMINI_API_KEY={wizard_config['gemini_key']}")
             
             # Add any collected passwords (SQL connections, etc.)
             for env_var, value in wizard_config.get('passwords_for_env', {}).items():
@@ -8822,6 +8893,10 @@ def cmd_bootstrap(args):
                     openrouter_api_key_env="OPENROUTER_API_KEY",
                     ollama_enabled=wizard_config.get('ollama_enabled', False),
                     ollama_hosts=wizard_config.get('ollama_hosts', {}),
+                    gemini_enabled=wizard_config.get('gemini_enabled', False),
+                    gemini_api_key_env="GEMINI_API_KEY",
+                    bedrock_enabled=wizard_config.get('bedrock_enabled', False),
+                    bedrock_region=wizard_config.get('bedrock_region', 'us-east-1'),
                 ),
                 models=wizard_config.get('model_tiers', {}),
             )

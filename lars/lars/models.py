@@ -62,10 +62,21 @@ class ProvidersConfig:
     ollama_enabled: bool = False
     ollama_hosts: Dict[str, str] = field(default_factory=dict)  # alias -> url
     
+    gemini_enabled: bool = False
+    gemini_api_key_env: str = "GEMINI_API_KEY"
+    
+    bedrock_enabled: bool = False
+    bedrock_region: str = "us-east-1"
+    
     @property
     def openrouter_api_key(self) -> Optional[str]:
         """Get the actual API key from environment."""
         return os.environ.get(self.openrouter_api_key_env)
+    
+    @property
+    def gemini_api_key(self) -> Optional[str]:
+        """Get the Gemini API key from environment."""
+        return os.environ.get(self.gemini_api_key_env)
     
     @property
     def has_any_provider(self) -> bool:
@@ -74,6 +85,10 @@ class ProvidersConfig:
             return True
         if self.ollama_enabled and self.ollama_hosts:
             return True
+        if self.gemini_enabled and self.gemini_api_key:
+            return True
+        if self.bedrock_enabled:
+            return True  # Bedrock uses AWS credentials, not env var key
         return False
 
 
