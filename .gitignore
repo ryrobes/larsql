@@ -35,3 +35,9 @@ data
 
 .env
 .env.bak
+
+# Generated files
+.lars
+models.yaml
+.DS_Store
+**/.DS_Store
