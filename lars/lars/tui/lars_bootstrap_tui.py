@@ -31,6 +31,19 @@ from enum import Enum
 from .framework import ReactiveGlassApp, Action
 from .framework.dynamic_colors import DynamicColorManager
 
+# Import bootstrap providers (the real implementations)
+from ..bootstrap_providers import (
+    DiscoveredModel,
+    validate_openrouter_key as _validate_openrouter_key,
+    fetch_openrouter_models as _fetch_openrouter_models,
+    validate_ollama_host as _validate_ollama_host,
+    fetch_ollama_models as _fetch_ollama_models,
+    get_recommended_defaults,
+    get_openrouter_embedding_models,
+    filter_models_for_tier,
+    sort_models_for_display,
+)
+
 
 # =============================================================================
 # CONFIGURATION
@@ -67,76 +80,38 @@ MODEL_TIERS = {
     },
 }
 
-# Default model recommendations
-DEFAULT_MODELS = {
-    "embedding": "openai/text-embedding-3-small",
-    "fast": "openai/gpt-4o-mini",
-    "standard": "anthropic/claude-sonnet-4",
-    "quality": "anthropic/claude-sonnet-4",
-    "flagship": "anthropic/claude-opus-4",
-}
+# Default model recommendations (from bootstrap_providers)
+DEFAULT_MODELS = get_recommended_defaults()
 
 
 # =============================================================================
-# HELPER FUNCTIONS
+# HELPER FUNCTIONS (wrappers around bootstrap_providers)
 # =============================================================================
 
 def validate_openrouter_key(api_key: str) -> Tuple[bool, str]:
-    """Validate OpenRouter API key by making a test request."""
+    """Validate OpenRouter API key."""
     if not api_key or len(api_key) < 10:
         return False, "Key too short"
-    
-    try:
-        import urllib.request
-        import json
-        
-        req = urllib.request.Request(
-            "https://openrouter.ai/api/v1/auth/key",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            }
-        )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read().decode())
-            # Check if key has credits or is valid
-            if data.get("data"):
-                label = data["data"].get("label", "API Key")
-                return True, f"Valid ({label})"
-            return True, "Valid"
-    except urllib.error.HTTPError as e:
-        if e.code == 401:
-            return False, "Invalid key"
-        return False, f"HTTP {e.code}"
-    except Exception as e:
-        return False, str(e)[:30]
+    return _validate_openrouter_key(api_key)
 
 
-def fetch_openrouter_models(api_key: str) -> List[Dict]:
+def fetch_openrouter_models(api_key: str) -> List[DiscoveredModel]:
     """Fetch available models from OpenRouter."""
-    try:
-        import urllib.request
-        import json
-        
-        req = urllib.request.Request(
-            "https://openrouter.ai/api/v1/models",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-            }
-        )
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            data = json.loads(resp.read().decode())
-            models = []
-            for m in data.get("data", []):
-                models.append({
-                    "id": m.get("id", ""),
-                    "name": m.get("name", m.get("id", "")),
-                    "context": m.get("context_length", 0),
-                    "pricing": m.get("pricing", {}),
-                })
-            return models
-    except Exception as e:
-        return []
+    # Get chat models from API
+    chat_models = _fetch_openrouter_models(api_key)
+    # Add known embedding models (not in API)
+    embedding_models = get_openrouter_embedding_models()
+    return chat_models + embedding_models
+
+
+def validate_ollama_host(url: str) -> Tuple[bool, str]:
+    """Validate Ollama host."""
+    return _validate_ollama_host(url)
+
+
+def fetch_ollama_models(url: str, host_alias: str = "default") -> List[DiscoveredModel]:
+    """Fetch models from Ollama."""
+    return _fetch_ollama_models(url, host_alias)
 
 
 def get_default_lars_root() -> str:
@@ -234,13 +209,19 @@ class LarsBootstrapTUI(ReactiveGlassApp):
             
             "ollama_enabled": False,
             "ollama_host": "http://localhost:11434",
+            "ollama_host_editing": False,
+            "ollama_host_buffer": "",
             "ollama_status": "none",
+            "ollama_message": "",
             "ollama_models": [],
             
             # Step 3: Model Tiers
             "model_tiers": dict(DEFAULT_MODELS),
             "selected_tier": "embedding",
             "tier_index": 0,
+            "model_selector_open": False,
+            "model_selector_index": 0,
+            "available_models_for_tier": [],  # Filtered models for current tier
             
             # Step 4: Summary / Execute
             "bootstrap_running": False,
@@ -322,6 +303,38 @@ class LarsBootstrapTUI(ReactiveGlassApp):
         # === OLLAMA ===
         elif action.type == "TOGGLE_OLLAMA":
             new_state["ollama_enabled"] = not new_state["ollama_enabled"]
+            if new_state["ollama_enabled"] and new_state["ollama_status"] == "none":
+                # Auto-validate when enabling
+                new_state["ollama_status"] = "pending"
+                new_state["ollama_message"] = "Connecting..."
+        
+        elif action.type == "START_EDIT_OLLAMA_HOST":
+            new_state["ollama_host_editing"] = True
+            new_state["ollama_host_buffer"] = new_state["ollama_host"]
+        
+        elif action.type == "FINISH_EDIT_OLLAMA_HOST":
+            new_state["ollama_host"] = new_state["ollama_host_buffer"]
+            new_state["ollama_host_editing"] = False
+            new_state["ollama_status"] = "pending"
+            new_state["ollama_message"] = "Validating..."
+        
+        elif action.type == "CANCEL_EDIT_OLLAMA_HOST":
+            new_state["ollama_host_editing"] = False
+        
+        elif action.type == "EDIT_OLLAMA_HOST_CHAR":
+            new_state["ollama_host_buffer"] += action.payload
+        
+        elif action.type == "EDIT_OLLAMA_HOST_BACKSPACE":
+            new_state["ollama_host_buffer"] = new_state["ollama_host_buffer"][:-1]
+        
+        elif action.type == "VALIDATE_OLLAMA_RESULT":
+            new_state["ollama_status"] = "ok" if action.payload["valid"] else "error"
+            new_state["ollama_message"] = action.payload["message"]
+            if action.payload["valid"]:
+                new_state["ollama_enabled"] = True
+        
+        elif action.type == "SET_OLLAMA_MODELS":
+            new_state["ollama_models"] = action.payload
         
         # === MODEL TIERS ===
         elif action.type == "SELECT_TIER":
@@ -333,11 +346,47 @@ class LarsBootstrapTUI(ReactiveGlassApp):
             new_state["model_tiers"][tier] = model
         
         elif action.type == "NAVIGATE_TIER":
-            tiers = list(MODEL_TIERS.keys())
-            delta = action.payload
-            idx = tiers.index(new_state["selected_tier"])
-            idx = max(0, min(len(tiers) - 1, idx + delta))
-            new_state["selected_tier"] = tiers[idx]
+            if new_state.get("model_selector_open"):
+                # Navigate within model selector
+                models = new_state.get("available_models_for_tier", [])
+                delta = action.payload
+                idx = new_state.get("model_selector_index", 0) + delta
+                idx = max(0, min(len(models) - 1, idx))
+                new_state["model_selector_index"] = idx
+            else:
+                # Navigate between tiers
+                tiers = list(MODEL_TIERS.keys())
+                delta = action.payload
+                idx = tiers.index(new_state["selected_tier"])
+                idx = max(0, min(len(tiers) - 1, idx + delta))
+                new_state["selected_tier"] = tiers[idx]
+        
+        elif action.type == "OPEN_MODEL_SELECTOR":
+            tier = new_state["selected_tier"]
+            # Combine all available models
+            all_models = (
+                new_state.get("openrouter_models", []) + 
+                new_state.get("ollama_models", [])
+            )
+            # Filter for this tier
+            filtered = filter_models_for_tier(all_models, tier)
+            # Sort with defaults first
+            sorted_models = sort_models_for_display(filtered, tier, DEFAULT_MODELS)
+            new_state["available_models_for_tier"] = sorted_models
+            new_state["model_selector_open"] = True
+            new_state["model_selector_index"] = 0
+        
+        elif action.type == "CLOSE_MODEL_SELECTOR":
+            new_state["model_selector_open"] = False
+        
+        elif action.type == "SELECT_MODEL":
+            models = new_state.get("available_models_for_tier", [])
+            idx = new_state.get("model_selector_index", 0)
+            if 0 <= idx < len(models):
+                model = models[idx]
+                tier = new_state["selected_tier"]
+                new_state["model_tiers"][tier] = model.id
+            new_state["model_selector_open"] = False
         
         # === FIELD NAVIGATION ===
         elif action.type == "NAVIGATE_FIELD":
@@ -538,14 +587,32 @@ class LarsBootstrapTUI(ReactiveGlassApp):
         ]
         
         ol_enabled = self.state.get("ollama_enabled", False)
+        ol_status = self.state.get("ollama_status", "none")
+        ol_msg = self.state.get("ollama_message", "")
+        
         is_focused = self.state.get("focused_field") == 3
         prefix = f"[{colors['accent']}]▶[/{colors['accent']}]" if is_focused else " "
         
         enabled_txt = "[green]Enabled[/green]" if ol_enabled else "[dim]Disabled[/dim]"
         ol_content.append(f"{prefix} Status: {enabled_txt}  [dim](e to toggle)[/dim]")
-        ol_content.append(f"  Host: {self.state.get('ollama_host', 'http://localhost:11434')}")
         
-        widgets.append(glass_panel("ollama_panel", ol_content, x, 25, 50, 8, colors, "secondary"))
+        # Host field
+        is_focused = self.state.get("focused_field") == 4
+        prefix = f"[{colors['accent']}]▶[/{colors['accent']}]" if is_focused else " "
+        
+        if self.state.get("ollama_host_editing"):
+            host_display = f"[on {colors['primary']}]{self.state.get('ollama_host_buffer', '')}█[/on {colors['primary']}]"
+        else:
+            host_display = self.state.get('ollama_host', 'http://localhost:11434')
+        
+        ol_content.append(f"{prefix} Host: {host_display}")
+        ol_content.append(f"  {status_icon(ol_status)} {ol_msg}" if ol_msg else "")
+        
+        ol_model_count = len(self.state.get("ollama_models", []))
+        if ol_model_count > 0:
+            ol_content.append(f"  [green]✓ {ol_model_count} models available[/green]")
+        
+        widgets.append(glass_panel("ollama_panel", ol_content, x, 25, 50, 12, colors, "secondary"))
         
         # Help panel
         help_content = [
@@ -572,6 +639,8 @@ class LarsBootstrapTUI(ReactiveGlassApp):
         x = 2 if visible else 9999
         widgets = []
         
+        selector_open = self.state.get("model_selector_open", False)
+        
         # Tier list
         tier_content = [
             f"[bold {colors['accent']}]🎯 Model Tiers[/bold {colors['accent']}]",
@@ -583,7 +652,7 @@ class LarsBootstrapTUI(ReactiveGlassApp):
         model_tiers = self.state.get("model_tiers", {})
         
         for i, (tier, info) in enumerate(MODEL_TIERS.items()):
-            is_selected = tier == selected_tier
+            is_selected = tier == selected_tier and not selector_open
             prefix = f"[{colors['accent']}]▶[/{colors['accent']}]" if is_selected else " "
             
             model = model_tiers.get(tier, "not set")
@@ -598,25 +667,76 @@ class LarsBootstrapTUI(ReactiveGlassApp):
         
         widgets.append(glass_panel("tiers_panel", tier_content, x, 3, 55, 32, colors, "primary"))
         
-        # Model selection help
-        help_content = [
-            f"[bold {colors['light']}]Model Selection[/bold {colors['light']}]",
-            separator(30),
-            "",
-            "Use j/k to navigate tiers",
-            "Enter to select model",
-            "",
-            f"[dim]Selected: {selected_tier}[/dim]",
-            "",
-            "[bold]Recommendations:[/bold]",
-            "  embedding: text-embedding-3-small",
-            "  fast: gpt-4o-mini",
-            "  standard: claude-sonnet-4",
-            "  quality: claude-sonnet-4",
-            "  flagship: claude-opus-4",
-        ]
-        
-        widgets.append(glass_panel("model_help", help_content, x + 58, 3, 35, 20, colors, "secondary"))
+        # Model selector (shown when open) or help panel
+        if selector_open and visible:
+            # Model selector popup
+            available = self.state.get("available_models_for_tier", [])
+            selector_idx = self.state.get("model_selector_index", 0)
+            
+            selector_content = [
+                f"[bold {colors['accent']}]Select {selected_tier.upper()} model[/bold {colors['accent']}]",
+                separator(40),
+                f"[dim]{len(available)} models available[/dim]",
+                "",
+            ]
+            
+            # Show a window of models around the selection
+            window_size = 12
+            start = max(0, selector_idx - window_size // 2)
+            end = min(len(available), start + window_size)
+            start = max(0, end - window_size)
+            
+            for i in range(start, end):
+                model = available[i]
+                is_sel = i == selector_idx
+                prefix = f"[{colors['accent']}]▶[/{colors['accent']}]" if is_sel else " "
+                
+                # Format model display
+                name = model.name[:35] if len(model.name) <= 35 else model.name[:32] + "..."
+                source = model.source_display[:10]
+                price = model.pricing_display[:10] if model.pricing_display else ""
+                
+                if is_sel:
+                    selector_content.append(f"{prefix} [bold]{name}[/bold]")
+                else:
+                    selector_content.append(f"{prefix} {name}")
+                selector_content.append(f"    [dim]{source}[/dim] {price}")
+            
+            if len(available) > window_size:
+                selector_content.append("")
+                selector_content.append(f"[dim]↑↓ scroll ({selector_idx + 1}/{len(available)})[/dim]")
+            
+            selector_content.append("")
+            selector_content.append("[dim]Enter:select  Esc:cancel[/dim]")
+            
+            widgets.append(glass_panel("model_selector", selector_content, x + 58, 3, 45, 24, colors, "accent"))
+        else:
+            # Model selection help (stable - always in widget list)
+            # Count available models
+            or_count = len(self.state.get("openrouter_models", []))
+            ol_count = len(self.state.get("ollama_models", []))
+            
+            help_content = [
+                f"[bold {colors['light']}]Model Selection[/bold {colors['light']}]",
+                separator(30),
+                "",
+                "j/k: navigate tiers",
+                "Enter: select model",
+                "",
+                f"[dim]Selected: {selected_tier}[/dim]",
+                "",
+                "[bold]Available Models:[/bold]",
+                f"  OpenRouter: {or_count}" if or_count else "  [dim]OpenRouter: not configured[/dim]",
+                f"  Ollama: {ol_count}" if ol_count else "  [dim]Ollama: not configured[/dim]",
+                "",
+                "[bold]Defaults:[/bold]",
+            ]
+            for tier, model_id in DEFAULT_MODELS.items():
+                short = model_id.split("/")[-1][:20]
+                help_content.append(f"  {tier}: {short}")
+            
+            selector_x = x + 58 if visible else 9999
+            widgets.append(glass_panel("model_selector", help_content, selector_x, 3, 35, 24, colors, "secondary"))
         
         return widgets
     
@@ -723,6 +843,19 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                 self.dispatch(Action("EDIT_KEY_CHAR", key))
             return
         
+        if self.state.get("ollama_host_editing"):
+            if key == "escape":
+                self.dispatch(Action("CANCEL_EDIT_OLLAMA_HOST"))
+            elif key == "enter":
+                self.dispatch(Action("FINISH_EDIT_OLLAMA_HOST"))
+                # Start validation
+                self._validate_ollama_host()
+            elif key == "backspace":
+                self.dispatch(Action("EDIT_OLLAMA_HOST_BACKSPACE"))
+            elif len(key) == 1 and key.isprintable():
+                self.dispatch(Action("EDIT_OLLAMA_HOST_CHAR", key))
+            return
+        
         # Global keys
         if key == "q":
             self.exit()
@@ -753,20 +886,45 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                 field = self.state.get("focused_field", 0)
                 if field == 1:
                     self.dispatch(Action("TOGGLE_OPENROUTER"))
+                    if self.state.get("openrouter_enabled"):
+                        self._validate_openrouter_key()
                 elif field == 3:
                     self.dispatch(Action("TOGGLE_OLLAMA"))
+                    if self.state.get("ollama_enabled"):
+                        self._validate_ollama_host()
             elif key == "enter":
                 field = self.state.get("focused_field", 0)
                 if field == 0:
                     self.dispatch(Action("START_EDIT_ROOT"))
                 elif field == 2:
                     self.dispatch(Action("START_EDIT_KEY"))
+                elif field == 4:
+                    self.dispatch(Action("START_EDIT_OLLAMA_HOST"))
+            elif key == "v":
+                # Manual validation trigger
+                field = self.state.get("focused_field", 0)
+                if field in (1, 2) and self.state.get("openrouter_key"):
+                    self._validate_openrouter_key()
+                elif field in (3, 4):
+                    self._validate_ollama_host()
         
         elif screen == Screen.MODELS:
-            if key in ("j", "down"):
-                self.dispatch(Action("NAVIGATE_TIER", 1))
-            elif key in ("k", "up"):
-                self.dispatch(Action("NAVIGATE_TIER", -1))
+            if self.state.get("model_selector_open"):
+                if key in ("j", "down"):
+                    self.dispatch(Action("NAVIGATE_TIER", 1))
+                elif key in ("k", "up"):
+                    self.dispatch(Action("NAVIGATE_TIER", -1))
+                elif key == "enter":
+                    self.dispatch(Action("SELECT_MODEL"))
+                elif key == "escape":
+                    self.dispatch(Action("CLOSE_MODEL_SELECTOR"))
+            else:
+                if key in ("j", "down"):
+                    self.dispatch(Action("NAVIGATE_TIER", 1))
+                elif key in ("k", "up"):
+                    self.dispatch(Action("NAVIGATE_TIER", -1))
+                elif key == "enter":
+                    self.dispatch(Action("OPEN_MODEL_SELECTOR"))
         
         elif screen == Screen.SUMMARY:
             if key == "enter" and not self.state.get("bootstrap_running"):
@@ -778,6 +936,13 @@ class LarsBootstrapTUI(ReactiveGlassApp):
         """Validate OpenRouter API key in background."""
         def do_validate():
             key = self.state.get("openrouter_key", "")
+            if not key:
+                self.call_later(lambda: self.dispatch(Action("VALIDATE_KEY_RESULT", {
+                    "valid": False,
+                    "message": "No API key set",
+                })))
+                return
+            
             valid, message = validate_openrouter_key(key)
             self.call_later(lambda: self.dispatch(Action("VALIDATE_KEY_RESULT", {
                 "valid": valid,
@@ -786,8 +951,29 @@ class LarsBootstrapTUI(ReactiveGlassApp):
             
             if valid:
                 # Fetch models
+                self.call_later(lambda: self.dispatch(Action("SET_STATUS", "Fetching models...")))
                 models = fetch_openrouter_models(key)
                 self.call_later(lambda: self.dispatch(Action("SET_OPENROUTER_MODELS", models)))
+                self.call_later(lambda: self.dispatch(Action("SET_STATUS", f"Loaded {len(models)} models")))
+        
+        threading.Thread(target=do_validate, daemon=True).start()
+    
+    def _validate_ollama_host(self):
+        """Validate Ollama host in background."""
+        def do_validate():
+            host = self.state.get("ollama_host", "http://localhost:11434")
+            valid, message = validate_ollama_host(host)
+            self.call_later(lambda: self.dispatch(Action("VALIDATE_OLLAMA_RESULT", {
+                "valid": valid,
+                "message": message,
+            })))
+            
+            if valid:
+                # Fetch models
+                self.call_later(lambda: self.dispatch(Action("SET_STATUS", "Fetching Ollama models...")))
+                models = fetch_ollama_models(host)
+                self.call_later(lambda: self.dispatch(Action("SET_OLLAMA_MODELS", models)))
+                self.call_later(lambda: self.dispatch(Action("SET_STATUS", f"Loaded {len(models)} Ollama models")))
         
         threading.Thread(target=do_validate, daemon=True).start()
     
