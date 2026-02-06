@@ -1503,6 +1503,14 @@ def list_runs():
         List of test runs with summary stats
     """
     try:
+        # Clear cached DuckDB connection to ensure we see latest parquet files
+        # This is important with multi-worker setups where another worker wrote data
+        try:
+            from lars.lars_db import get_lars_db
+            get_lars_db().clear_cached_connection()
+        except Exception:
+            pass
+        
         db = _get_db()
 
         status = request.args.get('status')
@@ -1580,6 +1588,13 @@ def get_run(run_id: str):
     Get detailed results for a specific test run.
     """
     try:
+        # Clear cached connection to ensure fresh view of parquet files
+        try:
+            from lars.lars_db import get_lars_db
+            get_lars_db().clear_cached_connection()
+        except Exception:
+            pass
+        
         db = _get_db()
 
         # Get run metadata
@@ -1754,6 +1769,13 @@ def get_test_stats():
         Summary statistics and trends
     """
     try:
+        # Clear cached connection to ensure fresh view of parquet files
+        try:
+            from lars.lars_db import get_lars_db
+            get_lars_db().clear_cached_connection()
+        except Exception:
+            pass
+        
         db = _get_db()
         days = int(request.args.get('days', 7))
 
@@ -1954,6 +1976,13 @@ def get_test_history(test_id: str):
     Get execution history for a specific test.
     """
     try:
+        # Clear cached connection to ensure fresh view of parquet files
+        try:
+            from lars.lars_db import get_lars_db
+            get_lars_db().clear_cached_connection()
+        except Exception:
+            pass
+        
         db = _get_db()
         limit = int(request.args.get('limit', 50))
 
