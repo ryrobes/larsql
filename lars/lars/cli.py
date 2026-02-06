@@ -379,6 +379,35 @@ def main():
     sql_semantic_parser.add_argument('--verbose', '-v', action='store_true', help='Show detailed execution info')
     sql_semantic_parser.set_defaults(func=cmd_sql_semantic)
 
+    # sql test-connection (test a sql_connection configuration)
+    sql_test_conn_parser = sql_subparsers.add_parser(
+        'test-connection',
+        help='Test a sql_connection configuration by attempting to connect',
+        aliases=['tc', 'test']
+    )
+    sql_test_conn_parser.add_argument(
+        'connection',
+        nargs='?',
+        default=None,
+        help='Connection name to test (default: test all enabled connections)'
+    )
+    sql_test_conn_parser.add_argument(
+        '--all', '-a',
+        action='store_true',
+        help='Test all connections including disabled ones'
+    )
+    sql_test_conn_parser.add_argument(
+        '--verbose', '-v',
+        action='store_true',
+        help='Show detailed connection info'
+    )
+    sql_test_conn_parser.add_argument(
+        '--json',
+        action='store_true',
+        help='Output results as JSON'
+    )
+    sql_test_conn_parser.set_defaults(func=cmd_sql_test_connection)
+
     # Embedding command group
     embed_parser = subparsers.add_parser('embed', help='Embedding system management')
     embed_subparsers = embed_parser.add_subparsers(dest='embed_command', help='Embedding subcommands')
@@ -1546,7 +1575,7 @@ def main():
             print(f"Unknown ssql subcommand: {args.ssql_command}")
             sys.exit(1)
     elif args.command == 'sql':
-        # Handle sql subcommands (query, server, crawl, or semantic)
+        # Handle sql subcommands (query, server, crawl, semantic, test-connection)
         if args.sql_command == 'query' or args.sql_command == 'q':
             cmd_sql(args)
         elif args.sql_command == 'server' or args.sql_command == 'serve':
@@ -1555,6 +1584,8 @@ def main():
             cmd_sql_crawl(args)
         elif args.sql_command in ('semantic', 'sem', 'ssql'):
             cmd_sql_semantic(args)
+        elif args.sql_command in ('test-connection', 'tc', 'test'):
+            cmd_sql_test_connection(args)
         elif args.sql_command is None:
             # Backward compatibility: lars sql "SELECT..." (old style)
             # Check if there are remaining args that look like a query
@@ -2899,6 +2930,170 @@ def _check_postgres_server(host: str, port: int) -> tuple:
         return False, f"Cannot connect to {host}:{port}"
     except Exception as e:
         return False, str(e)
+
+
+def cmd_sql_test_connection(args):
+    """Test sql_connection configurations by attempting to connect."""
+    import json as json_module
+    import time
+    import yaml
+    from pathlib import Path
+    from rich.console import Console
+    from rich.table import Table
+
+    console = Console(force_terminal=True)
+
+    try:
+        from lars.sql_tools.config import SqlConnectionConfig
+        from lars.sql_tools.lazy_attach import LazyAttachManager
+        from lars.config import get_config
+        import duckdb
+    except ImportError as e:
+        console.print(f"[red]✗ Missing dependencies:[/red] {e}")
+        return
+
+    # Load ALL sql_connection YAML files (including disabled)
+    cfg = get_config()
+    sql_dir = Path(cfg.root_dir) / "sql_connections"
+
+    all_conns_dict = {}  # Dedupe by connection_name (last file wins)
+    if sql_dir.exists():
+        for file in sorted(sql_dir.glob("*.yaml")):
+            if file.name == "discovery_metadata.yaml":
+                continue
+            try:
+                with open(file) as f:
+                    data = yaml.safe_load(f)
+                    config = SqlConnectionConfig(**data)
+                    all_conns_dict[config.connection_name] = config
+            except Exception as e:
+                if args.verbose:
+                    console.print(f"[yellow]Warning: Failed to load {file.name}: {e}[/yellow]")
+    all_conns = list(all_conns_dict.values())
+
+    if not all_conns:
+        console.print("[yellow]No sql_connections found.[/yellow]")
+        console.print(f"[dim]Create YAML files in {sql_dir}[/dim]")
+        return
+
+    # Filter connections
+    if args.connection:
+        # Test specific connection by name
+        matching = [c for c in all_conns if c.connection_name == args.connection]
+        if not matching:
+            console.print(f"[red]✗ Connection not found:[/red] {args.connection}")
+            console.print("[dim]Available connections:[/dim]")
+            for c in all_conns:
+                status = "[green]●[/green]" if c.enabled else "[dim]○[/dim]"
+                console.print(f"  {status} {c.connection_name} ({c.type})")
+            return
+        conns_to_test = matching
+    elif args.all:
+        conns_to_test = all_conns
+    else:
+        # Only enabled connections
+        conns_to_test = [c for c in all_conns if c.enabled]
+
+    if not conns_to_test:
+        console.print("[yellow]No enabled connections to test.[/yellow]")
+        console.print("[dim]Use --all to include disabled connections[/dim]")
+        return
+
+    results = []
+
+    for cfg in conns_to_test:
+        conn_name = cfg.connection_name
+        conn_type = cfg.type
+
+        if args.verbose:
+            console.print(f"\n[bold]Testing {conn_name}[/bold] ({conn_type})...")
+
+        start_time = time.time()
+        success = False
+        message = ""
+        details = {}
+
+        try:
+            # Create a fresh DuckDB connection for testing
+            test_conn = duckdb.connect(':memory:')
+
+            # Use LazyAttachManager to attach this connection
+            # LazyAttachManager expects a dict {name: config}
+            manager = LazyAttachManager(test_conn, {cfg.connection_name: cfg})
+            attach_results = manager.attach_all()
+
+            elapsed = time.time() - start_time
+
+            if attach_results:
+                result = attach_results[0]
+                status = result.get('status', 'unknown')
+
+                if status == 'attached':
+                    # Try a simple query to verify
+                    try:
+                        # List schemas/tables in the attached catalog
+                        catalog_name = cfg.connection_name.replace('-', '_').replace('.', '_')
+                        test_conn.execute(f"SELECT 1")
+                        success = True
+                        attach_msg = result.get('message', '')
+                        message = f"Connected in {elapsed:.2f}s"
+                        if attach_msg:
+                            message += f" ({attach_msg})"
+                        details = {
+                            'attach_message': attach_msg,
+                            'catalog': catalog_name,
+                        }
+                    except Exception as qe:
+                        success = False
+                        message = f"Attached but query failed: {str(qe)[:60]}"
+                elif status == 'skipped':
+                    success = False
+                    message = result.get('reason', result.get('message', 'Skipped (unknown reason)'))
+                elif status == 'failed':
+                    success = False
+                    message = result.get('message', 'Connection failed (no details)')
+                else:
+                    success = False
+                    message = result.get('message', f"Unknown status: {status}")
+            else:
+                success = False
+                message = "No attach result returned"
+
+            test_conn.close()
+
+        except Exception as e:
+            elapsed = time.time() - start_time
+            success = False
+            message = str(e)[:80]
+
+        results.append({
+            'name': conn_name,
+            'type': conn_type,
+            'enabled': cfg.enabled,
+            'success': success,
+            'message': message,
+            'elapsed': elapsed,
+            'details': details,
+        })
+
+        if not args.json:
+            if success:
+                console.print(f"  [green]✓[/green] {conn_name}: {message}")
+            else:
+                console.print(f"  [red]✗[/red] {conn_name}: {message}")
+
+    # Output
+    if args.json:
+        print(json_module.dumps(results, indent=2))
+    else:
+        # Summary
+        console.print()
+        passed = sum(1 for r in results if r['success'])
+        failed = len(results) - passed
+        if failed == 0:
+            console.print(f"[green]All {passed} connections passed.[/green]")
+        else:
+            console.print(f"[yellow]{passed} passed, {failed} failed[/yellow]")
 
 
 def cmd_sql_test(args):
