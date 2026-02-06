@@ -1391,6 +1391,22 @@ def main():
         help='Skip interactive wizard, use defaults/env vars'
     )
 
+    # TUI command group - Visual terminal interfaces
+    tui_parser = subparsers.add_parser('tui', help='Visual terminal interfaces (TUI)')
+    tui_subparsers = tui_parser.add_subparsers(dest='tui_command', help='TUI subcommands')
+
+    # tui bootstrap
+    tui_bootstrap_parser = tui_subparsers.add_parser(
+        'bootstrap',
+        help='Visual onboarding wizard'
+    )
+
+    # tui config
+    tui_config_parser = tui_subparsers.add_parser(
+        'config',
+        help='Configuration panel'
+    )
+
     # Kit command group - Calliope micro-app management
     kit_parser = subparsers.add_parser('kit', help='Calliope kit management (micro-app builder)')
     kit_subparsers = kit_parser.add_subparsers(dest='kit_command', help='Kit subcommands')
@@ -1840,19 +1856,8 @@ def main():
         else:
             kit_parser.print_help()
             sys.exit(1)
-    # Alice TUI commands (COMMENTED OUT for initial release)
-    # elif args.command == 'tui':
-    #     # Launch Alice TUI dashboard
-    #     cmd_tui(args)
-    # elif args.command == 'alice':
-    #     # Alice TUI dashboard generation
-    #     if args.alice_command == 'generate':
-    #         cmd_alice_generate(args)
-    #     elif args.alice_command in ('run', 'watch'):
-    #         cmd_alice_run(args)
-    #     else:
-    #         alice_parser.print_help()
-    #         sys.exit(1)
+    elif args.command == 'tui':
+        cmd_tui(args)
     elif args.command == 'init':
         cmd_init(args)
     elif args.command == 'eject':
@@ -7610,6 +7615,45 @@ def cmd_mcp_test(args):
     """Test an MCP tool."""
     from .mcp_cli import cmd_mcp_test as impl
     impl(args)
+
+
+# =============================================================================
+# TUI Commands
+# =============================================================================
+
+def cmd_tui(args):
+    """Launch visual terminal interfaces (TUI).
+    
+    Available TUIs:
+        bootstrap - Visual onboarding wizard
+        config    - Configuration panel
+    """
+    import subprocess
+    import sys
+    
+    tui_command = getattr(args, 'tui_command', None)
+    
+    if tui_command == 'bootstrap':
+        # Run bootstrap TUI via subprocess for isolation
+        from pathlib import Path
+        tui_module = Path(__file__).parent / 'tui' / 'bootstrap.py'
+        result = subprocess.run([sys.executable, str(tui_module)])
+        sys.exit(result.returncode)
+    
+    elif tui_command == 'config':
+        # Run config panel TUI via subprocess
+        from pathlib import Path
+        tui_module = Path(__file__).parent / 'tui' / 'config.py'
+        result = subprocess.run([sys.executable, str(tui_module)])
+        sys.exit(result.returncode)
+    
+    else:
+        print("Usage: lars tui <command>")
+        print("")
+        print("Available commands:")
+        print("  bootstrap  - Visual onboarding wizard")
+        print("  config     - Configuration panel")
+        sys.exit(1)
 
 
 # =============================================================================
