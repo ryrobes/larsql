@@ -26,10 +26,20 @@ def run_sql(query: str, db_path: str = ":memory:") -> str:
     """
     Executes a SQL query using DuckDB.
     """
+    # Try pgwire first (thread-safe)
+    if db_path == ":memory:":
+        try:
+            from ..studio.backend.pgwire_client import execute_sql_via_pgwire, get_pgwire_port
+            port = get_pgwire_port()
+            if port is not None:
+                columns, data = execute_sql_via_pgwire(query, database='memory', port=port)
+                return json.dumps(data, default=str)
+        except Exception:
+            pass
+
+    # Fallback: direct DuckDB
     con = duckdb.connect(db_path)
     try:
-        # stricter: allow read-only if possible for safety?
-        # User prompt implies generic SQL execution.
         df = con.execute(query).df()
         return df.to_json(orient="records")
     except Exception as e:
@@ -67,42 +77,56 @@ def smart_sql_run(query: str, limit: Optional[int] = 200) -> str:
         smart_sql_run("SELECT * FROM csv_files.bigfoot_sightings LIMIT 10")
         smart_sql_run("SELECT COUNT(*) FROM postgres_db.public.users")
     """
+    # Add LIMIT if not present and limit specified
+    sql_with_limit = query.strip()
+    if sql_with_limit.endswith(';'):
+        sql_with_limit = sql_with_limit[:-1]
+    if limit and "LIMIT" not in sql_with_limit.upper():
+        sql_with_limit += f" LIMIT {limit}"
+
+    # Try pgwire first (thread-safe, each call gets its own connection)
     try:
-        # Import lazy attach and connection config
+        from ..studio.backend.pgwire_client import execute_sql_via_pgwire, get_pgwire_port
+        port = get_pgwire_port()
+        if port is not None:
+            columns, data = execute_sql_via_pgwire(
+                sql_with_limit,
+                database='memory',
+                port=port,
+            )
+            results = _sanitize_for_json(data)
+            rows = [list(row.values()) for row in results]
+            return json.dumps({
+                "sql": sql_with_limit,
+                "row_count": len(results),
+                "columns": columns,
+                "results": results,
+                "rows": rows
+            }, indent=2, default=str)
+    except Exception as pgwire_err:
+        # Fall through to direct DuckDB if pgwire fails
+        pass
+
+    # Fallback: direct DuckDB connection (legacy path)
+    try:
         from ..sql_tools.config import load_sql_connections
         from ..sql_tools.lazy_attach import LazyAttachManager
         from ..sql_tools.udf import register_lars_udf
 
-        # Create in-memory DuckDB connection
         con = duckdb.connect(':memory:')
 
         try:
-            # Load configured SQL connections
             connections = load_sql_connections()
-
-            # Initialize lazy attach manager
             lazy_attach = LazyAttachManager(con, connections)
-
-            # Auto-attach databases referenced in the query
             lazy_attach.ensure_for_query(query, aggressive=True)
 
-            # Register LARS UDF for semantic SQL operators (optional, non-fatal if fails)
             try:
                 register_lars_udf(con, config={})
             except Exception:
                 pass
 
-            # Add LIMIT if not present and limit specified
-            sql_with_limit = query.strip()
-            if sql_with_limit.endswith(';'):
-                sql_with_limit = sql_with_limit[:-1]
-            if limit and "LIMIT" not in sql_with_limit.upper():
-                sql_with_limit += f" LIMIT {limit}"
-
-            # Execute query
             df = con.execute(sql_with_limit).df()
 
-            # Convert results to JSON-serializable format
             results = _sanitize_for_json(df.to_dict('records'))
             rows = [list(row.values()) for row in results]
 
