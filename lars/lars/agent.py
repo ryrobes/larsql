@@ -174,7 +174,7 @@ class Agent:
         # and model doesn't have a special provider prefix
         if self.base_url is None:
             # Check if model has a special provider prefix that doesn't need OpenRouter
-            special_prefixes = ("ollama/", "ollama@", "vertex_ai/", "azure/", "bedrock/", "anthropic-direct/")
+            special_prefixes = ("ollama/", "ollama@", "vertex_ai/", "azure/", "bedrock/", "anthropic-direct/", "lmstudio/")
             if not self.model or not any(self.model.startswith(p) for p in special_prefixes):
                 # Default to OpenRouter for standard models
                 cfg = get_config()
@@ -204,6 +204,17 @@ class Agent:
                 # Standard ollama/model format - use configured default URL
                 cfg = get_config()
                 args["base_url"] = cfg.ollama_base_url
+
+        # Explicitly set provider for LM Studio (local, OpenAI-compatible)
+        elif self.model and self.model.startswith("lmstudio/"):
+            args["custom_llm_provider"] = "openai"
+            # Get LM Studio host from config
+            cfg = get_config()
+            lmstudio_host = getattr(cfg, 'lmstudio_host', None) or "http://localhost:1234"
+            args["api_base"] = f"{lmstudio_host.rstrip('/')}/v1"
+            args["api_key"] = "lm-studio"  # LM Studio doesn't need a real key
+            # Strip the lmstudio/ prefix for the actual model name
+            args["model"] = self.model.replace("lmstudio/", "", 1)
 
         # Explicitly set provider for Vertex AI (Google Cloud)
         # Model prefix takes precedence, similar to Ollama

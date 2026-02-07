@@ -1279,6 +1279,64 @@ def fetch_models_from_anthropic_direct() -> List[Dict]:
         return []
 
 
+def fetch_models_from_lmstudio() -> List[Dict]:
+    """Fetch models from LM Studio instance."""
+    cfg = get_app_config()
+    if not cfg.lmstudio_enabled:
+        console.print("[dim]   LM Studio         disabled (skipping)[/dim]")
+        return []
+    
+    base_url = cfg.lmstudio_host or "http://localhost:1234"
+    base_url = base_url.rstrip("/")
+    
+    console.print(f"[cyan]Fetching models from LM Studio at {base_url}...[/cyan]")
+    
+    try:
+        with httpx.Client(timeout=10.0) as client:
+            response = client.get(f"{base_url}/v1/models")
+            response.raise_for_status()
+            data = response.json()
+        
+        lmstudio_models = []
+        raw_models = data.get("data", [])
+        
+        if not raw_models:
+            console.print("  [dim]No models loaded in LM Studio[/dim]")
+            return []
+        
+        for m in raw_models:
+            model_name = m.get("id", "")
+            if not model_name:
+                continue
+            
+            model_id = f"lmstudio/{model_name}"
+            
+            lmstudio_models.append({
+                "id": model_id,
+                "name": model_name,
+                "description": f"Local LM Studio model",
+                "context_length": 0,
+                "pricing": {"prompt": "0", "completion": "0"},
+                "architecture": {
+                    "modality": "text->text",
+                    "input_modalities": ["text"],
+                    "output_modalities": ["text"],
+                },
+                "top_provider": {"is_moderated": False, "is_local": True},
+                "_lmstudio_host": base_url,
+            })
+        
+        console.print(f"  [green][OK][/green] Fetched {len(lmstudio_models)} models from LM Studio")
+        return lmstudio_models
+    
+    except httpx.ConnectError:
+        console.print("  [yellow][WARN][/yellow] Could not connect to LM Studio")
+        return []
+    except Exception as e:
+        console.print(f"  [yellow][WARN][/yellow] Failed to fetch from LM Studio: {e}")
+        return []
+
+
 def refresh_models(skip_verification: bool = False, workers: int = 10):
     """
     Main refresh function: fetch models from all configured providers, then populate the database.
@@ -1334,12 +1392,16 @@ def refresh_models(skip_verification: bool = False, workers: int = 10):
     # Step 1f: Fetch models from Anthropic Direct (non-fatal if not configured)
     anthropic_direct_models = fetch_models_from_anthropic_direct()
 
+    # Step 1g: Fetch models from LM Studio (non-fatal if not running)
+    lmstudio_models = fetch_models_from_lmstudio()
+
     # Combine all models (Azure returns empty - discovery requires Azure AD)
-    raw_models = openrouter_models + ollama_models + vertex_models + bedrock_models + anthropic_direct_models
+    raw_models = openrouter_models + ollama_models + vertex_models + bedrock_models + anthropic_direct_models + lmstudio_models
     console.print(f"\n[green][OK][/green] Total models: {len(raw_models)} "
                  f"(OpenRouter: {len(openrouter_models)}, Ollama: {len(ollama_models)}, "
                  f"Vertex AI: {len(vertex_models)}, Bedrock: {len(bedrock_models)}, "
-                 f"Anthropic Direct: {len(anthropic_direct_models)})\n")
+                 f"Anthropic Direct: {len(anthropic_direct_models)}, "
+                 f"LM Studio: {len(lmstudio_models)})\n")
 
     # Step 2: Verify OpenRouter models only (Ollama models are always active)
     verification_results = {}

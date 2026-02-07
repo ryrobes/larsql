@@ -62,6 +62,9 @@ class ProvidersConfig:
     ollama_enabled: bool = False
     ollama_hosts: Dict[str, str] = field(default_factory=dict)  # alias -> url
     
+    lmstudio_enabled: bool = False
+    lmstudio_host: str = "http://localhost:1234"
+    
     gemini_enabled: bool = False
     gemini_api_key_env: str = "GEMINI_API_KEY"
     
@@ -92,6 +95,8 @@ class ProvidersConfig:
         if self.openrouter_enabled and self.openrouter_api_key:
             return True
         if self.ollama_enabled and self.ollama_hosts:
+            return True
+        if self.lmstudio_enabled:
             return True
         if self.gemini_enabled and self.gemini_api_key:
             return True
@@ -168,6 +173,8 @@ def _load_from_yaml(path: Path) -> ModelsConfig:
         openrouter_api_key_env=providers_data.get("openrouter", {}).get("api_key_env", "OPENROUTER_API_KEY"),
         ollama_enabled=providers_data.get("ollama", {}).get("enabled", False),
         ollama_hosts=providers_data.get("ollama", {}).get("hosts", {}),
+        lmstudio_enabled=providers_data.get("lmstudio", {}).get("enabled", False),
+        lmstudio_host=providers_data.get("lmstudio", {}).get("host", "http://localhost:1234"),
         gemini_enabled=gemini_data.get("enabled", False),
         gemini_api_key_env=gemini_data.get("api_key_env", "GEMINI_API_KEY"),
         bedrock_enabled=bedrock_data.get("enabled", False),
@@ -241,10 +248,15 @@ def _load_from_legacy_env() -> Optional[ModelsConfig]:
     has_openrouter = bool(os.environ.get("OPENROUTER_API_KEY"))
     has_ollama = bool(ollama_hosts) or bool(os.environ.get("LARS_OLLAMA_BASE_URL"))
     
+    lmstudio_host = os.environ.get("LARS_LMSTUDIO_HOST", "")
+    has_lmstudio = bool(lmstudio_host)
+    
     providers = ProvidersConfig(
         openrouter_enabled=has_openrouter,
         ollama_enabled=has_ollama,
         ollama_hosts=ollama_hosts or {"default": os.environ.get("LARS_OLLAMA_BASE_URL", "http://localhost:11434")},
+        lmstudio_enabled=has_lmstudio,
+        lmstudio_host=lmstudio_host or "http://localhost:1234",
     )
     
     return ModelsConfig(
@@ -374,6 +386,10 @@ def write_models_yaml(
                 "enabled": config.providers.ollama_enabled,
                 "hosts": config.providers.ollama_hosts,
             },
+            "lmstudio": {
+                "enabled": config.providers.lmstudio_enabled,
+                "host": config.providers.lmstudio_host,
+            },
         },
         "models": config.models,
     }
@@ -410,6 +426,11 @@ def write_models_yaml(
             f.write(f"      {alias}: {url}\n")
         if not config.providers.ollama_hosts:
             f.write("      # default: http://localhost:11434\n")
+        f.write("\n")
+        
+        f.write("  lmstudio:\n")
+        f.write(f"    enabled: {str(config.providers.lmstudio_enabled).lower()}\n")
+        f.write(f"    host: {config.providers.lmstudio_host}\n")
         f.write("\n")
         
         f.write("  gemini:\n")
@@ -480,6 +501,10 @@ def validate_config(config: ModelsConfig) -> List[str]:
     if config.providers.ollama_enabled:
         if not config.providers.ollama_hosts:
             issues.append("Ollama enabled but no hosts configured")
+    
+    if config.providers.lmstudio_enabled:
+        # LM Studio is local, just needs the host URL
+        pass
     
     return issues
 

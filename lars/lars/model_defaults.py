@@ -11,27 +11,29 @@ from typing import Dict, List, Optional, Tuple
 # Order matters: first match for an enabled provider wins.
 MODEL_PREFERENCES: Dict[str, List[Tuple[str, str]]] = {
     "fast": [
-        ("anthropic-direct", "anthropic-direct/claude-haiku-4-20250414"),
+        ("anthropic-direct", "anthropic-direct/claude-haiku-4-5-20251001"),
         ("openrouter", "google/gemini-2.5-flash"),
         ("gemini", "gemini/gemini-2.5-flash"),
         ("ollama", "ollama/llama3"),
+        ("lmstudio", "lmstudio/lmstudio-community/Meta-Llama-3-8B-Instruct-GGUF"),
         ("bedrock", "bedrock/anthropic.claude-3-haiku"),
     ],
     "standard": [
-        ("anthropic-direct", "anthropic-direct/claude-sonnet-4-20250514"),
+        ("anthropic-direct", "anthropic-direct/claude-sonnet-4-5-2025092"),
         ("openrouter", "anthropic/claude-sonnet-4"),
         ("gemini", "gemini/gemini-2.5-pro"),
         ("ollama", "ollama/llama3:70b"),
+        ("lmstudio", "lmstudio/lmstudio-community/Meta-Llama-3.1-70B-Instruct-GGUF"),
         ("bedrock", "bedrock/anthropic.claude-3-sonnet"),
     ],
     "quality": [
-        ("anthropic-direct", "anthropic-direct/claude-sonnet-4-20250514"),
+        ("anthropic-direct", "anthropic-direct/claude-sonnet-4-5-20250929"),
         ("openrouter", "anthropic/claude-sonnet-4"),
         ("gemini", "gemini/gemini-2.5-pro"),
         ("bedrock", "bedrock/anthropic.claude-3-sonnet"),
     ],
     "flagship": [
-        ("anthropic-direct", "anthropic-direct/claude-opus-4-0620"),
+        ("anthropic-direct", "anthropic-direct/claude-opus-4-6"),
         ("openrouter", "anthropic/claude-opus-4"),
         ("gemini", "gemini/gemini-2.5-pro"),
         ("bedrock", "bedrock/anthropic.claude-3-opus"),
@@ -39,6 +41,7 @@ MODEL_PREFERENCES: Dict[str, List[Tuple[str, str]]] = {
     "embedding": [
         ("openrouter", "openai/text-embedding-3-small"),
         ("ollama", "ollama/nomic-embed-text"),
+        ("lmstudio", "lmstudio/nomic-ai/nomic-embed-text-v1.5-GGUF"),
         ("gemini", "gemini/text-embedding-004"),
         ("local", "fastembed/bge-small-en-v1.5"),
     ],
@@ -58,7 +61,7 @@ def resolve_defaults_for_providers(
     Resolve default models for each tier based on which providers are enabled.
 
     Args:
-        enabled_providers: Set of enabled provider names, e.g. {"openrouter", "ollama"}.
+        enabled_providers: Set of enabled provider names, e.g. {"openrouter", "ollama", "lmstudio"}.
                           "local" is always implicitly enabled for embeddings.
         available_models: Optional dict of provider → list of model IDs actually
                          available. Used to cross-check preferences.

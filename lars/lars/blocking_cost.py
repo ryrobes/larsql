@@ -189,6 +189,8 @@ def extract_provider_from_model(model: str) -> str:
         return "bedrock"
     if model.startswith("ollama/") or model.startswith("ollama@"):
         return "ollama"
+    if model.startswith("lmstudio/"):
+        return "lmstudio"
 
     # Generic provider extraction from "provider/model" format
     if "/" in model:

@@ -57,6 +57,8 @@ from ..bootstrap_providers import (
     fetch_bedrock_models as _fetch_bedrock_models,
     validate_anthropic_oauth_token as _validate_anthropic_token,
     fetch_anthropic_direct_models as _fetch_anthropic_direct_models,
+    validate_lmstudio_host as _validate_lmstudio_host,
+    fetch_lmstudio_models as _fetch_lmstudio_models,
     get_recommended_defaults,
     get_openrouter_embedding_models,
     filter_models_for_tier,
@@ -132,6 +134,16 @@ def validate_ollama_host(url: str) -> Tuple[bool, str]:
 def fetch_ollama_models(url: str, host_alias: str = "default") -> List[DiscoveredModel]:
     """Fetch models from Ollama."""
     return _fetch_ollama_models(url, host_alias)
+
+
+def validate_lmstudio_host(url: str) -> Tuple[bool, str]:
+    """Validate LM Studio host."""
+    return _validate_lmstudio_host(url)
+
+
+def fetch_lmstudio_models(url: str) -> List[DiscoveredModel]:
+    """Fetch models from LM Studio."""
+    return _fetch_lmstudio_models(url)
 
 
 def validate_gemini_key(api_key: str) -> Tuple[bool, str]:
@@ -282,6 +294,13 @@ class LarsBootstrapTUI(ReactiveGlassApp):
             "ollama_status": "none",
             "ollama_message": "",
             "ollama_models": [],
+            "lmstudio_enabled": False,
+            "lmstudio_host": "http://localhost:1234",
+            "lmstudio_host_editing": False,
+            "lmstudio_host_buffer": "",
+            "lmstudio_status": "none",
+            "lmstudio_message": "",
+            "lmstudio_models": [],
             
             "gemini_enabled": False,
             "gemini_key": os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_AI_API_KEY", ""),
@@ -364,6 +383,8 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                     enabled.add("openrouter")
                 if new_state.get("ollama_enabled"):
                     enabled.add("ollama")
+                if new_state.get("lmstudio_enabled"):
+                    enabled.add("lmstudio")
                 if new_state.get("gemini_enabled"):
                     enabled.add("gemini")
                 if new_state.get("bedrock_enabled"):
@@ -469,6 +490,41 @@ class LarsBootstrapTUI(ReactiveGlassApp):
         
         elif action.type == "SET_OLLAMA_MODELS":
             new_state["ollama_models"] = action.payload
+        
+        # === LM STUDIO ===
+        elif action.type == "TOGGLE_LMSTUDIO":
+            new_state["lmstudio_enabled"] = not new_state["lmstudio_enabled"]
+            if new_state["lmstudio_enabled"] and new_state["lmstudio_status"] == "none":
+                new_state["lmstudio_status"] = "pending"
+                new_state["lmstudio_message"] = "Connecting..."
+        
+        elif action.type == "START_EDIT_LMSTUDIO_HOST":
+            new_state["lmstudio_host_editing"] = True
+            new_state["lmstudio_host_buffer"] = new_state["lmstudio_host"]
+        
+        elif action.type == "FINISH_EDIT_LMSTUDIO_HOST":
+            new_state["lmstudio_host"] = new_state["lmstudio_host_buffer"]
+            new_state["lmstudio_host_editing"] = False
+            new_state["lmstudio_status"] = "pending"
+            new_state["lmstudio_message"] = "Validating..."
+        
+        elif action.type == "CANCEL_EDIT_LMSTUDIO_HOST":
+            new_state["lmstudio_host_editing"] = False
+        
+        elif action.type == "EDIT_LMSTUDIO_HOST_CHAR":
+            new_state["lmstudio_host_buffer"] += action.payload
+        
+        elif action.type == "EDIT_LMSTUDIO_HOST_BACKSPACE":
+            new_state["lmstudio_host_buffer"] = new_state["lmstudio_host_buffer"][:-1]
+        
+        elif action.type == "VALIDATE_LMSTUDIO_RESULT":
+            new_state["lmstudio_status"] = "ok" if action.payload["valid"] else "error"
+            new_state["lmstudio_message"] = action.payload["message"]
+            if action.payload["valid"]:
+                new_state["lmstudio_enabled"] = True
+        
+        elif action.type == "SET_LMSTUDIO_MODELS":
+            new_state["lmstudio_models"] = action.payload
         
         # === GEMINI ===
         elif action.type == "TOGGLE_GEMINI":
@@ -626,7 +682,8 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                 new_state.get("ollama_models", []) +
                 new_state.get("gemini_models", []) +
                 new_state.get("bedrock_models", []) +
-                new_state.get("anthropic_direct_models", [])
+                new_state.get("anthropic_direct_models", []) +
+                new_state.get("lmstudio_models", [])
             )
             # Filter for this tier
             filtered = filter_models_for_tier(all_models, tier)
@@ -647,7 +704,8 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                 new_state.get("ollama_models", []) +
                 new_state.get("gemini_models", []) +
                 new_state.get("bedrock_models", []) +
-                new_state.get("anthropic_direct_models", [])
+                new_state.get("anthropic_direct_models", []) +
+                new_state.get("lmstudio_models", [])
             )
             # Filter for tier first
             filtered = filter_models_for_tier(all_models, tier)
@@ -674,7 +732,8 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                     new_state.get("ollama_models", []) +
                     new_state.get("gemini_models", []) +
                     new_state.get("bedrock_models", []) +
-                    new_state.get("anthropic_direct_models", [])
+                    new_state.get("anthropic_direct_models", []) +
+                new_state.get("lmstudio_models", [])
                 )
                 filtered = filter_models_for_tier(all_models, tier)
                 if query:
@@ -1131,6 +1190,41 @@ class LarsBootstrapTUI(ReactiveGlassApp):
         
         widgets.append(glass_panel("anthropic_panel", ad_content, x, 36, 50, 11, colors, "secondary"))
         
+        # LM Studio
+        lm_content = [
+            f"[bold {colors['accent']}]🖥️ LM Studio[/bold {colors['accent']}]",
+            separator(40),
+            "",
+        ]
+        
+        lm_enabled = self.state.get("lmstudio_enabled", False)
+        lm_status = self.state.get("lmstudio_status", "none")
+        lm_msg = self.state.get("lmstudio_message", "")
+        
+        is_focused = self.state.get("focused_field") == 11
+        prefix = f"[{colors['accent']}]▶[/{colors['accent']}]" if is_focused else " "
+        
+        enabled_txt = "[green]Enabled[/green]" if lm_enabled else "[dim]Disabled[/dim]"
+        lm_content.append(f"{prefix} Status: {enabled_txt}  [dim](e to toggle)[/dim]")
+        
+        # Host field
+        is_focused = self.state.get("focused_field") == 12
+        prefix = f"[{colors['accent']}]▶[/{colors['accent']}]" if is_focused else " "
+        
+        if self.state.get("lmstudio_host_editing"):
+            host_display = f"[on {colors['primary']}]{self.state.get('lmstudio_host_buffer', '')}█[/on {colors['primary']}]"
+        else:
+            host_display = self.state.get('lmstudio_host', 'http://localhost:1234')
+        
+        lm_content.append(f"{prefix} Host: {host_display}")
+        lm_content.append(f"  {status_icon(lm_status)} {lm_msg}" if lm_msg else "")
+        
+        lm_model_count = len(self.state.get("lmstudio_models", []))
+        if lm_model_count > 0:
+            lm_content.append(f"  [green]✓ {lm_model_count} models available[/green]")
+        
+        widgets.append(glass_panel("lmstudio_panel", lm_content, x + 55, 26, 45, 11, colors, "secondary"))
+        
         # Help panel
         help_content = [
             f"[bold {colors['light']}]Keys & Setup[/bold {colors['light']}]",
@@ -1139,13 +1233,14 @@ class LarsBootstrapTUI(ReactiveGlassApp):
             "Gemini: aistudio.google.com",
             "Bedrock: AWS credentials file",
             "Anthropic: console.anthropic.com",
+            "LM Studio: lmstudio.ai",
             "",
             "[dim]j/k: navigate fields[/dim]",
             "[dim]e: toggle provider[/dim]",
             "[dim]Enter: edit value[/dim]",
         ]
         
-        widgets.append(glass_panel("help_panel", help_content, x + 55, 26, 45, 12, colors, "accent"))
+        widgets.append(glass_panel("help_panel", help_content, x + 55, 38, 45, 12, colors, "accent"))
         
         return widgets
     
@@ -1241,6 +1336,7 @@ class LarsBootstrapTUI(ReactiveGlassApp):
             gm_count = len(self.state.get("gemini_models", []))
             br_count = len(self.state.get("bedrock_models", []))
             ad_count = len(self.state.get("anthropic_direct_models", []))
+            lm_count = len(self.state.get("lmstudio_models", []))
             
             help_content = [
                 f"[bold {colors['light']}]Model Selection[/bold {colors['light']}]",
@@ -1257,6 +1353,7 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                 f"  Gemini: {gm_count}" if gm_count else "  [dim]Gemini: ×[/dim]",
                 f"  Bedrock: {br_count}" if br_count else "  [dim]Bedrock: ×[/dim]",
                 f"  Anthropic: {ad_count}" if ad_count else "  [dim]Anthropic: ×[/dim]",
+                f"  LM Studio: {lm_count}" if lm_count else "  [dim]LM Studio: ×[/dim]",
                 "",
                 "[bold]Defaults:[/bold]",
             ]
@@ -1631,6 +1728,18 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                 self.dispatch(Action("EDIT_ANTHROPIC_KEY_CHAR", key))
             return
         
+        if self.state.get("lmstudio_host_editing"):
+            if key == "escape":
+                self.dispatch(Action("CANCEL_EDIT_LMSTUDIO_HOST"))
+            elif key == "enter":
+                self.dispatch(Action("FINISH_EDIT_LMSTUDIO_HOST"))
+                self._validate_lmstudio_host()
+            elif key == "backspace":
+                self.dispatch(Action("EDIT_LMSTUDIO_HOST_BACKSPACE"))
+            elif len(key) == 1 and key.isprintable():
+                self.dispatch(Action("EDIT_LMSTUDIO_HOST_CHAR", key))
+            return
+        
         if self.state.get("sql_conn_name_editing"):
             if key == "escape":
                 self.dispatch(Action("CANCEL_EDIT_SQL_NAME"))
@@ -1707,6 +1816,10 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                     self.dispatch(Action("TOGGLE_ANTHROPIC_DIRECT"))
                     if self.state.get("anthropic_direct_enabled"):
                         self._validate_anthropic_key()
+                elif field == 11:
+                    self.dispatch(Action("TOGGLE_LMSTUDIO"))
+                    if self.state.get("lmstudio_enabled"):
+                        self._validate_lmstudio_host()
             elif key == "enter":
                 field = self.state.get("focused_field", 0)
                 if field == 0:
@@ -1721,6 +1834,8 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                     self.dispatch(Action("START_EDIT_BEDROCK_REGION"))
                 elif field == 10:
                     self.dispatch(Action("START_EDIT_ANTHROPIC_KEY"))
+                elif field == 12:
+                    self.dispatch(Action("START_EDIT_LMSTUDIO_HOST"))
             elif key == "v":
                 # Manual validation trigger
                 field = self.state.get("focused_field", 0)
@@ -1734,6 +1849,8 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                     self._validate_bedrock_credentials()
                 elif field in (9, 10) and self.state.get("anthropic_direct_key"):
                     self._validate_anthropic_key()
+                elif field in (11, 12):
+                    self._validate_lmstudio_host()
         
         elif screen == Screen.MODELS:
             if self.state.get("model_selector_open"):
@@ -1828,6 +1945,10 @@ class LarsBootstrapTUI(ReactiveGlassApp):
             for char in text:
                 if char.isprintable():
                     self.dispatch(Action("EDIT_BEDROCK_REGION_CHAR", char))
+        elif self.state.get("lmstudio_host_editing"):
+            for char in text:
+                if char.isprintable():
+                    self.dispatch(Action("EDIT_LMSTUDIO_HOST_CHAR", char))
         elif self.state.get("sql_conn_name_editing"):
             for char in text:
                 if char.isprintable():
@@ -1967,6 +2088,24 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                 models = fetch_anthropic_direct_models(key)
                 self.call_later(lambda: self.dispatch(Action("SET_ANTHROPIC_MODELS", models)))
                 self.call_later(lambda: self.dispatch(Action("SET_STATUS", f"Loaded {len(models)} Anthropic models")))
+        
+        threading.Thread(target=do_validate, daemon=True).start()
+    
+    def _validate_lmstudio_host(self):
+        """Validate LM Studio host in background."""
+        def do_validate():
+            host = self.state.get("lmstudio_host", "http://localhost:1234")
+            valid, message = validate_lmstudio_host(host)
+            self.call_later(lambda: self.dispatch(Action("VALIDATE_LMSTUDIO_RESULT", {
+                "valid": valid,
+                "message": message,
+            })))
+            
+            if valid:
+                self.call_later(lambda: self.dispatch(Action("SET_STATUS", "Fetching LM Studio models...")))
+                models = fetch_lmstudio_models(host)
+                self.call_later(lambda: self.dispatch(Action("SET_LMSTUDIO_MODELS", models)))
+                self.call_later(lambda: self.dispatch(Action("SET_STATUS", f"Loaded {len(models)} LM Studio models")))
         
         threading.Thread(target=do_validate, daemon=True).start()
     
@@ -2118,6 +2257,8 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                                 "ANTHROPIC_OAUTH_TOKEN" if self.state.get('anthropic_direct_key', '').startswith('sk-ant-oat')
                                 else "ANTHROPIC_API_KEY"
                             ),
+                            lmstudio_enabled=self.state.get('lmstudio_enabled', False),
+                            lmstudio_host=self.state.get('lmstudio_host', 'http://localhost:1234'),
                         ),
                         models=self.state.get('model_tiers', {}),
                     )

@@ -252,6 +252,80 @@ def fetch_ollama_models(url: str, host_alias: str = "default") -> List[Discovere
 
 
 # ============================================================================
+# LM Studio Provider
+# ============================================================================
+
+def validate_lmstudio_host(url: str) -> Tuple[bool, str]:
+    """Validate an LM Studio host URL."""
+    if not url.startswith("http"):
+        url = f"http://{url}"
+    url = url.rstrip("/")
+    
+    try:
+        resp = httpx.get(f"{url}/v1/models", timeout=10)
+        if resp.status_code == 200:
+            data = resp.json()
+            model_count = len(data.get("data", []))
+            return True, f"Connected! {model_count} models loaded"
+        else:
+            return False, f"HTTP {resp.status_code}"
+    except httpx.ConnectError:
+        return False, "Connection refused - is LM Studio running?"
+    except httpx.TimeoutException:
+        return False, "Timeout connecting to LM Studio"
+    except Exception as e:
+        return False, str(e)
+
+
+def fetch_lmstudio_models(url: str) -> List[DiscoveredModel]:
+    """Fetch available models from an LM Studio instance."""
+    if not url.startswith("http"):
+        url = f"http://{url}"
+    url = url.rstrip("/")
+    
+    try:
+        resp = httpx.get(f"{url}/v1/models", timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        
+        models = []
+        for m in data.get("data", []):
+            model_id_raw = m.get("id", "")
+            if not model_id_raw:
+                continue
+            
+            model_id = f"lmstudio/{model_id_raw}"
+            name_lower = model_id_raw.lower()
+            
+            is_embedding = any(x in name_lower for x in [
+                "embed", "nomic", "bge", "gte", "e5-", "minilm"
+            ])
+            supports_vision = any(x in name_lower for x in [
+                "vision", "llava", "bakllava", "moondream"
+            ])
+            supports_reasoning = any(x in name_lower for x in [
+                "deepseek-r1", "qwq", "thinking"
+            ])
+            
+            models.append(DiscoveredModel(
+                id=model_id,
+                name=model_id_raw,
+                provider="lmstudio",
+                host="default",
+                is_embedding=is_embedding,
+                is_chat=not is_embedding,
+                supports_vision=supports_vision,
+                supports_reasoning=supports_reasoning,
+                size_gb=None,
+            ))
+        
+        return models
+    except Exception as e:
+        print(f"Error fetching LM Studio models from {url}: {e}")
+        return []
+
+
+# ============================================================================
 # Gemini (Google AI) Provider
 # ============================================================================
 

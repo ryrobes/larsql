@@ -176,7 +176,7 @@ def _execute_single_body(
 
         # Extract provider and determine cost handling
         provider = extract_provider_from_model(model)
-        cost = 0.0 if provider == "ollama" else None  # OpenRouter fetches async
+        cost = 0.0 if provider in ("ollama", "lmstudio") else None  # OpenRouter fetches async
 
         # Build full request/response for logging
         full_request = {

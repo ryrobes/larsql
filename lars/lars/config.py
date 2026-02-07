@@ -599,6 +599,16 @@ class Config(BaseModel):
     )
 
     # =========================================================================
+    # LM Studio Configuration
+    # =========================================================================
+    lmstudio_enabled: bool = Field(
+        default=False, description="Enable LM Studio provider"
+    )
+    lmstudio_host: str = Field(
+        default="http://localhost:1234", description="LM Studio server URL"
+    )
+
+    # =========================================================================
     # Parallel Execution Configuration
     # =========================================================================
     # Number of parallel workers for Arrow vectorized UDF execution
@@ -705,6 +715,10 @@ def _apply_models_yaml(config: Config):
             # Set default ollama URL from 'default' host
             if "default" in models_config.providers.ollama_hosts:
                 config.ollama_base_url = models_config.providers.ollama_hosts["default"]
+        
+        # Apply LM Studio settings
+        config.lmstudio_enabled = models_config.providers.lmstudio_enabled
+        config.lmstudio_host = models_config.providers.lmstudio_host
     except Exception as e:
         import warnings
         warnings.warn(f"Failed to load models.yaml: {e}")

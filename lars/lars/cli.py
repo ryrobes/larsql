@@ -8226,6 +8226,11 @@ def cmd_doctor(args):
             else:
                 print(f"   {DIM}   Ollama         disabled{RESET}")
             
+            if models_config.providers.lmstudio_enabled:
+                print(f"   {OK} LM Studio      {DIM}enabled ({models_config.providers.lmstudio_host}){RESET}")
+            else:
+                print(f"   {DIM}   LM Studio      disabled{RESET}")
+            
             # Show tier assignments
             if verbose:
                 print(f"   {INFO} Tiers:")
@@ -8475,11 +8480,13 @@ def bootstrap_wizard():
         validate_gemini_key,
         validate_bedrock_credentials,
         validate_anthropic_oauth_token,
+        validate_lmstudio_host,
         fetch_openrouter_models,
         fetch_ollama_models,
         fetch_gemini_models,
         fetch_bedrock_models,
         fetch_anthropic_direct_models,
+        fetch_lmstudio_models,
         get_recommended_defaults,
         get_openrouter_embedding_models,
         filter_models_for_tier,
@@ -8678,8 +8685,32 @@ def bootstrap_wizard():
                 console.print(f" [red]✗ {message}[/red]")
                 anthropic_oauth_token = None
     
+    # --- LM Studio ---
+    lmstudio_enabled = False
+    lmstudio_host = "http://localhost:1234"
+    add_lmstudio = Confirm.ask(
+        "\n[bold]Add LM Studio?[/bold] [dim](local models, OpenAI-compatible API)[/dim]",
+        default=False
+    )
+    
+    if add_lmstudio:
+        lmstudio_host = Prompt.ask("  LM Studio URL", default="http://localhost:1234")
+        
+        console.print("  Connecting...", end="")
+        is_valid, message = validate_lmstudio_host(lmstudio_host)
+        if is_valid:
+            console.print(f" [green]✓ {message}[/green]")
+            lmstudio_enabled = True
+            # Fetch models
+            console.print("  Fetching models...", end="")
+            lmstudio_models = fetch_lmstudio_models(lmstudio_host)
+            console.print(f" [green]✓ {len(lmstudio_models)} models[/green]")
+            all_models.extend(lmstudio_models)
+        else:
+            console.print(f" [red]✗ {message}[/red]")
+    
     # Check that we have at least one provider
-    if not openrouter_enabled and not ollama_enabled and not gemini_enabled and not bedrock_enabled and not anthropic_direct_enabled:
+    if not openrouter_enabled and not ollama_enabled and not gemini_enabled and not bedrock_enabled and not anthropic_direct_enabled and not lmstudio_enabled:
         console.print("\n[yellow]⚠ No providers configured. You'll need to edit models.yaml manually.[/yellow]")
     
     # ==========================================================================
@@ -8697,6 +8728,8 @@ def bootstrap_wizard():
         enabled_providers.add("bedrock")
     if anthropic_direct_enabled:
         enabled_providers.add("anthropic-direct")
+    if lmstudio_enabled:
+        enabled_providers.add("lmstudio")
     
     # Build available model lists for cross-checking
     available_models_by_provider = {}
@@ -8886,6 +8919,8 @@ def bootstrap_wizard():
             "ANTHROPIC_OAUTH_TOKEN" if anthropic_oauth_token and anthropic_oauth_token.startswith("sk-ant-oat")
             else "ANTHROPIC_API_KEY"
         ),
+        "lmstudio_enabled": lmstudio_enabled,
+        "lmstudio_host": lmstudio_host,
         "model_tiers": model_tiers,
     }
 
@@ -8973,6 +9008,8 @@ def cmd_bootstrap(args):
                     bedrock_region=wizard_config.get('bedrock_region', 'us-east-1'),
                     anthropic_direct_enabled=wizard_config.get('anthropic_direct_enabled', False),
                     anthropic_oauth_token_env=wizard_config.get('anthropic_auth_env_var', 'ANTHROPIC_API_KEY'),
+                    lmstudio_enabled=wizard_config.get('lmstudio_enabled', False),
+                    lmstudio_host=wizard_config.get('lmstudio_host', 'http://localhost:1234'),
                 ),
                 models=wizard_config.get('model_tiers', {}),
             )
