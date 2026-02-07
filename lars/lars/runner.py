@@ -12077,14 +12077,13 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                         # Auto-detect: Disable parallel if set_state is in skills (ordering matters)
                         # User can override with explicit parallel_tools: true/false
                         if cell.parallel_tools is None:
-                            # Auto-detect based on skills
-                            skill_list = cell.skills if isinstance(cell.skills, list) else []
-                            has_set_state = 'set_state' in skill_list
-                            parallel_enabled = not has_set_state and len(tool_calls) > 1
-                            if not parallel_enabled and has_set_state and len(tool_calls) > 1:
-                                console.print(f"{indent}  [dim yellow]⚠ Parallel disabled (set_state detected in skills)[/dim yellow]")
+                            # Default: sequential. Parallel is opt-in only.
+                            # DuckDB crashes with concurrent in-process connections,
+                            # and prompt-based tool calling can produce confused results
+                            # when tools execute out of order.
+                            parallel_enabled = False
                         else:
-                            # Explicit override
+                            # Explicit opt-in override (parallel_tools: true in cascade YAML)
                             parallel_enabled = cell.parallel_tools and len(tool_calls) > 1
 
                         tool_execution_results = {}  # Maps tool_call_index -> result

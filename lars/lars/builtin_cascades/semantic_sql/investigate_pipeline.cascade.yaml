@@ -41,7 +41,7 @@ sql_function:
 cells:
   - name: investigate
     model: "{{ models.quality }}"
-    parallel_tools: false  # DuckDB native code crashes with concurrent in-process connections
+    # parallel_tools defaults to false (opt-in only)
     skills:
       - sql_search       # Introspect available tables/columns
       - smart_sql_run    # Run follow-up queries
