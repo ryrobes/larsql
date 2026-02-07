@@ -318,6 +318,11 @@ def resolve_model(model_spec: str, config: Optional[ModelsConfig] = None) -> str
     if match:
         tier = match.group(1)
         
+        # Environment variable override (used by benchmark runner)
+        env_override = os.environ.get(f"LARS_MODEL_{tier.upper()}")
+        if env_override:
+            return env_override
+        
         # Look up in config
         resolved = config.models.get(tier)
         if resolved:

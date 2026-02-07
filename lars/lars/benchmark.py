@@ -408,15 +408,23 @@ def _store_results(results: List[BenchmarkResult]):
     for r in results:
         db.execute("""
             INSERT INTO model_benchmarks VALUES (
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                :benchmark_id, :run_id, :operator_id, :operator_name,
+                :model_id, :input_hash, :input_tokens, :input_complexity,
+                :input_sample, :passed, :output_value, :expected_value,
+                :latency_ms, :tokens_in, :tokens_out, :cost,
+                :provider, :created_at
             )
-        """, [
-            r.benchmark_id, r.run_id, r.operator_id, r.operator_name,
-            r.model_id, r.input_hash, r.input_tokens, r.input_complexity,
-            r.input_sample, r.passed, r.output_value, r.expected_value,
-            r.latency_ms, r.tokens_in, r.tokens_out, r.cost,
-            r.provider, r.created_at,
-        ])
+        """, {
+            "benchmark_id": r.benchmark_id, "run_id": r.run_id,
+            "operator_id": r.operator_id, "operator_name": r.operator_name,
+            "model_id": r.model_id, "input_hash": r.input_hash,
+            "input_tokens": r.input_tokens, "input_complexity": r.input_complexity,
+            "input_sample": r.input_sample, "passed": r.passed,
+            "output_value": r.output_value, "expected_value": r.expected_value,
+            "latency_ms": r.latency_ms, "tokens_in": r.tokens_in,
+            "tokens_out": r.tokens_out, "cost": r.cost,
+            "provider": r.provider, "created_at": r.created_at,
+        })
 
 
 # ---------------------------------------------------------------------------
