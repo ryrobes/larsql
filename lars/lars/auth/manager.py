@@ -9,6 +9,7 @@ Provides:
 - Password hashing (for future web login)
 """
 
+import os
 import uuid
 import hashlib
 import time
@@ -78,11 +79,19 @@ class AuthManager:
                 from ..db_adapter import get_db
                 self._db = get_db()
                 self._db_initialized = True
+                print(f"[Auth._get_db] ✅ DB connection initialized (pid={os.getpid()})")
                 self._ensure_tables()
             except Exception as e:
                 log.warning(f"[Auth] ClickHouse not available: {e}")
+                print(f"[Auth._get_db] ❌ DB connection FAILED (pid={os.getpid()}): {e}")
                 self._db = None
-                self._db_initialized = True
+                # NOTE: Do NOT set _db_initialized=True on failure!
+                # This allows retry on next call (worker may have started before DB was ready)
+        if self._db is None and self._db_initialized:
+            # Previously succeeded but connection may have gone stale
+            pass
+        elif self._db is None:
+            print(f"[Auth._get_db] ⚠️  DB still None, will retry next call (pid={os.getpid()})")
         return self._db
 
     def _ensure_tables(self):
@@ -336,6 +345,7 @@ class AuthManager:
         """Get user by username."""
         db = self._get_db()
         if not db:
+            print(f"[Auth.get_user_by_username] ❌ No DB available, returning None for {username!r}, pid={os.getpid()}")
             return None
 
         try:
@@ -344,9 +354,13 @@ class AuthManager:
                 {"username": username}
             )
             if rows and len(rows) > 0:
-                return dict(rows[0]) if isinstance(rows[0], dict) else None
+                user = dict(rows[0]) if isinstance(rows[0], dict) else None
+                print(f"[Auth.get_user_by_username] ✅ Found user {username!r}, has_password_hash={bool(user.get('password_hash') if user else None)}, pid={os.getpid()}")
+                return user
+            print(f"[Auth.get_user_by_username] ❌ No rows for {username!r} (query returned {len(rows) if rows else 0} rows), pid={os.getpid()}")
             return None
         except Exception as e:
+            print(f"[Auth.get_user_by_username] ❌ Query error for {username!r}: {e}, pid={os.getpid()}")
             log.debug(f"[Auth] Get user by username error: {e}")
             return None
 
@@ -545,29 +559,36 @@ class AuthManager:
         Returns:
             User dict if valid, None otherwise
         """
+        print(f"[Auth.validate_password] Looking up user={username!r}, db_initialized={self._db_initialized}, db={'set' if self._db else 'None'}, pid={os.getpid()}")
         user = self.get_user_by_username(username)
         if not user:
+            print(f"[Auth.validate_password] ❌ User not found: {username}, pid={os.getpid()}")
             log.debug(f"[Auth] Password auth failed: user not found: {username}")
             return None
 
         if not user.get('is_active'):
+            print(f"[Auth.validate_password] ❌ User disabled: {username}, pid={os.getpid()}")
             log.debug(f"[Auth] Password auth failed: user disabled: {username}")
             return None
 
         password_hash = user.get('password_hash')
         if not password_hash:
+            print(f"[Auth.validate_password] ❌ No password hash set: {username}, pid={os.getpid()}")
             log.debug(f"[Auth] Password auth failed: no password set: {username}")
             return None
 
         try:
             from passlib.hash import argon2
             if not argon2.verify(password, password_hash):
+                print(f"[Auth.validate_password] ❌ Password mismatch: {username}, pid={os.getpid()}")
                 log.debug(f"[Auth] Password auth failed: invalid password: {username}")
                 return None
         except Exception as e:
+            print(f"[Auth.validate_password] ❌ Password verification error: {username}, {e}, pid={os.getpid()}")
             log.debug(f"[Auth] Password verification error: {e}")
             return None
 
+        print(f"[Auth.validate_password] ✅ Password auth succeeded: {username}, pid={os.getpid()}")
         log.debug(f"[Auth] Password auth succeeded: {username}")
         return {
             'user_id': user.get('user_id'),
@@ -590,15 +611,21 @@ class AuthManager:
         Returns:
             User dict with auth info if valid, None otherwise
         """
+        print(f"[Auth.authenticate] username={username!r}, credential_type={'api_key' if credential.startswith(('lars_', 'eyJ')) else 'password'}, credential_len={len(credential)}, pid={os.getpid()}")
+
         # Check if it looks like an API key (JWT token starting with lars_ prefix or eyJ)
         if credential.startswith('lars_') or credential.startswith('eyJ'):
             result = self.validate_api_key(credential)
             if result:
                 result['auth_method'] = 'api_key'
+                print(f"[Auth.authenticate] ✅ API key auth success for {result.get('username')}, pid={os.getpid()}")
                 return result
+            print(f"[Auth.authenticate] ❌ API key auth failed, pid={os.getpid()}")
 
         # Fall back to password auth
-        return self.validate_password(username, credential)
+        result = self.validate_password(username, credential)
+        print(f"[Auth.authenticate] password auth result={'✅' if result else '❌'} for {username}, pid={os.getpid()}")
+        return result
 
     def set_password(self, username: str, password: str) -> bool:
         """

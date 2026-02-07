@@ -73,8 +73,11 @@ def login():
             }), 400
 
         # Authenticate
+        import os as _os
+        print(f"[auth_api.login] Attempting auth for username={username!r}, pid={_os.getpid()}")
         user = auth.authenticate(username, password)
         if not user:
+            print(f"[auth_api.login] ❌ Auth failed for username={username!r}, pid={_os.getpid()}")
             return jsonify({
                 "success": False,
                 "error": "Invalid username or password"
@@ -83,6 +86,7 @@ def login():
         # If authenticated via password, create an API key for the session
         # This key will be used as the Bearer token for subsequent requests
         if user.get('auth_method') == 'password':
+            print(f"[auth_api.login] ✅ Password auth succeeded, creating API key for {username!r}, pid={_os.getpid()}")
             key_result = auth.create_api_key(
                 username=username,
                 name=f"web-session-{request.remote_addr}",
@@ -91,7 +95,9 @@ def login():
             )
             if key_result:
                 token = key_result['key']
+                print(f"[auth_api.login] ✅ API key created for {username!r}, pid={_os.getpid()}")
             else:
+                print(f"[auth_api.login] ❌ Failed to create API key for {username!r}, pid={_os.getpid()}")
                 return jsonify({
                     "success": False,
                     "error": "Failed to create session token"

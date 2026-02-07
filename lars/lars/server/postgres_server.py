@@ -4436,8 +4436,10 @@ class ClientConnection:
 
             # Validate the credential (API key or password)
             # Username comes from the StartupMessage (self.user_name)
+            print(f"[pgwire._authenticate] Attempting auth for user={self.user_name!r}, credential_len={len(credential)}, pid={os.getpid()}")
             user = auth.authenticate(self.user_name, credential)
             if not user:
+                print(f"[pgwire._authenticate] ❌ Auth failed for user={self.user_name!r}, pid={os.getpid()}")
                 self._runtime_log(
                     "WARN",
                     f"Invalid credentials for user: {self.user_name}",
