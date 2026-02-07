@@ -1468,6 +1468,17 @@ def main():
         help='Force delete even if running'
     )
 
+    # Benchmark command
+    bench_parser = subparsers.add_parser('benchmark', help='Run model benchmarks for semantic operators')
+    bench_parser.add_argument('--operators', default=None,
+                              help='Comma-separated list of operators to benchmark (default: all)')
+    bench_parser.add_argument('--models', default=None,
+                              help='Comma-separated list of model IDs to test')
+    bench_parser.add_argument('--report', action='store_true',
+                              help='Show routing recommendations from existing data')
+    bench_parser.add_argument('--verbose', '-v', action='store_true',
+                              help='Verbose output')
+
     # Preprocess args: `lars ssql "SELECT..."` → `lars ssql query "SELECT..."`
     # This allows users to run queries directly without the `query` subcommand
     if len(sys.argv) >= 3 and sys.argv[1] == 'ssql':
@@ -1871,6 +1882,27 @@ def main():
         cmd_doctor(args)
     elif args.command == 'bootstrap':
         cmd_bootstrap(args)
+    elif args.command == 'benchmark':
+        from .benchmark import run_benchmark, print_routing_report
+
+        if args.report:
+            print_routing_report()
+        else:
+            operators = args.operators.split(",") if args.operators else None
+            models = args.models.split(",") if args.models else None
+
+            if not models:
+                from rich.console import Console as RConsole
+                _con = RConsole()
+                _con.print("[yellow]No --models specified. Use --models to specify models to benchmark.[/yellow]")
+                _con.print("Example: lars benchmark --models lmstudio/gemma-3-4b,ollama/llama3,anthropic-direct/claude-sonnet-4.5")
+                sys.exit(1)
+
+            run_benchmark(
+                operators=operators,
+                models=models,
+                verbose=args.verbose,
+            )
     else:
         parser.print_help()
         sys.exit(1)
