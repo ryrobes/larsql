@@ -11087,7 +11087,8 @@ class ClientConnection:
                         payload_bytes=len(payload),
                     )
                     msg = ParseMessage.decode(payload)
-                    print(f"[pgwire.query] Parse: {msg.query[:120] if msg.query else '(empty)'}... (pid={os.getpid()})")
+                    _q = msg.get('query', '') if isinstance(msg, dict) else getattr(msg, 'query', '')
+                    print(f"[pgwire.query] Parse: {(_q or '')[:120]}... (pid={os.getpid()})")
                     self._handle_parse(msg)
 
                 elif msg_type == MessageType.BIND:
