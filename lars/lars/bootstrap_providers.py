@@ -251,6 +251,79 @@ def fetch_ollama_models(url: str, host_alias: str = "default") -> List[Discovere
 # Gemini (Google AI) Provider
 # ============================================================================
 
+def _get_google_oauth_token() -> Optional[str]:
+    """
+    Get OAuth2 access token from Google service account credentials.
+    
+    Uses GOOGLE_APPLICATION_CREDENTIALS if available.
+    Returns None if credentials aren't configured or google-auth isn't installed.
+    """
+    try:
+        from google.oauth2 import service_account
+        from google.auth import default as google_auth_default
+        from google.auth.transport.requests import Request
+    except ImportError:
+        return None
+    
+    try:
+        creds_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+        
+        # Try service account credentials first
+        if creds_path and os.path.exists(creds_path):
+            credentials = service_account.Credentials.from_service_account_file(
+                creds_path,
+                scopes=["https://www.googleapis.com/auth/cloud-platform",
+                        "https://www.googleapis.com/auth/generative-language"]
+            )
+        else:
+            # Try Application Default Credentials
+            credentials, _ = google_auth_default(
+                scopes=["https://www.googleapis.com/auth/cloud-platform",
+                        "https://www.googleapis.com/auth/generative-language"]
+            )
+        
+        credentials.refresh(Request())
+        return credentials.token
+    except Exception:
+        return None
+
+
+def validate_gemini_service_account() -> Tuple[bool, str]:
+    """
+    Validate Google service account credentials (GOOGLE_APPLICATION_CREDENTIALS).
+    
+    Returns:
+        (is_valid, message)
+    """
+    creds_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+    
+    if not creds_path:
+        return False, "GOOGLE_APPLICATION_CREDENTIALS not set"
+    
+    if not os.path.exists(creds_path):
+        return False, f"Credentials file not found: {creds_path}"
+    
+    token = _get_google_oauth_token()
+    if not token:
+        return False, "Failed to get OAuth2 token (google-auth library required)"
+    
+    # Try to list models with OAuth2
+    try:
+        resp = httpx.get(
+            "https://generativelanguage.googleapis.com/v1beta/models",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            model_count = len(data.get("models", []))
+            return True, f"Valid! {model_count} models via service account"
+        else:
+            return False, f"HTTP {resp.status_code}: {resp.text[:100]}"
+    except Exception as e:
+        return False, str(e)
+
+
 def validate_gemini_key(api_key: str) -> Tuple[bool, str]:
     """
     Validate a Google AI (Gemini) API key.
@@ -280,12 +353,13 @@ def validate_gemini_key(api_key: str) -> Tuple[bool, str]:
         return False, str(e)
 
 
-def fetch_gemini_models(api_key: str) -> List[DiscoveredModel]:
+def fetch_gemini_models(api_key: Optional[str] = None, use_oauth: bool = False) -> List[DiscoveredModel]:
     """
     Fetch available models from Google AI (Gemini).
     
     Args:
-        api_key: Google AI API key
+        api_key: Google AI API key (optional if use_oauth=True)
+        use_oauth: Use GOOGLE_APPLICATION_CREDENTIALS for OAuth2 auth
     
     Returns:
         List of discovered models
@@ -303,10 +377,20 @@ def fetch_gemini_models(api_key: str) -> List[DiscoveredModel]:
     }
     
     try:
-        resp = httpx.get(
-            f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}",
-            timeout=30
-        )
+        url = "https://generativelanguage.googleapis.com/v1beta/models"
+        headers = {}
+        
+        if use_oauth:
+            token = _get_google_oauth_token()
+            if not token:
+                return []
+            headers["Authorization"] = f"Bearer {token}"
+        elif api_key:
+            url = f"{url}?key={api_key}"
+        else:
+            return []
+        
+        resp = httpx.get(url, headers=headers, timeout=30)
         resp.raise_for_status()
         data = resp.json()
         
