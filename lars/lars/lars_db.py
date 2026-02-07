@@ -1767,9 +1767,19 @@ class LarsDB:
             DuckDB connection ready for queries
         """
         conn = getattr(LarsDB._thread_local, 'conn', None)
-        if conn is None:
+        current_gen = getattr(self, '_connection_generation', 0)
+        cached_gen = getattr(LarsDB._thread_local, 'conn_gen', -1)
+        
+        if conn is None or cached_gen != current_gen:
+            # Connection missing or stale (compaction happened) — create fresh
+            if conn is not None:
+                try:
+                    conn.close()
+                except:
+                    pass
             conn = self.connect()
             LarsDB._thread_local.conn = conn
+            LarsDB._thread_local.conn_gen = current_gen
         return conn
     
     def clear_cached_connection(self):
@@ -1781,6 +1791,13 @@ class LarsDB:
             except:
                 pass
             LarsDB._thread_local.conn = None
+    
+    def invalidate_all_connections(self):
+        """Signal ALL threads to refresh their cached connections on next query.
+        
+        Used after compaction changes parquet files, so stale views get re-registered.
+        """
+        self._connection_generation = getattr(self, '_connection_generation', 0) + 1
     
     def _attach_scratch_db(self, conn: duckdb.DuckDBPyConnection):
         """Attach the scratch SQLite database for ephemeral storage."""
@@ -2487,8 +2504,8 @@ class LarsDB:
                 
                 result["files_after"] = 1
                 
-                # Clear cached connections so they re-register views with new files
-                self.clear_cached_connection()
+                # Invalidate ALL thread connections so they re-register views with new files
+                self.invalidate_all_connections()
                 
                 return result
                 
@@ -2649,8 +2666,10 @@ class LarsDB:
                     rows = len(data) if data else 0
                     return data
             except Exception as e:
-                # If file not found (stale connection after compaction), retry with fresh connection
-                if attempt == 0 and ("No such file" in str(e) or "Could not" in str(e)):
+                # If file not found or view missing (stale connection after compaction), retry with fresh connection
+                err_str = str(e)
+                if attempt == 0 and ("No such file" in err_str or "Could not" in err_str
+                                     or "does not exist" in err_str):
                     self.clear_cached_connection()
                     continue
                 raise
