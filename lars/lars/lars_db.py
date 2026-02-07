@@ -1148,6 +1148,7 @@ SYSTEM_TABLES = {
             ("metadata_json", "VARCHAR"),
         ],
         "partition_by": None,
+        "hive_partition_by": ["session_id"],
         "dedup": {
             "pk": "session_id",
             "order_by": "updated_at"
@@ -2643,7 +2644,8 @@ def attach_system_views(conn, data_root: Optional[Path] = None) -> int:
             "dedup": {"pk": "trace_id", "order_by": "timestamp DESC"},
         },
         "session_state": {
-            "glob": str(system_dir / "session_state" / "*.parquet"),
+            "glob": str(system_dir / "session_state" / "**" / "*.parquet"),
+            "hive": True,
             "dedup": {"pk": "session_id", "order_by": "updated_at DESC"},
         },
         "checkpoints": {
