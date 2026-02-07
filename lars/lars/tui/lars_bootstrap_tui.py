@@ -342,6 +342,28 @@ class LarsBootstrapTUI(ReactiveGlassApp):
             new_state["current_screen"] = action.payload
             new_state["focused_field"] = 0
             new_state["status_message"] = f"Screen: {action.payload.value}"
+            
+            # When entering the MODELS screen, resolve smart defaults
+            if action.payload == Screen.MODELS:
+                from lars.model_defaults import resolve_defaults_for_providers
+                enabled = set()
+                if new_state.get("openrouter_enabled"):
+                    enabled.add("openrouter")
+                if new_state.get("ollama_enabled"):
+                    enabled.add("ollama")
+                if new_state.get("gemini_enabled"):
+                    enabled.add("gemini")
+                if new_state.get("bedrock_enabled"):
+                    enabled.add("bedrock")
+                if new_state.get("anthropic_direct_enabled"):
+                    enabled.add("anthropic-direct")
+                smart_defaults = resolve_defaults_for_providers(enabled)
+                # Only update tiers that haven't been manually changed from defaults
+                current_tiers = new_state.get("model_tiers", {})
+                for tier, model_id in smart_defaults.items():
+                    if current_tiers.get(tier) in (DEFAULT_MODELS.get(tier), "", None):
+                        current_tiers[tier] = model_id
+                new_state["model_tiers"] = current_tiers
         
         elif action.type == "SET_STATUS":
             new_state["status_message"] = action.payload
@@ -2028,6 +2050,11 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                         ),
                         models=self.state.get('model_tiers', {}),
                     )
+                    # Enforce embedding always has a value
+                    from lars.model_defaults import LOCAL_EMBEDDING_MODEL
+                    if not models_config.models.get('embedding'):
+                        models_config.models['embedding'] = LOCAL_EMBEDDING_MODEL
+                        log("  ℹ Using local CPU embeddings (fastembed). Configure an embedding provider for better performance.")
                     models_yaml_path = write_models_yaml(models_config, lars_root / 'models.yaml')
                     log(f"  ✓ {models_yaml_path}")
                     

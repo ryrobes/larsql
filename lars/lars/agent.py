@@ -898,7 +898,11 @@ class Agent:
         # Detect provider from model name and route accordingly
         # Format: "ollama/model-name" or "ollama@host/model-name"
         is_ollama = embed_model.startswith("ollama/") or embed_model.startswith("ollama@")
-        
+        is_fastembed = embed_model.startswith("fastembed/")
+
+        if is_fastembed:
+            return cls._fastembed_embed(texts, embed_model)
+
         if is_ollama:
             # Parse Ollama model: "ollama/model" or "ollama@host/model"
             if embed_model.startswith("ollama@"):
@@ -1125,6 +1129,38 @@ class Agent:
             "request_id": None,
             "tokens": 0,
             "provider": "deterministic",
+        }
+
+    # -----------------------------------------------------------------
+    # fastembed CPU fallback
+    # -----------------------------------------------------------------
+    _fastembed_model = None  # class-level cache
+
+    @classmethod
+    def _fastembed_embed(cls, texts: List[str], model_spec: str) -> Dict[str, Any]:
+        """
+        Generate embeddings using fastembed (CPU, ONNX-based).
+        model_spec looks like "fastembed/bge-small-en-v1.5".
+        """
+        from lars.model_defaults import LOCAL_EMBEDDING_FASTEMBED_NAME, LOCAL_EMBEDDING_DIM
+
+        if cls._fastembed_model is None:
+            from fastembed import TextEmbedding
+            print("[Embed] Loading local CPU embedding model (fastembed)... this may take a moment on first run.")
+            cls._fastembed_model = TextEmbedding(model_name=LOCAL_EMBEDDING_FASTEMBED_NAME)
+
+        embeddings = list(cls._fastembed_model.embed(texts))
+        # fastembed returns numpy arrays — convert to plain lists
+        vectors = [e.tolist() for e in embeddings]
+        dim = len(vectors[0]) if vectors else LOCAL_EMBEDDING_DIM
+
+        return {
+            "embeddings": vectors,
+            "model": model_spec,
+            "dim": dim,
+            "request_id": None,
+            "tokens": 0,
+            "provider": "fastembed",
         }
 
     @classmethod

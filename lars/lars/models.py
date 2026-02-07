@@ -161,11 +161,17 @@ def _load_from_yaml(path: Path) -> ModelsConfig:
     # Parse providers
     providers_data = data.get("providers", {})
     ad_data = providers_data.get("anthropic_direct", {})
+    gemini_data = providers_data.get("gemini", {})
+    bedrock_data = providers_data.get("bedrock", {})
     providers = ProvidersConfig(
         openrouter_enabled=providers_data.get("openrouter", {}).get("enabled", False),
         openrouter_api_key_env=providers_data.get("openrouter", {}).get("api_key_env", "OPENROUTER_API_KEY"),
         ollama_enabled=providers_data.get("ollama", {}).get("enabled", False),
         ollama_hosts=providers_data.get("ollama", {}).get("hosts", {}),
+        gemini_enabled=gemini_data.get("enabled", False),
+        gemini_api_key_env=gemini_data.get("api_key_env", "GEMINI_API_KEY"),
+        bedrock_enabled=bedrock_data.get("enabled", False),
+        bedrock_region=bedrock_data.get("region", "us-east-1"),
         anthropic_direct_enabled=ad_data.get("enabled", False),
         anthropic_oauth_token_env=ad_data.get("oauth_token_env", "ANTHROPIC_OAUTH_TOKEN"),
     )
@@ -406,11 +412,20 @@ def write_models_yaml(
             f.write("      # default: http://localhost:11434\n")
         f.write("\n")
         
-        if config.providers.anthropic_direct_enabled:
-            f.write("  anthropic_direct:\n")
-            f.write(f"    enabled: true\n")
-            f.write(f"    oauth_token_env: {config.providers.anthropic_oauth_token_env}\n")
-            f.write("\n")
+        f.write("  gemini:\n")
+        f.write(f"    enabled: {str(config.providers.gemini_enabled).lower()}\n")
+        f.write(f"    api_key_env: {config.providers.gemini_api_key_env}\n")
+        f.write("\n")
+        
+        f.write("  bedrock:\n")
+        f.write(f"    enabled: {str(config.providers.bedrock_enabled).lower()}\n")
+        f.write(f"    region: {config.providers.bedrock_region}\n")
+        f.write("\n")
+        
+        f.write("  anthropic_direct:\n")
+        f.write(f"    enabled: {str(config.providers.anthropic_direct_enabled).lower()}\n")
+        f.write(f"    oauth_token_env: {config.providers.anthropic_oauth_token_env}\n")
+        f.write("\n")
         
         # Write models section
         f.write("models:\n")

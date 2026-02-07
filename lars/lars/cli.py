@@ -8683,9 +8683,27 @@ def bootstrap_wizard():
         console.print("\n[yellow]⚠ No providers configured. You'll need to edit models.yaml manually.[/yellow]")
     
     # ==========================================================================
-    # 3. Model Tier Assignment
+    # 3. Model Tier Assignment (smart defaults based on enabled providers)
     # ==========================================================================
-    defaults = get_recommended_defaults()
+    from .model_defaults import resolve_defaults_for_providers, LOCAL_EMBEDDING_MODEL
+    enabled_providers = set()
+    if openrouter_enabled:
+        enabled_providers.add("openrouter")
+    if ollama_enabled:
+        enabled_providers.add("ollama")
+    if gemini_enabled:
+        enabled_providers.add("gemini")
+    if bedrock_enabled:
+        enabled_providers.add("bedrock")
+    if anthropic_direct_enabled:
+        enabled_providers.add("anthropic-direct")
+    
+    # Build available model lists for cross-checking
+    available_models_by_provider = {}
+    for m in all_models:
+        available_models_by_provider.setdefault(m.provider, []).append(m.id)
+    
+    defaults = resolve_defaults_for_providers(enabled_providers, available_models_by_provider)
     model_tiers = {}
     
     if all_models:
@@ -8751,9 +8769,14 @@ def bootstrap_wizard():
             model_tiers[tier] = selected
             console.print(f"  [green]✓[/green] {tier}: {selected}")
     else:
-        # No models discovered, use defaults
-        console.print("\n[dim]Using default model assignments (requires OpenRouter)[/dim]")
+        # No models discovered, use smart defaults
+        console.print("\n[dim]Using smart default model assignments based on configured providers[/dim]")
         model_tiers = dict(defaults)
+    
+    # Enforce embedding always has a value (CPU fallback)
+    if not model_tiers.get("embedding"):
+        model_tiers["embedding"] = LOCAL_EMBEDDING_MODEL
+        console.print("[dim]  ℹ Using local CPU embeddings (fastembed). Configure an embedding provider for better performance.[/dim]")
 
     # 3. SQL Connections
     sql_connections = []

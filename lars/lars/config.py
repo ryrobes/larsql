@@ -688,6 +688,13 @@ def _apply_models_yaml(config: Config):
         # Apply model tiers
         if models_config.models.get("embedding"):
             config.default_embed_model = models_config.models["embedding"]
+            from .model_defaults import is_local_embedding
+            if is_local_embedding(config.default_embed_model):
+                import logging
+                logging.getLogger(__name__).info(
+                    "Using local CPU embeddings (fastembed). "
+                    "Configure an embedding provider for better performance."
+                )
         if models_config.models.get("standard"):
             config.default_model = models_config.models["standard"]
         
