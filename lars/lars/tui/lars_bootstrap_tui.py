@@ -1316,6 +1316,32 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                 self.dispatch(Action("EDIT_OLLAMA_HOST_CHAR", key))
             return
         
+        if self.state.get("gemini_key_editing"):
+            if key == "escape":
+                self.dispatch(Action("CANCEL_EDIT_GEMINI_KEY"))
+            elif key == "enter":
+                self.dispatch(Action("FINISH_EDIT_GEMINI_KEY"))
+                # Start validation
+                self._validate_gemini_key()
+            elif key == "backspace":
+                self.dispatch(Action("EDIT_GEMINI_KEY_BACKSPACE"))
+            elif len(key) == 1 and key.isprintable():
+                self.dispatch(Action("EDIT_GEMINI_KEY_CHAR", key))
+            return
+        
+        if self.state.get("bedrock_region_editing"):
+            if key == "escape":
+                self.dispatch(Action("CANCEL_EDIT_BEDROCK_REGION"))
+            elif key == "enter":
+                self.dispatch(Action("FINISH_EDIT_BEDROCK_REGION"))
+                # Start validation
+                self._validate_bedrock_credentials()
+            elif key == "backspace":
+                self.dispatch(Action("EDIT_BEDROCK_REGION_BACKSPACE"))
+            elif len(key) == 1 and key.isprintable():
+                self.dispatch(Action("EDIT_BEDROCK_REGION_CHAR", key))
+            return
+        
         if self.state.get("sql_conn_name_editing"):
             if key == "escape":
                 self.dispatch(Action("CANCEL_EDIT_SQL_NAME"))
