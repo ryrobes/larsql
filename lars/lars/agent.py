@@ -207,14 +207,14 @@ class Agent:
 
         # Explicitly set provider for LM Studio (local, OpenAI-compatible)
         elif self.model and self.model.startswith("lmstudio/"):
-            # LM Studio is OpenAI-compatible — route via openai/ prefix with custom base
+            # LM Studio is OpenAI-compatible — route like OpenRouter but to local server
             cfg = get_config()
             lmstudio_host = getattr(cfg, 'lmstudio_host', None) or "http://localhost:1234"
-            args["api_base"] = f"{lmstudio_host.rstrip('/')}/v1"
+            args["base_url"] = f"{lmstudio_host.rstrip('/')}/v1"
             args["api_key"] = "lm-studio"  # LM Studio doesn't need a real key
-            # Route as openai/<model> so litellm uses api_base, not api.openai.com
-            clean_model = self.model.replace("lmstudio/", "", 1)
-            args["model"] = f"openai/{clean_model}"
+            args["custom_llm_provider"] = "openai"
+            # Strip lmstudio/ prefix — LM Studio uses raw model names
+            args["model"] = self.model.replace("lmstudio/", "", 1)
 
         # Explicitly set provider for Vertex AI (Google Cloud)
         # Model prefix takes precedence, similar to Ollama
