@@ -99,7 +99,11 @@ cells:
     → Return "N/A" if we can''t infer state, or infer if other clues exist
 
 
-    Return ONLY the filled value (or original if already present/can''t infer).
+    YOUR RESPONSE MUST BE EXACTLY THE FILLED VALUE AND NOTHING ELSE.
+
+    No explanation. No reasoning. No prefix. No quotes. Just the value.
+
+    If the value is "N/A" and context provides no useful info, respond with exactly: N/A
 
     '
   rules:

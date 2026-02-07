@@ -45,31 +45,29 @@ sql_function:
 cells:
 - name: check_implication
   model: "{{ models.fast }}"
-  instructions: 'Does the PREMISE logically imply the CONCLUSION?
+  instructions: 'Does the PREMISE semantically imply the CONCLUSION?
 
 
     PREMISE: {{ input.premise }}
 
-
     CONCLUSION: {{ input.conclusion }}
 
 
-    Logical implication means: If the premise is true, the conclusion must also be
-    true.
+    Return true if a reasonable person would consider the conclusion likely true given
+    the premise. This includes:
+
+    - Direct logical entailment ("bachelor" → "unmarried")
+
+    - Strong causal relationships ("raining" → "ground is wet")
+
+    - Common-sense inferences that follow naturally
 
 
-    Consider:
-
-    - Does the premise contain information that leads to the conclusion?
-
-    - Is the conclusion a reasonable inference from the premise?
-
-    - Would the premise being true make the conclusion likely true?
+    Return false only if there is no meaningful connection or the conclusion does not
+    follow from the premise.
 
 
-    IMPORTANT!
-
-    Respond with ONLY "true" or "false" - no explanation, no code fences, no wrappers.
+    Respond with ONLY the word true or false. Nothing else.
 
     '
   rules:
