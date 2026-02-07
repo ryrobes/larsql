@@ -54,6 +54,8 @@ from ..bootstrap_providers import (
     fetch_gemini_models as _fetch_gemini_models,
     validate_bedrock_credentials as _validate_bedrock_credentials,
     fetch_bedrock_models as _fetch_bedrock_models,
+    validate_anthropic_oauth_token as _validate_anthropic_token,
+    fetch_anthropic_direct_models as _fetch_anthropic_direct_models,
     get_recommended_defaults,
     get_openrouter_embedding_models,
     filter_models_for_tier,
@@ -151,6 +153,18 @@ def validate_bedrock_credentials(region: str = "us-east-1") -> Tuple[bool, str]:
 def fetch_bedrock_models(region: str = "us-east-1") -> List[DiscoveredModel]:
     """Fetch models from AWS Bedrock."""
     return _fetch_bedrock_models(region=region)
+
+
+def validate_anthropic_token(token: str) -> Tuple[bool, str]:
+    """Validate Anthropic API key or OAuth token."""
+    if not token or len(token) < 10:
+        return False, "Key too short"
+    return _validate_anthropic_token(token)
+
+
+def fetch_anthropic_direct_models(token: str) -> List[DiscoveredModel]:
+    """Fetch models from Anthropic Direct."""
+    return _fetch_anthropic_direct_models(token)
 
 
 def get_default_lars_root() -> str:
@@ -276,6 +290,14 @@ class LarsBootstrapTUI(ReactiveGlassApp):
             "bedrock_status": "none",
             "bedrock_message": "",
             "bedrock_models": [],
+            
+            "anthropic_direct_enabled": False,
+            "anthropic_direct_key": os.environ.get("ANTHROPIC_OAUTH_TOKEN") or os.environ.get("ANTHROPIC_API_KEY", ""),
+            "anthropic_direct_key_editing": False,
+            "anthropic_direct_key_buffer": "",
+            "anthropic_direct_status": "none",
+            "anthropic_direct_message": "",
+            "anthropic_direct_models": [],
             
             # Step 3: Model Tiers
             "model_tiers": dict(DEFAULT_MODELS),
@@ -481,6 +503,42 @@ class LarsBootstrapTUI(ReactiveGlassApp):
         elif action.type == "SET_BEDROCK_MODELS":
             new_state["bedrock_models"] = action.payload
         
+        # === ANTHROPIC DIRECT ===
+        elif action.type == "TOGGLE_ANTHROPIC_DIRECT":
+            new_state["anthropic_direct_enabled"] = not new_state["anthropic_direct_enabled"]
+            if not new_state["anthropic_direct_enabled"]:
+                new_state["anthropic_direct_status"] = "none"
+                new_state["anthropic_direct_message"] = ""
+        
+        elif action.type == "START_EDIT_ANTHROPIC_KEY":
+            new_state["anthropic_direct_key_editing"] = True
+            new_state["anthropic_direct_key_buffer"] = ""
+        
+        elif action.type == "FINISH_EDIT_ANTHROPIC_KEY":
+            new_state["anthropic_direct_key"] = new_state["anthropic_direct_key_buffer"]
+            new_state["anthropic_direct_key_editing"] = False
+            if new_state["anthropic_direct_key"]:
+                new_state["anthropic_direct_status"] = "pending"
+                new_state["anthropic_direct_message"] = "Validating..."
+        
+        elif action.type == "CANCEL_EDIT_ANTHROPIC_KEY":
+            new_state["anthropic_direct_key_editing"] = False
+        
+        elif action.type == "EDIT_ANTHROPIC_KEY_CHAR":
+            new_state["anthropic_direct_key_buffer"] += action.payload
+        
+        elif action.type == "EDIT_ANTHROPIC_KEY_BACKSPACE":
+            new_state["anthropic_direct_key_buffer"] = new_state["anthropic_direct_key_buffer"][:-1]
+        
+        elif action.type == "VALIDATE_ANTHROPIC_RESULT":
+            new_state["anthropic_direct_status"] = "ok" if action.payload["valid"] else "error"
+            new_state["anthropic_direct_message"] = action.payload["message"]
+            if action.payload["valid"]:
+                new_state["anthropic_direct_enabled"] = True
+        
+        elif action.type == "SET_ANTHROPIC_MODELS":
+            new_state["anthropic_direct_models"] = action.payload
+        
         # === MODEL TIERS ===
         elif action.type == "SELECT_TIER":
             new_state["selected_tier"] = action.payload
@@ -513,7 +571,8 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                 new_state.get("openrouter_models", []) + 
                 new_state.get("ollama_models", []) +
                 new_state.get("gemini_models", []) +
-                new_state.get("bedrock_models", [])
+                new_state.get("bedrock_models", []) +
+                new_state.get("anthropic_direct_models", [])
             )
             # Filter for this tier
             filtered = filter_models_for_tier(all_models, tier)
@@ -533,7 +592,8 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                 new_state.get("openrouter_models", []) + 
                 new_state.get("ollama_models", []) +
                 new_state.get("gemini_models", []) +
-                new_state.get("bedrock_models", [])
+                new_state.get("bedrock_models", []) +
+                new_state.get("anthropic_direct_models", [])
             )
             # Filter for tier first
             filtered = filter_models_for_tier(all_models, tier)
@@ -559,7 +619,8 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                     new_state.get("openrouter_models", []) + 
                     new_state.get("ollama_models", []) +
                     new_state.get("gemini_models", []) +
-                    new_state.get("bedrock_models", [])
+                    new_state.get("bedrock_models", []) +
+                    new_state.get("anthropic_direct_models", [])
                 )
                 filtered = filter_models_for_tier(all_models, tier)
                 if query:
@@ -785,7 +846,7 @@ class LarsBootstrapTUI(ReactiveGlassApp):
             f"       Where LARS stores configurations and data",
             "",
             f"  [bold]2.[/bold] 🔑 [bold]API Providers[/bold]",
-            f"       OpenRouter (cloud) and/or Ollama (local)",
+            f"       OpenRouter, Anthropic, Gemini, Bedrock, Ollama",
             "",
             f"  [bold]3.[/bold] 🎯 [bold]Model Assignments[/bold]",
             f"       Which models to use for different tasks",
@@ -976,6 +1037,46 @@ class LarsBootstrapTUI(ReactiveGlassApp):
         
         widgets.append(glass_panel("bedrock_panel", br_content, x + 55, 14, 45, 11, colors, "secondary"))
         
+        # Anthropic Direct
+        ad_content = [
+            f"[bold {colors['accent']}]🔮 Anthropic Direct[/bold {colors['accent']}]",
+            separator(40),
+            "",
+        ]
+        
+        ad_enabled = self.state.get("anthropic_direct_enabled", False)
+        ad_status = self.state.get("anthropic_direct_status", "none")
+        ad_msg = self.state.get("anthropic_direct_message", "")
+        
+        is_focused = self.state.get("focused_field") == 9
+        prefix = f"[{colors['accent']}]▶[/{colors['accent']}]" if is_focused else " "
+        
+        enabled_txt = "[green]Enabled[/green]" if ad_enabled else "[dim]Disabled[/dim]"
+        ad_content.append(f"{prefix} Status: {enabled_txt}  [dim](e to toggle)[/dim]")
+        
+        # Key field
+        is_focused = self.state.get("focused_field") == 10
+        prefix = f"[{colors['accent']}]▶[/{colors['accent']}]" if is_focused else " "
+        
+        if self.state.get("anthropic_direct_key_editing"):
+            key_display = f"[on {colors['primary']}]{'*' * len(self.state.get('anthropic_direct_key_buffer', ''))}█[/on {colors['primary']}]"
+        else:
+            key = self.state.get("anthropic_direct_key", "")
+            if key:
+                key_type = "OAuth" if key.startswith("sk-ant-oat") else "API key"
+                key_display = f"[dim]{key_type}[/dim] ...{key[-8:]}"
+            else:
+                key_display = "(not set)"
+        
+        ad_content.append(f"{prefix} Key: {key_display}")
+        ad_content.append(f"  {status_icon(ad_status)} {ad_msg}" if ad_msg else "")
+        
+        ad_model_count = len(self.state.get("anthropic_direct_models", []))
+        if ad_model_count > 0:
+            ad_content.append(f"  [green]✓ {ad_model_count} models available[/green]")
+        
+        widgets.append(glass_panel("anthropic_panel", ad_content, x, 36, 50, 11, colors, "secondary"))
+        
         # Help panel
         help_content = [
             f"[bold {colors['light']}]Keys & Setup[/bold {colors['light']}]",
@@ -983,6 +1084,7 @@ class LarsBootstrapTUI(ReactiveGlassApp):
             "OpenRouter: openrouter.ai/keys",
             "Gemini: aistudio.google.com",
             "Bedrock: AWS credentials file",
+            "Anthropic: console.anthropic.com",
             "",
             "[dim]j/k: navigate fields[/dim]",
             "[dim]e: toggle provider[/dim]",
@@ -1084,6 +1186,7 @@ class LarsBootstrapTUI(ReactiveGlassApp):
             ol_count = len(self.state.get("ollama_models", []))
             gm_count = len(self.state.get("gemini_models", []))
             br_count = len(self.state.get("bedrock_models", []))
+            ad_count = len(self.state.get("anthropic_direct_models", []))
             
             help_content = [
                 f"[bold {colors['light']}]Model Selection[/bold {colors['light']}]",
@@ -1099,6 +1202,7 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                 f"  Ollama: {ol_count}" if ol_count else "  [dim]Ollama: ×[/dim]",
                 f"  Gemini: {gm_count}" if gm_count else "  [dim]Gemini: ×[/dim]",
                 f"  Bedrock: {br_count}" if br_count else "  [dim]Bedrock: ×[/dim]",
+                f"  Anthropic: {ad_count}" if ad_count else "  [dim]Anthropic: ×[/dim]",
                 "",
                 "[bold]Defaults:[/bold]",
             ]
@@ -1292,6 +1396,13 @@ class LarsBootstrapTUI(ReactiveGlassApp):
         else:
             summary_content.append(f"  [dim]○[/dim] Bedrock (disabled)")
         
+        if self.state.get("anthropic_direct_enabled"):
+            key = self.state.get("anthropic_direct_key", "")
+            key_type = "OAuth" if key.startswith("sk-ant-oat") else "API key"
+            summary_content.append(f"  [green]✓[/green] Anthropic Direct ({key_type})")
+        else:
+            summary_content.append(f"  [dim]○[/dim] Anthropic Direct (disabled)")
+        
         summary_content.append("")
         summary_content.append("[bold]Model Tiers:[/bold]")
         
@@ -1430,6 +1541,18 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                 self.dispatch(Action("EDIT_BEDROCK_REGION_CHAR", key))
             return
         
+        if self.state.get("anthropic_direct_key_editing"):
+            if key == "escape":
+                self.dispatch(Action("CANCEL_EDIT_ANTHROPIC_KEY"))
+            elif key == "enter":
+                self.dispatch(Action("FINISH_EDIT_ANTHROPIC_KEY"))
+                self._validate_anthropic_key()
+            elif key == "backspace":
+                self.dispatch(Action("EDIT_ANTHROPIC_KEY_BACKSPACE"))
+            elif len(key) == 1 and key.isprintable():
+                self.dispatch(Action("EDIT_ANTHROPIC_KEY_CHAR", key))
+            return
+        
         if self.state.get("sql_conn_name_editing"):
             if key == "escape":
                 self.dispatch(Action("CANCEL_EDIT_SQL_NAME"))
@@ -1502,6 +1625,10 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                     self.dispatch(Action("TOGGLE_BEDROCK"))
                     if self.state.get("bedrock_enabled"):
                         self._validate_bedrock_credentials()
+                elif field == 9:
+                    self.dispatch(Action("TOGGLE_ANTHROPIC_DIRECT"))
+                    if self.state.get("anthropic_direct_enabled"):
+                        self._validate_anthropic_key()
             elif key == "enter":
                 field = self.state.get("focused_field", 0)
                 if field == 0:
@@ -1514,6 +1641,8 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                     self.dispatch(Action("START_EDIT_GEMINI_KEY"))
                 elif field == 8:
                     self.dispatch(Action("START_EDIT_BEDROCK_REGION"))
+                elif field == 10:
+                    self.dispatch(Action("START_EDIT_ANTHROPIC_KEY"))
             elif key == "v":
                 # Manual validation trigger
                 field = self.state.get("focused_field", 0)
@@ -1525,6 +1654,8 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                     self._validate_gemini_key()
                 elif field in (7, 8):
                     self._validate_bedrock_credentials()
+                elif field in (9, 10) and self.state.get("anthropic_direct_key"):
+                    self._validate_anthropic_key()
         
         elif screen == Screen.MODELS:
             if self.state.get("model_selector_open"):
@@ -1721,6 +1852,31 @@ class LarsBootstrapTUI(ReactiveGlassApp):
         
         threading.Thread(target=do_validate, daemon=True).start()
     
+    def _validate_anthropic_key(self):
+        """Validate Anthropic API key or OAuth token in background."""
+        def do_validate():
+            key = self.state.get("anthropic_direct_key", "")
+            if not key:
+                self.call_later(lambda: self.dispatch(Action("VALIDATE_ANTHROPIC_RESULT", {
+                    "valid": False,
+                    "message": "No key provided",
+                })))
+                return
+            
+            valid, message = validate_anthropic_token(key)
+            self.call_later(lambda: self.dispatch(Action("VALIDATE_ANTHROPIC_RESULT", {
+                "valid": valid,
+                "message": message,
+            })))
+            
+            if valid:
+                self.call_later(lambda: self.dispatch(Action("SET_STATUS", "Fetching Anthropic models...")))
+                models = fetch_anthropic_direct_models(key)
+                self.call_later(lambda: self.dispatch(Action("SET_ANTHROPIC_MODELS", models)))
+                self.call_later(lambda: self.dispatch(Action("SET_STATUS", f"Loaded {len(models)} Anthropic models")))
+        
+        threading.Thread(target=do_validate, daemon=True).start()
+    
     def _test_sql_connection(self):
         """Test SQL connection in background."""
         def do_test():
@@ -1837,6 +1993,11 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                 if self.state.get("gemini_key"):
                     env_lines.append(f"GEMINI_API_KEY={self.state['gemini_key']}")
                     os.environ['GEMINI_API_KEY'] = self.state['gemini_key']
+                if self.state.get("anthropic_direct_key"):
+                    ant_key = self.state['anthropic_direct_key']
+                    ant_env = 'ANTHROPIC_OAUTH_TOKEN' if ant_key.startswith('sk-ant-oat') else 'ANTHROPIC_API_KEY'
+                    env_lines.append(f"{ant_env}={ant_key}")
+                    os.environ[ant_env] = ant_key
                 
                 env_path = lars_root / '.env'
                 env_path.write_text('\n'.join(env_lines) + '\n')
@@ -1859,6 +2020,11 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                             gemini_api_key_env="GEMINI_API_KEY",
                             bedrock_enabled=self.state.get('bedrock_enabled', False),
                             bedrock_region=self.state.get('bedrock_region', 'us-east-1'),
+                            anthropic_direct_enabled=self.state.get('anthropic_direct_enabled', False),
+                            anthropic_oauth_token_env=(
+                                "ANTHROPIC_OAUTH_TOKEN" if self.state.get('anthropic_direct_key', '').startswith('sk-ant-oat')
+                                else "ANTHROPIC_API_KEY"
+                            ),
                         ),
                         models=self.state.get('model_tiers', {}),
                     )
