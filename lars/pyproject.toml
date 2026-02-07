@@ -44,8 +44,9 @@ dependencies = [
     "altair>=5.0,<6.0",              # Compatible with downstream tools (streamlit requires <6)
     "plotly>=5.0,<7.0",              # Stable visualization library
     "sqlglot>=28.0,<29.0",           # Required for compatible Rust tokenizer (fixes EXPLAIN cache detection)
-    "clickhouse-driver>=0.2,<0.3",   # ClickHouse client library
-    "clickhouse-connect>=0.7,<0.8",  # Alternative ClickHouse client
+    # ClickHouse no longer required — all storage is DuckDB/Parquet
+    # "clickhouse-driver>=0.2,<0.3",
+    # "clickhouse-connect>=0.7,<0.8",
     "jinja2>=3.0,<4.0",              # Template engine
     #"chdb>=2.0,<3.0",               # ClickHouse embedded
     #"chdb",                          # ClickHouse embedded
