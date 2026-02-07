@@ -1,8 +1,15 @@
 import duckdb
 import json
 import math
+import threading
 from typing import List, Optional
 from .base import simple_eddy
+
+# Lock to serialize DuckDB connection creation in parallel tool calls.
+# DuckDB's native code crashes (SIGTRAP) when multiple connections are
+# initialized concurrently. Query execution is still parallel — only
+# the connection setup is serialized.
+_smart_sql_lock = threading.Lock()
 
 
 def _sanitize_for_json(obj):
@@ -26,18 +33,6 @@ def run_sql(query: str, db_path: str = ":memory:") -> str:
     """
     Executes a SQL query using DuckDB.
     """
-    # Try pgwire first (thread-safe)
-    if db_path == ":memory:":
-        try:
-            from ..studio.backend.pgwire_client import execute_sql_via_pgwire, get_pgwire_port
-            port = get_pgwire_port()
-            if port is not None:
-                columns, data = execute_sql_via_pgwire(query, database='memory', port=port)
-                return json.dumps(data, default=str)
-        except Exception:
-            pass
-
-    # Fallback: direct DuckDB
     con = duckdb.connect(db_path)
     try:
         df = con.execute(query).df()
@@ -77,53 +72,33 @@ def smart_sql_run(query: str, limit: Optional[int] = 200) -> str:
         smart_sql_run("SELECT * FROM csv_files.bigfoot_sightings LIMIT 10")
         smart_sql_run("SELECT COUNT(*) FROM postgres_db.public.users")
     """
-    # Add LIMIT if not present and limit specified
-    sql_with_limit = query.strip()
-    if sql_with_limit.endswith(';'):
-        sql_with_limit = sql_with_limit[:-1]
-    if limit and "LIMIT" not in sql_with_limit.upper():
-        sql_with_limit += f" LIMIT {limit}"
-
-    # Try pgwire first (thread-safe, each call gets its own connection)
     try:
-        from ..studio.backend.pgwire_client import execute_sql_via_pgwire, get_pgwire_port
-        port = get_pgwire_port()
-        if port is not None:
-            columns, data = execute_sql_via_pgwire(
-                sql_with_limit,
-                database='memory',
-                port=port,
-            )
-            results = _sanitize_for_json(data)
-            rows = [list(row.values()) for row in results]
-            return json.dumps({
-                "sql": sql_with_limit,
-                "row_count": len(results),
-                "columns": columns,
-                "results": results,
-                "rows": rows
-            }, indent=2, default=str)
-    except Exception as pgwire_err:
-        # Fall through to direct DuckDB if pgwire fails
-        pass
-
-    # Fallback: direct DuckDB connection (legacy path)
-    try:
+        # Import lazy attach and connection config
         from ..sql_tools.config import load_sql_connections
         from ..sql_tools.lazy_attach import LazyAttachManager
         from ..sql_tools.udf import register_lars_udf
 
-        con = duckdb.connect(':memory:')
-
-        try:
+        # Serialize DuckDB connection creation to avoid native threading crashes.
+        # Each call still gets its own isolated connection, but they don't
+        # initialize concurrently (which triggers SIGTRAP in DuckDB's C code).
+        with _smart_sql_lock:
+            con = duckdb.connect(':memory:')
             connections = load_sql_connections()
             lazy_attach = LazyAttachManager(con, connections)
             lazy_attach.ensure_for_query(query, aggressive=True)
-
             try:
                 register_lars_udf(con, config={})
             except Exception:
                 pass
+
+        # Query execution can run in parallel (each conn is isolated)
+        try:
+            # Add LIMIT if not present and limit specified
+            sql_with_limit = query.strip()
+            if sql_with_limit.endswith(';'):
+                sql_with_limit = sql_with_limit[:-1]
+            if limit and "LIMIT" not in sql_with_limit.upper():
+                sql_with_limit += f" LIMIT {limit}"
 
             df = con.execute(sql_with_limit).df()
 
