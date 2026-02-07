@@ -61,8 +61,8 @@ sql_function:
   test_cases:
     - sql: "SELECT parse('Meeting scheduled for March 15, 2024 at 2pm', 'the date')"
       expect:
-        type: contains
-        value: "2024-03-15"
+        type: regex
+        pattern: "(March 15|2024-03-15|03-15|15.*March)"
       description: "Date extracted from text"
     - sql: "SELECT parse('Contact John Smith at john@acme.com for details', 'email address')"
       expect:

@@ -8,6 +8,7 @@ description: 'Impute missing values using statistical or logical reasoning.
 inputs_schema:
   value: The value (may be null or empty)
   context: Statistical context (group values, similar items, etc.)
+  field_name: Optional field name to impute (e.g., 'first_name', 'age')
 sql_function:
   name: impute
   description: Statistical imputation for missing values
@@ -16,29 +17,34 @@ sql_function:
     type: VARCHAR
   - name: context
     type: VARCHAR
-    description: 'Statistical context: group values, similar records, distribution
-      info'
+    description: 'Statistical context: group values, similar records, distribution info'
+  - name: field_name
+    type: VARCHAR
+    optional: true
+    default: ""
+    description: 'Field name to impute (e.g., first_name, age)'
   returns: VARCHAR
   shape: SCALAR
   operators:
   - IMPUTE({{ value }}, '{{ context }}')
+  - IMPUTE({{ value }}, '{{ context }}', '{{ field_name }}')
   - '{{ value }} IMPUTED FROM ''{{ context }}'''
   cache: true
   test_cases:
-  - sql: 'SELECT impute(''unknown'', ''name: John Smith'', ''first_name'')'
+  - sql: "SELECT impute('unknown', 'name: John Smith', 'first_name')"
     expect:
       type: contains
       value: John
     description: First name imputed from context
 cells:
 - name: statistical_impute
-  model: "{{ models.fast }}"
-  instructions: 'Impute the missing value using statistical reasoning.
-
+  model: "{{ models.standard }}"
+  instructions: |
+    Impute the missing value using the context provided.
 
     VALUE: {{ input.value }}
-
     CONTEXT: {{ input.context }}
+    {% if input.field_name %}FIELD TO IMPUTE: {{ input.field_name }}{% endif %}
 
 
     Imputation strategies (choose most appropriate):

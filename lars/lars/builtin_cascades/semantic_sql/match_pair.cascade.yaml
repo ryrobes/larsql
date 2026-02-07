@@ -25,11 +25,8 @@ sql_function:
   cache: true
   test_cases:
   - sql: SELECT semantic_match_pair('John Smith', 'J. Smith')
-    expect:
-      type: range
-      min: 0.7
-      max: 1.0
-    description: Name match score high
+    expect: true
+    description: Name variations match
 cells:
 - name: evaluate_pair
   model: "{{ models.fast }}"

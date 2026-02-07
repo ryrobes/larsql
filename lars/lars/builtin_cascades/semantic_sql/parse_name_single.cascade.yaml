@@ -59,7 +59,8 @@ cells:
         
         Please fix the expression. Remember:
         - Use :name to reference the input value
-        - Use valid DuckDB functions (json_object, regexp_extract, split_part, trim, initcap, etc.)
+        - Use valid DuckDB functions (json_object, regexp_extract, split_part, trim, upper, lower, etc.)
+        - NOTE: DuckDB does NOT have initcap(). Use: upper(left(str,1)) || lower(substring(str,2)) instead
         - Return ONLY the json_object(...) expression, no SELECT or semicolon
         - Ensure all string literals are properly quoted with single quotes
     instructions: |
@@ -78,35 +79,38 @@ cells:
 
       Use :name as the parameter placeholder.
 
+      IMPORTANT: DuckDB does NOT have initcap(). For title case, use this pattern:
+        upper(left(str, 1)) || lower(substring(str, 2))
+
       EXAMPLE for "John Smith" pattern (first last):
       json_object(
         'prefix', NULL,
-        'first', initcap(split_part(:name, ' ', 1)),
+        'first', upper(left(split_part(:name, ' ', 1), 1)) || lower(substring(split_part(:name, ' ', 1), 2)),
         'middle', NULL,
-        'last', initcap(split_part(:name, ' ', 2)),
+        'last', upper(left(split_part(:name, ' ', 2), 1)) || lower(substring(split_part(:name, ' ', 2), 2)),
         'suffix', NULL,
         'nickname', NULL,
-        'formatted', initcap(split_part(:name, ' ', 1)) || ' ' || initcap(split_part(:name, ' ', 2))
+        'formatted', :name
       )
 
-      EXAMPLE for "Smith, John" pattern (last, first):
+      EXAMPLE for "Smith, Jane" pattern (last, first):
       json_object(
         'prefix', NULL,
-        'first', initcap(trim(split_part(:name, ',', 2))),
+        'first', trim(split_part(:name, ',', 2)),
         'middle', NULL,
-        'last', initcap(trim(split_part(:name, ',', 1))),
+        'last', trim(split_part(:name, ',', 1)),
         'suffix', NULL,
         'nickname', NULL,
-        'formatted', initcap(trim(split_part(:name, ',', 2))) || ' ' || initcap(trim(split_part(:name, ',', 1)))
+        'formatted', trim(split_part(:name, ',', 2)) || ' ' || trim(split_part(:name, ',', 1))
       )
 
-      EXAMPLE for "Dr. John Q. Smith Jr." pattern:
+      EXAMPLE for "Dr. John Michael Smith Jr." pattern (complex):
       json_object(
-        'prefix', CASE WHEN regexp_matches(:name, '^(Dr\.|Mr\.|Ms\.|Mrs\.|Prof\.)\s') THEN regexp_extract(:name, '^(Dr\.|Mr\.|Ms\.|Mrs\.|Prof\.)', 1) ELSE NULL END,
-        'first', initcap(trim(split_part(regexp_replace(regexp_replace(:name, '\s+(Jr\.|Sr\.|III|II|IV|PhD|MD)$', ''), '^(Dr\.|Mr\.|Ms\.|Mrs\.|Prof\.)\s*', ''), ' ', 1))),
-        'middle', CASE WHEN length(split_part(regexp_replace(regexp_replace(:name, '\s+(Jr\.|Sr\.|III|II|IV|PhD|MD)$', ''), '^(Dr\.|Mr\.|Ms\.|Mrs\.|Prof\.)\s*', ''), ' ', 2)) > 0 AND split_part(regexp_replace(regexp_replace(:name, '\s+(Jr\.|Sr\.|III|II|IV|PhD|MD)$', ''), '^(Dr\.|Mr\.|Ms\.|Mrs\.|Prof\.)\s*', ''), ' ', 3) != '' THEN split_part(regexp_replace(regexp_replace(:name, '\s+(Jr\.|Sr\.|III|II|IV|PhD|MD)$', ''), '^(Dr\.|Mr\.|Ms\.|Mrs\.|Prof\.)\s*', ''), ' ', 2) ELSE NULL END,
-        'last', initcap(trim(split_part(regexp_replace(regexp_replace(:name, '\s+(Jr\.|Sr\.|III|II|IV|PhD|MD)$', ''), '^(Dr\.|Mr\.|Ms\.|Mrs\.|Prof\.)\s*', ''), ' ', -1))),
-        'suffix', CASE WHEN regexp_matches(:name, '\s+(Jr\.|Sr\.|III|II|IV|PhD|MD)$') THEN trim(regexp_extract(:name, '\s+(Jr\.|Sr\.|III|II|IV|PhD|MD)$', 1)) ELSE NULL END,
+        'prefix', CASE WHEN :name LIKE 'Dr.%' OR :name LIKE 'Mr.%' OR :name LIKE 'Ms.%' OR :name LIKE 'Mrs.%' THEN split_part(:name, ' ', 1) ELSE NULL END,
+        'first', split_part(regexp_replace(:name, '^(Dr\.|Mr\.|Ms\.|Mrs\.)\s*', ''), ' ', 1),
+        'middle', CASE WHEN length(split_part(regexp_replace(:name, '^(Dr\.|Mr\.|Ms\.|Mrs\.)\s*', ''), ' ', 3)) > 0 THEN split_part(regexp_replace(:name, '^(Dr\.|Mr\.|Ms\.|Mrs\.)\s*', ''), ' ', 2) ELSE NULL END,
+        'last', split_part(regexp_replace(regexp_replace(:name, '\s+(Jr\.|Sr\.|III|II)$', ''), '^(Dr\.|Mr\.|Ms\.|Mrs\.)\s*', ''), ' ', -1),
+        'suffix', CASE WHEN :name LIKE '%Jr.%' OR :name LIKE '%Sr.%' OR :name LIKE '%III%' THEN regexp_extract(:name, '(Jr\.|Sr\.|III|II|IV)') ELSE NULL END,
         'nickname', NULL,
         'formatted', :name
       )

@@ -154,6 +154,4 @@ cells:
     '
   rules:
     max_turns: 2
-  output_schema:
-    type: string
-    description: The result of applying the prompt to the text
+  # Note: No output_schema - raw string output, don't confuse model with schema
