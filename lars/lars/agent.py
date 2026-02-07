@@ -638,12 +638,13 @@ class Agent:
 
                 # Cost handling:
                 # - Ollama: cost=0 (local/free), no need to fetch
+                # - Anthropic Direct: cost=0 (flat-rate subscription), no need to fetch
                 # - Vertex AI: cost calculated immediately from token counts
                 # - Azure AI: cost calculated immediately from token counts
                 # - OpenRouter: cost=None (will be fetched by unified logger)
                 cost = None
-                if provider == "ollama":
-                    cost = 0.0  # Local models are free
+                if provider == "ollama" or provider == "anthropic-direct":
+                    cost = 0.0  # Local/flat-rate models are free from LARS perspective
                 elif provider == "vertex_ai":
                     # Calculate Vertex AI cost immediately (no per-request cost API)
                     try:
