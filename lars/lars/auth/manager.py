@@ -81,6 +81,15 @@ class AuthManager:
                 self._db_initialized = True
                 print(f"[Auth._get_db] ✅ DB connection initialized (pid={os.getpid()})")
                 self._ensure_tables()
+                # After ensuring tables + default admin, clear cached DuckDB connections
+                # so that any empty stub views (created before parquet files existed)
+                # get replaced with proper glob views on next query.
+                try:
+                    from ..lars_db import get_lars_db
+                    get_lars_db().clear_cached_connection()
+                    print(f"[Auth._get_db] Cleared cached DuckDB connection after table init (pid={os.getpid()})")
+                except Exception:
+                    pass
             except Exception as e:
                 log.warning(f"[Auth] ClickHouse not available: {e}")
                 print(f"[Auth._get_db] ❌ DB connection FAILED (pid={os.getpid()}): {e}")
@@ -357,7 +366,27 @@ class AuthManager:
                 user = dict(rows[0]) if isinstance(rows[0], dict) else None
                 print(f"[Auth.get_user_by_username] ✅ Found user {username!r}, has_password_hash={bool(user.get('password_hash') if user else None)}, pid={os.getpid()}")
                 return user
-            print(f"[Auth.get_user_by_username] ❌ No rows for {username!r} (query returned {len(rows) if rows else 0} rows), pid={os.getpid()}")
+            
+            # No rows found — might be a stale empty-stub view.
+            # Clear cached DuckDB connection and retry once to pick up
+            # parquet files created by another process after our view was registered.
+            print(f"[Auth.get_user_by_username] ⚠️  No rows for {username!r}, clearing cache and retrying (pid={os.getpid()})")
+            try:
+                from ..lars_db import get_lars_db
+                get_lars_db().clear_cached_connection()
+            except Exception:
+                pass
+            
+            rows = db.query(
+                "SELECT * FROM auth_users WHERE username = %(username)s LIMIT 1",
+                {"username": username}
+            )
+            if rows and len(rows) > 0:
+                user = dict(rows[0]) if isinstance(rows[0], dict) else None
+                print(f"[Auth.get_user_by_username] ✅ Found user {username!r} after cache refresh!, pid={os.getpid()}")
+                return user
+            
+            print(f"[Auth.get_user_by_username] ❌ Still no rows for {username!r} after cache refresh, pid={os.getpid()}")
             return None
         except Exception as e:
             print(f"[Auth.get_user_by_username] ❌ Query error for {username!r}: {e}, pid={os.getpid()}")
