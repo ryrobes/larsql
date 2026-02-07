@@ -1971,14 +1971,42 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                 except Exception as e:
                     log(f"  ⚠ Database: {e}")
                 
+                # Helper to capture stdout from functions
+                import io
+                import sys
+                from contextlib import redirect_stdout, redirect_stderr
+                
+                def run_with_capture(func, *args, **kwargs):
+                    """Run function and capture its stdout/stderr."""
+                    stdout_capture = io.StringIO()
+                    stderr_capture = io.StringIO()
+                    try:
+                        with redirect_stdout(stdout_capture), redirect_stderr(stderr_capture):
+                            result = func(*args, **kwargs)
+                        
+                        # Log captured output (truncate long lines)
+                        for line in stdout_capture.getvalue().splitlines()[-20:]:
+                            if line.strip():
+                                log(f"    {line[:70]}")
+                        for line in stderr_capture.getvalue().splitlines()[-5:]:
+                            if line.strip():
+                                log(f"    [dim]{line[:70]}[/dim]")
+                        
+                        return result, None
+                    except Exception as e:
+                        return None, e
+                
                 # =========================================================
                 # Step 8: Sync tools
                 # =========================================================
                 log("Syncing tools to database...")
                 try:
                     from lars.tools_mgmt import sync_tools_to_db
-                    sync_tools_to_db(force=True)
-                    log("  ✓ Tools synced")
+                    _, err = run_with_capture(sync_tools_to_db, force=True)
+                    if err:
+                        log(f"  ⚠ Tools sync: {err}")
+                    else:
+                        log("  ✓ Tools synced")
                 except Exception as e:
                     log(f"  ⚠ Tools sync: {e}")
                 
@@ -1988,8 +2016,11 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                 log("Refreshing model catalog...")
                 try:
                     from lars.models_mgmt import refresh_models
-                    refresh_models(skip_verification=True)
-                    log("  ✓ Models refreshed")
+                    _, err = run_with_capture(refresh_models, skip_verification=True)
+                    if err:
+                        log(f"  ⚠ Models: {err}")
+                    else:
+                        log("  ✓ Models refreshed")
                 except Exception as e:
                     log(f"  ⚠ Models: {e}")
                 
@@ -2000,25 +2031,29 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                     log("Discovering SQL schemas...")
                     try:
                         from lars.sql_tools.discovery import discover_all_schemas
-                        discover_all_schemas(session_id=None)
-                        log("  ✓ Schemas discovered")
+                        _, err = run_with_capture(discover_all_schemas, session_id=None)
+                        if err:
+                            log(f"  ⚠ Schema discovery: {err}")
+                        else:
+                            log("  ✓ Schemas discovered")
                     except Exception as e:
                         log(f"  ⚠ Schema discovery: {e}")
                 
                 log("")
                 log("✅ Bootstrap complete!")
                 log("")
-                log("Next steps:")
-                log("  lars run cascades/examples/hello_world.yaml")
-                log("  lars serve sql --port 15432")
-                log("  lars serve studio")
+                log("Press 'q' to exit and see next steps...")
                 
+                # Set completion flag directly (for post-exit check)
+                self.bootstrap_completed = True
                 self.call_later(lambda: self.dispatch(Action("BOOTSTRAP_COMPLETE")))
                 
             except Exception as e:
                 log(f"❌ Error: {e}")
                 import traceback
                 log(traceback.format_exc()[:500])
+                # Still mark as completed so user can exit and see doctor output
+                self.bootstrap_completed = True
                 self.call_later(lambda: self.dispatch(Action("BOOTSTRAP_COMPLETE")))
         
         threading.Thread(target=do_bootstrap, daemon=True).start()
