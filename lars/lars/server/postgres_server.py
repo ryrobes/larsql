@@ -4436,10 +4436,8 @@ class ClientConnection:
 
             # Validate the credential (API key or password)
             # Username comes from the StartupMessage (self.user_name)
-            print(f"[pgwire._authenticate] Attempting auth for user={self.user_name!r}, credential_len={len(credential)}, pid={os.getpid()}")
             user = auth.authenticate(self.user_name, credential)
             if not user:
-                print(f"[pgwire._authenticate] ❌ Auth failed for user={self.user_name!r}, pid={os.getpid()}")
                 self._runtime_log(
                     "WARN",
                     f"Invalid credentials for user: {self.user_name}",
@@ -9180,9 +9178,6 @@ class ClientConnection:
         """
         portal_name = msg['portal_name']
         max_rows = msg['max_rows']
-        # Debug: trace execute
-        _pquery = self.portals.get(portal_name, {}).get('query', '?')
-        print(f"[pgwire.execute] portal={portal_name!r} query={str(_pquery)[:100]}... max_rows={max_rows} (pid={os.getpid()})")
 
         self._runtime_log(
             "DEBUG",
@@ -11007,16 +11002,11 @@ class ClientConnection:
             # NOTE: We do ALL setup before sending startup response to avoid race conditions.
             # DataGrip and other aggressive clients send queries immediately after startup,
             # so deferred setup causes broken pipe errors if it takes too long.
-            print(f"[pgwire.handle] Step 3a: setup_session_minimal (pid={os.getpid()})")
             self.setup_session_minimal()
-            print(f"[pgwire.handle] Step 3b: setup_session_deferred (pid={os.getpid()})")
             self.setup_session_deferred()
-            print(f"[pgwire.handle] Step 3 complete, duckdb_conn={'set' if self.duckdb_conn else 'None'} (pid={os.getpid()})")
 
             # Step 4: Send startup response (session is now fully ready)
-            print(f"[pgwire.handle] Step 4: send_startup_response (pid={os.getpid()})")
             send_startup_response(self.sock)
-            print(f"[pgwire.handle] Step 5: entering message loop (pid={os.getpid()})")
 
             # Step 5: Message loop
             while self.running:
@@ -11072,7 +11062,6 @@ class ClientConnection:
                     # Simple query protocol
                     # Payload is null-terminated SQL string
                     query = payload.rstrip(b'\x00').decode('utf-8')
-                    print(f"[pgwire.query] SimpleQuery: {query[:120]}... (pid={os.getpid()})")
                     self.handle_query(query)
 
                 elif msg_type == MessageType.TERMINATE:
@@ -11090,8 +11079,6 @@ class ClientConnection:
                         payload_bytes=len(payload),
                     )
                     msg = ParseMessage.decode(payload)
-                    _q = msg.get('query', '') if isinstance(msg, dict) else getattr(msg, 'query', '')
-                    print(f"[pgwire.query] Parse: {(_q or '')[:120]}... (pid={os.getpid()})")
                     self._handle_parse(msg)
 
                 elif msg_type == MessageType.BIND:
@@ -11160,14 +11147,15 @@ class ClientConnection:
                     )
 
         except Exception as e:
-            print(f"[pgwire.handle] ❌ Connection error: {type(e).__name__}: {e} (pid={os.getpid()})")
-            traceback.print_exc()
             self._runtime_log(
                 "ERROR",
                 f"Connection error: {e}",
                 event="connection_error",
                 error_type=type(e).__name__,
             )
+            # Keep traceback for interactive debugging, but avoid flooding stdout in steady-state.
+            if os.environ.get("LARS_PG_TRACEBACK", "0").strip().lower() in ("1", "true", "yes", "on"):
+                traceback.print_exc()
 
         finally:
             # Step 5: Cleanup
