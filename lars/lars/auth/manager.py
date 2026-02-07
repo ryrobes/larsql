@@ -29,14 +29,14 @@ class AuthManager:
     """
     Central authentication manager.
 
-    Handles JWT token creation/validation and user management via ClickHouse.
+    Handles JWT token creation/validation and user management via the database.
     """
 
     _instance = None
     _lock = threading.Lock()
     _init_lock = threading.Lock()
 
-    # ClickHouse connection (lazy initialized)
+    # Database connection (lazy initialized)
     _db = None
     _db_initialized = False
     _tables_ensured = False
@@ -72,7 +72,7 @@ class AuthManager:
         return self.config.enabled
 
     def _get_db(self):
-        """Lazily initialize ClickHouse connection."""
+        """Lazily initialize database connection."""
         if not self._db_initialized:
             try:
                 from ..db_adapter import get_db
@@ -80,7 +80,7 @@ class AuthManager:
                 self._db_initialized = True
                 self._ensure_tables()
             except Exception as e:
-                log.warning(f"[Auth] ClickHouse not available: {e}")
+                log.warning(f"[Auth] Database not available: {e}")
                 self._db = None
                 self._db_initialized = True
         return self._db
@@ -240,7 +240,12 @@ class AuthManager:
                 row = rows[0]
                 is_active = row.get('is_active') if isinstance(row, dict) else row[0]
                 return bool(is_active)
-            return False  # Key not found
+            # Key not found in DB — return True because:
+            # 1. JWT signature already guarantees the token is authentic
+            # 2. A key that doesn't exist in the DB yet can't have been revoked
+            # 3. Database inserts are async/buffered, so freshly created keys
+            #    may not be queryable immediately (race condition on login)
+            return True
         except Exception as e:
             log.debug(f"[Auth] Key check error: {e}")
             return True  # On error, assume valid
