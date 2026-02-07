@@ -12788,30 +12788,30 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                         # First try to parse the entire response as JSON
                         output_data = json.loads(response_content)
                     except json.JSONDecodeError:
-                        # If that fails, try to extract JSON from markdown code blocks
                         import re
-                        # Try to match arrays first (for list-based schemas)
-                        json_match = re.search(r'```(?:json)?\s*(\[.*?\])\s*```', response_content, re.DOTALL)
-                        if json_match:
-                            output_data = json.loads(json_match.group(1))
-                        else:
-                            # Try to match objects
-                            json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', response_content, re.DOTALL)
-                            if json_match:
-                                output_data = json.loads(json_match.group(1))
+
+                        # For boolean schemas, try extracting last true/false from verbose responses
+                        # Models like Claude Sonnet 4.5 often include reasoning before the answer
+                        schema_type = cell.output_schema.get("type") if isinstance(cell.output_schema, dict) else None
+                        if schema_type == "boolean":
+                            last_line = response_content.strip().rsplit("\n", 1)[-1].strip().lower()
+                            last_word = last_line.rsplit(None, 1)[-1] if last_line else ""
+                            last_word = last_word.strip(".*_`\"'")
+                            if last_word in ("true", "false"):
+                                output_data = last_word == "true"
                             else:
-                                # Try to find any JSON array in the response (without fences)
-                                json_match = re.search(r'\[\s*\{.*?\}\s*\]', response_content, re.DOTALL)
-                                if json_match:
-                                    output_data = json.loads(json_match.group(0))
-                                else:
-                                    # Try to find any JSON object in the response
-                                    json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', response_content, re.DOTALL)
-                                    if json_match:
-                                        output_data = json.loads(json_match.group(0))
-                                    else:
-                                        # No JSON found
-                                        raise json.JSONDecodeError("No valid JSON found in response", response_content, 0)
+                                raise json.JSONDecodeError("No boolean found in response", response_content, 0)
+                        # Try to extract JSON from markdown code blocks
+                        elif (json_match := re.search(r'```(?:json)?\s*(\[.*?\])\s*```', response_content, re.DOTALL)):
+                            output_data = json.loads(json_match.group(1))
+                        elif (json_match := re.search(r'```(?:json)?\s*(\{.*?\})\s*```', response_content, re.DOTALL)):
+                            output_data = json.loads(json_match.group(1))
+                        elif (json_match := re.search(r'\[\s*\{.*?\}\s*\]', response_content, re.DOTALL)):
+                            output_data = json.loads(json_match.group(0))
+                        elif (json_match := re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', response_content, re.DOTALL)):
+                            output_data = json.loads(json_match.group(0))
+                        else:
+                            raise json.JSONDecodeError("No valid JSON found in response", response_content, 0)
 
                     # Validate against schema
                     # LLMs sometimes wrap scalar values in dicts like {"type": false} when

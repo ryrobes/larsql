@@ -681,7 +681,18 @@ def execute_cascade_udf(
         # Post-process based on return type (for output_mode: value)
         if fn.returns == "BOOLEAN":
             if isinstance(output, str):
-                output = output.lower().strip() in ("true", "yes", "1")
+                # Models may include reasoning before the answer.
+                # Check the full string first, then try the last line/word.
+                cleaned = output.lower().strip()
+                if cleaned in ("true", "yes", "1", "false", "no", "0"):
+                    output = cleaned in ("true", "yes", "1")
+                else:
+                    # Extract last meaningful word (models often put reasoning before answer)
+                    last_line = cleaned.rstrip().rsplit("\n", 1)[-1].strip()
+                    last_word = last_line.rsplit(None, 1)[-1] if last_line else ""
+                    # Strip trailing punctuation (e.g., "true." or "**true**")
+                    last_word = last_word.strip(".*_`\"'")
+                    output = last_word in ("true", "yes", "1")
             output = bool(output)
         elif fn.returns == "DOUBLE":
             if isinstance(output, str):
