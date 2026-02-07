@@ -1999,6 +1999,58 @@ class LarsBootstrapTUI(ReactiveGlassApp):
 
 
 # =============================================================================
+# POST-BOOTSTRAP OUTPUT
+# =============================================================================
+
+def run_post_bootstrap():
+    """Run doctor and show getting started after TUI exits."""
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich import box
+    
+    console = Console()
+    console.print()
+    console.print("=" * 60)
+    console.print("[bold cyan]VERIFYING INSTALLATION...[/bold cyan]")
+    console.print("=" * 60)
+    console.print()
+    
+    # Run doctor
+    try:
+        from lars.cli import cmd_doctor
+        
+        class DoctorArgs:
+            fix = False
+            verbose = False
+        
+        cmd_doctor(DoctorArgs())
+    except Exception as e:
+        console.print(f"[yellow]Doctor check skipped: {e}[/yellow]")
+    
+    # Getting Started panel (condensed)
+    console.print()
+    console.print(Panel(
+        "[bold cyan]🚀 GETTING STARTED[/bold cyan]\n\n"
+        "[bold]1. Test cascade system:[/bold]\n"
+        "   [cyan]lars run cascades/examples/hello_world.yaml[/cyan]\n\n"
+        "[bold]2. Semantic SQL query:[/bold]\n"
+        "   [cyan]lars ssql \"SELECT * FROM sample_data.support_tickets WHERE description MEANS 'slow'\"[/cyan]\n\n"
+        "[bold]3. SQL wire-protocol server:[/bold]\n"
+        "   [cyan]lars serve sql --port 15432[/cyan]\n"
+        "   [dim]Connect: psql postgresql://admin:admin@localhost:15432/default[/dim]\n\n"
+        "[bold]4. Studio UI:[/bold]\n"
+        "   [cyan]lars serve studio[/cyan]\n"
+        "   [dim]Open http://localhost:5050[/dim]\n\n"
+        "[dim]Default auth: admin / admin  •  Docs: https://larsql.com/docs.html[/dim]",
+        title="[bold green]✅ Bootstrap Complete![/bold green]",
+        border_style="green",
+        padding=(1, 2),
+        box=box.ROUNDED,
+    ))
+    console.print()
+
+
+# =============================================================================
 # MAIN
 # =============================================================================
 
@@ -2016,3 +2068,7 @@ if __name__ == "__main__":
     
     app = LarsBootstrapTUI(background_image=background)
     app.run()
+    
+    # After TUI exits, check if bootstrap completed and show post-run output
+    if app.state.get("bootstrap_complete"):
+        run_post_bootstrap()
