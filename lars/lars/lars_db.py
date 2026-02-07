@@ -1980,34 +1980,50 @@ class LarsDB:
         
         # unified_logs - THE main view that all code queries
         # Merges unified_logs_base (parquet) with costs table (async cost updates)
-        # This replaces the old DuckDB approach where costs were updated in-place
-        try:
-            conn.execute("""
-                CREATE OR REPLACE VIEW unified_logs AS
-                SELECT 
-                    ul.* EXCLUDE (cost, tokens_in, tokens_out, tokens_reasoning, parent_session_id),
-                    -- Override cost/token columns with costs table data (if available)
-                    COALESCE(c.cost, ul.cost) AS cost,
-                    COALESCE(c.tokens_in, ul.tokens_in) AS tokens_in,
-                    COALESCE(c.tokens_out, ul.tokens_out) AS tokens_out,
-                    COALESCE(c.tokens_reasoning, ul.tokens_reasoning) AS tokens_reasoning,
-                    -- Ensure parent_session_id is always VARCHAR (some old parquet files have wrong type)
-                    CAST(ul.parent_session_id AS VARCHAR) AS parent_session_id
-                FROM unified_logs_base ul
-                LEFT JOIN costs c ON ul.trace_id = c.trace_id
-            """)
-        except Exception as e:
-            # Fallback: no costs table yet - just alias the base table
+        # Try multiple strategies from most featured to simplest — MUST always succeed
+        unified_logs_created = False
+        
+        # Strategy 1: Full join with costs table (best - shows updated costs)
+        if not unified_logs_created:
             try:
                 conn.execute("""
                     CREATE OR REPLACE VIEW unified_logs AS
                     SELECT 
-                        * EXCLUDE (parent_session_id),
-                        CAST(parent_session_id AS VARCHAR) AS parent_session_id
-                    FROM unified_logs_base
+                        ul.* EXCLUDE (cost, tokens_in, tokens_out, tokens_reasoning, parent_session_id),
+                        COALESCE(c.cost, ul.cost) AS cost,
+                        COALESCE(c.tokens_in, ul.tokens_in) AS tokens_in,
+                        COALESCE(c.tokens_out, ul.tokens_out) AS tokens_out,
+                        COALESCE(c.tokens_reasoning, ul.tokens_reasoning) AS tokens_reasoning,
+                        CAST(ul.parent_session_id AS VARCHAR) AS parent_session_id
+                    FROM unified_logs_base ul
+                    LEFT JOIN costs c ON ul.trace_id = c.trace_id
                 """)
+                unified_logs_created = True
             except Exception:
                 pass
+        
+        # Strategy 2: Base table with parent_session_id cast (no costs join)
+        if not unified_logs_created:
+            try:
+                conn.execute("""
+                    CREATE OR REPLACE VIEW unified_logs AS
+                    SELECT *, CAST(parent_session_id AS VARCHAR) AS parent_session_id
+                    FROM (SELECT * EXCLUDE (parent_session_id) FROM unified_logs_base)
+                """)
+                unified_logs_created = True
+            except Exception:
+                pass
+        
+        # Strategy 3: Simple alias (works even with empty views)
+        if not unified_logs_created:
+            try:
+                conn.execute("CREATE OR REPLACE VIEW unified_logs AS SELECT * FROM unified_logs_base")
+                unified_logs_created = True
+            except Exception:
+                pass
+        
+        if not unified_logs_created:
+            logger.warning("[Views] Could not create unified_logs view by any strategy")
         
         # lars_system.logs → alias for unified_logs (for clean namespace)
         try:
@@ -2839,9 +2855,9 @@ def attach_system_views(conn, data_root: Optional[Path] = None) -> int:
         except Exception as e:
             logger.warning(f"[attach_system_views] Failed to create view {table_name}: {e}")
     
-    # Create unified_logs (joins with costs)
-    try:
-        conn.execute("""
+    # Create unified_logs (joins with costs) — same cascade strategy as _register_derived_views
+    for strategy, sql in [
+        ("costs_join", """
             CREATE OR REPLACE VIEW unified_logs AS
             SELECT 
                 ul.* EXCLUDE (cost, tokens_in, tokens_out, tokens_reasoning, parent_session_id),
@@ -2852,21 +2868,15 @@ def attach_system_views(conn, data_root: Optional[Path] = None) -> int:
                 CAST(ul.parent_session_id AS VARCHAR) AS parent_session_id
             FROM unified_logs_base ul
             LEFT JOIN costs c ON ul.trace_id = c.trace_id
-        """)
-        count += 1
-    except Exception as e:
-        # Fallback without costs join
+        """),
+        ("simple_alias", "CREATE OR REPLACE VIEW unified_logs AS SELECT * FROM unified_logs_base"),
+    ]:
         try:
-            conn.execute("""
-                CREATE OR REPLACE VIEW unified_logs AS
-                SELECT 
-                    * EXCLUDE (parent_session_id),
-                    CAST(parent_session_id AS VARCHAR) AS parent_session_id
-                FROM unified_logs_base
-            """)
+            conn.execute(sql)
             count += 1
+            break
         except Exception:
-            pass
+            continue
     
     # Create lars_system namespace aliases
     lars_system_aliases = [
