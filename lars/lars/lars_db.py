@@ -1288,6 +1288,7 @@ SYSTEM_TABLES = {
             ("is_baseline", "UTINYINT"),
             ("screenshots_compared", "VARCHAR"),
             ("models_used", "VARCHAR"),
+            ("raw_output", "VARCHAR"),
         ],
         "partition_by": None,
     },

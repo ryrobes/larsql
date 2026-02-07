@@ -141,6 +141,7 @@ class TestResult:
     screenshots_compared: str = ""  # JSON array of screenshot comparisons
     # Model tracking
     models_used: str = ""  # JSON array of model names actually used
+    raw_output: str = ""  # Raw LLM output before parsing/coercion (for debugging)
 
 
 def _get_config():

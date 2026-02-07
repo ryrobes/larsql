@@ -12789,29 +12789,64 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                         output_data = json.loads(response_content)
                     except json.JSONDecodeError:
                         import re
-
-                        # For boolean schemas, try extracting last true/false from verbose responses
-                        # Models like Claude Sonnet 4.5 often include reasoning before the answer
+                        
                         schema_type = cell.output_schema.get("type") if isinstance(cell.output_schema, dict) else None
+                        output_data = None
+                        
+                        # For boolean schemas, try boolean extraction FIRST
+                        # Models often include reasoning before "true"/"false" — extracting
+                        # a JSON object like {"type": "boolean"} (echoed schema) would be wrong
                         if schema_type == "boolean":
-                            last_line = response_content.strip().rsplit("\n", 1)[-1].strip().lower()
-                            last_word = last_line.rsplit(None, 1)[-1] if last_line else ""
-                            last_word = last_word.strip(".*_`\"'")
-                            if last_word in ("true", "false"):
-                                output_data = last_word == "true"
-                            else:
-                                raise json.JSONDecodeError("No boolean found in response", response_content, 0)
-                        # Try to extract JSON from markdown code blocks
-                        elif (json_match := re.search(r'```(?:json)?\s*(\[.*?\])\s*```', response_content, re.DOTALL)):
-                            output_data = json.loads(json_match.group(1))
-                        elif (json_match := re.search(r'```(?:json)?\s*(\{.*?\})\s*```', response_content, re.DOTALL)):
-                            output_data = json.loads(json_match.group(1))
-                        elif (json_match := re.search(r'\[\s*\{.*?\}\s*\]', response_content, re.DOTALL)):
-                            output_data = json.loads(json_match.group(0))
-                        elif (json_match := re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', response_content, re.DOTALL)):
-                            output_data = json.loads(json_match.group(0))
-                        else:
-                            raise json.JSONDecodeError("No valid JSON found in response", response_content, 0)
+                            for line in reversed(response_content.strip().splitlines()):
+                                cleaned = line.strip().lower().strip(".*_`\"' ")
+                                if cleaned in ("true", "false"):
+                                    output_data = cleaned == "true"
+                                    break
+                        
+                        # Strategy 1: Extract JSON from markdown code blocks
+                        if output_data is None:
+                            json_match = (
+                                re.search(r'```(?:json)?\s*(\{.*?\})\s*```', response_content, re.DOTALL)
+                                or re.search(r'```(?:json)?\s*(\[.*?\])\s*```', response_content, re.DOTALL)
+                            )
+                            if json_match:
+                                try:
+                                    parsed = json.loads(json_match.group(1))
+                                    # For boolean schemas, unwrap {"type": true} or {"value": true} etc
+                                    if schema_type == "boolean" and isinstance(parsed, dict) and len(parsed) == 1:
+                                        val = next(iter(parsed.values()))
+                                        if isinstance(val, bool):
+                                            output_data = val
+                                        else:
+                                            output_data = parsed
+                                    else:
+                                        output_data = parsed
+                                except json.JSONDecodeError:
+                                    pass
+                        
+                        # Strategy 2: Find bare JSON objects/arrays
+                        if output_data is None:
+                            json_match = (
+                                re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', response_content, re.DOTALL)
+                                or re.search(r'\[\s*\{.*?\}\s*\]', response_content, re.DOTALL)
+                            )
+                            if json_match:
+                                try:
+                                    parsed = json.loads(json_match.group(0))
+                                    # For boolean schemas, unwrap single-key dicts
+                                    if schema_type == "boolean" and isinstance(parsed, dict) and len(parsed) == 1:
+                                        val = next(iter(parsed.values()))
+                                        if isinstance(val, bool):
+                                            output_data = val
+                                        else:
+                                            output_data = parsed
+                                    else:
+                                        output_data = parsed
+                                except json.JSONDecodeError:
+                                    pass
+                        
+                        if output_data is None:
+                            raise json.JSONDecodeError("No valid JSON or boolean found in response", response_content, 0)
 
                     # Validate against schema
                     # LLMs sometimes wrap scalar values in dicts like {"type": false} when
