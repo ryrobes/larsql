@@ -270,20 +270,33 @@ class Agent:
                 base_model = model_id[8:]  # Remove "bedrock/" prefix
                 args["model"] = f"bedrock/converse/{base_model}"
 
-        # Anthropic OAuth token detection (sk-ant-oat-*)
-        # When a user provides an OAuth token from their Claude Pro/Max subscription,
-        # auto-start a local proxy that translates to the correct auth headers.
-        _effective_key = args.get("api_key") or os.environ.get("ANTHROPIC_API_KEY", "")
-        if _effective_key and _effective_key.startswith("sk-ant-oat"):
-            from .anthropic_oauth_proxy import ensure_oauth_proxy
-            proxy_url = ensure_oauth_proxy(_effective_key)
-            if proxy_url:
-                args["base_url"] = proxy_url
-                args["api_key"] = _effective_key  # Proxy doesn't check this, but litellm needs something
+        # Anthropic Direct (OAuth proxy for Claude Pro/Max subscriptions)
+        # Format: anthropic-direct/<model-name> (e.g., anthropic-direct/claude-sonnet-4-20250514)
+        # Supports both OAuth tokens (sk-ant-oat-*) and standard API keys (sk-ant-api01-*)
+        elif self.model and self.model.startswith("anthropic-direct/"):
+            _auth_key = (args.get("api_key")
+                         or os.environ.get("ANTHROPIC_OAUTH_TOKEN", "")
+                         or os.environ.get("ANTHROPIC_API_KEY", ""))
+            raw_model = args["model"].replace("anthropic-direct/", "")
+            if _auth_key and _auth_key.startswith("sk-ant-oat"):
+                # OAuth token → route through stealth proxy
+                from .anthropic_oauth_proxy import ensure_oauth_proxy
+                proxy_url = ensure_oauth_proxy(_auth_key)
+                if proxy_url:
+                    args["base_url"] = proxy_url
+                    args["api_key"] = _auth_key
+                    args["model"] = raw_model
+                    args["custom_llm_provider"] = "anthropic"
+            elif _auth_key:
+                # Standard Anthropic API key → direct via litellm
+                args["api_key"] = _auth_key
+                args["model"] = raw_model
                 args["custom_llm_provider"] = "anthropic"
-                # Ensure model uses anthropic/ prefix for litellm routing
-                if not args["model"].startswith("anthropic/"):
-                    args["model"] = f"anthropic/{args['model']}"
+            else:
+                raise ValueError(
+                    "anthropic-direct/ models require an Anthropic API key or OAuth token. "
+                    "Set ANTHROPIC_API_KEY or ANTHROPIC_OAUTH_TOKEN environment variable."
+                )
 
         if self.tools:
             args["tools"] = self.tools

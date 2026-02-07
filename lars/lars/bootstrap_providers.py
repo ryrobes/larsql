@@ -35,6 +35,8 @@ class DiscoveredModel:
             return f"${self.pricing_input:.2f}/1M"
         if self.provider == "ollama":
             return "free (local)"
+        if self.provider == "anthropic-direct":
+            return "subscription"
         return ""
     
     @property
@@ -46,6 +48,8 @@ class DiscoveredModel:
             return "Google AI"
         elif self.provider == "bedrock":
             return "AWS Bedrock"
+        elif self.provider == "anthropic-direct":
+            return "Anthropic"
         return "OpenRouter"
 
 
@@ -435,6 +439,127 @@ def fetch_gemini_models(api_key: Optional[str] = None, use_oauth: bool = False) 
     except Exception as e:
         print(f"Error fetching Gemini models: {e}")
         return []
+
+
+# ============================================================================
+# Anthropic Direct Provider (OAuth - Claude Pro/Max)
+# ============================================================================
+
+def validate_anthropic_oauth_token(token: str) -> Tuple[bool, str]:
+    """
+    Validate an Anthropic OAuth token (sk-ant-oat-*).
+    
+    Returns:
+        (is_valid, message)
+    """
+    if not token:
+        return False, "Token is required"
+    
+    is_oauth = token.startswith("sk-ant-oat")
+    is_api_key = token.startswith("sk-ant-api")
+    
+    if not is_oauth and not is_api_key:
+        return False, "Token must be an API key (sk-ant-api*) or OAuth token (sk-ant-oat-*)"
+    
+    # Standard API key — validate via /v1/models
+    if is_api_key:
+        try:
+            headers = {
+                'x-api-key': token,
+                'anthropic-version': '2023-06-01',
+            }
+            resp = httpx.get('https://api.anthropic.com/v1/models', headers=headers, timeout=15)
+            if resp.status_code == 200:
+                data = resp.json().get("data", [])
+                return True, f"Valid API key! {len(data)} models available"
+            elif resp.status_code == 401:
+                return False, "Invalid API key"
+            else:
+                return False, f"Unexpected status: {resp.status_code}"
+        except Exception as e:
+            return False, str(e)
+    
+    try:
+        from .anthropic_oauth_proxy import list_oauth_models
+        models = list_oauth_models(token)
+        if models:
+            return True, f"Valid! {len(models)} models available"
+        # Token might be valid but models endpoint might not return data
+        # Try a lightweight check instead
+        headers = {
+            'authorization': f'Bearer {token}',
+            'anthropic-version': '2023-06-01',
+            'user-agent': 'claude-cli/2.1.2 (external, cli)',
+            'x-app': 'cli',
+            'anthropic-dangerous-direct-browser-access': 'true',
+        }
+        resp = httpx.get('https://api.anthropic.com/v1/models', headers=headers, timeout=15)
+        if resp.status_code == 200:
+            return True, "Valid token"
+        elif resp.status_code == 401:
+            return False, "Invalid or expired token"
+        else:
+            return False, f"Unexpected status: {resp.status_code}"
+    except Exception as e:
+        return False, str(e)
+
+
+def fetch_anthropic_direct_models(token: str) -> List[DiscoveredModel]:
+    """
+    Fetch available models via Anthropic API key or OAuth token.
+    
+    Returns:
+        List of discovered models with anthropic-direct/ prefix
+    """
+    raw_models = []
+    
+    if token.startswith("sk-ant-api"):
+        # Standard API key — query /v1/models directly
+        try:
+            headers = {
+                'x-api-key': token,
+                'anthropic-version': '2023-06-01',
+            }
+            resp = httpx.get('https://api.anthropic.com/v1/models', headers=headers, timeout=15)
+            if resp.status_code == 200:
+                raw_models = resp.json().get("data", [])
+        except Exception:
+            pass
+    else:
+        # OAuth token — use stealth proxy
+        try:
+            from .anthropic_oauth_proxy import list_oauth_models
+            raw_models = list_oauth_models(token)
+        except Exception:
+            pass
+    
+    if not raw_models:
+        # Fallback: return known Claude models
+        raw_models = [
+            {"id": "claude-sonnet-4-20250514", "display_name": "Claude Sonnet 4"},
+            {"id": "claude-opus-4-20250514", "display_name": "Claude Opus 4"},
+            {"id": "claude-haiku-3-5-20241022", "display_name": "Claude 3.5 Haiku"},
+        ]
+    
+    models = []
+    for m in raw_models:
+        model_id = m.get("id", "")
+        if not model_id:
+            continue
+        display_name = m.get("display_name") or m.get("name") or model_id
+        
+        models.append(DiscoveredModel(
+            id=f"anthropic-direct/{model_id}",
+            name=display_name,
+            provider="anthropic-direct",
+            is_chat=True,
+            is_embedding=False,
+            supports_vision="claude-3" in model_id or "claude-sonnet-4" in model_id or "claude-opus-4" in model_id,
+            pricing_input=0.0,  # Included in subscription
+            pricing_output=0.0,
+        ))
+    
+    return models
 
 
 # ============================================================================

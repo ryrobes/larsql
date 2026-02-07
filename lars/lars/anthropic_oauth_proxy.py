@@ -49,6 +49,25 @@ CLAUDE_CODE_TOOLS = [
 CC_TOOL_LOOKUP = {t.lower(): t for t in CLAUDE_CODE_TOOLS}
 
 
+def list_oauth_models(oauth_token: str) -> list[dict]:
+    """List models available via Anthropic OAuth token."""
+    headers = {
+        'authorization': f'Bearer {oauth_token}',
+        'anthropic-version': '2023-06-01',
+        'anthropic-beta': ','.join(BETA_FEATURES),
+        'user-agent': f'claude-cli/{CLAUDE_CODE_VERSION} (external, cli)',
+        'x-app': 'cli',
+        'anthropic-dangerous-direct-browser-access': 'true',
+    }
+    try:
+        resp = httpx.get(f'{ANTHROPIC_API_BASE}/v1/models', headers=headers, timeout=15)
+        if resp.status_code == 200:
+            return resp.json().get('data', [])
+    except Exception as e:
+        log.warning(f"[OAuthProxy] Failed to list models: {e}")
+    return []
+
+
 def is_oauth_token(key: str) -> bool:
     """Check if an API key is an Anthropic OAuth token."""
     return key.startswith("sk-ant-oat")
@@ -194,7 +213,7 @@ class OAuthProxyHandler(BaseHTTPRequestHandler):
             self.wfile.flush()
 
     def do_GET(self):
-        """Handle GET requests (health check, etc.)."""
+        """Handle GET requests (health check, model listing, etc.)."""
         if self.path == "/health":
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -202,6 +221,33 @@ class OAuthProxyHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+        elif self.path.startswith("/v1/models"):
+            # Forward model listing to Anthropic
+            headers = {
+                "authorization": f"Bearer {self.oauth_token}",
+                "anthropic-version": "2023-06-01",
+                "anthropic-beta": ",".join(BETA_FEATURES),
+                "anthropic-dangerous-direct-browser-access": "true",
+                "user-agent": f"claude-cli/{CLAUDE_CODE_VERSION} (external, cli)",
+                "x-app": "cli",
+            }
+            try:
+                client = self.get_client()
+                resp = client.get(f"{ANTHROPIC_API_BASE}{self.path}", headers=headers)
+                self.send_response(resp.status_code)
+                for key, value in resp.headers.items():
+                    if key.lower() not in ("transfer-encoding", "content-encoding", "connection"):
+                        self.send_header(key, value)
+                self.send_header("Content-Length", str(len(resp.content)))
+                self.end_headers()
+                self.wfile.write(resp.content)
+            except Exception as e:
+                error_body = json.dumps({"error": str(e)}).encode()
+                self.send_response(502)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(error_body)))
+                self.end_headers()
+                self.wfile.write(error_body)
         else:
             self.send_response(404)
             self.end_headers()

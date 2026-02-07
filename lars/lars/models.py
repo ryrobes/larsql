@@ -68,6 +68,14 @@ class ProvidersConfig:
     bedrock_enabled: bool = False
     bedrock_region: str = "us-east-1"
     
+    anthropic_direct_enabled: bool = False
+    anthropic_oauth_token_env: str = "ANTHROPIC_OAUTH_TOKEN"
+    
+    @property
+    def anthropic_oauth_token(self) -> Optional[str]:
+        """Get the Anthropic OAuth token from environment."""
+        return os.environ.get(self.anthropic_oauth_token_env) or os.environ.get("ANTHROPIC_API_KEY", "")
+    
     @property
     def openrouter_api_key(self) -> Optional[str]:
         """Get the actual API key from environment."""
@@ -89,6 +97,8 @@ class ProvidersConfig:
             return True
         if self.bedrock_enabled:
             return True  # Bedrock uses AWS credentials, not env var key
+        if self.anthropic_direct_enabled and self.anthropic_oauth_token:
+            return True
         return False
 
 
@@ -150,11 +160,14 @@ def _load_from_yaml(path: Path) -> ModelsConfig:
     
     # Parse providers
     providers_data = data.get("providers", {})
+    ad_data = providers_data.get("anthropic_direct", {})
     providers = ProvidersConfig(
         openrouter_enabled=providers_data.get("openrouter", {}).get("enabled", False),
         openrouter_api_key_env=providers_data.get("openrouter", {}).get("api_key_env", "OPENROUTER_API_KEY"),
         ollama_enabled=providers_data.get("ollama", {}).get("enabled", False),
         ollama_hosts=providers_data.get("ollama", {}).get("hosts", {}),
+        anthropic_direct_enabled=ad_data.get("enabled", False),
+        anthropic_oauth_token_env=ad_data.get("oauth_token_env", "ANTHROPIC_OAUTH_TOKEN"),
     )
     
     # Parse models
@@ -392,6 +405,12 @@ def write_models_yaml(
         if not config.providers.ollama_hosts:
             f.write("      # default: http://localhost:11434\n")
         f.write("\n")
+        
+        if config.providers.anthropic_direct_enabled:
+            f.write("  anthropic_direct:\n")
+            f.write(f"    enabled: true\n")
+            f.write(f"    oauth_token_env: {config.providers.anthropic_oauth_token_env}\n")
+            f.write("\n")
         
         # Write models section
         f.write("models:\n")

@@ -8474,10 +8474,12 @@ def bootstrap_wizard():
         validate_ollama_host,
         validate_gemini_key,
         validate_bedrock_credentials,
+        validate_anthropic_oauth_token,
         fetch_openrouter_models,
         fetch_ollama_models,
         fetch_gemini_models,
         fetch_bedrock_models,
+        fetch_anthropic_direct_models,
         get_recommended_defaults,
         get_openrouter_embedding_models,
         filter_models_for_tier,
@@ -8641,8 +8643,43 @@ def bootstrap_wizard():
         else:
             console.print(f" [red]✗ {message}[/red]")
     
+    # --- Anthropic Direct (OAuth - Claude Pro/Max) ---
+    anthropic_direct_enabled = False
+    anthropic_oauth_token = None
+    existing_oauth = os.environ.get('ANTHROPIC_OAUTH_TOKEN') or os.environ.get('ANTHROPIC_API_KEY', '')
+    add_anthropic_direct = Confirm.ask(
+        "\n[bold]Add Anthropic Direct?[/bold] [dim](API key or Claude Pro/Max OAuth token — bypasses OpenRouter)[/dim]",
+        default=False
+    )
+    
+    if add_anthropic_direct:
+        if existing_oauth and (existing_oauth.startswith("sk-ant-oat") or existing_oauth.startswith("sk-ant-api")):
+            key_type = "OAuth token" if existing_oauth.startswith("sk-ant-oat") else "API key"
+            console.print(f"  [dim]Current {key_type}: ...{existing_oauth[-8:]}[/dim]")
+            anthropic_oauth_token = Prompt.ask("  API Key or OAuth Token (Enter to keep current)", password=True, default="")
+            if not anthropic_oauth_token:
+                anthropic_oauth_token = existing_oauth
+        else:
+            console.print("  [dim]API key from console.anthropic.com, or OAuth token from Claude Pro/Max[/dim]")
+            anthropic_oauth_token = Prompt.ask("  API Key (sk-ant-api*) or OAuth Token (sk-ant-oat-*)", password=True, default="")
+        
+        if anthropic_oauth_token:
+            console.print("  Validating...", end="")
+            is_valid, message = validate_anthropic_oauth_token(anthropic_oauth_token)
+            if is_valid:
+                console.print(f" [green]✓ {message}[/green]")
+                anthropic_direct_enabled = True
+                # Fetch models
+                console.print("  Fetching models...", end="")
+                ad_models = fetch_anthropic_direct_models(anthropic_oauth_token)
+                console.print(f" [green]✓ {len(ad_models)} models[/green]")
+                all_models.extend(ad_models)
+            else:
+                console.print(f" [red]✗ {message}[/red]")
+                anthropic_oauth_token = None
+    
     # Check that we have at least one provider
-    if not openrouter_enabled and not ollama_enabled and not gemini_enabled and not bedrock_enabled:
+    if not openrouter_enabled and not ollama_enabled and not gemini_enabled and not bedrock_enabled and not anthropic_direct_enabled:
         console.print("\n[yellow]⚠ No providers configured. You'll need to edit models.yaml manually.[/yellow]")
     
     # ==========================================================================
@@ -8820,6 +8857,12 @@ def bootstrap_wizard():
         "gemini_key": gemini_key,
         "bedrock_enabled": bedrock_enabled,
         "bedrock_region": bedrock_region,
+        "anthropic_direct_enabled": anthropic_direct_enabled,
+        "anthropic_oauth_token": anthropic_oauth_token,
+        "anthropic_auth_env_var": (
+            "ANTHROPIC_OAUTH_TOKEN" if anthropic_oauth_token and anthropic_oauth_token.startswith("sk-ant-oat")
+            else "ANTHROPIC_API_KEY"
+        ),
         "model_tiers": model_tiers,
     }
 
@@ -8868,6 +8911,10 @@ def cmd_bootstrap(args):
                 os.environ['OPENROUTER_API_KEY'] = wizard_config['api_key']
             if wizard_config.get('gemini_key'):
                 os.environ['GEMINI_API_KEY'] = wizard_config['gemini_key']
+            if wizard_config.get('anthropic_oauth_token'):
+                _ant_token = wizard_config['anthropic_oauth_token']
+                _ant_env_var = 'ANTHROPIC_OAUTH_TOKEN' if _ant_token.startswith('sk-ant-oat') else 'ANTHROPIC_API_KEY'
+                os.environ[_ant_env_var] = _ant_token
 
             # Write .env file (minimal - just secrets, not model config)
             # Model configuration lives in models.yaml
@@ -8877,6 +8924,10 @@ def cmd_bootstrap(args):
                 env_lines.append(f"OPENROUTER_API_KEY={wizard_config['api_key']}")
             if wizard_config.get('gemini_key'):
                 env_lines.append(f"GEMINI_API_KEY={wizard_config['gemini_key']}")
+            if wizard_config.get('anthropic_oauth_token'):
+                _ant_token = wizard_config['anthropic_oauth_token']
+                _ant_env_var = 'ANTHROPIC_OAUTH_TOKEN' if _ant_token.startswith('sk-ant-oat') else 'ANTHROPIC_API_KEY'
+                env_lines.append(f"{_ant_env_var}={_ant_token}")
             
             # Add any collected passwords (SQL connections, etc.)
             for env_var, value in wizard_config.get('passwords_for_env', {}).items():
@@ -8897,6 +8948,8 @@ def cmd_bootstrap(args):
                     gemini_api_key_env="GEMINI_API_KEY",
                     bedrock_enabled=wizard_config.get('bedrock_enabled', False),
                     bedrock_region=wizard_config.get('bedrock_region', 'us-east-1'),
+                    anthropic_direct_enabled=wizard_config.get('anthropic_direct_enabled', False),
+                    anthropic_oauth_token_env=wizard_config.get('anthropic_auth_env_var', 'ANTHROPIC_API_KEY'),
                 ),
                 models=wizard_config.get('model_tiers', {}),
             )

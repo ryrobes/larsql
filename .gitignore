@@ -41,3 +41,5 @@ data
 models.yaml
 .DS_Store
 **/.DS_Store
+list_oauth_models.py
+test_oauth_proxy.py
