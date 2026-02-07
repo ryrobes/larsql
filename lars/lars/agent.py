@@ -174,7 +174,7 @@ class Agent:
         # and model doesn't have a special provider prefix
         if self.base_url is None:
             # Check if model has a special provider prefix that doesn't need OpenRouter
-            special_prefixes = ("ollama/", "ollama@", "vertex_ai/", "azure/", "bedrock/")
+            special_prefixes = ("ollama/", "ollama@", "vertex_ai/", "azure/", "bedrock/", "anthropic-direct/")
             if not self.model or not any(self.model.startswith(p) for p in special_prefixes):
                 # Default to OpenRouter for standard models
                 cfg = get_config()
@@ -274,8 +274,8 @@ class Agent:
         # Format: anthropic-direct/<model-name> (e.g., anthropic-direct/claude-sonnet-4-20250514)
         # Supports both OAuth tokens (sk-ant-oat-*) and standard API keys (sk-ant-api01-*)
         elif self.model and self.model.startswith("anthropic-direct/"):
-            _auth_key = (args.get("api_key")
-                         or os.environ.get("ANTHROPIC_OAUTH_TOKEN", "")
+            # Check Anthropic-specific env vars first, then fall back to args
+            _auth_key = (os.environ.get("ANTHROPIC_OAUTH_TOKEN", "")
                          or os.environ.get("ANTHROPIC_API_KEY", ""))
             raw_model = args["model"].replace("anthropic-direct/", "")
             if _auth_key and _auth_key.startswith("sk-ant-oat"):
