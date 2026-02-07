@@ -276,6 +276,7 @@ class LarsBootstrapTUI(ReactiveGlassApp):
             "tier_index": 0,
             "model_selector_open": False,
             "model_selector_index": 0,
+            "model_search_query": "",  # Search filter for models
             "available_models_for_tier": [],  # Filtered models for current tier
             
             # Step 4: SQL Connection
@@ -514,6 +515,55 @@ class LarsBootstrapTUI(ReactiveGlassApp):
             new_state["available_models_for_tier"] = sorted_models
             new_state["model_selector_open"] = True
             new_state["model_selector_index"] = 0
+            new_state["model_search_query"] = ""  # Clear search on open
+        
+        elif action.type == "MODEL_SEARCH_CHAR":
+            new_state["model_search_query"] = new_state.get("model_search_query", "") + action.payload
+            # Re-filter models with search query
+            tier = new_state["selected_tier"]
+            query = new_state["model_search_query"].lower()
+            all_models = (
+                new_state.get("openrouter_models", []) + 
+                new_state.get("ollama_models", []) +
+                new_state.get("gemini_models", []) +
+                new_state.get("bedrock_models", [])
+            )
+            # Filter for tier first
+            filtered = filter_models_for_tier(all_models, tier)
+            # Then filter by search query (match id, name, or provider)
+            if query:
+                filtered = [m for m in filtered if 
+                    query in m.id.lower() or 
+                    query in m.name.lower() or 
+                    query in m.provider.lower() or
+                    query in (m.host or "").lower()]
+            sorted_models = sort_models_for_display(filtered, tier, DEFAULT_MODELS)
+            new_state["available_models_for_tier"] = sorted_models
+            new_state["model_selector_index"] = 0  # Reset selection
+        
+        elif action.type == "MODEL_SEARCH_BACKSPACE":
+            query = new_state.get("model_search_query", "")
+            if query:
+                new_state["model_search_query"] = query[:-1]
+                # Re-filter models
+                tier = new_state["selected_tier"]
+                query = new_state["model_search_query"].lower()
+                all_models = (
+                    new_state.get("openrouter_models", []) + 
+                    new_state.get("ollama_models", []) +
+                    new_state.get("gemini_models", []) +
+                    new_state.get("bedrock_models", [])
+                )
+                filtered = filter_models_for_tier(all_models, tier)
+                if query:
+                    filtered = [m for m in filtered if 
+                        query in m.id.lower() or 
+                        query in m.name.lower() or 
+                        query in m.provider.lower() or
+                        query in (m.host or "").lower()]
+                sorted_models = sort_models_for_display(filtered, tier, DEFAULT_MODELS)
+                new_state["available_models_for_tier"] = sorted_models
+                new_state["model_selector_index"] = 0
         
         elif action.type == "CLOSE_MODEL_SELECTOR":
             new_state["model_selector_open"] = False
@@ -971,13 +1021,21 @@ class LarsBootstrapTUI(ReactiveGlassApp):
             # Model selector popup
             available = self.state.get("available_models_for_tier", [])
             selector_idx = self.state.get("model_selector_index", 0)
+            search_query = self.state.get("model_search_query", "")
             
             selector_content = [
                 f"[bold {colors['accent']}]Select {selected_tier.upper()} model[/bold {colors['accent']}]",
                 separator(40),
-                f"[dim]{len(available)} models available[/dim]",
-                "",
             ]
+            
+            # Search box
+            if search_query:
+                selector_content.append(f"🔍 [on {colors['primary']}]{search_query}█[/on {colors['primary']}]")
+            else:
+                selector_content.append(f"[dim]🔍 type to search...[/dim]")
+            
+            selector_content.append(f"[dim]{len(available)} models[/dim]")
+            selector_content.append("")
             
             # Show a window of models around the selection
             window_size = 12
@@ -1006,7 +1064,7 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                 selector_content.append(f"[dim]↑↓ scroll ({selector_idx + 1}/{len(available)})[/dim]")
             
             selector_content.append("")
-            selector_content.append("[dim]Enter:select  Esc:cancel[/dim]")
+            selector_content.append("[dim]type:search  Enter:select  Esc:cancel[/dim]")
             
             widgets.append(glass_panel("model_selector", selector_content, x + 58, 3, 45, 24, colors, "accent"))
         else:
@@ -1454,6 +1512,11 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                     self.dispatch(Action("SELECT_MODEL"))
                 elif key == "escape":
                     self.dispatch(Action("CLOSE_MODEL_SELECTOR"))
+                elif key == "backspace":
+                    self.dispatch(Action("MODEL_SEARCH_BACKSPACE"))
+                elif len(key) == 1 and key.isprintable():
+                    # Type to search
+                    self.dispatch(Action("MODEL_SEARCH_CHAR", key))
             else:
                 if key in ("j", "down"):
                     self.dispatch(Action("NAVIGATE_TIER", 1))
@@ -1529,6 +1592,11 @@ class LarsBootstrapTUI(ReactiveGlassApp):
             for char in text:
                 if char.isprintable():
                     self.dispatch(Action("EDIT_SQL_FIELD_CHAR", char))
+        elif self.state.get("model_selector_open"):
+            # Paste into model search
+            for char in text:
+                if char.isprintable():
+                    self.dispatch(Action("MODEL_SEARCH_CHAR", char))
     
     def _validate_openrouter_key(self):
         """Validate OpenRouter API key in background."""
