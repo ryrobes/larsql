@@ -34,8 +34,8 @@ sql_function:
   returns: TABLE
   shape: PIPELINE
   operators:
-    - 'THEN INVESTIGATE {{ prompt }}'
-    - 'THEN INVESTIGATE({{ prompt }})'
+    - "THEN INVESTIGATE {{ prompt }}"
+    - "THEN INVESTIGATE({{ prompt }})"
   cache: false
 
 cells:
@@ -43,10 +43,15 @@ cells:
     model: "{{ models.quality }}"
     # parallel_tools defaults to false (opt-in only)
     skills:
-      - sql_search       # Introspect available tables/columns
-      - smart_sql_run    # Run follow-up queries
+      - sql_search # Introspect available tables/columns
+      - smart_sql_run # Run follow-up queries
     rules:
-      max_turns: 8       # Allow investigation loops
+      loop_until: validate_json_output
+      max_attempts: 5
+      retry_instructions: |
+        Your response must be ONLY a valid JSON object matching the output schema.
+        Do not include any explanation text outside the JSON.
+        Return the JSON object with a "data" array containing your findings.
     instructions: |
       You are a senior data analyst conducting an investigation. Your job is not just to
       describe the data you're given, but to INVESTIGATE the question by exploring related data.
@@ -139,7 +144,15 @@ cells:
                 description: The insight or conclusion
               category:
                 type: string
-                enum: ["answer", "pattern", "correlation", "outlier", "cause", "recommendation"]
+                enum:
+                  [
+                    "answer",
+                    "pattern",
+                    "correlation",
+                    "outlier",
+                    "cause",
+                    "recommendation",
+                  ]
               evidence:
                 type: string
                 description: The data/queries that support this finding

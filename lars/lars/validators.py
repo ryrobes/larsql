@@ -258,3 +258,77 @@ def validate_sql_syntax(query: str) -> Dict[str, Any]:
             "valid": False,
             "reason": f"Validation error: {str(e)}"
         }
+
+
+def validate_json_output(content: str, **kwargs) -> Dict[str, Any]:
+    """
+    Validate that content is valid JSON matching the cell's output_schema.
+    
+    Extracts JSON from the content (handles markdown code fences),
+    then validates required fields if output_schema is provided via kwargs.
+    
+    Used as a loop_until validator to ensure cells return proper JSON.
+    """
+    import json as json_mod
+    import re
+    
+    if not content or not content.strip():
+        return {"valid": False, "reason": "Empty response. Return valid JSON."}
+    
+    text = content.strip()
+    
+    # Extract JSON from markdown code fences if present
+    fence_match = re.search(r'```(?:json)?\s*\n?(.*?)\n?```', text, re.DOTALL)
+    if fence_match:
+        text = fence_match.group(1).strip()
+    
+    # Try to find JSON object/array in the text
+    if not text.startswith(('{', '[')):
+        # Look for first { or [
+        for i, ch in enumerate(text):
+            if ch in ('{', '['):
+                text = text[i:]
+                break
+        else:
+            return {
+                "valid": False, 
+                "reason": "No JSON found in response. Return ONLY a JSON object matching the output schema."
+            }
+    
+    try:
+        parsed = json_mod.loads(text)
+    except json_mod.JSONDecodeError as e:
+        return {
+            "valid": False,
+            "reason": f"Invalid JSON: {e}. Fix the JSON syntax and return ONLY the JSON object."
+        }
+    
+    # Check required top-level keys from output_schema
+    output_schema = kwargs.get('output_schema')
+    if output_schema and isinstance(output_schema, dict):
+        required = output_schema.get('required', [])
+        if isinstance(parsed, dict):
+            missing = [k for k in required if k not in parsed]
+            if missing:
+                return {
+                    "valid": False,
+                    "reason": f"Missing required keys: {missing}. Include all required fields."
+                }
+            
+            # Check array items have required fields
+            props = output_schema.get('properties', {})
+            for key, prop_schema in props.items():
+                if key in parsed and prop_schema.get('type') == 'array':
+                    items_schema = prop_schema.get('items', {})
+                    items_required = items_schema.get('required', [])
+                    if items_required and isinstance(parsed[key], list):
+                        for i, item in enumerate(parsed[key]):
+                            if isinstance(item, dict):
+                                item_missing = [k for k in items_required if k not in item]
+                                if item_missing:
+                                    return {
+                                        "valid": False,
+                                        "reason": f"Item {i} in '{key}' missing required fields: {item_missing}"
+                                    }
+    
+    return {"valid": True}
