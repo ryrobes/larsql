@@ -41,7 +41,7 @@ sql_function:
 cells:
   - name: investigate
     model: "{{ models.quality }}"
-    # parallel_tools: true by default — safe now that smart_sql_run routes through pgwire
+    parallel_tools: false  # DuckDB native code crashes with concurrent in-process connections
     skills:
       - sql_search       # Introspect available tables/columns
       - smart_sql_run    # Run follow-up queries
