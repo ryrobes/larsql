@@ -30,10 +30,10 @@ sql_function:
       - raw_email
     structure_config:
       method: fingerprint
-      sample_size: 500  # Just look at first 500 chars for structure
+      sample_size: 500 # Just look at first 500 chars for structure
   operators:
-    - 'PARSE_EMAIL({{ raw_email }})'
-    - 'PARSE_EMAIL({{ raw_email }}, ''{{ fields }}'')'
+    - "PARSE_EMAIL({{ raw_email }})"
+    - "PARSE_EMAIL({{ raw_email }}, '{{ fields }}')"
   cache: true
   test_cases:
     - sql: |
@@ -49,7 +49,7 @@ sql_function:
 
 cells:
   - name: generate_parser
-    model: "{{ models.fast }}"
+    model: "{{ models.standard }}"
     rules:
       max_turns: 1
       loop_until: validate_sql_expression
@@ -57,7 +57,7 @@ cells:
       retry_instructions: |
         The SQL expression you generated failed validation:
         {{ validation_error }}
-        
+
         Please fix the expression. Remember:
         - Use :raw_email to reference the input value
         - Use valid DuckDB functions (regexp_extract, json_object, trim, etc.)

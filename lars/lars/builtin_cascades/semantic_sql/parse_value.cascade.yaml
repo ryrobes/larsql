@@ -52,7 +52,7 @@ sql_function:
     description: Value parsed from text
 cells:
 - name: generate_parser
-  #model: "{{ models.fast }}"
+  model: "{{ models.standard }}"
   rules:
     max_turns: 1
   instructions: 'Generate a DuckDB SQL expression to parse, extract, or transform
@@ -159,9 +159,9 @@ cells:
 
     **Date (various formats):**
 
-    - "year": EXTRACT(YEAR FROM STRPTIME(:value, detected_format))
-
-    - "iso format": STRFTIME(parsed_date, ''%Y-%m-%d'')
+    - For simple extraction tasks like "the date", just use REGEXP_EXTRACT to return the date string as-is
+    - ONLY use STRPTIME when specifically asked to convert/parse to a date type
+    - Example: REGEXP_EXTRACT(:value, ''([A-Z][a-z]+ \d{1,2},? \d{4})'', 1)
 
 
     **ID/Code (fingerprint like "L-D" or "D-D-D"):**

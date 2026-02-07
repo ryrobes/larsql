@@ -22,31 +22,33 @@ sql_function:
     default: same entity
   returns: BOOLEAN
   shape: SCALAR
-  cache: true
+  cache: false
   test_cases:
   - sql: SELECT semantic_match_pair('John Smith', 'J. Smith')
     expect: true
     description: Name variations match
 cells:
 - name: evaluate_pair
-  model: "{{ models.fast }}"
-  instructions: 'Do these two values refer to the {{ input.relationship | default("same
-    entity") }}?
+  model: "{{ models.standard }}"
+  takes:
+    factor: 3
+    evaluator_instructions: |
+      Pick the response that correctly determines whether the two values refer to the same entity.
+      Consider: name abbreviations (J. = John), nicknames, typos, formatting differences.
+      "John Smith" and "J. Smith" are the SAME person - J. is a common abbreviation for John.
+  instructions: |
+    Do these two values refer to the {{ input.relationship | default("same entity") }}?
 
+    Value 1: {{ input.left }}
+    Value 2: {{ input.right }}
 
-    Value 1:
+    Think step by step:
+    1. What type of values are these? (names, companies, addresses, etc.)
+    2. Could one be an abbreviation, nickname, or variant of the other?
+    3. For names: "J. Smith" is a common abbreviation for "John Smith" (J. = John)
+    4. Are there any typos or formatting differences that don't change identity?
 
-    {{ input.left }}
-
-
-    Value 2:
-
-    {{ input.right }}
-
-
-    Respond with ONLY "true" or "false", nothing else.
-
-    '
+    After reasoning, respond with ONLY "true" or "false".
   rules:
     max_turns: 1
   output_schema:

@@ -55,7 +55,7 @@ sql_function:
   operators:
   - '{{ text }} ASK ''{{ prompt }}'''
   - ASK '{{ prompt }}' FROM {{ text }}
-  cache: true
+  cache: false
   test_cases:
   # Function syntax
   - sql: SELECT semantic_ask('The sky is blue because of Rayleigh scattering', 'What color is the sky?')
@@ -76,82 +76,27 @@ sql_function:
     description: "Infix ASK: extracts answer from text"
 cells:
 - name: apply_prompt
-  use_training: true
-  training_limit: 3
-  training_strategy: recent
-  training_min_confidence: 0.8
-  training_format: xml
-  skills:
-  - brave_web_search
-  instructions: 'Apply this instruction/question to the given text.
-
+  model: "{{ models.standard }}"
+  instructions: |
+    You are a text analysis assistant. Answer the question or follow the instruction using ONLY the given text.
 
     TEXT:
-
     {{ input.text }}
 
-
-    INSTRUCTION:
-
+    QUESTION/INSTRUCTION:
     {{ input.prompt }}
 
-
-    Important:
-
-    1. Follow the instruction exactly as specified
-
-    2. Return ONLY the requested information/result
-
-    3. Be concise - don''t add explanations unless asked
-
-    4. If the instruction asks for a specific format (JSON, number, etc.), use it
-
-    5. If the text doesn''t contain relevant info, return "NULL"
-
+    Rules:
+    - Answer based ONLY on the text provided
+    - Return ONLY the answer - no preamble, no explanation
+    - Be concise and direct
+    - If the text doesn't contain the answer, return "NULL"
 
     Examples:
+    Text: "The sky is blue" + Question: "What color is the sky?" → "blue"
+    Text: "Price: $99.99" + Question: "How much?" → "$99.99"
+    Text: "Meeting at 3pm" + Question: "When?" → "3pm"
 
-
-    Text: "This product is amazing! Best purchase ever!"
-
-    Instruction: "is this positive or negative?" → "positive"
-
-    Instruction: "rate sentiment 1-10" → "9"
-
-    Instruction: "extract the emotion" → "excitement"
-
-
-    Text: "Meeting tomorrow at 3pm in room 405"
-
-    Instruction: "when is the meeting?" → "tomorrow at 3pm"
-
-    Instruction: "where is the meeting?" → "room 405"
-
-    Instruction: "translate to Spanish" → "Reunión mañana a las 3pm en la sala 405"
-
-
-    Text: "Contact John at john@example.com or 555-1234"
-
-    Instruction: "find the email" → "john@example.com"
-
-    Instruction: "find the phone" → "555-1234"
-
-    Instruction: "is this a business contact?" → "yes"
-
-
-    Text: "def foo(x): return x * 2"
-
-    Instruction: "what language is this?" → "Python"
-
-    Instruction: "what does this do?" → "multiplies input by 2"
-
-    Instruction: "find bugs" → "NULL"
-
-
-    Return ONLY the result - no preamble, no explanation (unless the instruction asks
-    for it).
-
-    '
+    Now answer the question/follow the instruction for the text above:
   rules:
-    max_turns: 2
-  # Note: No output_schema - raw string output, don't confuse model with schema
+    max_turns: 1

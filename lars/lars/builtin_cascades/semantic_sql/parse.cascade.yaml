@@ -51,7 +51,7 @@ sql_function:
   operators:
     - "PARSE({{ text }}, {{ instruction }})"
     - "{{ text }} PARSE {{ instruction }}"
-  cache: true
+  cache: false
   output_mode: sql_execute
   cache_key:
     strategy: fingerprint
@@ -108,15 +108,20 @@ cells:
       Output: regexp_extract(:text, '([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})', 1)
 
       Input: "Meeting on March 15, 2024" | Task: "the date"
-      Output: strftime(strptime(regexp_extract(:text, '([A-Z][a-z]+ \d{1,2},? \d{4})', 1), '%B %d, %Y'), '%Y-%m-%d')
+      Output: regexp_extract(:text, '([A-Z][a-z]+ \d{1,2},? \d{4})', 1)
 
       Input: "Scheduled for January 5, 2025" | Task: "the date"
-      Output: strftime(strptime(regexp_extract(:text, '([A-Z][a-z]+ \d{1,2},? \d{4})', 1), '%B %d, %Y'), '%Y-%m-%d')
+      Output: regexp_extract(:text, '([A-Z][a-z]+ \d{1,2},? \d{4})', 1)
 
-      NOTE: For dates, always convert to ISO format (YYYY-MM-DD) using strptime/strftime.
+      IMPORTANT: For dates, ONLY use regexp_extract to return the date string as-is.
+      DO NOT use strptime() or strftime() - they cause parse errors.
+      Just extract and return the text, nothing more.
 
       Input: "Total: $1,234.56" | Task: "the amount"
       Output: regexp_extract(:text, '\$?([\d,]+\.?\d*)', 1)
+
+      Input: "The project budget is $50,000" | Task: "budget amount"
+      Output: regexp_extract(:text, '\$([\d,]+)', 1)
 
       Input: "John Smith <john@test.com>" | Task: "person name"
       Output: trim(regexp_extract(:text, '^([^<]+)', 1))
