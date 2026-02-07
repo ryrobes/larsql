@@ -283,15 +283,22 @@ class Agent:
                 from .anthropic_oauth_proxy import ensure_oauth_proxy
                 proxy_url = ensure_oauth_proxy(_auth_key)
                 if proxy_url:
+                    args.pop("base_url", None)  # Remove default None first
                     args["base_url"] = proxy_url
                     args["api_key"] = _auth_key
                     args["model"] = raw_model
                     args["custom_llm_provider"] = "anthropic"
+                    print(f"[Anthropic Direct] OAuth proxy route: model={raw_model}, proxy={proxy_url}")
+                else:
+                    raise ValueError("Failed to start Anthropic OAuth proxy")
             elif _auth_key:
                 # Standard Anthropic API key → direct via litellm
+                # Remove base_url so litellm uses its native Anthropic endpoint
+                args.pop("base_url", None)
                 args["api_key"] = _auth_key
                 args["model"] = raw_model
                 args["custom_llm_provider"] = "anthropic"
+                print(f"[Anthropic Direct] Standard API key route: model={raw_model}, key=***{_auth_key[-4:]}")
             else:
                 raise ValueError(
                     "anthropic-direct/ models require an Anthropic API key or OAuth token. "
