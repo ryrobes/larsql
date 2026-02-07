@@ -2662,7 +2662,7 @@ def attach_system_views(conn, data_root: Optional[Path] = None) -> int:
         },
         "checkpoints": {
             "glob": str(system_dir / "checkpoints" / "*.parquet"),
-            "dedup": {"pk": "checkpoint_id", "order_by": "created_at DESC"},
+            "dedup": {"pk": "id", "order_by": "created_at DESC"},
         },
         "cascade_sessions": {
             "glob": str(system_dir / "cascade_sessions" / "*.parquet"),
