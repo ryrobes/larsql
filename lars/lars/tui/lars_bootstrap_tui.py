@@ -50,6 +50,7 @@ from ..bootstrap_providers import (
     validate_ollama_host as _validate_ollama_host,
     fetch_ollama_models as _fetch_ollama_models,
     validate_gemini_key as _validate_gemini_key,
+    validate_gemini_service_account as _validate_gemini_service_account,
     fetch_gemini_models as _fetch_gemini_models,
     validate_bedrock_credentials as _validate_bedrock_credentials,
     fetch_bedrock_models as _fetch_bedrock_models,
@@ -843,11 +844,19 @@ class LarsBootstrapTUI(ReactiveGlassApp):
         gm_status = self.state.get("gemini_status", "none")
         gm_msg = self.state.get("gemini_message", "")
         
+        # Check for service account credentials
+        gac_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+        has_service_account = bool(gac_path and os.path.exists(gac_path))
+        
         is_focused = self.state.get("focused_field") == 5
         prefix = f"[{colors['accent']}]▶[/{colors['accent']}]" if is_focused else " "
         
         enabled_txt = "[green]Enabled[/green]" if gm_enabled else "[dim]Disabled[/dim]"
         gm_content.append(f"{prefix} Status: {enabled_txt}  [dim](e to toggle)[/dim]")
+        
+        # Show service account status if available
+        if has_service_account:
+            gm_content.append(f"  [green]✓[/green] Service account: {os.path.basename(gac_path)}")
         
         # API Key field
         is_focused = self.state.get("focused_field") == 6
@@ -857,7 +866,10 @@ class LarsBootstrapTUI(ReactiveGlassApp):
             key_display = f"[on {colors['primary']}]{'*' * len(self.state.get('gemini_key_buffer', ''))}█[/on {colors['primary']}]"
         else:
             key = self.state.get("gemini_key", "")
-            key_display = f"...{key[-8:]}" if len(key) > 8 else ("(not set)" if not key else "*" * len(key))
+            if has_service_account and not key:
+                key_display = "[dim](using service account)[/dim]"
+            else:
+                key_display = f"...{key[-8:]}" if len(key) > 8 else ("(not set)" if not key else "*" * len(key))
         
         gm_content.append(f"{prefix} API Key: {key_display}")
         gm_content.append(f"  {status_icon(gm_status)} {gm_msg}" if gm_msg else "")
@@ -1528,17 +1540,26 @@ class LarsBootstrapTUI(ReactiveGlassApp):
         threading.Thread(target=do_validate, daemon=True).start()
     
     def _validate_gemini_key(self):
-        """Validate Gemini API key in background."""
+        """Validate Gemini API key or service account in background."""
         def do_validate():
             key = self.state.get("gemini_key", "")
-            if not key:
-                self.call_later(lambda: self.dispatch(Action("VALIDATE_GEMINI_RESULT", {
-                    "valid": False,
-                    "message": "No API key set",
-                })))
-                return
+            use_oauth = False
             
-            valid, message = validate_gemini_key(key)
+            if not key:
+                # Try service account auth if no API key
+                gac_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+                if gac_path and os.path.exists(gac_path):
+                    valid, message = _validate_gemini_service_account()
+                    use_oauth = valid
+                else:
+                    self.call_later(lambda: self.dispatch(Action("VALIDATE_GEMINI_RESULT", {
+                        "valid": False,
+                        "message": "No API key or service account set",
+                    })))
+                    return
+            else:
+                valid, message = validate_gemini_key(key)
+            
             self.call_later(lambda: self.dispatch(Action("VALIDATE_GEMINI_RESULT", {
                 "valid": valid,
                 "message": message,
@@ -1547,7 +1568,7 @@ class LarsBootstrapTUI(ReactiveGlassApp):
             if valid:
                 # Fetch models
                 self.call_later(lambda: self.dispatch(Action("SET_STATUS", "Fetching Gemini models...")))
-                models = fetch_gemini_models(key)
+                models = _fetch_gemini_models(api_key=key if key else None, use_oauth=use_oauth)
                 self.call_later(lambda: self.dispatch(Action("SET_GEMINI_MODELS", models)))
                 self.call_later(lambda: self.dispatch(Action("SET_STATUS", f"Loaded {len(models)} Gemini models")))
         
