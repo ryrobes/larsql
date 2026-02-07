@@ -154,7 +154,7 @@ def ensure_benchmark_table(db):
         console.print(f"[yellow]Warning: Could not create benchmark table via db_adapter, trying direct: {e}[/yellow]")
         # Try direct DuckDB connection
         from .lars_db import LarsDB
-        lars_db = LarsDB.get_instance()
+        lars_db = LarsDB()
         conn = lars_db.get_cached_connection()
         conn.execute("""
             CREATE TABLE IF NOT EXISTS model_benchmarks (
@@ -419,7 +419,7 @@ def _store_results(results: List[BenchmarkResult]):
     """Store benchmark results in DuckDB."""
     from .lars_db import LarsDB
 
-    lars_db = LarsDB.get_instance()
+    lars_db = LarsDB()
     conn = lars_db.get_cached_connection()
     
     # Ensure table exists
@@ -646,7 +646,7 @@ def print_routing_report():
     """Print the current routing recommendations based on all benchmark data."""
     from .lars_db import LarsDB
 
-    lars_db = LarsDB.get_instance()
+    lars_db = LarsDB()
     conn = lars_db.get_cached_connection()
 
     # Ensure table exists
