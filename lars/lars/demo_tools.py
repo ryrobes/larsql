@@ -24,7 +24,7 @@ def validate_sql(query: str = None, *, content: str = None, **kwargs) -> Dict[st
         Dict with validation result and cleaned query
     """
     # Support both direct call (query=) and validator interface (content=)
-    query = query or content
+    query = query or content or ""
     errors = []
     cleaned = query.strip()
 

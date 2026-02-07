@@ -338,11 +338,11 @@ def _generate_aggregate_tests(func_name: str, pattern: str, args: List[dict], pa
         ))
 
     elif 'MEANING' in pattern.upper():
-        # MEANING() is a dimension function that rewrites to meaning_compute_* via CTE
+        # MEANING() is a dimension function that rewrites to meaning_3 via CTE
         tests.append((
             f"{func_name}_meaning",
             "SELECT MEANING(category, 5, 'by product type') FROM products GROUP BY MEANING(category, 5)",
-            "meaning_compute"  # MEANING uses dimension compute pattern (meaning_compute_2, meaning_compute_3, etc.)
+            "meaning_3"  # MEANING uses meaning_3 UDF (registered in llm_aggregates.py)
         ))
 
     elif 'SENTIMENT_AGG' in pattern.upper() or 'SENTIMENT' in pattern.upper():
