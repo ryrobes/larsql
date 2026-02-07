@@ -1978,19 +1978,28 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                 
                 def run_with_capture(func, *args, **kwargs):
                     """Run function and capture its stdout/stderr."""
+                    import re
+                    # ANSI escape code pattern
+                    ansi_pattern = re.compile(r'\x1b\[[0-9;]*[A-Za-z]|\x1b\][^\x07]*\x07')
+                    
+                    def strip_ansi(text):
+                        return ansi_pattern.sub('', text)
+                    
                     stdout_capture = io.StringIO()
                     stderr_capture = io.StringIO()
                     try:
                         with redirect_stdout(stdout_capture), redirect_stderr(stderr_capture):
                             result = func(*args, **kwargs)
                         
-                        # Log captured output (truncate long lines)
+                        # Log captured output (strip ANSI, truncate long lines)
                         for line in stdout_capture.getvalue().splitlines()[-20:]:
-                            if line.strip():
-                                log(f"    {line[:70]}")
+                            clean = strip_ansi(line.strip())
+                            if clean:
+                                log(f"    {clean[:70]}")
                         for line in stderr_capture.getvalue().splitlines()[-5:]:
-                            if line.strip():
-                                log(f"    [dim]{line[:70]}[/dim]")
+                            clean = strip_ansi(line.strip())
+                            if clean:
+                                log(f"    {clean[:70]}")
                         
                         return result, None
                     except Exception as e:
@@ -2131,5 +2140,10 @@ if __name__ == "__main__":
     app.run()
     
     # After TUI exits, check if bootstrap completed and show post-run output
+    # Debug: always print something to confirm we get here
+    print()  # Clear line after TUI
     if app.bootstrap_completed:
         run_post_bootstrap()
+    else:
+        print("[Bootstrap was not completed - skipping post-run verification]")
+        print(f"[Debug: bootstrap_completed = {app.bootstrap_completed}]")
