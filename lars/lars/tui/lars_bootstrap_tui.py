@@ -299,6 +299,11 @@ class LarsBootstrapTUI(ReactiveGlassApp):
             "anthropic_direct_message": "",
             "anthropic_direct_models": [],
             
+            # Admin password
+            "admin_password": "admin",
+            "admin_password_editing": False,
+            "admin_password_buffer": "",
+            
             # Step 3: Model Tiers
             "model_tiers": dict(DEFAULT_MODELS),
             "selected_tier": "embedding",
@@ -560,6 +565,25 @@ class LarsBootstrapTUI(ReactiveGlassApp):
         
         elif action.type == "SET_ANTHROPIC_MODELS":
             new_state["anthropic_direct_models"] = action.payload
+        
+        # === ADMIN PASSWORD ===
+        elif action.type == "START_EDIT_ADMIN_PW":
+            new_state["admin_password_editing"] = True
+            new_state["admin_password_buffer"] = ""
+        
+        elif action.type == "FINISH_EDIT_ADMIN_PW":
+            pw = new_state["admin_password_buffer"].strip()
+            new_state["admin_password"] = pw if pw else "admin"
+            new_state["admin_password_editing"] = False
+        
+        elif action.type == "CANCEL_EDIT_ADMIN_PW":
+            new_state["admin_password_editing"] = False
+        
+        elif action.type == "EDIT_ADMIN_PW_CHAR":
+            new_state["admin_password_buffer"] += action.payload
+        
+        elif action.type == "EDIT_ADMIN_PW_BACKSPACE":
+            new_state["admin_password_buffer"] = new_state["admin_password_buffer"][:-1]
         
         # === MODEL TIERS ===
         elif action.type == "SELECT_TIER":
@@ -1445,7 +1469,31 @@ class LarsBootstrapTUI(ReactiveGlassApp):
         else:
             summary_content.append("  [dim]None configured[/dim]")
         
-        widgets.append(glass_panel("summary_panel", summary_content, x, 3, 55, 30, colors, "primary"))
+        # Admin password
+        summary_content.append("")
+        summary_content.append("[bold]Authentication:[/bold]")
+        admin_pw = self.state.get("admin_password", "admin")
+        if self.state.get("admin_password_editing"):
+            buffer = self.state.get("admin_password_buffer", "")
+            summary_content.append(f"  Password: [bold]{'•' * len(buffer)}[/bold]█  [dim](Enter to save, Esc to cancel)[/dim]")
+        elif admin_pw == "admin":
+            summary_content.append("  Admin password: [yellow]admin[/yellow] (default)  [dim]Press [bold]p[/bold] to change[/dim]")
+        else:
+            summary_content.append("  Admin password: [green]custom[/green] ✓  [dim]Press [bold]p[/bold] to change[/dim]")
+        
+        widgets.append(glass_panel("summary_panel", summary_content, x, 3, 55, 32, colors, "primary"))
+        
+        # Admin password input (field 11)
+        widgets.append({
+            "type": "text_input",
+            "id": "field_11",
+            "x": 59, "y": 25 if visible else 9999,
+            "width": 35,
+            "value": self.state.get("admin_password", ""),
+            "placeholder": "admin",
+            "label": "Admin Password (optional):",
+            "password": True,
+        })
         
         # Action panel
         if self.state.get("bootstrap_running"):
@@ -1729,7 +1777,18 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                         self._save_sql_connection()
         
         elif screen == Screen.SUMMARY:
-            if key == "enter" and not self.state.get("bootstrap_running"):
+            if self.state.get("admin_password_editing"):
+                if key == "enter":
+                    self.dispatch(Action("FINISH_EDIT_ADMIN_PW"))
+                elif key == "escape":
+                    self.dispatch(Action("CANCEL_EDIT_ADMIN_PW"))
+                elif key == "backspace":
+                    self.dispatch(Action("EDIT_ADMIN_PW_BACKSPACE"))
+                elif len(key) == 1:
+                    self.dispatch(Action("EDIT_ADMIN_PW_CHAR", key))
+            elif key == "p" and not self.state.get("bootstrap_running"):
+                self.dispatch(Action("START_EDIT_ADMIN_PW"))
+            elif key == "enter" and not self.state.get("bootstrap_running"):
                 self._run_bootstrap()
         
         super().on_key(event)
@@ -1769,6 +1828,10 @@ class LarsBootstrapTUI(ReactiveGlassApp):
             for char in text:
                 if char.isprintable():
                     self.dispatch(Action("EDIT_SQL_FIELD_CHAR", char))
+        elif self.state.get("admin_password_editing"):
+            for char in text:
+                if char.isprintable():
+                    self.dispatch(Action("EDIT_ADMIN_PW_CHAR", char))
         elif self.state.get("model_selector_open"):
             # Paste into model search
             for char in text:
@@ -2164,6 +2227,34 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                     log("  ✓ Database initialized")
                 except Exception as e:
                     log(f"  ⚠ Database: {e}")
+                
+                # =========================================================
+                # Step 7b: Create admin user
+                # =========================================================
+                log("Setting up authentication...")
+                try:
+                    from lars.auth import get_auth_manager
+                    auth = get_auth_manager()
+                    existing = auth.get_user_by_username("admin")
+                    if not existing:
+                        admin_pw = self.state.get("admin_password", "admin")
+                        user = auth.create_user(
+                            username='admin',
+                            email=None,
+                            display_name='Administrator',
+                            is_admin=True,
+                            password=admin_pw
+                        )
+                        if user:
+                            if admin_pw == "admin":
+                                log("  ✓ Admin user created (admin/admin)")
+                                log("    ⚠️  Change password: lars auth set-password admin")
+                            else:
+                                log("  ✓ Admin user created with custom password")
+                    else:
+                        log("  ✓ Admin user exists")
+                except Exception as e:
+                    log(f"  ⚠ Auth setup: {e}")
                 
                 # Helper to capture stdout from functions
                 import io

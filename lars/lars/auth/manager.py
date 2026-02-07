@@ -109,9 +109,21 @@ class AuthManager:
         Ensure a default admin user exists.
 
         Creates 'admin' user with password 'admin' if no users exist.
-        Prints a warning to change the default password.
+        Uses a file lock to prevent race conditions with multiple Gunicorn workers.
         """
         if not self._db:
+            return
+
+        import fcntl
+        from pathlib import Path
+
+        # Use a file lock to prevent multiple workers from racing
+        lock_path = Path(os.environ.get("LARS_ROOT", ".")) / ".admin_init.lock"
+        try:
+            lock_file = open(lock_path, "w")
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except (IOError, OSError):
+            # Another worker is already handling this — skip
             return
 
         try:
@@ -148,6 +160,13 @@ class AuthManager:
 
         except Exception as e:
             log.debug(f"[Auth] Could not check/create default admin: {e}")
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+            lock_file.close()
+            try:
+                lock_path.unlink(missing_ok=True)
+            except Exception:
+                pass
 
     # =========================================================================
     # JWT Token Operations

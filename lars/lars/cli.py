@@ -9227,6 +9227,48 @@ def cmd_bootstrap(args):
     print()
 
     # -------------------------------------------------------------------------
+    # Create default admin user (so Studio doesn't race on first request)
+    # -------------------------------------------------------------------------
+    try:
+        from lars.auth import get_auth_manager
+        auth = get_auth_manager()
+        # Check if admin already exists
+        existing = auth.get_user_by_username("admin")
+        if not existing:
+            admin_password = "admin"
+            # In interactive CLI mode, offer to set a custom password
+            if sys.stdin.isatty() and not getattr(args, 'non_interactive', False):
+                try:
+                    from rich.prompt import Prompt
+                    custom_pw = Prompt.ask(
+                        "  Set admin password (Enter for 'admin')",
+                        password=True,
+                        default="admin"
+                    )
+                    if custom_pw:
+                        admin_password = custom_pw
+                except (ImportError, EOFError):
+                    pass
+
+            user = auth.create_user(
+                username='admin',
+                email=None,
+                display_name='Administrator',
+                is_admin=True,
+                password=admin_password
+            )
+            if user:
+                if admin_password == "admin":
+                    print("  ✓ Default admin user created (admin/admin)")
+                    print("    ⚠️  Change password: lars auth set-password admin")
+                else:
+                    print("  ✓ Admin user created with custom password")
+        else:
+            print("  ✓ Admin user already exists")
+    except Exception as e:
+        print(f"  ⚠ Could not create admin user: {e}")
+
+    # -------------------------------------------------------------------------
     # Run Doctor to verify installation
     # -------------------------------------------------------------------------
     print()
