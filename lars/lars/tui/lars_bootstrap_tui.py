@@ -1494,6 +1494,42 @@ class LarsBootstrapTUI(ReactiveGlassApp):
         
         super().on_key(event)
     
+    def on_paste(self, event):
+        """Handle paste events for text fields."""
+        text = event.text
+        if not text:
+            return
+        
+        # Route paste to the appropriate editing field
+        if self.state.get("lars_root_editing"):
+            for char in text:
+                if char.isprintable():
+                    self.dispatch(Action("EDIT_ROOT_CHAR", char))
+        elif self.state.get("openrouter_key_editing"):
+            for char in text:
+                if char.isprintable():
+                    self.dispatch(Action("EDIT_KEY_CHAR", char))
+        elif self.state.get("ollama_host_editing"):
+            for char in text:
+                if char.isprintable():
+                    self.dispatch(Action("EDIT_OLLAMA_HOST_CHAR", char))
+        elif self.state.get("gemini_key_editing"):
+            for char in text:
+                if char.isprintable():
+                    self.dispatch(Action("EDIT_GEMINI_KEY_CHAR", char))
+        elif self.state.get("bedrock_region_editing"):
+            for char in text:
+                if char.isprintable():
+                    self.dispatch(Action("EDIT_BEDROCK_REGION_CHAR", char))
+        elif self.state.get("sql_conn_name_editing"):
+            for char in text:
+                if char.isprintable():
+                    self.dispatch(Action("EDIT_SQL_NAME_CHAR", char))
+        elif self.state.get("sql_field_editing"):
+            for char in text:
+                if char.isprintable():
+                    self.dispatch(Action("EDIT_SQL_FIELD_CHAR", char))
+    
     def _validate_openrouter_key(self):
         """Validate OpenRouter API key in background."""
         def do_validate():
