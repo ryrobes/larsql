@@ -9180,6 +9180,9 @@ class ClientConnection:
         """
         portal_name = msg['portal_name']
         max_rows = msg['max_rows']
+        # Debug: trace execute
+        _pquery = self.portals.get(portal_name, {}).get('query', '?')
+        print(f"[pgwire.execute] portal={portal_name!r} query={str(_pquery)[:100]}... max_rows={max_rows} (pid={os.getpid()})")
 
         self._runtime_log(
             "DEBUG",
