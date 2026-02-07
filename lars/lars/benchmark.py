@@ -424,15 +424,21 @@ def _store_results(results: List[BenchmarkResult]):
     rows = []
     for r in results:
         rows.append({
-            "benchmark_id": r.benchmark_id, "run_id": r.run_id,
-            "operator_id": r.operator_id, "operator_name": r.operator_name,
-            "model_id": r.model_id, "input_hash": r.input_hash,
-            "input_tokens": r.input_tokens, "input_complexity": r.input_complexity,
-            "input_sample": r.input_sample, "passed": r.passed,
-            "output_value": r.output_value, "expected_value": r.expected_value,
-            "latency_ms": r.latency_ms, "tokens_in": r.tokens_in,
-            "tokens_out": r.tokens_out, "cost": r.cost,
-            "provider": r.provider, "created_at": r.created_at,
+            "benchmark_id": str(r.benchmark_id), "run_id": str(r.run_id),
+            "operator_id": str(r.operator_id), "operator_name": str(r.operator_name),
+            "model_id": str(r.model_id), "input_hash": str(r.input_hash),
+            "input_tokens": int(r.input_tokens or 0),
+            "input_complexity": float(r.input_complexity or 0.0),
+            "input_sample": str(r.input_sample or ""),
+            "passed": bool(r.passed),
+            "output_value": str(r.output_value or ""),
+            "expected_value": str(r.expected_value or ""),
+            "latency_ms": float(r.latency_ms or 0.0),
+            "tokens_in": int(r.tokens_in or 0),
+            "tokens_out": int(r.tokens_out or 0),
+            "cost": float(r.cost or 0.0),
+            "provider": str(r.provider or ""),
+            "created_at": datetime.fromisoformat(r.created_at) if isinstance(r.created_at, str) else r.created_at,
         })
     
     lars_db.write("model_benchmarks", rows)
