@@ -1230,9 +1230,58 @@ def verify_models_parallel(
     return results
 
 
+def fetch_models_from_anthropic_direct() -> List[Dict]:
+    """
+    Fetch available models from Anthropic Direct (API key or OAuth token).
+    Returns models in the standard format with anthropic-direct/ prefix.
+    """
+    import os
+    token = (os.environ.get("ANTHROPIC_OAUTH_TOKEN", "")
+             or os.environ.get("ANTHROPIC_API_KEY", ""))
+
+    if not token:
+        # Also check models.yaml config
+        try:
+            from .models import load_models_config
+            mc = load_models_config()
+            if mc.providers.anthropic_direct_enabled:
+                token = os.environ.get(mc.providers.anthropic_oauth_token_env or "", "") or ""
+        except Exception:
+            pass
+
+    if not token:
+        console.print("[dim]   Anthropic Direct  disabled (skipping)[/dim]")
+        return []
+
+    console.print("[cyan]   Anthropic Direct  fetching models...[/cyan]")
+
+    try:
+        from .bootstrap_providers import fetch_anthropic_direct_models
+        discovered = fetch_anthropic_direct_models(token)
+        # Convert DiscoveredModel objects to standard dict format
+        models = []
+        for m in discovered:
+            models.append({
+                "id": m.id,  # Already has anthropic-direct/ prefix
+                "name": m.name,
+                "description": f"Anthropic Direct: {m.name}",
+                "context_length": 200000,  # Claude models default
+                "pricing": {"prompt": "0", "completion": "0"},  # Flat rate
+                "architecture": {
+                    "input_modalities": ["text"],
+                    "output_modalities": ["text"],
+                },
+            })
+        console.print(f"[green]   ✓ Anthropic Direct: {len(models)} models[/green]")
+        return models
+    except Exception as e:
+        console.print(f"[yellow]   ⚠ Anthropic Direct fetch failed: {e}[/yellow]")
+        return []
+
+
 def refresh_models(skip_verification: bool = False, workers: int = 10):
     """
-    Main refresh function: fetch models from OpenRouter, Ollama, Vertex AI, and Bedrock, then populate the database.
+    Main refresh function: fetch models from all configured providers, then populate the database.
 
     Note: Azure OpenAI deployment discovery requires Azure AD auth which we don't support.
     Use azure/<deployment-name> directly with your deployment name from Azure Portal.
@@ -1245,7 +1294,7 @@ def refresh_models(skip_verification: bool = False, workers: int = 10):
     db = get_db()
 
     console.print("\n[bold cyan]╔════════════════════════════════════════════════════════════════╗[/bold cyan]")
-    console.print("[bold cyan]║  Model Refresh (OpenRouter + Ollama + Vertex AI + Bedrock)     ║[/bold cyan]")
+    console.print("[bold cyan]║  Model Refresh                                                 ║[/bold cyan]")
     console.print("[bold cyan]╚════════════════════════════════════════════════════════════════╝[/bold cyan]\n")
 
     # Check which providers are enabled via models.yaml
@@ -1282,11 +1331,15 @@ def refresh_models(skip_verification: bool = False, workers: int = 10):
     # Step 1e: Fetch models from AWS Bedrock (non-fatal if not configured)
     bedrock_models = fetch_models_from_bedrock()
 
+    # Step 1f: Fetch models from Anthropic Direct (non-fatal if not configured)
+    anthropic_direct_models = fetch_models_from_anthropic_direct()
+
     # Combine all models (Azure returns empty - discovery requires Azure AD)
-    raw_models = openrouter_models + ollama_models + vertex_models + bedrock_models
+    raw_models = openrouter_models + ollama_models + vertex_models + bedrock_models + anthropic_direct_models
     console.print(f"\n[green][OK][/green] Total models: {len(raw_models)} "
                  f"(OpenRouter: {len(openrouter_models)}, Ollama: {len(ollama_models)}, "
-                 f"Vertex AI: {len(vertex_models)}, Bedrock: {len(bedrock_models)})\n")
+                 f"Vertex AI: {len(vertex_models)}, Bedrock: {len(bedrock_models)}, "
+                 f"Anthropic Direct: {len(anthropic_direct_models)})\n")
 
     # Step 2: Verify OpenRouter models only (Ollama models are always active)
     verification_results = {}
@@ -1316,6 +1369,9 @@ def refresh_models(skip_verification: bool = False, workers: int = 10):
         # Azure OpenAI models
         'azure/gpt-4o', 'azure/gpt-4o-mini', 'azure/gpt-4.1',
         'azure/o1', 'azure/o1-mini', 'azure/o3-mini',
+        # Anthropic Direct models
+        'anthropic-direct/claude-sonnet-4-20250514', 'anthropic-direct/claude-opus-4-20250514',
+        'anthropic-direct/claude-haiku-4-20250414', 'anthropic-direct/claude-haiku-3-5-20241022',
     }
 
     rows = []
