@@ -1768,26 +1768,232 @@ class LarsBootstrapTUI(ReactiveGlassApp):
             self.dispatch(Action("SET_STATUS", f"Save failed: {path}"))
     
     def _run_bootstrap(self):
-        """Run bootstrap in background."""
+        """Run bootstrap in background with real initialization steps."""
         self.dispatch(Action("START_BOOTSTRAP"))
         
+        def log(msg):
+            self.call_later(lambda m=msg: self.dispatch(Action("BOOTSTRAP_LOG", m)))
+        
         def do_bootstrap():
-            import time
+            import shutil
+            from pathlib import Path
             
-            steps = [
-                "Creating directories...",
-                "Writing .env file...",
-                "Writing models.yaml...",
-                "Syncing cascade tools...",
-                "Building RAG index...",
-                "Done!",
-            ]
-            
-            for step in steps:
-                self.call_later(lambda s=step: self.dispatch(Action("BOOTSTRAP_LOG", s)))
-                time.sleep(0.5)
-            
-            self.call_later(lambda: self.dispatch(Action("BOOTSTRAP_COMPLETE")))
+            try:
+                lars_root = Path(self.state.get("lars_root", str(Path.home() / ".lars")))
+                
+                # =========================================================
+                # Step 1: Create directories
+                # =========================================================
+                log("Creating workspace directories...")
+                lars_root.mkdir(parents=True, exist_ok=True)
+                
+                dirs = [
+                    'cascades/examples', 'skills', 'cell_types', 'config',
+                    'data', 'logs', 'states', 'graphs', 'images', 'audio',
+                    'videos', 'session_dbs', 'research_dbs', 'sql_connections',
+                ]
+                for d in dirs:
+                    (lars_root / d).mkdir(parents=True, exist_ok=True)
+                
+                # Set env var for this session
+                os.environ['LARS_ROOT'] = str(lars_root)
+                
+                # =========================================================
+                # Step 2: Write .env file
+                # =========================================================
+                log("Writing .env file...")
+                env_lines = [f"LARS_ROOT={lars_root}"]
+                
+                if self.state.get("openrouter_key"):
+                    env_lines.append(f"OPENROUTER_API_KEY={self.state['openrouter_key']}")
+                    os.environ['OPENROUTER_API_KEY'] = self.state['openrouter_key']
+                if self.state.get("gemini_key"):
+                    env_lines.append(f"GEMINI_API_KEY={self.state['gemini_key']}")
+                    os.environ['GEMINI_API_KEY'] = self.state['gemini_key']
+                
+                env_path = lars_root / '.env'
+                env_path.write_text('\n'.join(env_lines) + '\n')
+                log(f"  ✓ {env_path}")
+                
+                # =========================================================
+                # Step 3: Write models.yaml
+                # =========================================================
+                log("Writing models.yaml...")
+                try:
+                    from lars.models import ModelsConfig, ProvidersConfig, write_models_yaml
+                    
+                    models_config = ModelsConfig(
+                        providers=ProvidersConfig(
+                            openrouter_enabled=self.state.get('openrouter_enabled', False),
+                            openrouter_api_key_env="OPENROUTER_API_KEY",
+                            ollama_enabled=self.state.get('ollama_enabled', False),
+                            ollama_hosts={"default": self.state.get('ollama_host', 'http://localhost:11434')},
+                            gemini_enabled=self.state.get('gemini_enabled', False),
+                            gemini_api_key_env="GEMINI_API_KEY",
+                            bedrock_enabled=self.state.get('bedrock_enabled', False),
+                            bedrock_region=self.state.get('bedrock_region', 'us-east-1'),
+                        ),
+                        models=self.state.get('model_tiers', {}),
+                    )
+                    models_yaml_path = write_models_yaml(models_config, lars_root / 'models.yaml')
+                    log(f"  ✓ {models_yaml_path}")
+                    
+                    # Reload config
+                    from lars.config import reload_config
+                    reload_config()
+                except Exception as e:
+                    log(f"  ⚠ models.yaml: {e}")
+                
+                # =========================================================
+                # Step 4: Write SQL connections
+                # =========================================================
+                saved_conns = self.state.get("sql_saved_connections", [])
+                if saved_conns:
+                    log("Writing SQL connections...")
+                    import ruamel.yaml
+                    yaml_writer = ruamel.yaml.YAML()
+                    yaml_writer.default_flow_style = False
+                    
+                    for conn in saved_conns:
+                        conn_name = conn.get('connection_name', 'connection')
+                        conn_path = lars_root / 'sql_connections' / f"{conn_name}.yaml"
+                        conn_path.parent.mkdir(parents=True, exist_ok=True)
+                        with open(conn_path, 'w') as f:
+                            yaml_writer.dump(conn, f)
+                        log(f"  ✓ {conn_path.name}")
+                
+                # =========================================================
+                # Step 5: Copy starter files
+                # =========================================================
+                log("Copying starter files...")
+                starter_dir = Path(__file__).parent.parent / 'starter'
+                
+                if starter_dir.exists():
+                    # Example cascades
+                    examples_src = starter_dir / 'cascades' / 'examples'
+                    if examples_src.exists():
+                        for yaml_file in examples_src.glob('*.yaml'):
+                            dst = lars_root / 'cascades' / 'examples' / yaml_file.name
+                            if not dst.exists():
+                                shutil.copy2(yaml_file, dst)
+                    
+                    # Cell types
+                    cell_types_src = starter_dir / 'cell_types'
+                    if cell_types_src.exists():
+                        for yaml_file in cell_types_src.glob('*.yaml'):
+                            dst = lars_root / 'cell_types' / yaml_file.name
+                            if not dst.exists():
+                                shutil.copy2(yaml_file, dst)
+                    
+                    # SQL connections (samples)
+                    sql_src = starter_dir / 'sql_connections'
+                    if sql_src.exists():
+                        for yaml_file in sql_src.glob('*.yaml'):
+                            dst = lars_root / 'sql_connections' / yaml_file.name
+                            if not dst.exists():
+                                shutil.copy2(yaml_file, dst)
+                    
+                    log("  ✓ Starter files copied")
+                
+                # Create .lars marker
+                marker_file = lars_root / '.lars'
+                if not marker_file.exists():
+                    try:
+                        from lars import __version__ as lars_version
+                    except ImportError:
+                        lars_version = "unknown"
+                    marker_file.write_text(f"version: {lars_version}\ninitialized: bootstrap-tui\n")
+                
+                # =========================================================
+                # Step 6: Create sample database
+                # =========================================================
+                log("Creating sample database...")
+                sample_db_path = lars_root / 'data' / 'sample.duckdb'
+                sample_sql_path = starter_dir / 'data' / 'create_sample_db.sql'
+                
+                if sample_sql_path.exists() and not sample_db_path.exists():
+                    try:
+                        import duckdb
+                        sample_db_path.parent.mkdir(parents=True, exist_ok=True)
+                        conn = duckdb.connect(str(sample_db_path))
+                        conn.execute(sample_sql_path.read_text())
+                        conn.close()
+                        log("  ✓ sample.duckdb created")
+                        
+                        # Enable sample_data connection
+                        sample_yaml = lars_root / 'sql_connections' / 'sample_data.yaml'
+                        if sample_yaml.exists():
+                            content = sample_yaml.read_text()
+                            content = content.replace('enabled: false', 'enabled: true')
+                            sample_yaml.write_text(content)
+                    except Exception as e:
+                        log(f"  ⚠ sample DB: {e}")
+                else:
+                    log("  ✓ Sample database exists")
+                
+                # =========================================================
+                # Step 7: Database housekeeping
+                # =========================================================
+                log("Initializing database...")
+                try:
+                    from lars.db_adapter import ensure_housekeeping
+                    from lars.artifact_registry import get_artifact_registry
+                    
+                    ensure_housekeeping()
+                    get_artifact_registry()
+                    log("  ✓ Database initialized")
+                except Exception as e:
+                    log(f"  ⚠ Database: {e}")
+                
+                # =========================================================
+                # Step 8: Sync tools
+                # =========================================================
+                log("Syncing tools to database...")
+                try:
+                    from lars.tools_mgmt import sync_tools_to_db
+                    sync_tools_to_db(force=True)
+                    log("  ✓ Tools synced")
+                except Exception as e:
+                    log(f"  ⚠ Tools sync: {e}")
+                
+                # =========================================================
+                # Step 9: Refresh models (skip verification for speed)
+                # =========================================================
+                log("Refreshing model catalog...")
+                try:
+                    from lars.models_mgmt import refresh_models
+                    refresh_models(skip_verification=True)
+                    log("  ✓ Models refreshed")
+                except Exception as e:
+                    log(f"  ⚠ Models: {e}")
+                
+                # =========================================================
+                # Step 10: SQL schema discovery
+                # =========================================================
+                if not self.state.get("sql_skip", True):
+                    log("Discovering SQL schemas...")
+                    try:
+                        from lars.sql_tools.discovery import discover_all_schemas
+                        discover_all_schemas(session_id=None)
+                        log("  ✓ Schemas discovered")
+                    except Exception as e:
+                        log(f"  ⚠ Schema discovery: {e}")
+                
+                log("")
+                log("✅ Bootstrap complete!")
+                log("")
+                log("Next steps:")
+                log("  lars run cascades/examples/hello_world.yaml")
+                log("  lars serve sql --port 15432")
+                log("  lars serve studio")
+                
+                self.call_later(lambda: self.dispatch(Action("BOOTSTRAP_COMPLETE")))
+                
+            except Exception as e:
+                log(f"❌ Error: {e}")
+                import traceback
+                log(traceback.format_exc()[:500])
+                self.call_later(lambda: self.dispatch(Action("BOOTSTRAP_COMPLETE")))
         
         threading.Thread(target=do_bootstrap, daemon=True).start()
 
