@@ -21,7 +21,7 @@ sql_function:
   shape: SCALAR
   operators:
   - '{{ text_a }} CONTRADICTS {{ text_b }}'
-  cache: false  # Temporarily disabled for testing
+  cache: true
   test_cases:
   # Function syntax
   - sql: SELECT semantic_contradicts('The product is excellent', 'The product is terrible')

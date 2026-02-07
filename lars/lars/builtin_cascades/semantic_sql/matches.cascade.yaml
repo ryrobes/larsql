@@ -23,7 +23,7 @@ sql_function:
   - '{{ text }} MEANS {{ criterion }}'
   - '{{ text }} MATCHES {{ criterion }}'
   - '{{ text }} ~ {{ criterion }}'
-  cache: false  # Temporarily disabled for testing
+  cache: true
   test_cases:
   # MEANS infix operator
   - sql: WITH t AS (SELECT 'apple pie recipe' AS text) SELECT * FROM t WHERE text MEANS 'dessert recipes'

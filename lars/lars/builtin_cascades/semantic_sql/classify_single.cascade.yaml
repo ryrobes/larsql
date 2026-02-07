@@ -20,7 +20,7 @@ sql_function:
     type: JSON
   returns: VARCHAR
   shape: SCALAR
-  cache: false  # Temporarily disabled for testing
+  cache: true
   test_cases:
   # Basic sentiment classification
   - sql: "SELECT semantic_classify('I love this product!', 'positive,negative,neutral')"

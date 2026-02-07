@@ -59,7 +59,7 @@ sql_function:
     - "SAME_AS({{ left }}, {{ right }})"
     - "SAME_AS({{ left }}, {{ right }}, '{{ entity_type }}')"
     - "{{ left }} SAME_ENTITY {{ right }}"
-  cache: false  # Temporarily disabled for testing
+  cache: true
 
 cells:
   - name: check_equality
