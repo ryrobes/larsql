@@ -11069,6 +11069,7 @@ class ClientConnection:
                     # Simple query protocol
                     # Payload is null-terminated SQL string
                     query = payload.rstrip(b'\x00').decode('utf-8')
+                    print(f"[pgwire.query] SimpleQuery: {query[:120]}... (pid={os.getpid()})")
                     self.handle_query(query)
 
                 elif msg_type == MessageType.TERMINATE:
@@ -11086,6 +11087,7 @@ class ClientConnection:
                         payload_bytes=len(payload),
                     )
                     msg = ParseMessage.decode(payload)
+                    print(f"[pgwire.query] Parse: {msg.query[:120] if msg.query else '(empty)'}... (pid={os.getpid()})")
                     self._handle_parse(msg)
 
                 elif msg_type == MessageType.BIND:
