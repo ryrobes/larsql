@@ -14,15 +14,11 @@ from pathlib import Path
 
 def main():
     """Run the Config Panel TUI."""
-    # Find background image
-    tui_dir = Path(__file__).parent
-    background = tui_dir / "background.jpg"
-    
     # Import and run
-    from .lars_control_panel import LarsControlPanel
+    from .lars_control_panel import LarsControlPanel, _random_wallpaper
     
     app = LarsControlPanel(
-        background_image=str(background) if background.exists() else None
+        background_image=_random_wallpaper()
     )
     app.run()
 

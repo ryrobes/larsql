@@ -19,6 +19,7 @@ Keyboard shortcuts:
 """
 
 import os
+import random
 import sys
 import yaml
 import time
@@ -561,6 +562,16 @@ def toggle_connection(conn: ConnectionInfo) -> bool:
         return conn.enabled
 
 
+def _random_wallpaper() -> Optional[str]:
+    """Pick a random wallpaper from the wallpapers/ directory."""
+    wallpaper_dir = Path(__file__).parent / "wallpapers"
+    if wallpaper_dir.is_dir():
+        images = [f for f in wallpaper_dir.iterdir() if f.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp")]
+        if images:
+            return str(random.choice(images))
+    return None
+
+
 # =============================================================================
 # MAIN APPLICATION
 # =============================================================================
@@ -570,10 +581,7 @@ class LarsControlPanel(ReactiveGlassApp):
     
     def __init__(self, background_image: str = None, background_darken: float = 0.3):
         if background_image is None:
-            for bg in ["background6.webp", "bk2.jpg", "alice.jpg"]:
-                if os.path.exists(bg):
-                    background_image = bg
-                    break
+            background_image = _random_wallpaper()
         
         super().__init__(background_image=background_image, background_darken=background_darken)
     
@@ -1482,11 +1490,7 @@ if __name__ == "__main__":
     print("")
     
     # Find a background image
-    background = None
-    for bg in ["bk2.jpg", "background6.webp", "alice.jpg", "leaves.jpg"]:
-        if os.path.exists(bg):
-            background = bg
-            break
+    background = _random_wallpaper()
     
     app = LarsControlPanel(background_image=background, background_darken=0.4)
     app.run()

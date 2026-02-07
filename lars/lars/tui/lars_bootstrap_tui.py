@@ -20,6 +20,7 @@ Keyboard shortcuts:
 """
 
 import os
+import random
 import sys
 import threading
 from pathlib import Path
@@ -221,6 +222,16 @@ def status_icon(status: str) -> str:
     return icons.get(status, icons["none"])
 
 
+def _random_wallpaper() -> Optional[str]:
+    """Pick a random wallpaper from the wallpapers/ directory."""
+    wallpaper_dir = Path(__file__).parent / "wallpapers"
+    if wallpaper_dir.is_dir():
+        images = [f for f in wallpaper_dir.iterdir() if f.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp")]
+        if images:
+            return str(random.choice(images))
+    return None
+
+
 # =============================================================================
 # MAIN APPLICATION
 # =============================================================================
@@ -233,10 +244,7 @@ class LarsBootstrapTUI(ReactiveGlassApp):
     
     def __init__(self, background_image: str = None):
         if background_image is None:
-            for bg in ["bk2.jpg", "background6.jpg", "alice.jpg"]:
-                if os.path.exists(bg):
-                    background_image = bg
-                    break
+            background_image = _random_wallpaper()
         
         super().__init__(background_image=background_image, background_darken=0.4)
         
@@ -2415,11 +2423,7 @@ if __name__ == "__main__":
     print("Visual onboarding for LARS")
     print("")
     
-    background = None
-    for bg in ["bk2.jpg", "background6.jpg", "alice.jpg"]:
-        if os.path.exists(bg):
-            background = bg
-            break
+    background = _random_wallpaper()
     
     app = LarsBootstrapTUI(background_image=background)
     app.run()
