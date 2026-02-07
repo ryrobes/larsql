@@ -408,11 +408,11 @@ def _store_results(results: List[BenchmarkResult]):
     for r in results:
         db.execute("""
             INSERT INTO model_benchmarks VALUES (
-                :benchmark_id, :run_id, :operator_id, :operator_name,
-                :model_id, :input_hash, :input_tokens, :input_complexity,
-                :input_sample, :passed, :output_value, :expected_value,
-                :latency_ms, :tokens_in, :tokens_out, :cost,
-                :provider, :created_at
+                %(benchmark_id)s, %(run_id)s, %(operator_id)s, %(operator_name)s,
+                %(model_id)s, %(input_hash)s, %(input_tokens)s, %(input_complexity)s,
+                %(input_sample)s, %(passed)s, %(output_value)s, %(expected_value)s,
+                %(latency_ms)s, %(tokens_in)s, %(tokens_out)s, %(cost)s,
+                %(provider)s, %(created_at)s
             )
         """, {
             "benchmark_id": r.benchmark_id, "run_id": r.run_id,
