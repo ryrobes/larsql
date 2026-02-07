@@ -719,7 +719,8 @@ class LarsBootstrapTUI(ReactiveGlassApp):
             (Screen.WELCOME, "1:Welcome"),
             (Screen.PROVIDERS, "2:Providers"),
             (Screen.MODELS, "3:Models"),
-            (Screen.SUMMARY, "4:Summary"),
+            (Screen.SQL, "4:SQL"),
+            (Screen.SUMMARY, "5:Summary"),
         ]):
             if s == screen:
                 tabs.append(f"[bold {colors['accent']}][{label}][/bold {colors['accent']}]")
@@ -1467,7 +1468,7 @@ class LarsBootstrapTUI(ReactiveGlassApp):
             next_idx = (idx + 1) % len(screens)
             self.dispatch(Action("SWITCH_SCREEN", screens[next_idx]))
         
-        elif key in ("1", "2", "3", "4"):
+        elif key in ("1", "2", "3", "4", "5"):
             screens = list(Screen)
             idx = int(key) - 1
             if idx < len(screens):
