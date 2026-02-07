@@ -2301,11 +2301,6 @@ class LarsDB:
         
         # Non-partitioned write
         table_dir = base_table_dir
-        
-        # Check if this is the first file in this table dir
-        # (important: if views were registered as empty stubs, they need re-registration)
-        is_first_file = not table_dir.exists() or not any(table_dir.glob("*.parquet"))
-        
         table_dir.mkdir(parents=True, exist_ok=True)
         
         # Generate unique filename
@@ -2315,16 +2310,7 @@ class LarsDB:
         filename = f"{timestamp}_{unique_id}{partition_suffix}.parquet"
         filepath = table_dir / filename
         
-        result = self._write_rows_to_file(filepath, rows, schema_def)
-        
-        # If this was the first file written to this table, clear cached connections
-        # so that empty stub views (SELECT ... WHERE false) get replaced with
-        # proper glob-based views that can see the new data.
-        if is_first_file:
-            self.clear_cached_connection()
-            print(f"[LarsDB] First write to '{table}' — cleared cached connection for view refresh")
-        
-        return result
+        return self._write_rows_to_file(filepath, rows, schema_def)
     
     def compact(self, table: str, threshold: int = 2, force: bool = False) -> dict:
         """
