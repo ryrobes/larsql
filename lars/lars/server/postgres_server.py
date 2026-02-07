@@ -11004,11 +11004,16 @@ class ClientConnection:
             # NOTE: We do ALL setup before sending startup response to avoid race conditions.
             # DataGrip and other aggressive clients send queries immediately after startup,
             # so deferred setup causes broken pipe errors if it takes too long.
+            print(f"[pgwire.handle] Step 3a: setup_session_minimal (pid={os.getpid()})")
             self.setup_session_minimal()
+            print(f"[pgwire.handle] Step 3b: setup_session_deferred (pid={os.getpid()})")
             self.setup_session_deferred()
+            print(f"[pgwire.handle] Step 3 complete, duckdb_conn={'set' if self.duckdb_conn else 'None'} (pid={os.getpid()})")
 
             # Step 4: Send startup response (session is now fully ready)
+            print(f"[pgwire.handle] Step 4: send_startup_response (pid={os.getpid()})")
             send_startup_response(self.sock)
+            print(f"[pgwire.handle] Step 5: entering message loop (pid={os.getpid()})")
 
             # Step 5: Message loop
             while self.running:
@@ -11149,15 +11154,14 @@ class ClientConnection:
                     )
 
         except Exception as e:
+            print(f"[pgwire.handle] ❌ Connection error: {type(e).__name__}: {e} (pid={os.getpid()})")
+            traceback.print_exc()
             self._runtime_log(
                 "ERROR",
                 f"Connection error: {e}",
                 event="connection_error",
                 error_type=type(e).__name__,
             )
-            # Keep traceback for interactive debugging, but avoid flooding stdout in steady-state.
-            if os.environ.get("LARS_PG_TRACEBACK", "0").strip().lower() in ("1", "true", "yes", "on"):
-                traceback.print_exc()
 
         finally:
             # Step 5: Cleanup
