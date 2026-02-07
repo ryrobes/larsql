@@ -64,7 +64,7 @@ def format_timestamp_utc(ts):
     """
     Format a timestamp as ISO string with UTC timezone indicator.
 
-    ClickHouse stores timestamps in UTC but returns naive datetime objects.
+    DuckDB stores timestamps in UTC but returns naive datetime objects.
     Adding 'Z' suffix tells the browser to interpret as UTC and convert
     to the user's local timezone when displaying.
     """
@@ -504,7 +504,7 @@ def get_query_detail(caller_id: str):
 
         # Check if results exist (stored as actual tables)
         # First check if the query_results table exists to avoid noisy error logs
-        has_clickhouse_results = False
+        has_stored_results = False
         results_info = {}
         try:
             table_check = db.query("""
@@ -522,8 +522,8 @@ def get_query_detail(caller_id: str):
                     LIMIT 1
                 """
                 results_check = db.query(results_check_query)
-                has_clickhouse_results = bool(results_check and len(results_check) > 0 and results_check[0].get('result_table'))
-                results_info = results_check[0] if has_clickhouse_results else {}
+                has_stored_results = bool(results_check and len(results_check) > 0 and results_check[0].get('result_table'))
+                results_info = results_check[0] if has_stored_results else {}
         except Exception:
             # Table might not exist yet or other error
             pass
@@ -606,10 +606,10 @@ def get_query_detail(caller_id: str):
                 'protocol': query_row.get('protocol'),
                 'timestamp': format_timestamp_utc(query_row.get('timestamp')),
                 # Result availability - stored as actual tables in lars_results database
-                'has_materialized_result': has_clickhouse_results,
-                'result_table': results_info.get('result_table') if has_clickhouse_results else None,
-                'result_row_count': safe_int(results_info.get('row_count')) if has_clickhouse_results else None,
-                'result_column_count': safe_int(results_info.get('column_count')) if has_clickhouse_results else None
+                'has_materialized_result': has_database_results,
+                'result_table': results_info.get('result_table') if has_stored_results else None,
+                'result_row_count': safe_int(results_info.get('row_count')) if has_stored_results else None,
+                'result_column_count': safe_int(results_info.get('column_count')) if has_stored_results else None
             },
             'spawned_sessions': [
                 {
@@ -1029,7 +1029,7 @@ def get_time_series():
 @sql_trail_bp.route('/api/sql-trail/query/<caller_id>/results', methods=['GET'])
 def get_query_results(caller_id: str):
     """
-    Fetch auto-materialized query results from ClickHouse.
+    Fetch auto-materialized query results from the database.
 
     Results are stored as actual tables in lars_results database.
     The query_results table is a log/index pointing to the actual data tables.
@@ -1046,7 +1046,7 @@ def get_query_results(caller_id: str):
             offset: int,
             limit: int,
             has_more: bool,
-            source: 'clickhouse',
+            source: 'database',
             result_table: 'r_xxx'
         }
     """
@@ -1090,7 +1090,7 @@ def get_query_results(caller_id: str):
         log_data = db.query(log_query)
 
         if not log_data:
-            # No results in ClickHouse - return 404
+            # No results in DuckDB - return 404
             return jsonify({
                 'error': 'No materialized results',
                 'message': 'This query does not have auto-materialized results. Results are saved for queries that use LARS features (cascades, UDFs, semantic operators).'
@@ -1147,7 +1147,7 @@ def get_query_results(caller_id: str):
             'offset': offset,
             'limit': limit,
             'has_more': (offset + len(rows)) < total_rows,
-            'source': 'clickhouse',
+            'source': 'database',
             'result_table': result_table,
             'source_database': log_row.get('source_database', '')
         })

@@ -855,7 +855,7 @@ def execute_single_query(query: str, conn, lock, database: str, caller_id: str =
         # Query is only comments - return empty DataFrame
         return pd.DataFrame()
 
-    # Validate database name (used for ClickHouse namespace: lars_results_<database>).
+    # Validate database name (used for DuckDB namespace: lars_results_<database>).
     import re
     if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", database or ""):
         raise ValueError(
@@ -864,8 +864,8 @@ def execute_single_query(query: str, conn, lock, database: str, caller_id: str =
         )
     results_db = f"lars_results_{database}"
 
-    # Rewrite into_ table references to read from ClickHouse.
-    # Tables created with ... INTO xxx are stored in ClickHouse as:
+    # Rewrite into_ table references to read from DuckDB.
+    # Tables created with ... INTO xxx are stored in DuckDB as:
     #   lars_results_<database>.into_xxx
     try:
         from lars.sql_tools.into_table_rewriter import rewrite_into_tables

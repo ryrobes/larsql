@@ -4,7 +4,7 @@ Parameter Store (Deprecated - use lars.auth.param_store)
 This module is a backwards-compatibility shim. All functionality
 has been moved to lars.auth.param_store which provides:
 - L1 in-memory cache (fast)
-- L2 ClickHouse persistence (durable, cross-process)
+- L2 database persistence (durable, cross-process)
 - User-scoped parameters via session_id format "user_id:database"
 
 New code should import directly from lars.auth.param_store.

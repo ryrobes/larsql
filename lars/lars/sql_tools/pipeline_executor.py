@@ -41,7 +41,7 @@ log = logging.getLogger(__name__)
 #
 # Uses SemanticCache for cross-process caching:
 # - L1: In-memory dict (fast, per-process)
-# - L2: ClickHouse table (persistent, cross-process)
+# - L2: DuckDB table (persistent, cross-process)
 
 _pure_cascade_stats = {'hits': 0, 'misses': 0}
 
@@ -80,7 +80,7 @@ def _pure_cascade_cache_get(cascade_name: str, inputs: Dict[str, Any]) -> Tuple[
     """
     Check pure cascade cache for cached result.
 
-    Uses SemanticCache for L1 (in-memory) + L2 (ClickHouse) caching.
+    Uses SemanticCache for L1 (in-memory) + L2 (database) caching.
 
     Args:
         cascade_name: Name of the cascade
@@ -112,7 +112,7 @@ def _pure_cascade_cache_set(cascade_name: str, inputs: Dict[str, Any], result: A
     """
     Store result in pure cascade cache.
 
-    Uses SemanticCache for L1 (in-memory) + L2 (ClickHouse) caching.
+    Uses SemanticCache for L1 (in-memory) + L2 (database) caching.
 
     Args:
         cascade_name: Name of the cascade
@@ -1219,12 +1219,12 @@ def _save_to_table(
             log.info(f"[pipeline] Created session views: {parquet_table_name}, {safe_name} -> {parquet_path}")
 
     except Exception as e:
-        log.error(f"[pipeline] Failed to save to ClickHouse/create view for {table_name}: {e}")
+        log.error(f"[pipeline] Failed to save to DuckDB")
         raise
 
 
 def _sanitize_column_name_for_ch(name: str) -> str:
-    """Sanitize column name for ClickHouse."""
+    """Sanitize column name for DuckDB."""
     import re
     # Replace problematic characters
     sanitized = re.sub(r'[^a-zA-Z0-9_]', '_', str(name))
@@ -1237,7 +1237,7 @@ def _sanitize_column_name_for_ch(name: str) -> str:
 
 
 def _pandas_dtype_to_clickhouse(dtype) -> str:
-    """Convert pandas dtype to ClickHouse type."""
+    """Convert pandas dtype to DuckDB type."""
     dtype_str = str(dtype).lower()
 
     if 'int64' in dtype_str:

@@ -31,7 +31,7 @@ hyper_sql_bp = Blueprint('hyper_sql', __name__)
 
 def escape_for_clickhouse(s):
     """
-    Escape a string for use in ClickHouse queries.
+    Escape a string for use in DuckDB queries.
     - Escapes single quotes by doubling them
     - Escapes % which is used for parameter substitution by the driver
     """
@@ -264,7 +264,7 @@ def create_sql_file():
         db = get_db()
         file_id = str(uuid.uuid4())
 
-        # Escape values for SQL (including % for ClickHouse driver)
+        # Escape values for SQL (including % for DuckDB driver)
         safe_id = escape_for_clickhouse(file_id)
         safe_name = escape_for_clickhouse(name)
         safe_sql = escape_for_clickhouse(sql)
@@ -438,7 +438,7 @@ def toggle_favorite(file_id: str):
         current = existing[0]
         new_favorite = not bool(current.get('is_favorite', False))
 
-        # Escape values (including % for ClickHouse driver)
+        # Escape values (including % for DuckDB driver)
         safe_name = escape_for_clickhouse(current.get('name', ''))
         safe_sql = escape_for_clickhouse(current.get('sql', ''))
         desc = current.get('description', '')

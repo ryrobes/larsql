@@ -1,7 +1,7 @@
 """
-Unified Logging System - Pure ClickHouse Implementation
+Unified Logging System - Pure DuckDB Implementation
 
-Writes directly to ClickHouse with immediate INSERTs:
+Writes directly to DuckDB with immediate INSERTs:
 1. Each log() call INSERTs immediately (no buffering, ~100ms latency)
 2. Background worker UPDATEs cost data after OpenRouter's 3-5s delay
 3. No Parquet files, no chDB, no DuckDB
@@ -111,10 +111,10 @@ def estimate_tokens(content: Any) -> int:
 
 class UnifiedLogger:
     """
-    Direct ClickHouse logger with immediate INSERTs and UPDATE-based cost tracking.
+    Direct DuckDB logger with immediate INSERTs and UPDATE-based cost tracking.
 
     Key features:
-    - Immediate INSERT to ClickHouse (no buffering, ~100ms UI latency)
+    - Immediate INSERT to DuckDB (no buffering, ~100ms UI latency)
     - Background worker UPDATEs cost data after OpenRouter delay
     - Real-time queryable data for snappy UI updates
     """
@@ -184,7 +184,7 @@ class UnifiedLogger:
                             **cost_data
                         })
 
-                # Batch UPDATE to ClickHouse
+                # Batch UPDATE to DuckDB
                 if updates:
                     try:
                         from .db_adapter import get_db
@@ -390,7 +390,7 @@ class UnifiedLogger:
         source_table_name: str | None = None,
     ):
         """
-        Log a single message/event to ClickHouse.
+        Log a single message/event to DuckDB.
 
         This is a NON-BLOCKING call. Messages are buffered and INSERTed in batches.
         If request_id is provided (LLM response), the message is also queued for
@@ -448,7 +448,7 @@ class UnifiedLogger:
             except:
                 return json.dumps(str(obj))
 
-        # Build row for ClickHouse
+        # Build row for DuckDB
         row = {
             # Core identification
             "timestamp_iso": timestamp_iso,
@@ -576,7 +576,7 @@ class UnifiedLogger:
             "source_table_name": source_table_name,
         }
 
-        # INSERT immediately to ClickHouse (no buffering for snappy UI)
+        # INSERT immediately to DuckDB (no buffering for snappy UI)
         try:
             from .db_adapter import get_db
             db = get_db()
@@ -740,7 +740,7 @@ def log_unified(
     """
     Global function to log unified mega-table entries.
 
-    This is a NON-BLOCKING call. Messages are buffered and written to ClickHouse
+    This is a NON-BLOCKING call. Messages are buffered and written to DuckDB
     in batches. Cost data is UPDATEd separately after OpenRouter's delay.
 
     Args:
@@ -886,7 +886,7 @@ def log_unified(
 
 def force_flush():
     """
-    Force flush any buffered log messages to ClickHouse.
+    Force flush any buffered log messages to DuckDB.
 
     Call this at important lifecycle events (cell complete, cascade complete)
     to ensure data is persisted for UI visibility.
@@ -895,12 +895,12 @@ def force_flush():
 
 
 # ============================================================================
-# Query Functions (now using ClickHouse tables directly)
+# Query Functions (now using DuckDB tables directly)
 # ============================================================================
 
 def query_unified(where_clause: str | None = None, order_by: str = "timestamp") -> 'pd.DataFrame':
     """
-    Query unified logs from ClickHouse.
+    Query unified logs from the database.
 
     Args:
         where_clause: SQL WHERE clause (e.g., "session_id = 'abc' AND cost > 0")
@@ -914,7 +914,7 @@ def query_unified(where_clause: str | None = None, order_by: str = "timestamp") 
 
     db = get_db()
 
-    # Build query against ClickHouse table
+    # Build query against DuckDB table
     base_query = "SELECT * FROM unified_logs"
 
     if where_clause:
@@ -1120,7 +1120,7 @@ def backfill_missing_costs(
         print(f"[Cost Backfill] Querying for missing costs...")
 
     # Query for records with gen-* request_ids that need costs
-    # Note: Use %% to escape the % in LIKE 'gen-%' for ClickHouse driver
+    # Note: Use %% to escape the % in LIKE 'gen-%' for DuckDB driver
     query = f"""
         SELECT
             trace_id,

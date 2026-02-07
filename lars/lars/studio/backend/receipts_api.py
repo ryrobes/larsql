@@ -676,7 +676,7 @@ def get_context_breakdown():
             seen_hashes = set()
             unique_messages = []
             for msg_item in row.get('messages', []):
-                # Handle both tuple (ClickHouse) and dict/struct (DuckDB) formats
+                # Handle both tuple (DuckDB) and dict/struct (DuckDB) formats
                 if isinstance(msg_item, dict):
                     msg_hash = msg_item.get('context_message_hash') or msg_item.get('hash', '')
                     source_cell = msg_item.get('source_cell', '')
@@ -791,7 +791,7 @@ def get_time_series():
         db = get_db()
         current_start = datetime.now() - timedelta(days=days)
 
-        # Map granularity to ClickHouse function
+        # Map granularity to DuckDB function
         if granularity == 'hourly':
             bucket_func = 'toStartOfHour(timestamp)'
             analytics_bucket_func = 'toStartOfHour(created_at)'

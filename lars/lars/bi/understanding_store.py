@@ -26,7 +26,7 @@ from ..rag.indexer import embed_texts
 
 class UnderstandingStore:
     """
-    Store and retrieve understanding documents using ClickHouse.
+    Store and retrieve understanding documents using DuckDB.
 
     Uses vector similarity search to find relevant existing understandings
     when new questions are asked.
@@ -148,7 +148,7 @@ class UnderstandingStore:
         """
         embedding = self._embed_question(question)
 
-        # Vector similarity search using ClickHouse's cosineDistance
+        # Vector similarity search using DuckDB's cosineDistance
         rows = self.db.query(
             """
             SELECT
@@ -216,7 +216,7 @@ class UnderstandingStore:
         """
         usage_id = f"usg_{uuid.uuid4().hex[:16]}"
 
-        # Convert modifiers to array of strings for ClickHouse
+        # Convert modifiers to array of strings for DuckDB
         modifiers_flat = []
         if mode_modifiers:
             for mod_type, mod_value in mode_modifiers:

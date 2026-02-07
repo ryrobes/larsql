@@ -5,9 +5,9 @@ Builds and updates RAG indexes by:
 1. Scanning directories for files
 2. Chunking text files
 3. Generating embeddings via Agent.embed()
-4. Storing vectors in Chroma (rag_chunks embeddings are not stored in ClickHouse/CHDB)
+4. Storing vectors in Chroma (rag_chunks embeddings are stored in the DuckDB vector store)
 
-ClickHouse/CHDB still stores lightweight metadata (rag_chunks text + rag_manifests).
+DuckDB still stores lightweight metadata (rag_chunks text + rag_manifests).
 """
 import hashlib
 import json
@@ -354,7 +354,7 @@ def ensure_rag_index(
     }, sort_keys=True)
     rag_id = hashlib.sha1(settings_key.encode()).hexdigest()[:12]
 
-    # Get existing manifests from ClickHouse
+    # Get existing manifests from DuckDB
     existing_manifests = db.query(
         f"SELECT doc_id, rel_path, file_hash, mtime, file_size, chunk_count FROM rag_manifests WHERE rag_id = '{rag_id}'"
     )
@@ -395,7 +395,7 @@ def ensure_rag_index(
         prev = prev_by_path.get(rel_path)
 
         # Reuse if size + mtime unchanged
-        # Note: prev values may be numpy types from ClickHouse, so convert to Python types
+        # Note: prev values may be numpy types from DuckDB, so convert to Python types
         if prev is not None and abs(float(prev.get("mtime", 0)) - stat.st_mtime) < 1e-6 and int(prev.get("file_size", 0)) == stat.st_size:
             try:
                 chunks_reused += int(prev.get("chunk_count") or 0)
@@ -641,7 +641,7 @@ def delete_rag_index(rag_id: str):
 
 
 def list_rag_indexes() -> List[Dict[str, Any]]:
-    """List all RAG indexes in ClickHouse."""
+    """List all RAG indexes in DuckDB."""
     from ..db_adapter import get_db
 
     db = get_db()

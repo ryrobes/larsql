@@ -6,7 +6,7 @@ for visualization purposes. The data is kept in-memory only - it's transient and
 relevant while a cascade is running.
 
 For durable session state (status, heartbeat, blocked, etc.), see session_state.py
-which uses ClickHouse as the coordination database.
+which uses DuckDB as the coordination database.
 """
 
 import time
@@ -246,7 +246,7 @@ def get_session_state(session_id: str) -> Optional[Dict[str, Any]]:
     Get the current state for a session.
 
     Combines data from:
-    - session_state.py (ClickHouse) for status/current_cell
+    - session_state.py (database) for status/current_cell
     - In-memory cell progress (if available, same process only)
 
     Returns:

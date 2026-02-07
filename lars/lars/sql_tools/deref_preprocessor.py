@@ -59,7 +59,7 @@ def _log_deref(
     duration_ms: float = 0.0,
     error_message: str | None = None
 ):
-    """Log a deref operation to ClickHouse asynchronously."""
+    """Log a deref operation to DuckDB asynchronously."""
     try:
         from lars.db_adapter import get_deref_logger
         deref_logger = get_deref_logger()
@@ -588,7 +588,7 @@ def _execute_deref_cascade(name: str, args: list, session_context: dict):
     Returns:
         The cascade result (can be any JSON-serializable value)
     """
-    # Import from auth module (ClickHouse-backed with L1/L2 caching)
+    # Import from auth module (DuckDB-backed with L1/L2 caching)
     from lars.auth.param_store import (
         param_store_get,
         param_store_set,

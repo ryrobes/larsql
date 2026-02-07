@@ -1,7 +1,7 @@
 """
 RAG Context Management - Thread-local and global registry for RAG indexes.
 
-In the ClickHouse implementation, RAG data is stored in tables (rag_chunks, rag_manifests).
+RAG data is stored in tables (rag_chunks, rag_manifests).
 The context primarily tracks the rag_id and session info for queries.
 """
 import threading
@@ -14,7 +14,7 @@ class RagContext:
     """
     Runtime RAG context for the current cell.
 
-    In the ClickHouse implementation, all data is in tables.
+    In the DuckDB implementation, all data is in tables.
     This context tracks:
     - rag_id: The unique identifier for this RAG index
     - directory: Original source directory (for file path display)
@@ -36,7 +36,7 @@ class RagContext:
     parent_id: Optional[str] = None
 
     # Deprecated file paths - kept for backward compatibility during migration
-    # These are no longer used in the ClickHouse implementation
+    # These are no longer used in the DuckDB implementation
     manifest_path: Optional[str] = None
     chunks_path: Optional[str] = None
     meta_path: Optional[str] = None

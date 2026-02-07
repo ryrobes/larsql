@@ -5,7 +5,7 @@ Rewrites natural field-aware syntax to underlying vector search plumbing:
 
 FOUR SEARCH FUNCTIONS:
 
-1. VECTOR_SEARCH - Pure semantic (ClickHouse, fastest)
+1. VECTOR_SEARCH - Pure semantic (DuckDB, fastest)
    VECTOR_SEARCH('query', table.column, limit[, min_score])
    → read_json_auto(vector_search_json_3/4(...)) WHERE metadata.column_name = 'column'
 
@@ -24,7 +24,7 @@ FOUR SEARCH FUNCTIONS:
 Key innovation: table.column syntax (identifier) instead of 'table.column' (string)
 - IDE autocomplete support
 - Natural SQL feel
-- Automatic metadata.column_name filtering (for ClickHouse)
+- Automatic metadata.column_name filtering (for DuckDB)
 - Clear functional intent (semantic vs keyword vs hybrid)
 """
 
@@ -58,7 +58,7 @@ def has_vector_search_calls(sql: str) -> bool:
     Check if SQL contains any vector search table functions.
 
     Detects:
-    - VECTOR_SEARCH (ClickHouse pure semantic)
+    - VECTOR_SEARCH (DuckDB pure semantic)
     - ELASTIC_SEARCH (Elastic pure semantic)
     - HYBRID_SEARCH (Elastic semantic + keyword)
     - KEYWORD_SEARCH (Elastic pure keyword)
@@ -81,7 +81,7 @@ def rewrite_vector_search(sql: str) -> str:
 
     Handles:
     1. VECTOR_SEARCH('query', table.column, limit[, min_score])
-       → ClickHouse pure semantic (fastest)
+       → DuckDB pure semantic (fastest)
 
     2. ELASTIC_SEARCH('query', table.column, limit[, min_score])
        → Elastic pure semantic (when you need Elastic specifically)
@@ -131,7 +131,7 @@ def rewrite_vector_search(sql: str) -> str:
         replacement = _generate_elastic_search_rewrite(call)
         result = result[:call.start_pos] + replacement + result[call.end_pos:]
 
-    # 4. VECTOR_SEARCH (ClickHouse pure semantic - do last to avoid matching ELASTIC_SEARCH substring)
+    # 4. VECTOR_SEARCH (DuckDB pure semantic - do last to avoid matching ELASTIC_SEARCH substring)
     vector_calls = _find_vector_search_calls(sql)
     for call in reversed(vector_calls):
         replacement = _generate_vector_search_rewrite(call)
@@ -378,7 +378,7 @@ def _find_elastic_search_calls(sql: str) -> List[VectorSearchCall]:
     """
     Find all ELASTIC_SEARCH(...) calls in SQL.
 
-    Pure semantic search on Elastic backend (not ClickHouse).
+    Pure semantic search on Elastic backend (not DuckDB).
     Use when you specifically need Elastic, or want Elastic features.
 
     Pattern: ELASTIC_SEARCH('query', table.column, limit[, min_score])
@@ -647,7 +647,7 @@ if __name__ == "__main__":
     print("=" * 80)
 
     test_cases = [
-        # VECTOR_SEARCH (ClickHouse pure semantic)
+        # VECTOR_SEARCH (DuckDB pure semantic)
         ("VECTOR_SEARCH: basic",
          "SELECT * FROM VECTOR_SEARCH('climate', articles.content, 10)",
          ["read_json_auto", "vector_search_json_3", "metadata.column_name = 'content'"]),

@@ -298,7 +298,7 @@ CONNECTION_TYPES = {
     },
     "clickhouse": {
         "icon": "🏠",
-        "label": "ClickHouse",
+        "label": "DuckDB",
         "fields": [
             ("host", "Host", "localhost", True),
             ("port", "Port", "8123", True),

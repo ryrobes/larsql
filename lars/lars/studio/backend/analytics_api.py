@@ -176,7 +176,7 @@ def get_cost_timeline():
             tokens_out = int(row.get('tokens_out') or 0)
 
             # Convert time_bucket to string for JSON serialization
-            # ClickHouse returns datetime/date objects
+            # DuckDB returns datetime/date objects
             if hasattr(time_bucket_raw, 'isoformat'):
                 time_bucket = time_bucket_raw.isoformat()
             else:

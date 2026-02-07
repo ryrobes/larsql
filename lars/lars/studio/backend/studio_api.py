@@ -1787,7 +1787,7 @@ def get_models():
 
 def _fetch_ollama_models_from_db():
     """
-    Fetch Ollama models from the openrouter_models table in ClickHouse.
+    Fetch Ollama models from the openrouter_models table in the database.
 
     Returns models grouped by host for UI display:
     {
@@ -1800,14 +1800,14 @@ def _fetch_ollama_models_from_db():
         Dict mapping host/alias to list of model dicts
     """
     try:
-        # Use ClickHouse connection from lars (not DuckDB)
+        # Use DuckDB connection from lars (not DuckDB)
         from lars.db_adapter import get_db
 
         db = get_db()
         if not db:
             return {}
 
-        # Query Ollama models from ClickHouse database
+        # Query Ollama models from DuckDB database
         query = """
             SELECT
                 model_id,
@@ -1885,7 +1885,7 @@ def _fetch_ollama_models_from_db():
 
 def _fetch_vertex_models_from_db():
     """
-    Fetch Vertex AI models from the openrouter_models table in ClickHouse.
+    Fetch Vertex AI models from the openrouter_models table in the database.
 
     Returns:
         List of model dicts compatible with OpenRouter schema
@@ -1897,7 +1897,7 @@ def _fetch_vertex_models_from_db():
         if not db:
             return []
 
-        # Query Vertex AI models from ClickHouse database
+        # Query Vertex AI models from DuckDB database
         query = """
             SELECT
                 model_id,
@@ -1975,7 +1975,7 @@ def _fetch_azure_models_from_db():
 
 def _fetch_bedrock_models_from_db():
     """
-    Fetch AWS Bedrock models from the openrouter_models table in ClickHouse.
+    Fetch AWS Bedrock models from the openrouter_models table in the database.
 
     Returns:
         List of model dicts compatible with OpenRouter schema
@@ -1987,7 +1987,7 @@ def _fetch_bedrock_models_from_db():
         if not db:
             return []
 
-        # Query Bedrock models from ClickHouse database
+        # Query Bedrock models from DuckDB database
         query = """
             SELECT
                 model_id,

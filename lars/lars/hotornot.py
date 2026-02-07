@@ -10,7 +10,7 @@ The goal: Collect human preference data that can later be used to:
 2. Train/prompt a model judge for scaled evaluation
 3. Identify winning patterns for prompt optimization
 
-Now uses pure ClickHouse for all operations (no DuckDB, no Parquet files).
+Now uses DuckDB for all operations.
 """
 
 import os
@@ -26,7 +26,7 @@ from .config import get_config
 
 
 def _get_db():
-    """Get ClickHouse database adapter."""
+    """Get DuckDB database adapter."""
     from .db_adapter import get_db_adapter
     return get_db_adapter()
 
@@ -87,9 +87,9 @@ SETTINGS index_granularity = 8192;
 
 class EvaluationsLogger:
     """
-    Logger for human evaluations with buffered writes to ClickHouse.
+    Logger for human evaluations with buffered writes to DuckDB.
 
-    Writes directly to the evaluations table in ClickHouse.
+    Writes directly to the evaluations table in DuckDB.
     """
 
     def __init__(self):
@@ -246,14 +246,14 @@ class EvaluationsLogger:
             self.flush()
 
     def flush(self):
-        """Flush buffered evaluations to ClickHouse."""
+        """Flush buffered evaluations to DuckDB."""
         if not self.buffer:
             return
 
         try:
             db = _get_db()
             db.insert_rows('evaluations', self.buffer)
-            print(f"[Hot or Not] Saved {len(self.buffer)} evaluations to ClickHouse")
+            print(f"[Hot or Not] Saved {len(self.buffer)} evaluations to DuckDB")
 
         except Exception as e:
             print(f"[Hot or Not] Error flushing evaluations: {e}")
@@ -314,7 +314,7 @@ def flush_evaluations():
 # Query functions
 def query_evaluations(where_clause: str | None = None, order_by: str = "timestamp DESC") -> pd.DataFrame:
     """
-    Query evaluations from ClickHouse.
+    Query evaluations from the database.
 
     Examples:
         # All evaluations

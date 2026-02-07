@@ -32,7 +32,7 @@ import atexit
 # =============================================================================
 # Async Tracking Executor
 # =============================================================================
-# Shared thread pool for fire-and-forget ClickHouse tracking operations.
+# Shared thread pool for fire-and-forget DuckDB tracking operations.
 # Pre-creates worker threads to avoid per-operation thread creation overhead.
 # All session state writes (except final COMPLETED/ERROR) use this for non-blocking I/O.
 
@@ -72,7 +72,7 @@ def _parse_datetime(value: Any) -> Optional[datetime]:
     """
     Parse datetime-like values that may come back as strings in CHDB mode.
 
-    ClickHouse server (clickhouse-driver) returns datetime objects for DateTime/DateTime64,
+    The database may return datetime objects for DateTime/DateTime64,
     while CHDB (JSON formats) can return strings.
     """
     if value is None:
@@ -216,7 +216,7 @@ class SessionState:
 
 class SessionStateManager:
     """
-    Manages cascade session state using ClickHouse as the coordination database.
+    Manages cascade session state using DuckDB as the coordination database.
 
     Provides:
     - Session state CRUD operations
@@ -231,7 +231,7 @@ class SessionStateManager:
         Initialize the SessionStateManager.
 
         Args:
-            use_db: If True, persist to ClickHouse. If False, use in-memory only (testing).
+            use_db: If True, persist to the database. If False, use in-memory only (testing).
         """
         self.use_db = use_db
 
@@ -649,7 +649,7 @@ class SessionStateManager:
 
     def _save_state(self, state: SessionState, sync: bool = False):
         """
-        Save session state to ClickHouse.
+        Save session state to DuckDB.
 
         Args:
             state: SessionState to persist
@@ -665,12 +665,12 @@ class SessionStateManager:
             executor.submit(self._save_state_sync, state)
 
     def _save_state_sync(self, state: SessionState):
-        """Save session state to ClickHouse (synchronous)."""
+        """Save session state to DuckDB (synchronous)."""
         try:
             from .db_adapter import get_db
             db = get_db()
 
-            # Convert timezone-aware datetimes to naive UTC for ClickHouse
+            # Convert timezone-aware datetimes to naive UTC for DuckDB
             def to_naive_utc(dt):
                 if dt is None:
                     return None
@@ -712,7 +712,7 @@ class SessionStateManager:
             print(f"[SessionState] Could not save state to DB: {e}")
 
     def _load_state(self, session_id: str) -> Optional[SessionState]:
-        """Load session state from ClickHouse."""
+        """Load session state from DuckDB."""
         try:
             from .db_adapter import get_db
             db = get_db()
@@ -742,7 +742,7 @@ class SessionStateManager:
         cascade_id: Optional[str] = None,
         limit: int = 100
     ) -> List[SessionState]:
-        """Query sessions from ClickHouse with filters."""
+        """Query sessions from DuckDB with filters."""
         try:
             from .db_adapter import get_db
             db = get_db()

@@ -187,7 +187,7 @@ Return ONLY the title, nothing else."""
                 safe_title = title.replace("'", "''")
 
                 # Update title in database
-                # For ClickHouse: use ALTER TABLE UPDATE
+                # For DuckDB: use ALTER TABLE UPDATE
                 # For chDB: delete and re-insert (handled by caching + next save cycle)
                 if hasattr(config, 'use_clickhouse_server') and config.use_clickhouse_server:
                     try:
@@ -309,7 +309,7 @@ Return ONLY the title, nothing else."""
                 cascade_id = entries[0].get('cascade_id') or 'unknown'
                 print(f"[ResearchAutoSave] Detected cascade_id from entries: {cascade_id}")
 
-            # Ensure cascade_id is never None (ClickHouse String columns don't accept None)
+            # Ensure cascade_id is never None (DuckDB String columns don't accept None)
             if cascade_id is None:
                 cascade_id = "unknown"
 
@@ -323,7 +323,7 @@ Return ONLY the title, nothing else."""
             title = self._get_smart_title(session_id, checkpoints) or f"Research Session - {session_id[:12]}"
             description = f"Research session with {len(checkpoints)} interactions" if checkpoints else "Auto-saved research session"
 
-            # Ensure all string fields have defaults (ClickHouse String columns don't accept None)
+            # Ensure all string fields have defaults (DuckDB String columns don't accept None)
             title = title or f"Research Session - {session_id[:12]}"
             description = description or "Auto-saved research session"
 
@@ -346,7 +346,7 @@ Return ONLY the title, nothing else."""
             existing = list(existing_result) if existing_result else []
 
             if existing:
-                # Update existing - use simple UPDATE (ALTER TABLE is ClickHouse-specific)
+                # Update existing - use simple UPDATE (ALTER TABLE is DuckDB-specific)
                 try:
                     # Delete old record and insert new one (safer than ALTER TABLE)
                     db.execute(f"DELETE FROM research_sessions WHERE original_session_id = '{session_id}'")

@@ -70,7 +70,7 @@ class Watch:
 
     @classmethod
     def from_db_row(cls, row: Dict[str, Any]) -> 'Watch':
-        """Create Watch from ClickHouse row."""
+        """Create Watch from DuckDB row."""
         return cls(
             watch_id=row['watch_id'],
             name=row['name'],
@@ -114,11 +114,11 @@ class WatchExecution:
 
 
 # ============================================================================
-# Watch Storage (ClickHouse)
+# Watch Storage (DuckDB)
 # ============================================================================
 
 def get_all_watches(enabled_only: bool = True) -> List[Watch]:
-    """Load all watches from ClickHouse."""
+    """Load all watches from DuckDB."""
     from lars.db_adapter import get_db
 
     db = get_db()
@@ -158,7 +158,7 @@ def get_watch_by_name(name: str) -> Optional[Watch]:
 
 
 def save_watch(watch: Watch) -> bool:
-    """Save or update a watch in ClickHouse."""
+    """Save or update a watch in DuckDB."""
     from lars.db_adapter import get_db
 
     db = get_db()
@@ -256,7 +256,7 @@ def update_watch_state(
 
 
 def record_execution(execution: WatchExecution) -> bool:
-    """Record a watch execution in ClickHouse."""
+    """Record a watch execution in DuckDB."""
     from lars.db_adapter import get_db
 
     db = get_db()
@@ -302,7 +302,7 @@ def execute_watch_query(query: str, session_id: str = "watcher") -> Tuple[Option
     - Aggregate functions (SUMMARIZE, CLASSIFY)
     - UDFs (lars_udf, semantic_embed, etc.)
     - Custom SQL functions from cascades
-    - ClickHouse tables (lars.*) via lazy attach
+    - Database tables (lars.*) via lazy attach
 
     Returns:
         Tuple of (rows, error_message)
@@ -318,11 +318,11 @@ def execute_watch_query(query: str, session_id: str = "watcher") -> Tuple[Option
         # Get session-scoped DuckDB with all UDFs registered
         conn = get_session_db(session_id)
 
-        # Set up lazy attach for lars.* ClickHouse tables
+        # Set up lazy attach for lars.* DuckDB tables
         sql_connections = load_sql_connections()
         lazy_attach = LazyAttachManager(conn, sql_connections)
 
-        # Ensure any referenced ClickHouse tables are materialized
+        # Ensure any referenced DuckDB tables are materialized
         lazy_attach.ensure_for_query(query, aggressive=True)
 
         # Rewrite query through semantic SQL pipeline
@@ -503,7 +503,7 @@ class WatchDaemon:
     Background daemon that polls watches and fires actions.
 
     The daemon:
-    1. Loads enabled watches from ClickHouse
+    1. Loads enabled watches from the database
     2. Evaluates each watch that's due for checking
     3. Detects changes in query results
     4. Fires configured actions (cascade, signal, or SQL)
@@ -521,7 +521,7 @@ class WatchDaemon:
         self.session_prefix = session_prefix
         self.running = False
         self._shutdown_event = threading.Event()
-        # In-memory cache of result hashes to avoid ClickHouse merge timing issues
+        # In-memory cache of result hashes to avoid DuckDB merge timing issues
         self._result_hash_cache: Dict[str, str] = {}
 
     def start(self):
@@ -626,7 +626,7 @@ class WatchDaemon:
         if watch.last_checked_at is None:
             return True
 
-        # Handle timezone-naive datetimes from ClickHouse
+        # Handle timezone-naive datetimes from DuckDB
         last_checked = watch.last_checked_at
         if last_checked.tzinfo is None:
             last_checked = last_checked.replace(tzinfo=timezone.utc)
@@ -663,7 +663,7 @@ class WatchDaemon:
             return
 
         # Check if results changed (debounce)
-        # Use in-memory cache first (avoids ClickHouse merge timing issues),
+        # Use in-memory cache first (avoids DuckDB merge timing issues),
         # fall back to DB value for first run or after daemon restart
         result_hash = hash_result(rows)
         cached_hash = self._result_hash_cache.get(watch.watch_id)
@@ -727,7 +727,7 @@ class WatchDaemon:
                 consecutive_errors=0,
                 last_error=None,
             )
-            # Update in-memory cache to avoid ClickHouse merge timing issues
+            # Update in-memory cache to avoid DuckDB merge timing issues
             self._result_hash_cache[watch.watch_id] = result_hash
 
             log.info(f"[watcher] Watch '{watch.name}' action completed successfully")

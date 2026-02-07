@@ -275,7 +275,7 @@ def clear_cache():
     """
     Clear any cached data.
 
-    In the ClickHouse implementation, there's no local cache to clear.
+    In the DuckDB implementation, there's no local cache to clear.
     This function is kept for backward compatibility.
     """
-    pass  # No-op - ClickHouse handles caching internally
+    pass  # No-op - DuckDB handles caching internally

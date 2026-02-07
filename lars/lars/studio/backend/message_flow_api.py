@@ -215,7 +215,7 @@ def get_message_flow(session_id):
             if node_type == 'turn' and role == 'structure':
                 continue
 
-            # Ensure context_hashes is a list (ClickHouse Array type)
+            # Ensure context_hashes is a list (DuckDB Array type)
             ctx_hashes = context_hashes if isinstance(context_hashes, list) else []
 
             # Track the index in all_messages for direct DOM ID mapping
@@ -524,7 +524,7 @@ def get_message_flow(session_id):
 @message_flow_bp.route('/api/running-sessions', methods=['GET'])
 def get_running_sessions():
     """
-    Get list of recently active cascade sessions from ClickHouse.
+    Get list of recently active cascade sessions from the database.
     Returns session IDs with their cascade_id and age for quick selection.
     Uses session_state table as source of truth for status.
     """
@@ -534,9 +534,9 @@ def get_running_sessions():
         current_time = time.time()
         #print(f"[API] current_time (Python time.time()): {current_time}")
 
-        # Query recent sessions from ClickHouse (last 10 minutes, most recent first)
+        # Query recent sessions from DuckDB (last 10 minutes, most recent first)
         # Use argMax to get the latest cascade_id/cascade_file for each session_id
-        # This handles ClickHouse merge timing and ensures one row per session
+        # This handles DuckDB merge timing and ensures one row per session
         # NOTE: Cast DateTime64(6) to Unix timestamp in seconds for proper parsing
         query = """
         SELECT
@@ -566,7 +566,7 @@ def get_running_sessions():
         session_states = {}
         if session_ids:
             try:
-                # Build IN clause with quoted session IDs (safe: session_ids from ClickHouse, not user input)
+                # Build IN clause with quoted session IDs (safe: session_ids from DuckDB, not user input)
                 session_ids_str = ','.join(f"'{sid}'" for sid in session_ids)
                 state_query = f"""
                 SELECT
@@ -595,7 +595,7 @@ def get_running_sessions():
             session_id, cascade_id, cascade_file, start_time, last_activity, msg_count, total_cost = row
 
             # Parse timestamps (should now be Unix timestamps in seconds from epoch())
-            # ClickHouse can return datetime objects or numeric timestamps
+            # DuckDB can return datetime objects or numeric timestamps
             if hasattr(start_time, 'timestamp'):
                 start_ts = start_time.timestamp()
             elif start_time is not None:

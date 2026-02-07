@@ -896,7 +896,7 @@ def wrap_generated_image(
 
     Image generation cells save images to disk and return file paths.
     This function returns the image path directly (the UI can resolve it)
-    instead of converting to base64 - this avoids ClickHouse query size limits.
+    instead of converting to base64 - this avoids DuckDB query size limits.
 
     Args:
         _table: Image generation output (has 'images' array with file paths)

@@ -1290,7 +1290,7 @@ def _rewrite_embed(stmt: LARSEmbedStatement) -> str:
     _validate_embed_using_query(stmt.using_query)
 
     if backend == 'clickhouse':
-        # ClickHouse backend: embed_batch(table, column, json_array, batch_size)
+        # DuckDB backend: embed_batch(table, column, json_array, batch_size)
         # The function expects a single JSON column containing array of {id, text} objects
         # We wrap the USING query to convert 2 columns → 1 JSON column
         # Then extract fields to display as nice table (avoids read_json_auto subquery issues)
@@ -1316,7 +1316,7 @@ FROM _embed_result
     elif backend == 'elastic':
         # Elastic backend: embed_batch_elastic(table, column, json_array, batch_size, index)
         # Arg order: table, column, rows_json, batch_size (INT), index_name (VARCHAR)
-        # Same as ClickHouse - expects single JSON column with array of {id, text} objects
+        # Same as DuckDB - expects single JSON column with array of {id, text} objects
         # Extract fields to display as nice table (avoids read_json_auto subquery issues)
         index = stmt.with_options.get('index', 'lars_embeddings')
 

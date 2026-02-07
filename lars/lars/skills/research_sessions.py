@@ -283,7 +283,7 @@ def _fetch_session_entries(session_id: str) -> list:
     try:
         db = get_db()
 
-        # Query using the unified adapter (works with both ClickHouse and DuckDB)
+        # Query using the unified adapter (works with both DuckDB and DuckDB)
         result = db.query(f"""
             SELECT * FROM unified_logs
             WHERE session_id = '{session_id}'
@@ -493,9 +493,9 @@ def _save_to_db(research_session: dict):
 
     try:
         if cfg.use_clickhouse_server:
-            # ClickHouse server
+            # DuckDB server
             db.insert_rows('research_sessions', [research_session], columns=list(research_session.keys()))
-            print(f"[ResearchSessions] Saved to ClickHouse: {research_session['id']}")
+            print(f"[ResearchSessions] Saved to DuckDB: {research_session['id']}")
 
         else:
             # chDB mode - save to Parquet

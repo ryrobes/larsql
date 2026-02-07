@@ -163,7 +163,7 @@ def sql_rag_search(
     score_threshold: Optional[float] = 0.3
 ) -> str:
     """
-    Search SQL schema metadata using ClickHouse RAG (pure vector search).
+    Search SQL schema metadata using DuckDB RAG (pure vector search).
 
     **Note:** This is the legacy RAG-based approach. For better results with smaller
     payloads, use `sql_search` which uses Elasticsearch hybrid search.
@@ -205,7 +205,7 @@ def sql_rag_search(
     cfg = get_config()
     samples_dir = os.path.join(cfg.root_dir, "sql_connections", "samples")
 
-    # Verify RAG index exists in ClickHouse
+    # Verify RAG index exists in DuckDB
     from ..db_adapter import get_db
     db = get_db()
     chunk_count = db.query(
@@ -217,7 +217,7 @@ def sql_rag_search(
             "hint": "Run: lars sql chart"
         })
 
-    # Create RagContext (ClickHouse-based, no file paths needed)
+    # Create RagContext (DuckDB-based, no file paths needed)
     rag_ctx = RagContext(
         rag_id=meta.rag_id,
         directory=samples_dir,

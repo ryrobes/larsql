@@ -98,9 +98,9 @@ class MemorySystem:
         self._metadata_cache[memory_name] = metadata
 
     def _get_rag_context(self, memory_name: str) -> Optional[RagContext]:
-        """Get RAG context for a memory bank (ClickHouse-based).
+        """Get RAG context for a memory bank (DuckDB-based).
 
-        This creates a simple RagContext that points to ClickHouse.
+        This creates a simple RagContext that points to DuckDB.
         No Parquet files or batch indexing needed - messages are indexed
         incrementally as they're saved.
         """
@@ -114,18 +114,18 @@ class MemorySystem:
             self._rag_contexts[memory_name] = rag_ctx
             return rag_ctx
 
-        # Create ClickHouse-based context
+        # Create DuckDB-based context
         from .db_adapter import get_db
         db = get_db()
 
         rag_id = f"memory_{memory_name}"
 
-        # Check if any chunks exist in ClickHouse
+        # Check if any chunks exist in DuckDB
         chunk_count_query = f"SELECT COUNT(*) as cnt FROM rag_chunks WHERE rag_id = '{rag_id}'"
         result = db.query(chunk_count_query)
 
         if not result or result[0]['cnt'] == 0:
-            logger.debug(f"No indexed messages in ClickHouse for memory: {memory_name}")
+            logger.debug(f"No indexed messages in DuckDB")
             return None
 
         # Get embedding model and dimension from existing chunks
@@ -166,7 +166,7 @@ class MemorySystem:
         message: dict,
         metadata: dict
     ):
-        """Save a message to memory and index it in ClickHouse for search.
+        """Save a message to memory and index it in DuckDB for search.
 
         Args:
             memory_name: Name of the memory bank
@@ -216,7 +216,7 @@ class MemorySystem:
                 embedding = embed_result['embeddings'][0]
                 embedding_dim = embed_result['dim']
 
-                # Insert into ClickHouse/CHDB rag_chunks table (text + metadata only).
+                # Insert into DuckDB/CHDB rag_chunks table (text + metadata only).
                 # Embedding vectors are stored in DuckDB vector store to reduce load on the persistence DB.
                 from .db_adapter import get_db
                 import uuid

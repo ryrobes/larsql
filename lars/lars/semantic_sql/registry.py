@@ -463,7 +463,7 @@ def get_cached_result(name: str, args: Dict[str, Any]) -> Tuple[bool, Any]:
     """
     Get a cached result for a function call.
 
-    Uses the persistent SemanticCache (L1 in-memory + L2 ClickHouse).
+    Uses the persistent SemanticCache (L1 in-memory + L2 database).
 
     Returns (found, result) tuple.
     """
@@ -481,7 +481,7 @@ def set_cached_result(name: str, args: Dict[str, Any], result: Any) -> None:
     """
     Cache a function result.
 
-    Uses the persistent SemanticCache (L1 in-memory + L2 ClickHouse).
+    Uses the persistent SemanticCache (L1 in-memory + L2 database).
     """
     fn = get_sql_function(name)
     if not fn or not fn.cache_enabled:
@@ -502,7 +502,7 @@ def clear_cache(name: Optional[str] = None) -> int:
     """
     Clear the function result cache.
 
-    Uses the persistent SemanticCache (L1 in-memory + L2 ClickHouse).
+    Uses the persistent SemanticCache (L1 in-memory + L2 database).
 
     Args:
         name: If provided, only clear cache for this function.

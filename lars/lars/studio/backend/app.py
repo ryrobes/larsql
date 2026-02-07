@@ -3,7 +3,7 @@ LARS UI Backend - Flask server for cascade exploration and analytics
 
 Data source: DuckDB unified_logs table (real-time + historical)
 
-The unified_logs.py writes directly to ClickHouse with ~1 second latency.
+The unified_logs.py writes directly to DuckDB with ~1 second latency.
 Checkpoint caching (live_store.py) is used only for HITL workflows.
 """
 import os
@@ -33,7 +33,7 @@ if 'LARS_ROOT' not in os.environ:
 else:
     print(f"[Backend] Using LARS_ROOT={os.environ['LARS_ROOT']}")
 
-# Note: live_store.py is now a stub - all data comes from ClickHouse directly
+# Note: live_store.py is now a stub - all data comes from DuckDB directly
 
 # Add lars package to path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..', 'lars')))
@@ -285,7 +285,7 @@ def sanitize_for_json(obj):
 def to_iso_string(ts):
     """Convert a timestamp to ISO string format.
 
-    Handles both datetime objects (from ClickHouse) and Unix timestamps (floats).
+    Handles both datetime objects (from the database) and Unix timestamps (floats).
     Returns None if input is None/empty.
     """
     if ts is None:
@@ -304,7 +304,7 @@ def timestamp_to_float(ts):
     """Convert a timestamp to float (Unix timestamp).
 
     Handles:
-    - pandas Timestamp objects (from ClickHouse queries)
+    - pandas Timestamp objects (from database queries)
     - datetime objects
     - numeric values (int/float)
     - None
@@ -360,12 +360,12 @@ def detect_and_mark_orphaned_cascades():
 
     Finds sessions with cascade_start but no terminal event (cascade_complete,
     cascade_failed, cascade_error, cascade_killed) and marks them as killed
-    by inserting a cascade_killed record to ClickHouse.
+    by inserting a cascade_killed record to DuckDB.
     """
     try:
         db = get_db()
 
-        # Find orphaned sessions using ClickHouse
+        # Find orphaned sessions using DuckDB
         orphan_query = f"""
         WITH started_sessions AS (
             SELECT DISTINCT session_id, cascade_id
@@ -454,7 +454,7 @@ def detect_and_mark_orphaned_cascades():
                 })
             })
 
-        # Insert to ClickHouse
+        # Insert to DuckDB
         if killed_records:
             db.insert_rows('unified_logs_base', killed_records)
             print(f"⚠️  Marked {len(killed_records)} orphaned cascade(s) as killed")
@@ -471,7 +471,7 @@ def detect_and_mark_orphaned_cascades():
 
 
 class ClickHouseConnection:
-    """Wrapper around ClickHouse adapter for compatibility with existing code.
+    """Wrapper around DuckDB adapter for compatibility with existing code.
 
     Provides execute() method that returns a result-like object compatible
     with the existing code patterns that used DuckDB.
@@ -486,9 +486,9 @@ class ClickHouseConnection:
         """Execute query with logging. Returns a result wrapper."""
         self._query_count += 1
 
-        # Handle parameter substitution (convert ? to %s for ClickHouse)
+        # Handle parameter substitution (convert ? to %s for DuckDB)
         if params:
-            # ClickHouse uses different parameter syntax - use simple string substitution for now
+            # DuckDB uses different parameter syntax - use simple string substitution for now
             # This handles the common case of single parameter queries
             if isinstance(params, (list, tuple)):
                 for param in params:
@@ -520,7 +520,7 @@ class ClickHouseConnection:
             raise
 
     def close(self):
-        """No-op for ClickHouse (connection pooled by adapter)."""
+        """No-op for DuckDB (connection pooled by adapter)."""
         if self._verbose:
             avg_time = (self._total_time / self._query_count * 1000) if self._query_count > 0 else 0
             print(f"[CH] Session complete: {self._query_count} queries, {self._total_time*1000:.1f}ms total, {avg_time:.1f}ms avg")
@@ -534,7 +534,7 @@ class ClickHouseConnection:
 
 
 class ClickHouseResult:
-    """Wrapper to make ClickHouse results compatible with DuckDB-style access."""
+    """Wrapper to make DuckDB results compatible with DuckDB-style access."""
     def __init__(self, rows):
         self._rows = rows
 
@@ -565,14 +565,14 @@ class ClickHouseResult:
 
 
 def invalidate_cache():
-    """No-op - ClickHouse doesn't need cache invalidation."""
-    print(f"[CH] Cache invalidation not needed for ClickHouse")
+    """No-op - DuckDB doesn't need cache invalidation."""
+    print(f"[CH] Cache invalidation not needed for DuckDB")
 
 
 def get_db_connection():
-    """Get a ClickHouse connection wrapper.
+    """Get a DuckDB connection wrapper.
 
-    The ClickHouse adapter is a singleton that manages its own connection pool,
+    The DuckDB adapter is a singleton that manages its own connection pool,
     so this is lightweight and can be called frequently.
     """
     return ClickHouseConnection()
@@ -590,8 +590,8 @@ def get_available_columns():
         return []
 
 
-# NOTE: build_instance_from_live_store was removed in the ClickHouse migration.
-# All session data now comes directly from ClickHouse with ~1s latency.
+# NOTE: build_instance_from_live_store was removed in the DuckDB migration.
+# All session data now comes directly from DuckDB with ~1s latency.
 
 
 
@@ -605,11 +605,11 @@ _cascade_definitions_cache = {
 @app.route('/api/cascade-definitions', methods=['GET'])
 def get_cascade_definitions():
     """
-    Get all cascade definitions (from filesystem) with execution metrics from ClickHouse.
+    Get all cascade definitions (from filesystem) with execution metrics from the database.
 
     Uses intelligent caching:
     - Cascade definitions cached for 60s (filesystem scan is slow)
-    - Metrics ALWAYS fetched fresh from ClickHouse (they change frequently)
+    - Metrics ALWAYS fetched fresh from the database (they change frequently)
 
     Query params:
         refresh: Set to 'true' to force cache refresh
@@ -734,7 +734,7 @@ def get_cascade_definitions():
             _cascade_definitions_cache['timestamp'] = now
             print(f"[CASCADE-CACHE] Cached {len(all_cascades)} cascade definitions")
 
-        # ALWAYS enrich with FRESH metrics from ClickHouse (not cached)
+        # ALWAYS enrich with FRESH metrics from DuckDB (not cached)
         conn = get_db_connection()
 
         try:
@@ -1057,7 +1057,7 @@ def get_cascade_definitions():
             # Get version info for all cascades in one query
             cascade_ids = list(all_cascades.keys())
             if cascade_ids:
-                # Build IN clause directly (ClickHouse supports tuple literals)
+                # Build IN clause directly (DuckDB supports tuple literals)
                 # Escape single quotes in cascade IDs
                 escaped_ids = [cid.replace("'", "\\'") for cid in cascade_ids]
                 ids_list = "(" + ",".join([f"'{cid}'" for cid in escaped_ids]) + ")"
@@ -1893,7 +1893,7 @@ def get_cascade_instances(cascade_id):
             error_list = errors_by_session.get(session_id, [])
             error_count = len(error_list)
 
-            # Determine cascade status - use session_state (ClickHouse) as source of truth
+            # Determine cascade status - use session_state (DuckDB) as source of truth
             # Fall back to cell-based derivation if session_state not available
             durable_state = session_states_by_id.get(session_id)
             if durable_state:
@@ -2385,7 +2385,7 @@ def enable_cascade(cascade_id):
 
 @app.route('/api/session/<session_id>', methods=['GET'])
 def get_session_detail(session_id):
-    """Get detailed data for a specific session from ClickHouse."""
+    """Get detailed data for a specific session from DuckDB."""
     try:
         conn = get_db_connection()
 
@@ -2434,7 +2434,7 @@ def get_session_detail(session_id):
         return jsonify({
             'session_id': session_id,
             'entries': entries,
-            'source': 'clickhouse'
+            'source': 'database'
         })
 
     except Exception as e:
@@ -2809,7 +2809,7 @@ def get_model_filters(session_id):
 def dump_session(session_id):
     """
     Dump complete session to a single JSON file for debugging.
-    Reads from ClickHouse and saves to logs/session_dumps/{session_id}.json
+    Reads from the database and saves to logs/session_dumps/{session_id}.json
     """
     try:
         conn = get_db_connection()
@@ -2869,7 +2869,7 @@ def get_takes_tree(session_id):
     Data source: DuckDB unified_logs table
     """
     try:
-        # Query ClickHouse for takes data
+        # Query DuckDB for takes data
         conn = get_db_connection()
         query = """
         SELECT
@@ -2904,7 +2904,7 @@ def get_takes_tree(session_id):
 
         # Debug: log available columns and sample data
         print(f"[API] takes-tree columns: {list(df.columns)}")
-        print(f"[API] Total rows from ClickHouse: {len(df)}")
+        print(f"[API] Total rows from DuckDB")
         if 'mutation_type' in df.columns:
             mutation_types = df['mutation_type'].dropna().unique().tolist()
             print(f"[API] mutation_type values in df: {mutation_types}")
@@ -6044,7 +6044,7 @@ def voice_status():
 
 @app.route('/api/debug/schema', methods=['GET'])
 def debug_schema():
-    """Debug endpoint to show what columns and data exist in ClickHouse"""
+    """Debug endpoint to show what columns and data exist in DuckDB"""
     try:
         conn = get_db_connection()
 
@@ -6085,7 +6085,7 @@ def debug_schema():
 
         return jsonify({
             'data_dir': DATA_DIR,
-            'clickhouse_connected': True,
+            'database_connected': True,
             'columns': columns,
             'column_count': len(columns),
             'sample_rows': sample_df.to_dict('records') if not sample_df.empty else [],
@@ -6113,7 +6113,7 @@ def get_session_human_inputs(session_id):
         conn = get_db_connection()
 
         # Query for ask_human tool calls and their results
-        # Use position() instead of LIKE to avoid % escaping issues with clickhouse_driver
+        # Use position() instead of LIKE to avoid % escaping issues with database_driver
         query = """
         SELECT
             timestamp,
@@ -6357,7 +6357,7 @@ def get_available_tools():
 @app.route('/api/available-models', methods=['GET'])
 def get_available_models():
     """
-    Get list of available models from ClickHouse.
+    Get list of available models from the database.
     Replaces OpenRouter API + file cache with database query.
     """
     from lars.db_adapter import get_db
@@ -6428,7 +6428,7 @@ def get_available_models():
 @app.route('/api/image-generation-models', methods=['GET'])
 def get_image_generation_models():
     """
-    Get list of models that can generate images from ClickHouse.
+    Get list of models that can generate images from the database.
     Replaces ModelRegistry with database query.
     """
     from lars.db_adapter import get_db
@@ -6548,7 +6548,7 @@ if __name__ == '__main__':
     stats_thread = threading.Thread(target=log_connection_stats, daemon=True)
     stats_thread.start()
 
-    # Debug: Check ClickHouse data availability
+    # Debug: Check DuckDB data availability
     conn = get_db_connection()
     try:
         stats = conn.execute("""
@@ -6573,7 +6573,7 @@ if __name__ == '__main__':
             print()
 
     except Exception as e:
-        print(f"⚠️  Error querying ClickHouse: {e}")
+        print(f"⚠️  Error querying DuckDB")
         print()
     finally:
         conn.close()

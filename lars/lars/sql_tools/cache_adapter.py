@@ -3,7 +3,7 @@ Persistent Cache Adapter for Semantic SQL operations.
 
 Provides a two-tier caching system:
 - L1: In-memory dict (fast, volatile)
-- L2: ClickHouse table (persistent, queryable)
+- L2: database table (persistent, queryable)
 
 Features:
 - Write-through: Writes go to both L1 and L2
@@ -45,7 +45,7 @@ class SemanticCache:
     Two-tier cache for semantic SQL operations.
 
     L1: In-memory dict for fast lookups
-    L2: ClickHouse table for persistence and queryability
+    L2: DuckDB table for persistence and queryability
     """
 
     _instance = None
@@ -55,7 +55,7 @@ class SemanticCache:
     _l1_cache: Dict[str, Tuple[Any, str, float, Optional[float]]] = {}
     _l1_lock = threading.Lock()
 
-    # ClickHouse connection (lazy initialized)
+    # DuckDB connection (lazy initialized)
     _db = None
     _db_initialized = False
     _table_ensured = False
@@ -79,7 +79,7 @@ class SemanticCache:
         return cls._instance
 
     def _get_db(self):
-        """Lazily initialize ClickHouse connection."""
+        """Lazily initialize DuckDB connection."""
         if not self._db_initialized:
             try:
                 from ..db_adapter import get_db
@@ -87,13 +87,13 @@ class SemanticCache:
                 self._db_initialized = True
                 self._ensure_table()
             except Exception as e:
-                log.warning(f"[SemanticCache] ClickHouse not available: {e}")
+                log.warning(f"[SemanticCache] DuckDB")
                 self._db = None
                 self._db_initialized = True  # Don't retry
         return self._db
 
     def _ensure_table(self):
-        """Ensure the cache table exists in ClickHouse."""
+        """Ensure the cache table exists in DuckDB."""
         if self._table_ensured or not self._db:
             return
 
@@ -316,7 +316,7 @@ class SemanticCache:
             self._l1_cache.pop(cache_key, None)
 
     def _get_l2(self, cache_key: str) -> Optional[Tuple[Any, str, float, Optional[float], int]]:
-        """Get from L2 (ClickHouse) cache."""
+        """Get from L2 (DuckDB) cache."""
         db = self._get_db()
         if not db:
             return None
@@ -332,7 +332,7 @@ class SemanticCache:
 
             if rows and len(rows) > 0:
                 row = rows[0]
-                # Handle both dict and tuple formats from ClickHouse driver
+                # Handle both dict and tuple formats from DuckDB driver
                 if isinstance(row, dict):
                     result = row.get("result")
                     result_type = row.get("result_type")
@@ -382,7 +382,7 @@ class SemanticCache:
         session_id: str,
         caller_id: str
     ):
-        """Set in L2 (ClickHouse) cache asynchronously."""
+        """Set in L2 (DuckDB) cache asynchronously."""
         # Run in thread to not block
         def _write():
             db = self._get_db()
@@ -401,7 +401,7 @@ class SemanticCache:
                 expires_dt = datetime.fromtimestamp(expires_at) if expires_at else self.FAR_FUTURE
 
                 # Use INSERT with ON DUPLICATE KEY UPDATE semantics via ReplacingMergeTree
-                # ClickHouse will handle deduplication
+                # DuckDB will handle deduplication
                 row = {
                     "cache_key": cache_key,
                     "function_name": function_name,
@@ -619,7 +619,7 @@ class SemanticCache:
                 if rows and len(rows) > 0:
                     row = rows[0]
                     stats["l2"]["available"] = True
-                    # Handle both dict and tuple formats from ClickHouse driver
+                    # Handle both dict and tuple formats from DuckDB driver
                     if isinstance(row, dict):
                         stats["l2"]["entries"] = row.get("entries", 0)
                         stats["l2"]["total_hits"] = row.get("total_hits", 0) or 0

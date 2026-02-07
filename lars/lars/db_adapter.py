@@ -2,13 +2,13 @@
 Database adapter layer for LARS - DuckDB + Parquet persistence.
 
 This module provides a unified database interface for LARS, backed by
-DuckDB reading from Parquet files. It replaces the previous ClickHouse
+DuckDB reading from Parquet files. It replaces the previous
 implementation with a pure local storage solution.
 
 Key features:
 - No external database server required
 - Concurrent read/write support via separate parquet files
-- Compatible API with the previous ClickHouse adapter
+- Compatible API with the previous DuckDB adapter
 - Async fire-and-forget logging for query/deref events
 """
 import json
@@ -96,7 +96,7 @@ def set_query_page_ref(page_ref: str):
 
 
 # =============================================================================
-# Compatibility Stubs for ClickHouse-specific functions
+# Compatibility Stubs for DuckDB-specific functions
 # =============================================================================
 
 def _normalize_db_mode(mode: str | None) -> str:
@@ -119,7 +119,7 @@ def _clickhouse_server_reachable(
     timeout_s: float = 0.5,
 ) -> bool:
     """
-    Check if ClickHouse server is reachable.
+    Check if DuckDB server is reachable.
     
     Always returns False with DuckDB/Parquet backend.
     Kept for CLI compatibility.
@@ -473,10 +473,10 @@ class DuckDBAdapter:
     """
     DuckDB + Parquet adapter for LARS persistence.
     
-    Provides the same interface as the previous ClickHouseAdapter but
+    Provides a compatible interface using
     uses DuckDB reading from Parquet files for storage.
     
-    Key differences from ClickHouse:
+    Key differences from the previous implementation:
     - No external server required
     - Writes create new parquet files (append-only)
     - Updates are handled by writing new rows; reads use "latest wins" semantics
@@ -496,7 +496,7 @@ class DuckDBAdapter:
         return cls._instance
 
     def __init__(self, **kwargs):
-        """Initialize adapter. Ignores ClickHouse-specific kwargs for compatibility."""
+        """Initialize adapter. Ignores DuckDB-specific kwargs for compatibility."""
         with DuckDBAdapter._lock:
             if DuckDBAdapter._initialized:
                 return
@@ -536,7 +536,7 @@ class DuckDBAdapter:
         Execute a SELECT query and return results.
         
         Args:
-            sql: SQL query string (DuckDB SQL dialect, with ClickHouse compat)
+            sql: SQL query string (DuckDB SQL dialect, with legacy compat)
             params: Optional query parameters (%(name)s style)
             output_format: "dict" (list of dicts), "dataframe", or "raw" (tuples)
             log_query: Whether to log this query
@@ -554,7 +554,7 @@ class DuckDBAdapter:
             if params:
                 sql = self._substitute_params(sql, params)
             
-            # Translate ClickHouse-specific SQL to DuckDB
+            # Translate DuckDB-specific SQL to DuckDB
             sql = self._translate_clickhouse_sql(sql)
             
             result = self._db.query(sql, output_format=output_format)
@@ -609,7 +609,7 @@ class DuckDBAdapter:
             if params:
                 sql = self._substitute_params(sql, params)
             
-            # Translate ClickHouse-specific SQL to DuckDB
+            # Translate DuckDB-specific SQL to DuckDB
             sql = self._translate_clickhouse_sql(sql)
             
             self._db.execute(sql)
@@ -662,9 +662,9 @@ class DuckDBAdapter:
 
     def _translate_clickhouse_sql(self, sql: str) -> str:
         """
-        Translate ClickHouse-specific SQL to DuckDB-compatible SQL.
+        Translate DuckDB-specific SQL to DuckDB-compatible SQL.
         
-        Handles common patterns that were used in the ClickHouse implementation:
+        Handles common patterns that were used in the DuckDB implementation:
         - ALTER TABLE ... UPDATE → UPDATE ... SET ...
         - uniqExactIf(col, cond) → COUNT(DISTINCT col) FILTER (WHERE cond)
         - countIf(cond) → COUNT(*) FILTER (WHERE cond)
@@ -726,7 +726,7 @@ class DuckDBAdapter:
             flags=re.IGNORECASE
         )
         
-        # 5. dateDiff → date_diff (ClickHouse uses camelCase, DuckDB uses snake_case)
+        # 5. dateDiff → date_diff (DuckDB uses camelCase, DuckDB uses snake_case)
         sql = re.sub(r'\bdateDiff\s*\(', 'date_diff(', sql, flags=re.IGNORECASE)
         
         # 6. endsWith(str, suffix) → suffix(str, suffix) or ends_with(str, suffix)
@@ -764,18 +764,18 @@ class DuckDBAdapter:
         # 12. CREATE DATABASE → CREATE SCHEMA (DuckDB doesn't have databases, uses schemas)
         sql = re.sub(r'\bCREATE\s+DATABASE\s+', 'CREATE SCHEMA ', sql, flags=re.IGNORECASE)
         
-        # 13. lagInFrame → LAG (ClickHouse window function)
+        # 13. lagInFrame → LAG (DuckDB window function)
         sql = re.sub(r'\blagInFrame\s*\(', 'LAG(', sql, flags=re.IGNORECASE)
         sql = re.sub(r'\bleadInFrame\s*\(', 'LEAD(', sql, flags=re.IGNORECASE)
         
-        # 14. arrayJoin → UNNEST (ClickHouse array expansion)
+        # 14. arrayJoin → UNNEST (DuckDB array expansion)
         sql = re.sub(r'\barrayJoin\s*\(', 'UNNEST(', sql, flags=re.IGNORECASE)
         
         # 15. has(array, element) → array_contains(array, element) or list_contains
         sql = re.sub(r'\bhas\s*\(\s*([^,]+)\s*,\s*([^)]+)\s*\)', r'list_contains(\1, \2)', sql, flags=re.IGNORECASE)
         
         # 16. length(array) for arrays → array_length / len
-        # Note: length() works for strings in both, but for arrays ClickHouse uses length()
+        # Note: length() works for strings in both, but for arrays DuckDB uses length()
         # DuckDB uses len() or array_length() - len() works for both strings and arrays
         
         # 17. toDateTime(x) → CAST(x AS TIMESTAMP)
@@ -804,13 +804,13 @@ class DuckDBAdapter:
         # multiIf(cond1, val1, cond2, val2, default) → CASE WHEN cond1 THEN val1 WHEN cond2 THEN val2 ELSE default END
         # Too complex for regex - leave for manual handling
         
-        # 19. Empty string comparisons - ClickHouse uses = '', DuckDB same but nullable handling differs
+        # 19. Empty string comparisons - DuckDB uses = '', DuckDB same but nullable handling differs
         # No change needed
         
         # 20. FINAL keyword (remove it - handled by dedup views)
         sql = re.sub(r'\bFINAL\b', '', sql, flags=re.IGNORECASE)
         
-        # 21. now64() → now() (ClickHouse high-precision timestamp)
+        # 21. now64() → now() (DuckDB high-precision timestamp)
         sql = re.sub(r'\bnow64\s*\(\s*\)', 'now()', sql, flags=re.IGNORECASE)
         
         # 22. subtractMinutes(ts, n) → (ts - INTERVAL n MINUTE)
@@ -886,7 +886,7 @@ class DuckDBAdapter:
         # 30. toStartOfHour(ts) → date_trunc('hour', ts)
         sql = re.sub(r'\btoStartOfHour\s*\(', "date_trunc('hour', ", sql, flags=re.IGNORECASE)
         
-        # 31. any(col) → ANY_VALUE(col) - ClickHouse aggregate to get any value from group
+        # 31. any(col) → ANY_VALUE(col) - DuckDB aggregate to get any value from group
         sql = re.sub(r'\bany\s*\(', 'ANY_VALUE(', sql, flags=re.IGNORECASE)
         
         # 32. sumIf(col, cond) → SUM(col) FILTER (WHERE cond)
@@ -949,7 +949,7 @@ class DuckDBAdapter:
         sql = re.sub(r'\btuple\s*\(', 'ROW(', sql, flags=re.IGNORECASE)
         
         # 42. position(haystack, needle) → strpos(haystack, needle) - same args
-        # Note: ClickHouse also has position(needle IN haystack) syntax which is different
+        # Note: DuckDB also has position(needle IN haystack) syntax which is different
         sql = re.sub(r'\bposition\s*\(([^,]+),\s*([^)]+)\)', r'strpos(\1, \2)', sql, flags=re.IGNORECASE)
         
         # 43. extract(str, pattern) → regexp_extract(str, pattern)
@@ -962,7 +962,7 @@ class DuckDBAdapter:
         sql = re.sub(r'\bvarSamp\s*\(', 'var_samp(', sql, flags=re.IGNORECASE)
         
         # 45. if(isNaN(expr), 0, expr) → COALESCE(expr, 0)
-        # ClickHouse uses isNaN for NaN checks; DuckDB aggregates return NULL instead
+        # DuckDB uses isNaN for NaN checks; DuckDB aggregates return NULL instead
         # This handles patterns like: if(isNaN(AVG(col)), 0, AVG(col))
         # We use a function to handle nested parentheses properly
         def replace_if_isnan_pattern(sql_text):
@@ -1116,7 +1116,7 @@ class DuckDBAdapter:
             table: Table name
             updates: Dict of column -> new value
             where: WHERE clause (without WHERE keyword), e.g. "session_id = 'abc'"
-            sync: Ignored (for ClickHouse compatibility)
+            sync: Ignored (for legacy compatibility)
             log_query: Whether to log
         """
         import re

@@ -2,7 +2,7 @@
 LarsDB - DuckDB + Parquet persistence layer for LARS.
 
 This module provides the core database abstraction for LARS, replacing
-ClickHouse/chDB with a pure DuckDB + Parquet architecture.
+DuckDB/chDB with a pure DuckDB + Parquet architecture.
 
 Key principles:
 - DuckDB connection = stateless shell (extensions loaded, views registered, no .duckdb file)
@@ -94,7 +94,7 @@ def _get_data_root() -> Path:
 # =============================================================================
 
 # Maps table names to their column definitions for parquet schema
-# These match the ClickHouse schemas but use DuckDB/Arrow types
+# These match the DuckDB schemas but use DuckDB/Arrow types
 
 def _duckdb_type_to_pyarrow(dtype: str) -> pa.DataType:
     """Convert DuckDB type string to PyArrow type."""
@@ -1904,10 +1904,10 @@ class LarsDB:
         Register derived views that depend on base system views.
         
         These are views that filter/aggregate base tables, replacing
-        ClickHouse-specific features like FINAL keyword.
+        DuckDB-specific features like FINAL keyword.
         """
         # artifact_registry_current - shows only active, non-deleted artifacts
-        # Replaces the ClickHouse FINAL keyword which collapsed versioned rows
+        # Replaces the DuckDB FINAL keyword which collapsed versioned rows
         try:
             conn.execute("""
                 CREATE OR REPLACE VIEW artifact_registry_current AS
@@ -1950,7 +1950,7 @@ class LarsDB:
         
         # unified_logs - THE main view that all code queries
         # Merges unified_logs_base (parquet) with costs table (async cost updates)
-        # This replaces the old ClickHouse approach where costs were updated in-place
+        # This replaces the old DuckDB approach where costs were updated in-place
         try:
             conn.execute("""
                 CREATE OR REPLACE VIEW unified_logs AS
@@ -2814,7 +2814,7 @@ class LarsDBAdapter:
     """
     Adapter class that provides db_adapter-compatible interface.
     
-    This allows gradual migration from ClickHouseAdapter to LarsDB
+    This allows gradual migration from the old adapter to LarsDB
     by providing the same method signatures.
     """
     
@@ -2830,7 +2830,7 @@ class LarsDBAdapter:
         return cls._instance
     
     def __init__(self, **kwargs):
-        """Initialize with LarsDB backend. Ignores ClickHouse-specific kwargs."""
+        """Initialize with LarsDB backend. Ignores DuckDB-specific kwargs."""
         if self._initialized:
             return
         self._db = get_lars_db()

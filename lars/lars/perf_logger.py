@@ -1,7 +1,7 @@
 """
 Performance logging system for LARS cascade execution.
 
-Provides low-overhead timing instrumentation that logs to ClickHouse
+Provides low-overhead timing instrumentation that logs to DuckDB
 for analysis and optimization tracking.
 
 Usage:
@@ -39,7 +39,7 @@ def perf_timer(
     auto_flush: bool = True
 ):
     """
-    Context manager for timing code blocks with automatic ClickHouse logging.
+    Context manager for timing code blocks with automatic DuckDB logging.
 
     Args:
         label: Metric name (e.g., "config_load", "agent_call", "tool_execution")
@@ -47,7 +47,7 @@ def perf_timer(
         cascade_id: Optional cascade identifier
         cell_name: Optional cell name
         metadata: Optional dict of additional metadata (will be JSON serialized)
-        auto_flush: If True, periodically flush buffer to ClickHouse
+        auto_flush: If True, periodically flush buffer to DuckDB
 
     Example:
         with perf_timer("database_query", session_id=sid, metadata={"table": "users"}):
@@ -104,7 +104,7 @@ def _serialize_metadata(metadata: Dict[str, Any]) -> str:
 
 def flush_metrics():
     """
-    Flush buffered metrics to ClickHouse.
+    Flush buffered metrics to DuckDB.
 
     This is called automatically when buffer reaches threshold,
     or can be called manually at cascade end.
@@ -119,14 +119,14 @@ def flush_metrics():
         metrics_to_write = _metrics_buffer.copy()
         _metrics_buffer.clear()
 
-    # Write to ClickHouse (non-blocking, best effort)
+    # Write to DuckDB (non-blocking, best effort)
     try:
         from .db_adapter import get_db
         from datetime import datetime
 
         db = get_db()
 
-        # Convert to ClickHouse-friendly format
+        # Convert to DuckDB-friendly format
         rows = []
         for m in metrics_to_write:
             rows.append({
@@ -153,7 +153,7 @@ def flush_metrics():
             ]
         )
 
-        logger.debug(f"Flushed {len(rows)} perf metrics to ClickHouse")
+        logger.debug(f"Flushed {len(rows)} perf metrics to DuckDB")
 
     except Exception as e:
         # Don't fail cascades due to perf logging issues

@@ -288,7 +288,7 @@ def list_rag_sources():
 
             indices = db.query(indices_query)
 
-            # Note: directory is not stored in ClickHouse, only file paths
+            # Note: directory is not stored in DuckDB, only file paths
             # We could derive a common prefix, but for now just return rag_id
             result_indices = [
                 {

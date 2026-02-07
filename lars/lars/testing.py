@@ -569,7 +569,7 @@ class AnchorExtractor:
 # =============================================================================
 
 class SnapshotCapture:
-    """Captures cascade executions from ClickHouse unified_logs table."""
+    """Captures cascade executions from DuckDB unified_logs table."""
 
     def __init__(self, data_dir: str | None = None):
         from lars.config import get_config
@@ -604,7 +604,7 @@ class SnapshotCapture:
         """
         print(f"Freezing session {session_id} as test snapshot...")
 
-        # Query unified_logs table directly (pure ClickHouse)
+        # Query unified_logs table directly (pure DuckDB)
         query = f"""
             SELECT
                 timestamp,

@@ -179,7 +179,7 @@ class RuntimeEventLogger:
             except TypeError:
                 db.execute(RUNTIME_EVENT_LOG_SCHEMA)
 
-            # Note: ClickHouse-specific ALTER TABLE and bloom_filter indexes removed.
+            # Note: DuckDB-specific ALTER TABLE and bloom_filter indexes removed.
             # DuckDB schema includes connection_id column by default.
 
             self._client = db

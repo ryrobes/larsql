@@ -241,8 +241,8 @@ def create_artifact(
         "description": description or "",
         "html_content": html,
         "tags": json.dumps(tags) if tags else "[]",
-        "created_at": now,  # datetime object for ClickHouse
-        "updated_at": now   # datetime object for ClickHouse
+        "created_at": now,  # datetime object for DuckDB
+        "updated_at": now   # datetime object for DuckDB
     }
 
     # Save to database
@@ -302,9 +302,9 @@ def _save_artifact_to_db(artifact: dict):
     # Just insert the artifact
     try:
         if cfg.use_clickhouse_server:
-            # ClickHouse server - use insert_rows method
+            # DuckDB server - use insert_rows method
             db.insert_rows('artifacts', [artifact], columns=list(artifact.keys()))
-            print(f"[Artifacts] Saved to ClickHouse table: {artifact['id']}")
+            print(f"[Artifacts] Saved to DuckDB table: {artifact['id']}")
 
         else:
             # chDB mode - save to Parquet

@@ -7,7 +7,7 @@ supporting both semantic SQL tests and cascade snapshot tests.
 Features:
 - Test discovery from cascade files and snapshot directories
 - Synchronous test execution with polling for status
-- Historical run storage in ClickHouse
+- Historical run storage in DuckDB
 - Flaky test detection and analytics
 """
 
@@ -150,7 +150,7 @@ def _get_config():
 
 
 def _get_db():
-    """Get ClickHouse connection."""
+    """Get DuckDB connection."""
     from lars.db_adapter import get_db_adapter
     return get_db_adapter()
 
@@ -847,7 +847,7 @@ def _run_visual_test(test: TestDefinition, db) -> TestResult:
     session_id = f"visual_{test.test_id.replace('/', '_')}_{uuid.uuid4().hex[:8]}"
 
     try:
-        # Find previous run for this test from ClickHouse
+        # Find previous run for this test from DuckDB
         previous_session_id = None
         try:
             prev_rows = db.query("""

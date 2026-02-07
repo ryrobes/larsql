@@ -86,7 +86,7 @@ def list_artifacts_endpoint():
 
         # Query from appropriate source
         if cfg.use_clickhouse_server:
-            # ClickHouse server - query table directly
+            # DuckDB server - query table directly
             query = f"""
                 SELECT
                     id,

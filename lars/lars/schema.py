@@ -1,8 +1,8 @@
 """
-ClickHouse schema definitions for LARS logging system.
+DuckDB schema definitions for LARS logging system.
 
-This module defines all table schemas for the pure ClickHouse implementation.
-Tables are auto-created on startup by ClickHouseAdapter._ensure_tables().
+This module defines all table schemas for the pure DuckDB implementation.
+Tables are auto-created on startup by the db_adapter._ensure_tables().
 
 Tables:
 - unified_logs: Main execution logs (messages, tool calls, etc.)
@@ -470,7 +470,7 @@ ORDER BY cascade_id;
 # SIGNALS TABLE - Cross-Cascade Communication
 # =============================================================================
 # Stores signals for cascades waiting on external events (webhooks, sensors, etc.)
-# Uses HTTP callbacks for reactive wake-up with ClickHouse as durable store
+# Uses HTTP callbacks for reactive wake-up with DuckDB as durable store
 
 SIGNALS_SCHEMA = """
 CREATE TABLE IF NOT EXISTS signals (
@@ -523,7 +523,7 @@ PARTITION BY toYYYYMM(created_at);
 # SESSION STATE TABLE - Durable Execution Coordination
 # =============================================================================
 # Central source of truth for cascade execution state. Replaces JSON file-based
-# state tracking with ClickHouse-native coordination for:
+# state tracking with DuckDB-native coordination for:
 # - Cross-process visibility (any CLI can see any session's state)
 # - Zombie detection via heartbeat expiry
 # - Cancellation support
@@ -906,7 +906,7 @@ CREATE TABLE IF NOT EXISTS runtime_event_log (
 );
 """
 
-# Legacy ClickHouse version (kept for reference)
+# Legacy DuckDB version (kept for reference)
 RUNTIME_EVENT_LOG_SCHEMA_CLICKHOUSE = """
 CREATE TABLE IF NOT EXISTS runtime_event_log (
     event_id UUID DEFAULT generateUUIDv4(),
@@ -961,7 +961,7 @@ SETTINGS index_granularity = 8192;
 # OPENROUTER MODELS TABLE - Model Verification & Caching
 # =============================================================================
 # Stores OpenRouter models with verification status. Replaces file-based cache
-# with ClickHouse-backed storage for model availability tracking.
+# with DuckDB-backed storage for model availability tracking.
 
 OPENROUTER_MODELS_SCHEMA = """
 CREATE TABLE IF NOT EXISTS openrouter_models (
@@ -1020,7 +1020,7 @@ PARTITION BY model_type;
 # HUGGINGFACE SPACES TABLE - Harbor System Cache
 # =============================================================================
 # Stores user's HuggingFace Spaces with status/cost tracking.
-# Replaces in-memory cache with ClickHouse-backed persistence.
+# Replaces in-memory cache with DuckDB-backed persistence.
 
 HF_SPACES_SCHEMA = """
 CREATE TABLE IF NOT EXISTS hf_spaces (

@@ -2296,7 +2296,7 @@ def embedding_search():
 
         query_vector = result['embeddings'][0]
 
-        # Format vector for ClickHouse
+        # Format vector for DuckDB
         vector_str = '[' + ', '.join(str(x) for x in query_vector) + ']'
 
         # Search for similar content

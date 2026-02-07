@@ -10,7 +10,7 @@ overflow LLM context windows. It acts as both:
 When content exceeds a configurable threshold, it is automatically:
 - Chunked with sentence-boundary awareness
 - Embedded using the configured embedding model
-- Indexed in ClickHouse with a session-scoped ephemeral rag_id
+- Indexed in DuckDB with a session-scoped ephemeral rag_id
 - Replaced with a placeholder and search tool injection
 
 The model then naturally uses the search tool to find relevant sections,
@@ -84,7 +84,7 @@ class EphemeralRagManager:
     This is the core class that:
     - Detects large content at any entry point
     - Chunks and embeds content
-    - Stores in ClickHouse with ephemeral rag_id
+    - Stores in DuckDB with ephemeral rag_id
     - Creates search tools for the model
     - Cleans up on context exit
 
@@ -370,7 +370,7 @@ class EphemeralRagManager:
         # Embed chunks
         embeddings = self._embed_chunks(chunks)
 
-        # Insert into ClickHouse
+        # Insert into DuckDB
         self._insert_chunks(rag_id, source, chunks, embeddings, content_hash)
 
         # Create placeholder text
@@ -546,7 +546,7 @@ class EphemeralRagManager:
         content_hash: str,
     ):
         """
-        Insert chunks into ClickHouse/CHDB (text + metadata) and upsert vectors to DuckDB vector store.
+        Insert chunks into DuckDB (text + metadata) and upsert vectors to DuckDB vector store.
 
         Args:
             rag_id: Ephemeral RAG identifier

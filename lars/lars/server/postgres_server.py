@@ -137,7 +137,7 @@ class ClientConnection:
         self.server = server  # Reference to parent server for connection tracking
         self.idle_timeout = idle_timeout  # Seconds before disconnecting idle client (0 = disabled)
         self.database_name = 'default'  # Logical database name from client connection
-        self.results_db_name = 'lars_results_default'  # ClickHouse database for INTO tables (namespaced by database_name)
+        self.results_db_name = 'lars_results_default'  # DuckDB database for INTO tables (namespaced by database_name)
         self.user_name = 'lars'       # Logical user name from client connection
         self.application_name = 'unknown'
         self.duckdb_conn = None
@@ -162,7 +162,7 @@ class ClientConnection:
         self._is_pooled_connection = False
 
         # Console logging: keep stdout sane under concurrent connections.
-        # Most events are written to ClickHouse `runtime_event_log` instead.
+        # Most events are written to DuckDB `runtime_event_log` instead.
         self._console_log_level = self._parse_log_level(os.environ.get("LARS_PG_CONSOLE_LOG_LEVEL", "ERROR"))
 
         # Authentication state
@@ -190,7 +190,7 @@ class ClientConnection:
 
     def _runtime_log(self, level: str, message: str, *, event: str = "", **extra) -> None:
         """
-        Write an operational log event to ClickHouse (and optionally to stdout).
+        Write an operational log event to the database (and optionally to stdout).
 
         This is for high-volume runtime/pgwire logs, not cascade message records.
         """
@@ -244,7 +244,7 @@ class ClientConnection:
             from ..sql_tools.udf import register_dynamic_sql_functions, register_lars_udf
 
             # Pgwire uses an in-memory DuckDB session per client connection (optionally pre-warmed from a pool).
-            # Durable tables/results live in ClickHouse (via INTO rewriting / query insurance).
+            # Durable tables/results live in DuckDB (via INTO rewriting / query insurance).
             self.db_lock = Lock()  # Per-connection lock (not shared)
             pooled_conn = None
             try:
@@ -1926,7 +1926,7 @@ class ClientConnection:
         return result_df
 
     def _pandas_dtype_to_clickhouse(self, dtype) -> str:
-        """Convert pandas dtype to ClickHouse type."""
+        """Convert pandas dtype to DuckDB type."""
         dtype_str = str(dtype).lower()
 
         if 'int64' in dtype_str:
@@ -1961,7 +1961,7 @@ class ClientConnection:
             return 'String'  # Default to String for object, category, etc.
 
     def _sanitize_column_name(self, name: str) -> str:
-        """Sanitize column name for ClickHouse."""
+        """Sanitize column name for DuckDB."""
         import re
         # Replace non-alphanumeric chars with underscore
         sanitized = re.sub(r'[^a-zA-Z0-9_]', '_', str(name))
@@ -2070,7 +2070,7 @@ class ClientConnection:
             safe_table_suffix = re.sub(r'[^a-zA-Z0-9]', '_', effective_caller_id)
             result_table_name = f"r_{safe_table_suffix}"
 
-            # === PRIMARY: Create actual table in ClickHouse ===
+            # === PRIMARY: Create actual table in DuckDB ===
             try:
                 from ..db_adapter import get_db
                 db = get_db()
@@ -2129,19 +2129,19 @@ class ClientConnection:
                             row_values.append(val)
                     rows_to_insert.append(tuple(row_values))
 
-                # Batch insert (ClickHouse is optimized for this)
+                # Batch insert (DuckDB is optimized for this)
                 if rows_to_insert:
                     # Build VALUES clause
                     def format_value(v):
                         if v is None:
                             return 'NULL'
                         elif isinstance(v, str):
-                            # Escape: backslash, single quote, and % (ClickHouse driver uses %-formatting)
+                            # Escape: backslash, single quote, and % (DuckDB driver uses %-formatting)
                             return "'" + v.replace("\\", "\\\\").replace("'", "''").replace("%", "%%") + "'"
                         elif isinstance(v, bool):
                             return '1' if v else '0'
                         elif isinstance(v, float):
-                            # Handle nan/inf - ClickHouse can't store these in numeric columns
+                            # Handle nan/inf - DuckDB can't store these in numeric columns
                             import math
                             if math.isnan(v) or math.isinf(v):
                                 return 'NULL'
@@ -2149,10 +2149,10 @@ class ClientConnection:
                         elif isinstance(v, int):
                             return str(v)
                         elif isinstance(v, (dict, list)):
-                            # Escape: backslash, single quote, and % (ClickHouse driver uses %-formatting)
+                            # Escape: backslash, single quote, and % (DuckDB driver uses %-formatting)
                             return "'" + json.dumps(v).replace("\\", "\\\\").replace("'", "''").replace("%", "%%") + "'"
                         else:
-                            # Escape: backslash, single quote, and % (ClickHouse driver uses %-formatting)
+                            # Escape: backslash, single quote, and % (DuckDB driver uses %-formatting)
                             return "'" + str(v).replace("\\", "\\\\").replace("'", "''").replace("%", "%%") + "'"
 
                     # Insert in batches of 1000
@@ -2171,10 +2171,10 @@ class ClientConnection:
                 safe_caller_id = effective_caller_id.replace("'", "''")
                 safe_query_id = query_id.replace("'", "''")
                 safe_source_db = self.database_name.replace("'", "''")
-                # Escape single quotes for SQL and % for Python string formatting (ClickHouse driver uses %)
+                # Escape single quotes for SQL and % for Python string formatting (DuckDB driver uses %)
                 safe_query = query[:10000].replace("'", "''").replace("%", "%%")
 
-                # Format arrays for ClickHouse
+                # Format arrays for DuckDB
                 columns_arr = "[" + ",".join(f"'{c.replace(chr(39), chr(39)+chr(39))}'" for c in sanitized_columns) + "]"
                 types_arr = "[" + ",".join(f"'{t.replace(chr(39), chr(39)+chr(39))}'" for t in column_types) + "]"
 
@@ -2207,7 +2207,7 @@ class ClientConnection:
                 )
 
                 result_location = {
-                    'stored_in': 'clickhouse',
+                    'stored_in': 'database',
                     'result_table': result_table_name,
                     'caller_id': effective_caller_id,
                     'query_id': query_id,
@@ -2218,8 +2218,8 @@ class ClientConnection:
             except Exception as ch_err:
                 self._runtime_log(
                     "WARN",
-                    f"ClickHouse storage failed: {ch_err}",
-                    event="query_insurance_clickhouse_failed",
+                    f"DuckDB storage failed: {ch_err}",
+                    event="query_insurance_db_failed",
                     query_id=query_id,
                     caller_id=effective_caller_id,
                     error_type=type(ch_err).__name__,
@@ -4319,11 +4319,11 @@ class ClientConnection:
         Handle client startup message.
 
         Extracts database name and username from startup params.
-        Sets up session_id and ClickHouse results namespace for INTO tables.
+        Sets up session_id and DuckDB results namespace for INTO tables.
 
         Notes:
         - DuckDB is always ephemeral per pgwire connection.
-        - The `database` name namespaces INTO tables into ClickHouse database: lars_results_<database>.
+        - The `database` name namespaces INTO tables into DuckDB database: lars_results_<database>.
         """
         import re
 
@@ -4359,7 +4359,7 @@ class ClientConnection:
                 startup_params=startup_params,
             )
 
-        # Enforce safe database names (used for ClickHouse namespace: lars_results_<db_name>).
+        # Enforce safe database names (used for DuckDB namespace: lars_results_<db_name>).
         # Be strict: reject anything outside [A-Za-z_][A-Za-z0-9_]{0,63}.
         # This avoids injection and "silent fixing" that could misroute persisted tables.
         if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", database or ""):
@@ -4631,14 +4631,14 @@ class ClientConnection:
 
             result_kwargs = {}
             if result_location:
-                # New format: results stored in ClickHouse (lars_results.query_results)
-                # The API will query ClickHouse directly using caller_id
-                if result_location.get('stored_in') == 'clickhouse':
+                # New format: results stored in DuckDB (lars_results.query_results)
+                # The API will query DuckDB directly using caller_id
+                if result_location.get('stored_in') == 'database':
                     # Just log that we have results, actual data is in lars_results database
                     self._runtime_log(
                         "DEBUG",
-                        f"Results stored in ClickHouse: caller_id={result_location.get('caller_id')}, rows={result_location.get('row_count')}",
-                        event="sql_trail_result_stored_clickhouse",
+                        f"Results stored in database: caller_id={result_location.get('caller_id')}, rows={result_location.get('row_count')}",
+                        event="sql_trail_result_stored_db",
                         caller_id=result_location.get("caller_id"),
                         row_count=result_location.get("row_count"),
                     )
@@ -5333,8 +5333,8 @@ class ClientConnection:
             }
             query = preprocess_deref_cascades(query, deref_context)
 
-            # Rewrite into_ table references to read from ClickHouse
-            # Tables created with ... INTO xxx are stored in ClickHouse as:
+            # Rewrite into_ table references to read from DuckDB
+            # Tables created with ... INTO xxx are stored in DuckDB as:
             #   <results_db_name>.into_xxx  (results_db_name = lars_results_<database_name>)
             try:
                 from ..sql_tools.into_table_rewriter import rewrite_into_tables
@@ -5634,7 +5634,7 @@ class ClientConnection:
             }
             query = preprocess_deref_cascades(query, deref_context)
 
-            # Rewrite into_ table references to read from ClickHouse
+            # Rewrite into_ table references to read from DuckDB
             try:
                 from ..sql_tools.into_table_rewriter import rewrite_into_tables
                 query, _ = rewrite_into_tables(query, results_db=self.results_db_name)
@@ -7036,7 +7036,7 @@ class ClientConnection:
 
         The query runs asynchronously in a separate thread with its own DuckDB
         connection (in-memory). Results and status are tracked in sql_query_log
-        (ClickHouse); result materialization uses ClickHouse ("query insurance").
+        (DuckDB); result materialization uses DuckDB ("query insurance").
 
         Usage:
             BACKGROUND SELECT * FROM expensive_computation;
@@ -7082,7 +7082,7 @@ class ClientConnection:
 
         session_id = self.session_id
 
-        # Predict ClickHouse "query insurance" table name.
+        # Predict DuckDB "query insurance" table name.
         # Matches _maybe_materialize_result() naming: r_<caller_id sanitized>.
         safe_job_id = re.sub(r'[^a-zA-Z0-9]', '_', job_id)
         result_table_name = f"r_{safe_job_id}"
@@ -7130,7 +7130,7 @@ class ClientConnection:
                 except Exception:
                     pass
 
-                # Rewrite into_ table references to read from ClickHouse
+                # Rewrite into_ table references to read from DuckDB
                 try:
                     from ..sql_tools.into_table_rewriter import rewrite_into_tables
                     query, _ = rewrite_into_tables(query, results_db=self.results_db_name)
@@ -7203,7 +7203,7 @@ class ClientConnection:
                     row_count=len(result_df),
                 )
 
-                # Materialize results (ClickHouse "query insurance" table) and log location.
+                # Materialize results (DuckDB "query insurance" table) and log location.
                 result_location = None
                 if len(result_df) > 0:
                     try:
@@ -7407,7 +7407,7 @@ class ClientConnection:
 
             # For non-pipeline queries, use the existing rewriter-based EXPLAIN
             # (handles LARS MAP/RUN and inline semantic functions)
-            # Rewrite into_ table references to read from ClickHouse
+            # Rewrite into_ table references to read from DuckDB
             try:
                 from ..sql_tools.into_table_rewriter import rewrite_into_tables
                 query, _ = rewrite_into_tables(query, results_db=self.results_db_name)
@@ -7517,7 +7517,7 @@ class ClientConnection:
                         # Fall through to regular EXPLAIN handling
 
             # For non-pipeline queries (or if pipeline explain failed), use rewriter-based EXPLAIN
-            # Rewrite into_ table references to read from ClickHouse
+            # Rewrite into_ table references to read from DuckDB
             try:
                 from ..sql_tools.into_table_rewriter import rewrite_into_tables
                 query, _ = rewrite_into_tables(query, results_db=self.results_db_name)
@@ -7594,8 +7594,8 @@ class ClientConnection:
             # 1. Execute base SQL with unified rewriting (handles dimension functions, semantic operators, etc.)
             base_sql = pipeline.base_sql
 
-            # Rewrite into_ table references to read from ClickHouse
-            # Tables created with ... INTO xxx are stored in ClickHouse as:
+            # Rewrite into_ table references to read from DuckDB
+            # Tables created with ... INTO xxx are stored in DuckDB as:
             #   <results_db_name>.into_xxx  (results_db_name = lars_results_<database_name>)
             try:
                 from ..sql_tools.into_table_rewriter import rewrite_into_tables
@@ -8107,7 +8107,7 @@ class ClientConnection:
         )
 
         try:
-            # Rewrite into_ table references to read from ClickHouse
+            # Rewrite into_ table references to read from DuckDB
             try:
                 from ..sql_tools.into_table_rewriter import rewrite_into_tables
                 query, _ = rewrite_into_tables(query, results_db=self.results_db_name)
@@ -8572,7 +8572,7 @@ class ClientConnection:
                             # Execute base SQL with unified rewriting (handles dimension functions, semantic operators, etc.)
                             base_sql = pipeline.base_sql
 
-                            # Rewrite into_ table references to read from ClickHouse
+                            # Rewrite into_ table references to read from DuckDB
                             try:
                                 from ..sql_tools.into_table_rewriter import rewrite_into_tables
                                 base_sql, _ = rewrite_into_tables(base_sql, results_db=self.results_db_name)
@@ -10975,7 +10975,7 @@ class ClientConnection:
             try:
                 self.handle_startup(startup['params'])
             except ValueError as e:
-                # Fail fast before auth/session setup; invalid db names would corrupt ClickHouse namespacing.
+                # Fail fast before auth/session setup; invalid db names would corrupt DuckDB namespacing.
                 try:
                     self.sock.sendall(ErrorResponse.encode(
                         'FATAL',

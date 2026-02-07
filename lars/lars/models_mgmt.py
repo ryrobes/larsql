@@ -1,7 +1,7 @@
 """
 Model management for OpenRouter, Ollama, and Vertex AI models.
 
-Handles fetching, verification, and querying of models in ClickHouse.
+Handles fetching, verification, and querying of models in DuckDB.
 """
 
 import json
@@ -1232,7 +1232,7 @@ def verify_models_parallel(
 
 def refresh_models(skip_verification: bool = False, workers: int = 10):
     """
-    Main refresh function: fetch models from OpenRouter, Ollama, Vertex AI, and Bedrock, then populate ClickHouse.
+    Main refresh function: fetch models from OpenRouter, Ollama, Vertex AI, and Bedrock, then populate the database.
 
     Note: Azure OpenAI deployment discovery requires Azure AD auth which we don't support.
     Use azure/<deployment-name> directly with your deployment name from Azure Portal.

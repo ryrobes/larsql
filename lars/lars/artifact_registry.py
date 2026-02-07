@@ -28,7 +28,7 @@ def _query_one(db, sql: str, params: Optional[Dict] = None) -> Optional[Dict]:
     """
     Execute a query and return the first row, or None if no results.
 
-    Helper to adapt to ClickHouseAdapter API which doesn't have query_one().
+    Helper to adapt to db_adapter API which doesn't have query_one().
     """
     results = db.query(sql, params or {})
     return results[0] if results else None
@@ -46,7 +46,7 @@ class ArtifactRegistry:
 
     Architecture:
     - In-memory L1 cache (Dict[artifact_id, parsed_model])
-    - ClickHouse L2 persistent storage with versioning
+    - DuckDB L2 persistent storage with versioning
     - File system watching (immediate reactivity)
     - DB polling (distributed sync across instances)
     """

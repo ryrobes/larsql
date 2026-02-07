@@ -1,16 +1,16 @@
 """
-LARS Configuration - ClickHouse-compatible persistence
+LARS Configuration - DuckDB-compatible persistence
 
 This module provides centralized configuration for LARS.
 
-By default, LARS uses a ClickHouse server as its persistence layer. For easier local
-evaluation, LARS can optionally use CHDB (embedded ClickHouse) as a fallback so
-users don't need to run a ClickHouse service.
+By default, LARS uses a DuckDB server as its persistence layer. For easier local
+evaluation, LARS uses DuckDB + Parquet for persistence so
+users don't need to run a DuckDB service.
 
 Key notes:
-- ClickHouse SQL is the persistence dialect (server or CHDB).
+- DuckDB is the persistence dialect.
 - data_dir is kept for backward compatibility (RAG index files during transition).
-- All log/analytics data goes to ClickHouse tables directly.
+- All log/analytics data goes to DuckDB tables directly.
 """
 import os
 import json
@@ -274,7 +274,7 @@ def _load_mcp_servers_from_env() -> List[Any]:
 
 class Config(BaseModel):
     """
-    LARS configuration with ClickHouse as the primary database.
+    LARS configuration with DuckDB as the primary database.
 
     Environment variable prefix: LARS_
     Example: LARS_CLICKHOUSE_HOST sets clickhouse_host
@@ -391,7 +391,7 @@ class Config(BaseModel):
     # Root directory - single source of truth
     root_dir: str = Field(default=_LARS_ROOT)
 
-    # Logging directory (for file-based logs, not the ClickHouse data)
+    # Logging directory (for file-based logs, not the DuckDB data)
     log_dir: str = Field(default=os.path.join(_LARS_ROOT, "logs"))
 
     # Data directory - kept for:
@@ -429,13 +429,13 @@ class Config(BaseModel):
     )
 
     # =========================================================================
-    # Persistence Backend (ClickHouse server or CHDB)
+    # Persistence Backend (DuckDB server or CHDB)
     # =========================================================================
-    # In auto mode, LARS will attempt to connect to ClickHouse server and fall
+    # In auto mode, LARS will attempt to connect to DuckDB server and fall
     # back to CHDB if it is not reachable.
     db_mode: str = Field(
         default_factory=lambda: os.getenv("LARS_DB_MODE", "auto"),
-        description="Persistence backend mode: auto|clickhouse|chdb",
+        description="Persistence backend mode (deprecated): auto|clickhouse|chdb",
     )
     chdb_path: str = Field(
         default_factory=lambda: os.getenv("LARS_CHDB_PATH", os.path.join(_LARS_ROOT, "data", "lars.chdb")),
@@ -447,7 +447,7 @@ class Config(BaseModel):
     )
 
     # =========================================================================
-    # ClickHouse Server Configuration
+    # DuckDB Server Configuration
     # =========================================================================
     clickhouse_host: str = Field(
         default_factory=lambda: os.getenv("LARS_CLICKHOUSE_HOST", "localhost")
@@ -606,7 +606,7 @@ class Config(BaseModel):
     # =========================================================================
     # Deprecated Settings (kept for backward compatibility)
     # =========================================================================
-    # DEPRECATED: ClickHouse removed. Always returns False (uses DuckDB/Parquet instead)
+    # DEPRECATED: DuckDB removed. Always returns False (uses DuckDB/Parquet instead)
     use_clickhouse_server: bool = Field(
         default=False,
         description="DEPRECATED: ClickHouse removed. Now uses DuckDB/Parquet for persistence."
@@ -752,10 +752,10 @@ def set_clickhouse(
     password: str | None = None
 ):
     """
-    Override ClickHouse settings at runtime.
+    Override DuckDB settings at runtime.
 
     Args:
-        host: ClickHouse server hostname
+        host: DuckDB server hostname
         port: Native protocol port
         database: Database name
         user: Username

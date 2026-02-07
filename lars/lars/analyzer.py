@@ -48,7 +48,7 @@ class TakeAnalyzer:
         # This handles both full paths and just cascade_ids
         cascade_id = Path(cascade_file).stem if '/' in cascade_file or '\\' in cascade_file else cascade_file
 
-        # Query unified_logs table directly (pure ClickHouse)
+        # Query unified_logs table directly (pure DuckDB)
         # Search by both cascade_file (full path) AND cascade_id (logical name)
         # Most take logs only have cascade_id, not cascade_file
         sessions_query = f"""

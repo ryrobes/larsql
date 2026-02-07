@@ -92,7 +92,7 @@ def fetch_openrouter_credits() -> Dict[str, Any]:
 
 def get_last_snapshot() -> Optional[Dict[str, Any]]:
     """
-    Get the most recent credit snapshot from ClickHouse.
+    Get the most recent credit snapshot from the database.
 
     Returns:
         {
@@ -147,7 +147,7 @@ def log_credit_snapshot(
     session_id: Optional[str] = None
 ) -> bool:
     """
-    Insert credit snapshot to ClickHouse.
+    Insert credit snapshot to DuckDB.
 
     Only inserts if balance changed from last snapshot.
 

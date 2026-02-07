@@ -5,7 +5,7 @@ This module provides a unified "wait for condition" primitive that generalizes
 HITL, sensors, webhooks, and cross-cascade communication into a single pattern.
 
 Architecture:
-1. ClickHouse as durable signal store (survives restarts)
+1. DuckDB as durable signal store (survives restarts)
 2. HTTP callbacks for reactive wake-up (sub-second latency)
 3. Polling fallback for reliability (handles missed callbacks)
 
@@ -264,7 +264,7 @@ class SignalManager:
     - Signal registration with HTTP callback endpoints
     - Blocking wait with reactive wake-up
     - Signal firing with HTTP callbacks to waiting cascades
-    - ClickHouse persistence for durability
+    - DuckDB persistence for durability
     """
 
     def __init__(self, use_db: bool = True, start_server: bool = True):
@@ -272,7 +272,7 @@ class SignalManager:
         Initialize the SignalManager.
 
         Args:
-            use_db: If True, persist signals to ClickHouse
+            use_db: If True, persist signals to DuckDB
             start_server: If True, start the HTTP callback server
         """
         self.use_db = use_db
@@ -308,7 +308,7 @@ class SignalManager:
         print(f"[Signals] Callback server listening on {self._server_host}:{self._server_port}")
 
     def _ensure_table_exists(self):
-        """Ensure the signals table exists in ClickHouse."""
+        """Ensure the signals table exists in DuckDB."""
         try:
             from .db_adapter import get_db
             from .schema import get_schema
@@ -745,12 +745,12 @@ class SignalManager:
     # =========================================================================
 
     def _save_signal(self, signal: Signal):
-        """Save signal to ClickHouse."""
+        """Save signal to DuckDB."""
         try:
             from .db_adapter import get_db
             db = get_db()
 
-            # Convert timezone-aware datetimes to naive UTC for ClickHouse
+            # Convert timezone-aware datetimes to naive UTC for DuckDB
             def to_naive_utc(dt):
                 if dt is None:
                     return None
@@ -785,12 +785,12 @@ class SignalManager:
             print(f"[Signals] Could not save signal to DB: {e}")
 
     def _update_signal(self, signal: Signal):
-        """Update signal in ClickHouse (via new INSERT for ReplacingMergeTree)."""
+        """Update signal in DuckDB (via new INSERT for ReplacingMergeTree)."""
         # ReplacingMergeTree will dedupe by ORDER BY key, keeping latest
         self._save_signal(signal)
 
     def _load_signal(self, signal_id: str) -> Optional[Signal]:
-        """Load signal from ClickHouse."""
+        """Load signal from DuckDB."""
         try:
             from .db_adapter import get_db
             db = get_db()

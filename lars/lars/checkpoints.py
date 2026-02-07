@@ -177,7 +177,7 @@ class CheckpointManager:
             from .config import get_config
             config = get_config()
 
-            # Only create table for ClickHouse server mode
+            # Only create table for DuckDB server mode
             if hasattr(config, 'use_clickhouse_server') and config.use_clickhouse_server:
                 db = get_db_adapter()
                 ddl = get_schema("checkpoints")
@@ -670,7 +670,7 @@ class CheckpointManager:
 
             if hasattr(config, 'use_clickhouse_server') and config.use_clickhouse_server:
                 db = get_db_adapter()
-                # ClickHouse supports ALTER TABLE UPDATE for MergeTree family
+                # DuckDB supports ALTER TABLE UPDATE for MergeTree family
                 responded_at_sql = f"toDateTime64('{checkpoint.responded_at.isoformat()}', 3)" if checkpoint.responded_at else "NULL"
                 response_sql = f"'{json.dumps(checkpoint.response).replace(chr(39), chr(39)+chr(39))}'" if checkpoint.response else "NULL"
                 reasoning_sql = f"'{checkpoint.response_reasoning.replace(chr(39), chr(39)+chr(39))}'" if checkpoint.response_reasoning else "NULL"

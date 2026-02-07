@@ -40,7 +40,7 @@ _cascade_lock = Lock()
 # Cache Counter Accumulator (Thread-Safe)
 # ============================================================================
 # Accumulates cache hits/misses in memory during query execution.
-# Written to ClickHouse at query completion to avoid race conditions with
+# Written to DuckDB at query completion to avoid race conditions with
 # async INSERT/UPDATE (the INSERT might not be flushed when UPDATE runs).
 
 _cache_counters: Dict[str, Dict[str, int]] = {}  # caller_id -> {hits: n, misses: n}
@@ -584,7 +584,7 @@ def log_query_complete(
         if cascade_paths or cascade_count is not None:
             if _has_cascade_columns(db):
                 if cascade_paths:
-                    # Properly escape paths using ClickHouse array syntax
+                    # Properly escape paths using DuckDB array syntax
                     # Each path needs proper single quote escaping (' → '')
                     escaped_paths = [p.replace("'", "''") for p in cascade_paths]
                     paths_str = "['" + "','".join(escaped_paths) + "']"
@@ -612,7 +612,7 @@ def log_query_complete(
 
         set_clause = ', '.join(updates)
 
-        # Use standard UPDATE (DuckDB-compatible, not ClickHouse ALTER TABLE UPDATE)
+        # Use standard UPDATE (DuckDB-compatible, not DuckDB ALTER TABLE UPDATE)
         db.execute(f"""
             UPDATE sql_query_log
             SET {set_clause}
@@ -662,7 +662,7 @@ def log_query_error(
 
         set_clause = ', '.join(updates)
 
-        # Use standard UPDATE (DuckDB-compatible, not ClickHouse ALTER TABLE UPDATE)
+        # Use standard UPDATE (DuckDB-compatible, not DuckDB ALTER TABLE UPDATE)
         db.execute(f"""
             UPDATE sql_query_log
             SET {set_clause}
@@ -748,7 +748,7 @@ def increment_cache_hit(caller_id: Optional[str]):
     Increment cache_hits counter for a query.
 
     Called when a UDF returns a cached result instead of calling LLM.
-    Accumulates in memory - written to ClickHouse at query completion.
+    Accumulates in memory - written to DuckDB at query completion.
 
     Args:
         caller_id: The caller_id for the current SQL query
@@ -767,7 +767,7 @@ def increment_cache_miss(caller_id: Optional[str]):
     Increment cache_misses counter for a query.
 
     Called when a UDF actually invokes LLM (cache miss).
-    Accumulates in memory - written to ClickHouse at query completion.
+    Accumulates in memory - written to DuckDB at query completion.
 
     Args:
         caller_id: The caller_id for the current SQL query
@@ -808,7 +808,7 @@ def increment_llm_call(caller_id: Optional[str]):
     Increment llm_calls_count counter for a query.
 
     Called when a UDF makes an LLM call.
-    Uses ClickHouse atomic increment.
+    Uses DuckDB atomic increment.
 
     Args:
         caller_id: The caller_id for the current SQL query
@@ -893,7 +893,7 @@ def register_cascade_execution(
     Called when execute_cascade_udf runs a cascade. This tracks which
     cascades were invoked by a SQL query for later logging.
 
-    Now stores in ClickHouse table for multi-worker safety and persistence.
+    Now stores in DuckDB table for multi-worker safety and persistence.
 
     Args:
         caller_id: The caller_id for the parent SQL query

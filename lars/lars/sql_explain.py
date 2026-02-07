@@ -2953,7 +2953,7 @@ def _estimate_cost_per_row(model: str, cells: List[str], takes: int) -> float:
     """
     Estimate cost per row based on model pricing from openrouter_models table.
 
-    Uses _get_model_pricing() which queries ClickHouse and caches results.
+    Uses _get_model_pricing() which queries the database and caches results.
 
     Token estimation strategy (waterfall):
     1. Try to use actual token averages from historical executions (unified_logs)

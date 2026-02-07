@@ -1,7 +1,7 @@
 """
 Harbor management for HuggingFace Spaces.
 
-Handles fetching, caching, and querying of user's HF Spaces in ClickHouse.
+Handles fetching, caching, and querying of user's HF Spaces in DuckDB.
 """
 
 import json
@@ -25,7 +25,7 @@ console = Console()
 
 def refresh_spaces(author: Optional[str] = None):
     """
-    Main refresh function: fetch user's Spaces from HuggingFace and populate ClickHouse.
+    Main refresh function: fetch user's Spaces from HuggingFace and populate the database.
 
     Args:
         author: HuggingFace username (defaults to inferring from HF_TOKEN)
@@ -94,8 +94,8 @@ def refresh_spaces(author: Optional[str] = None):
 
         rows.append(row)
 
-    # Step 3: Insert into ClickHouse
-    console.print(f"[cyan]Inserting {len(rows)} spaces into ClickHouse...[/cyan]")
+    # Step 3: Insert into DuckDB
+    console.print(f"[cyan]Inserting {len(rows)} spaces into DuckDB")
 
     try:
         db.insert_rows("hf_spaces", rows)

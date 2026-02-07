@@ -293,10 +293,10 @@ def main():
     ssql_list_parser.add_argument('--verbose', '-v', action='store_true', help='Show detailed info including descriptions')
     ssql_list_parser.set_defaults(func=cmd_ssql_list)
 
-    # sql query (for querying ClickHouse)
+    # sql query (for querying DuckDB)
     sql_query_parser = sql_subparsers.add_parser(
         'query',
-        help='Query ClickHouse with SQL (supports magic table names like all_data, all_evals)',
+        help='Query database with SQL (supports magic table names like all_data, all_evals)',
         aliases=['q']  # Allow 'lars sql q "SELECT..."'
     )
     sql_query_parser.add_argument('query', help='SQL query (use all_data, all_evals as table names)')
@@ -924,7 +924,7 @@ def main():
     # cache stats - Show cache statistics
     cache_stats_parser = cache_subparsers.add_parser(
         'stats',
-        help='Show cache statistics (L1 in-memory + L2 ClickHouse)'
+        help='Show cache statistics (L1 in-memory + L2 database)'
     )
 
     # cache list - List cache entries
@@ -2408,7 +2408,7 @@ def cmd_analyze(args):
 # ========== SQL QUERY COMMAND ==========
 
 def cmd_sql(args):
-    """Execute a SQL query against ClickHouse with magic table name translation."""
+    """Execute a SQL query against DuckDB with magic table name translation."""
     import re
     from lars.config import get_config, get_clickhouse_url
     from lars.db_adapter import get_db_adapter
@@ -2418,7 +2418,7 @@ def cmd_sql(args):
     config = get_config()
     db = get_db_adapter()
 
-    # Magic table name mappings - now map to actual ClickHouse tables
+    # Magic table name mappings - now map to actual DuckDB tables
     table_mappings = {
         'all_data': 'unified_logs',
         'all_evals': 'evaluations',
@@ -6192,7 +6192,7 @@ def cmd_cache_stats(args):
             f"[bold]Entries:[/bold] {l2.get('entries', 0):,}\n"
             f"[bold]Total Hits:[/bold] {l2.get('total_hits', 0):,}\n"
             f"[bold]Total Size:[/bold] {l2.get('total_bytes', 0) / 1024:.1f} KB",
-            title="[green]L2 Cache (ClickHouse)[/green]"
+            title="[green]L2 Cache (Database)[/green]"
         ))
 
         # By-function breakdown
@@ -6215,8 +6215,8 @@ def cmd_cache_stats(args):
             console.print(table)
     else:
         console.print(Panel.fit(
-            "[yellow]ClickHouse not available - using in-memory cache only[/yellow]",
-            title="[yellow]L2 Cache (ClickHouse)[/yellow]"
+            "[yellow]DuckDB not available - using in-memory cache only[/yellow]",
+            title="[yellow]L2 Cache (Database)[/yellow]"
         ))
 
 
@@ -6393,7 +6393,7 @@ def cmd_cache_prune(args):
         cache = get_cache()
         pruned = cache.prune_expired()
         console.print(f"[green]Pruned {pruned} expired L1 entries[/green]")
-        console.print("[green]L2 (ClickHouse) auto-prunes via TTL, triggered OPTIMIZE TABLE[/green]")
+        console.print("[green]L2 (DuckDB")
     except Exception as e:
         console.print(f"[red]Error pruning cache: {e}[/red]")
 
@@ -7853,14 +7853,14 @@ def cmd_init(args):
     print(f"     cd {workspace}")
     print("     # Edit .env with your OPENROUTER_API_KEY")
     print()
-    print("  2. Start ClickHouse (if not already running):")
-    print("     docker run -d --name lars-clickhouse \\")
+    print("  2. Start DuckDB")
+    print("     docker run -d --name lars-database \\")
     print("       -p 9000:9000 -p 8123:8123 \\")
     print("       -e CLICKHOUSE_USER=lars \\")
     print("       -e CLICKHOUSE_PASSWORD=lars \\")
     print("       -e CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1 \\")
-    print("       -v lars-clickhouse-data:/var/lib/clickhouse \\")
-    print("       clickhouse/clickhouse-server:latest")
+    print("       -v lars-database-data:/var/lib/database \\")
+    print("       database/database-server:latest")
     print()
     print("  3. Initialize the database:")
     print("     lars db init")

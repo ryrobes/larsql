@@ -1822,7 +1822,7 @@ def _create_context_breakdown(session_id: str, cell_name: str, cell_index: int,
                     'cascade_id': cascade_id,
                     'cell_name': cell_name,
                     'cell_index': cell_index,
-                    'model_requested': model_requested or '',  # Default to empty string for ClickHouse
+                    'model_requested': model_requested or '',  # Default to empty string for DuckDB
                     'take_index': msg.get('take_index'),
                     'context_message_hash': ctx_hash,
                     'context_message_cell': ctx_info['source_cell'] or 'unknown',

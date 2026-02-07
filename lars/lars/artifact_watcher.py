@@ -2,7 +2,7 @@
 File System Watcher for LARS Artifacts.
 
 Watches cascades/, skills/, validators/, and cell_types/ directories
-for changes and syncs them to the artifact_registry table in ClickHouse.
+for changes and syncs them to the artifact_registry table in DuckDB.
 
 Uses watchdog library for efficient recursive directory monitoring.
 """
@@ -25,7 +25,7 @@ def _query_one(db, sql: str, params: Optional[Dict] = None) -> Optional[Dict]:
     """
     Execute a query and return the first row, or None if no results.
 
-    Helper to adapt to ClickHouseAdapter API which doesn't have query_one().
+    Helper to adapt to db_adapter API which doesn't have query_one().
     """
     results = db.query(sql, params or {})
     return results[0] if results else None

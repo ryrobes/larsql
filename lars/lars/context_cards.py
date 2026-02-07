@@ -407,10 +407,10 @@ Summary:"""
             for row in rows:
                 prepared = row.copy()
 
-                # Convert datetime to proper format for ClickHouse DateTime64
+                # Convert datetime to proper format for DuckDB DateTime64
                 ts = prepared.get("message_timestamp")
                 if isinstance(ts, datetime):
-                    # Keep as datetime object - clickhouse-driver handles it
+                    # Keep as datetime object - database-driver handles it
                     prepared["message_timestamp"] = ts
                 elif isinstance(ts, str):
                     # Parse ISO string to datetime

@@ -7,7 +7,7 @@ including:
 - Getting session details
 - Cancelling sessions (both healthy and zombie)
 
-The session state is managed via ClickHouse's session_state table, which
+The session state is managed via DuckDB's session_state table, which
 provides cross-process visibility and durable state tracking.
 """
 
@@ -111,7 +111,7 @@ def _enrich_sessions_with_metrics(sessions: list) -> list:
         # Build IN clause for session IDs
         session_ids_str = "', '".join(session_ids)
 
-        # Query cascade_analytics (without correlated subqueries - ClickHouse doesn't support them well)
+        # Query cascade_analytics (without correlated subqueries - DuckDB doesn't support them well)
         # This replaces the old unified_logs + manual aggregation approach (~100x faster)
         analytics_query = f"""
             SELECT
@@ -453,7 +453,7 @@ def _include_virtual_sessions(existing_sessions: list, cascade_id_filter: str | 
             cascade_filter = f"AND cascade_id = '{cascade_id_filter}'"
 
         # Query unified_logs for ALL recent sessions, grouped by session_id
-        # We'll filter out existing_ids in Python (avoids ClickHouse subquery issues)
+        # We'll filter out existing_ids in Python (avoids DuckDB subquery issues)
         query = f"""
             SELECT
                 session_id,

@@ -16,7 +16,7 @@ Architecture:
         ↓
     Existing infrastructure (Agent.embed(), db.vector_search())
         ↓
-    ClickHouse storage + OpenRouter API
+    DuckDB storage + OpenRouter API
 
 Example:
     ```python
@@ -128,7 +128,7 @@ def agent_embed(
 
 
 # ============================================================================
-# Tool 2: Store Embedding in ClickHouse
+# Tool 2: Store Embedding in DuckDB
 # ============================================================================
 
 def clickhouse_store_embedding(
@@ -140,7 +140,7 @@ def clickhouse_store_embedding(
     metadata: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """
-    Store embedding in ClickHouse lars_embeddings shadow table.
+    Store embedding in DuckDB lars_embeddings shadow table.
 
     Creates the lars_embeddings table if it doesn't exist. This table
     stores embeddings separately from source data, allowing semantic search
@@ -232,12 +232,12 @@ def clickhouse_store_embedding(
         }
 
     except Exception as e:
-        logger.error(f"clickhouse_store_embedding failed: {e}")
+        logger.error(f"database_store_embedding failed: {e}")
         raise RuntimeError(f"Failed to store embedding: {e}")
 
 
 # ============================================================================
-# Tool 3: Vector Search in ClickHouse
+# Tool 3: Vector Search in DuckDB
 # ============================================================================
 
 def clickhouse_vector_search(
@@ -248,15 +248,15 @@ def clickhouse_vector_search(
     metadata_filter: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    Semantic search using ClickHouse cosineDistance function.
+    Semantic search using DuckDB cosineDistance function.
 
     Searches the lars_embeddings table for vectors similar to the query.
-    Uses ClickHouse's native cosineDistance() function for fast similarity.
+    Uses cosineDistance() function for fast similarity.
 
     Performance:
         - ~50ms for 1M vectors (with proper indexing)
         - No Python-side similarity calculation
-        - Native C++ implementation in ClickHouse
+        - Native C++ implementation in DuckDB
 
     Args:
         query_embedding: 4096-dim query vector
@@ -295,8 +295,8 @@ def clickhouse_vector_search(
     """
     db = get_db_adapter()
 
-    # Build query vector string for ClickHouse
-    # ClickHouse expects: [0.1, 0.2, 0.3, ...]
+    # Build query vector string for DuckDB
+    # DuckDB expects: [0.1, 0.2, 0.3, ...]
     vec_str = f"[{','.join(str(v) for v in query_embedding)}]"
 
     # Build WHERE clause
@@ -313,7 +313,7 @@ def clickhouse_vector_search(
 
     where_clause = " AND ".join(where_parts)
 
-    # SQL query using ClickHouse's native cosineDistance()
+    # SQL query using DuckDB's native cosineDistance()
     sql = f"""
         SELECT
             source_id,
@@ -345,7 +345,7 @@ def clickhouse_vector_search(
         }
 
     except Exception as e:
-        logger.error(f"clickhouse_vector_search failed: {e}")
+        logger.error(f"database_vector_search failed: {e}")
         raise RuntimeError(f"Vector search failed: {e}")
 
 
@@ -838,7 +838,7 @@ def elasticsearch_hybrid_search(
 
     Weights are configurable (default: 70% semantic, 30% keyword).
 
-    Falls back to ClickHouse vector-only search if Elasticsearch unavailable.
+    Falls back to DuckDB vector-only search if Elasticsearch unavailable.
 
     Args:
         query: Text query (for keyword matching)
@@ -929,8 +929,8 @@ def elasticsearch_hybrid_search(
         }
 
     except Exception as e:
-        # Fallback to ClickHouse vector-only search
-        logger.warning(f"Elasticsearch hybrid search failed, using ClickHouse fallback: {e}")
+        # Fallback to DuckDB vector-only search
+        logger.warning(f"Elasticsearch hybrid search failed, using DuckDB")
 
         ch_result = clickhouse_vector_search(
             query_embedding=query_embedding,

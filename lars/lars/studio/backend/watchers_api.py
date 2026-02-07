@@ -24,7 +24,7 @@ def format_timestamp(dt):
 
 
 def get_db():
-    """Get ClickHouse database adapter."""
+    """Get DuckDB database adapter."""
     try:
         from lars.db_adapter import get_db as lars_get_db
         return lars_get_db()

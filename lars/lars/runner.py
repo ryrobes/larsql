@@ -4278,7 +4278,7 @@ To call this tool, output a JSON code block:
 
             console.print(f"{indent}  [cyan]{S.CASCADE} Cascade Take {i+1}/{factor} starting...[/cyan]")
 
-            # Create session state in ClickHouse for the sub-cascade take
+            # Create session state in DuckDB for the sub-cascade take
             # This ensures the UI can track sub-cascade sessions correctly
             try:
                 create_session_state(
@@ -4310,7 +4310,7 @@ To call this tool, output a JSON code block:
                 # Run the cascade with take metadata
                 result = take_runner._run_cascade_internal(input_data)
 
-                # Update session status to COMPLETED in ClickHouse
+                # Update session status to COMPLETED in DuckDB
                 try:
                     final_status = SessionStatus.ERROR if result.get("has_errors") else SessionStatus.COMPLETED
                     update_session_status(
@@ -4338,7 +4338,7 @@ To call this tool, output a JSON code block:
             except Exception as e:
                 console.print(f"{indent}    [red]✗ Cascade Take {i+1} failed: {e}[/red]")
 
-                # Update session status to ERROR in ClickHouse
+                # Update session status to ERROR in DuckDB
                 try:
                     update_session_status(
                         take_session_id,
@@ -4894,11 +4894,11 @@ Refinement directive: {reforge_config.honing_prompt}
                 console.print(f"[bold yellow]{S.WARN} Cascade cancelled before cell '{cell.name}'[/bold yellow]")
                 break
 
-            # Update ClickHouse session state with current cell
+            # Update DuckDB session state with current cell
             try:
                 update_session_status(self.session_id, SessionStatus.RUNNING, current_cell=cell.name)
             except Exception:
-                pass  # Don't fail cascade if ClickHouse update fails
+                pass  # Don't fail cascade if DuckDB update fails
 
             # Set cell context for visualization metadata
             self.echo.set_cell_context(cell.name)
@@ -5044,7 +5044,7 @@ Refinement directive: {reforge_config.honing_prompt}
         Checks if cascade-level takes are configured and delegates appropriately.
 
         Manages durable execution via:
-        - Session state creation in ClickHouse
+        - Session state creation in DuckDB
         - Heartbeat thread for zombie detection
         - Status updates on completion/error
         """
@@ -5053,7 +5053,7 @@ Refinement directive: {reforge_config.honing_prompt}
         from . import _register_all_skills
         _register_all_skills()
 
-        # Create session state in ClickHouse for durable tracking
+        # Create session state in DuckDB for durable tracking
         try:
             # Determine execution source
             execution_source = "cli"  # Default
@@ -5102,7 +5102,7 @@ Refinement directive: {reforge_config.honing_prompt}
                 # Serialize input data to JSON (small, simple data structure)
                 input_json = json.dumps(input_data if input_data else {}, indent=2)
 
-                # Get config path (ClickHouse String type doesn't support None)
+                # Get config path (DuckDB String type doesn't support None)
                 config_path_str = str(self.config_path) if isinstance(self.config_path, str) else ''
 
                 # Insert into cascade_sessions table using insert_rows method
@@ -5115,7 +5115,7 @@ Refinement directive: {reforge_config.honing_prompt}
                         'input_data': input_json,
                         'config_path': config_path_str,
                         'created_at': datetime.now(),
-                        'parent_session_id': self.parent_session_id or '',  # ClickHouse doesn't support None for String type
+                        'parent_session_id': self.parent_session_id or '',  # DuckDB doesn't support None for String type
                         'depth': self.depth,
                         'caller_id': self.caller_id or '',
                         'invocation_metadata_json': json.dumps(self.invocation_metadata) if self.invocation_metadata else '{}'
@@ -5187,7 +5187,7 @@ Refinement directive: {reforge_config.honing_prompt}
                 # Normal execution (no cascade takes)
                 result = self._run_cascade_internal(input_data)
 
-            # Update final status in ClickHouse
+            # Update final status in DuckDB
             try:
                 final_status = SessionStatus.ERROR if result.get("has_errors") else SessionStatus.COMPLETED
                 update_session_status(
@@ -5251,7 +5251,7 @@ Refinement directive: {reforge_config.honing_prompt}
                         output_str = str(final_output)
 
                     # Update cascade_sessions with full output (NO truncation)
-                    # Use db.update_row() which properly handles ClickHouse ALTER UPDATE syntax
+                    # Use db.update_row() which properly handles DuckDB ALTER UPDATE syntax
                     db.update_row(
                         'cascade_sessions',
                         {'output': output_str},

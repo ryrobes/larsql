@@ -78,7 +78,7 @@ def set_state(key: str, value: str) -> str:
     Updates the session state with a key-value pair.
 
     State is DURABLE and QUERYABLE:
-    - Persisted to cascade_state table in ClickHouse
+    - Persisted to cascade_state table in DuckDB
     - Queryable across sessions via SQL
     - Visible in Studio UI state panel during execution
     - Survives cascade completion
@@ -104,7 +104,7 @@ def set_state(key: str, value: str) -> str:
     echo = get_echo(session_id)
     echo.update_state(key, value)
 
-    # Persist to ClickHouse for durable storage
+    # Persist to DuckDB for durable storage
     try:
         from ..db_adapter import get_db
         from datetime import datetime
@@ -195,7 +195,7 @@ def append_state(key: str, value) -> str:
     # Update Echo state
     echo.update_state(key, new_list)
 
-    # Persist to ClickHouse
+    # Persist to DuckDB
     try:
         from ..db_adapter import get_db
         from datetime import datetime
