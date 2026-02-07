@@ -1558,6 +1558,34 @@ SYSTEM_TABLES = {
     },
 
     # =========================================================================
+    # Model Benchmark Tables
+    # =========================================================================
+
+    "model_benchmarks": {
+        "columns": [
+            ("benchmark_id", "VARCHAR"),
+            ("run_id", "VARCHAR"),
+            ("operator_id", "VARCHAR"),
+            ("operator_name", "VARCHAR"),
+            ("model_id", "VARCHAR"),
+            ("input_hash", "VARCHAR"),
+            ("input_tokens", "UINTEGER"),
+            ("input_complexity", "DOUBLE"),
+            ("input_sample", "VARCHAR"),
+            ("passed", "BOOLEAN"),
+            ("output_value", "VARCHAR"),
+            ("expected_value", "VARCHAR"),
+            ("latency_ms", "DOUBLE"),
+            ("tokens_in", "UINTEGER"),
+            ("tokens_out", "UINTEGER"),
+            ("cost", "DOUBLE"),
+            ("provider", "VARCHAR"),
+            ("created_at", "TIMESTAMP"),
+        ],
+        "partition_by": None,
+    },
+
+    # =========================================================================
     # Test Dashboard Tables
     # =========================================================================
 
