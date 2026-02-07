@@ -328,6 +328,7 @@ def _extract_cascade_output(result: Dict[str, Any]) -> Any:
 
     The runner returns a complex structure with lineage, history, etc.
     This extracts the final cell output in priority order:
+    0. state.validated_output - THE CLEANEST OUTPUT (unwrapped by runner)
     1. Image generation output (format: "image") - check all lineage entries
     2. lineage[-1]["output"] - most reliable for all cell types
     3. history (last assistant message content) - fallback for LLM cells
@@ -339,9 +340,18 @@ def _extract_cascade_output(result: Dict[str, Any]) -> Any:
     if not result or not isinstance(result, dict):
         return result
 
+    # Strategy 0 (PRIORITY): Use validated_output from state if available
+    # This is the cleanest output - already unwrapped by the runner's schema validation
+    # which handles LLM quirks like {"type": true} → true
+    state = result.get("state")
+    if state and isinstance(state, dict):
+        validated = state.get("validated_output")
+        if validated is not None:
+            return validated
+
     output = None
 
-    # Strategy 0: Check for image generation outputs anywhere in lineage
+    # Strategy 1: Check for image generation outputs anywhere in lineage
     # Image generation cells have format: "image" and images array
     lineage = result.get("lineage")
     if lineage:

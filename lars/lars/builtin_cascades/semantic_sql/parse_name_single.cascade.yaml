@@ -48,7 +48,7 @@ sql_function:
 
 cells:
   - name: parse
-    model: "{{ models.fast }}"
+    model: "{{ models.standard }}"
     rules:
       max_turns: 1
       loop_until: validate_sql_expression
@@ -102,14 +102,20 @@ cells:
 
       EXAMPLE for "Dr. John Q. Smith Jr." pattern:
       json_object(
-        'prefix', regexp_extract(:name, '^(Dr\.|Mr\.|Ms\.|Mrs\.|Prof\.)\s*', 1),
-        'first', initcap(split_part(regexp_replace(:name, '^(Dr\.|Mr\.|Ms\.|Mrs\.|Prof\.)\s*', ''), ' ', 1)),
-        'middle', split_part(regexp_replace(:name, '^(Dr\.|Mr\.|Ms\.|Mrs\.|Prof\.)\s*', ''), ' ', 2),
-        'last', split_part(regexp_replace(regexp_replace(:name, '\s+(Jr\.|Sr\.|III|II|IV|PhD|MD)$', ''), '^(Dr\.|Mr\.|Ms\.|Mrs\.|Prof\.)\s*', ''), ' ', 3),
-        'suffix', regexp_extract(:name, '\s+(Jr\.|Sr\.|III|II|IV|PhD|MD)$', 1),
+        'prefix', CASE WHEN regexp_matches(:name, '^(Dr\.|Mr\.|Ms\.|Mrs\.|Prof\.)\s') THEN regexp_extract(:name, '^(Dr\.|Mr\.|Ms\.|Mrs\.|Prof\.)', 1) ELSE NULL END,
+        'first', initcap(trim(split_part(regexp_replace(regexp_replace(:name, '\s+(Jr\.|Sr\.|III|II|IV|PhD|MD)$', ''), '^(Dr\.|Mr\.|Ms\.|Mrs\.|Prof\.)\s*', ''), ' ', 1))),
+        'middle', CASE WHEN length(split_part(regexp_replace(regexp_replace(:name, '\s+(Jr\.|Sr\.|III|II|IV|PhD|MD)$', ''), '^(Dr\.|Mr\.|Ms\.|Mrs\.|Prof\.)\s*', ''), ' ', 2)) > 0 AND split_part(regexp_replace(regexp_replace(:name, '\s+(Jr\.|Sr\.|III|II|IV|PhD|MD)$', ''), '^(Dr\.|Mr\.|Ms\.|Mrs\.|Prof\.)\s*', ''), ' ', 3) != '' THEN split_part(regexp_replace(regexp_replace(:name, '\s+(Jr\.|Sr\.|III|II|IV|PhD|MD)$', ''), '^(Dr\.|Mr\.|Ms\.|Mrs\.|Prof\.)\s*', ''), ' ', 2) ELSE NULL END,
+        'last', initcap(trim(split_part(regexp_replace(regexp_replace(:name, '\s+(Jr\.|Sr\.|III|II|IV|PhD|MD)$', ''), '^(Dr\.|Mr\.|Ms\.|Mrs\.|Prof\.)\s*', ''), ' ', -1))),
+        'suffix', CASE WHEN regexp_matches(:name, '\s+(Jr\.|Sr\.|III|II|IV|PhD|MD)$') THEN trim(regexp_extract(:name, '\s+(Jr\.|Sr\.|III|II|IV|PhD|MD)$', 1)) ELSE NULL END,
         'nickname', NULL,
         'formatted', :name
       )
+
+      IMPORTANT DuckDB syntax notes:
+      - Use CASE WHEN for conditional NULL values
+      - split_part with index -1 gets the last element
+      - Always wrap regexp functions in CASE WHEN for optional matches
+      - Do NOT use "from unnest" - this is NOT valid in this context
 
       Handle case normalization with initcap() for ALL-CAPS input.
       CRITICAL: Return ONLY the json_object(...) SQL expression. No markdown, no explanation.

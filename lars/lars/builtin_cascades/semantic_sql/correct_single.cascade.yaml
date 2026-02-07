@@ -31,68 +31,35 @@ sql_function:
     description: Zip corrected for city
 cells:
 - name: contextual_correct
-  model: "{{ models.fast }}"
-  instructions: 'Correct this value using the provided context.
-
+  model: "{{ models.standard }}"
+  instructions: |
+    Correct this value using the provided context.
 
     VALUE: {{ input.value }}
-
     CONTEXT: {{ input.context }}
 
+    Examples:
+    - "San Franciso" + "state is CA" → San Francisco
+    - "02101" + "city is San Francisco" → 94102
+    - "02101" + "city is Los Angeles" → 90001
+    - "Gogle" + "domain is google.com" → Google
+    - "2024-02-30" + "must be valid date" → 2024-02-29
 
-    Examples of contextual correction:
+    KEY GEOGRAPHIC EXAMPLES:
+    - Boston zip codes start with 02 (02101, 02102, etc.)
+    - San Francisco zip codes start with 94 (94102, 94103, etc.)
+    - Los Angeles zip codes start with 90 (90001, 90002, etc.)
+    - New York zip codes start with 10 (10001, 10002, etc.)
 
-
-    **Geographic**:
-
-    - "San Franciso" + "state is CA" → "San Francisco"
-
-    - "02101" + "city is Los Angeles" → "90001" (Boston zip for LA city is wrong)
-
-    - "California" + "should be abbreviation" → "CA"
-
-
-    **Company/Domain**:
-
-    - "Gogle" + "domain is google.com" → "Google"
-
-    - "Microsft Inc" + "ticker is MSFT" → "Microsoft Inc"
-
-
-    **Name/Person**:
-
-    - "John Smithh" + "email is jsmith@..." → "John Smith"
-
-    - "Dr. Jane" + "full name from signature: Dr. Jane Doe" → "Dr. Jane Doe"
-
-
-    **Date/Time**:
-
-    - "2024-02-30" + "must be valid date" → "2024-02-29" (leap year) or "2024-02-28"
-
-    - "March 2023" + "event was after 2024" → "March 2024"
-
-
-    **Numeric**:
-
-    - "1000" + "should be percentage" → "10.00" or keep as "1000" if unclear
-
-    - "$1,00" + "US currency" → "$1.00" or "$100" depending on context
-
+    So: "02101" (Boston zip) + "city is San Francisco" → correct to a SF zip like "94102"
 
     Rules:
-
-    - Only correct if the context makes the correction clear
-
+    - If context clearly indicates the value is wrong, provide the corrected value
     - If ambiguous, return the original value
+    - Preserve formatting style where possible
 
-    - Preserve original formatting style where possible
-
-    - Don''t over-correct (small typos are OK if meaning is clear)
-
-
-    Return ONLY the corrected value (or original if no correction warranted).
-
-    '
+    CRITICAL: Return ONLY the corrected value itself.
+    NO explanation. NO reasoning. NO sentences.
+    Just the value: 94102
   rules:
     max_turns: 1

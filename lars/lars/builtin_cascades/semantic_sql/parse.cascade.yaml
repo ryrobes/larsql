@@ -77,6 +77,7 @@ sql_function:
 
 cells:
   - name: generate_sql
+    model: "{{ models.standard }}"
     instructions: |
       Generate a DuckDB SQL expression that extracts/transforms data from text.
 
@@ -107,7 +108,12 @@ cells:
       Output: regexp_extract(:text, '([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})', 1)
 
       Input: "Meeting on March 15, 2024" | Task: "the date"
-      Output: regexp_extract(:text, '([A-Z][a-z]+ \d{1,2},? \d{4})', 1)
+      Output: strftime(strptime(regexp_extract(:text, '([A-Z][a-z]+ \d{1,2},? \d{4})', 1), '%B %d, %Y'), '%Y-%m-%d')
+
+      Input: "Scheduled for January 5, 2025" | Task: "the date"
+      Output: strftime(strptime(regexp_extract(:text, '([A-Z][a-z]+ \d{1,2},? \d{4})', 1), '%B %d, %Y'), '%Y-%m-%d')
+
+      NOTE: For dates, always convert to ISO format (YYYY-MM-DD) using strptime/strftime.
 
       Input: "Total: $1,234.56" | Task: "the amount"
       Output: regexp_extract(:text, '\$?([\d,]+\.?\d*)', 1)

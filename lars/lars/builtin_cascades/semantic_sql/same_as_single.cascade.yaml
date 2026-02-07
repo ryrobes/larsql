@@ -59,11 +59,11 @@ sql_function:
     - "SAME_AS({{ left }}, {{ right }})"
     - "SAME_AS({{ left }}, {{ right }}, '{{ entity_type }}')"
     - "{{ left }} SAME_ENTITY {{ right }}"
-  cache: true
+  cache: false  # Temporarily disabled for testing
 
 cells:
   - name: check_equality
-    model: "{{ models.fast }}"
+    model: "{{ models.standard }}"
 
     instructions: |
       Do these two values refer to the SAME real-world entity?
@@ -74,38 +74,30 @@ cells:
       ENTITY TYPE: {{ input.entity_type }}
       {% endif %}
 
-      Consider these as equivalent:
+      SAME ENTITY means: Different names/representations for THE EXACT SAME thing.
 
-      COMPANY matching:
-      - Different legal suffixes: "Apple Inc" = "Apple Corporation" = "Apple"
-      - Abbreviations: "IBM" = "International Business Machines"
-      - Common variations: "Coca-Cola" = "Coke" = "The Coca-Cola Company"
-      - Typos: "Microsft" = "Microsoft"
-      - Stock tickers: "AAPL" = "Apple" (if context suggests)
+      ✓ TRUE (same entity, different names):
+      - "IBM" = "International Business Machines" (same company)
+      - "Apple Inc" = "Apple Corporation" (same company)
+      - "Coca-Cola" = "Coke" (same company/product)
+      - "John Smith" = "Smith, John" (same person)
+      - "J. Smith" = "John Smith" (likely same person)
+      - "Bob" = "Robert" (same person, nickname)
+      - "123 Main St" = "123 Main Street" (same address)
 
-      PERSON matching:
-      - Name order: "John Smith" = "Smith, John"
-      - Initials: "J. Smith" = "John Smith" (likely match)
-      - Nicknames: "Bob" = "Robert", "Bill" = "William"
-      - Titles/suffixes: "Dr. John Smith" = "John Smith, MD"
-      - Typos: "Jonh" = "John"
+      ✗ FALSE (different entities):
+      - "Toyota" ≠ "Honda" (DIFFERENT car companies!)
+      - "Ford" ≠ "GM" (DIFFERENT car companies!)
+      - "Apple" ≠ "Microsoft" (DIFFERENT tech companies!)
+      - "IBM" ≠ "Apple" (DIFFERENT companies!)
+      - "John Smith" ≠ "Jane Smith" (DIFFERENT people!)
+      - "123 Main St" ≠ "124 Main St" (DIFFERENT addresses!)
+      - "iPhone 15" ≠ "iPhone 15 Pro" (DIFFERENT products!)
 
-      ADDRESS matching:
-      - Abbreviations: "St" = "Street", "Ave" = "Avenue"
-      - Missing unit: "123 Main St" ≈ "123 Main St Apt 1" (same building)
-      - Format variations: "123 Main Street" = "123 Main St."
-      - Zip variations: "02101" = "02101-1234"
+      CRITICAL: Being in the same INDUSTRY does not make them the same entity!
+      Toyota and Honda are both car companies, but they are DIFFERENT companies.
 
-      PRODUCT matching:
-      - Model variations: "iPhone 15" ≠ "iPhone 15 Pro" (different products!)
-      - But: "iPhone 15 Pro" = "Apple iPhone 15 Pro" = "iphone 15 pro"
-      - SKU vs name if clearly same product
-
-      BE CAREFUL - these are NOT the same:
-      - "IBM" and "Apple" (different companies)
-      - "John Smith" and "Jane Smith" (different people)
-      - "123 Main St" and "124 Main St" (different addresses)
-      - "iPhone 15" and "iPhone 15 Pro" (different products)
+      Think: Are these two names for THE EXACT SAME entity, or two different entities?
 
       Return ONLY "true" or "false".
 

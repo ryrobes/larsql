@@ -21,7 +21,7 @@ sql_function:
   shape: SCALAR
   operators:
   - '{{ text_a }} CONTRADICTS {{ text_b }}'
-  cache: true
+  cache: false  # Temporarily disabled for testing
   test_cases:
   # Function syntax
   - sql: SELECT semantic_contradicts('The product is excellent', 'The product is terrible')
@@ -43,27 +43,38 @@ sql_function:
     description: "Infix CONTRADICTS: compatible statements (skipped - LLM varies)"
 cells:
 - name: check_contradiction
-  model: "{{ models.fast }}"
+  model: "{{ models.standard }}"
   instructions: |
     Do these two texts logically contradict each other?
 
     TEXT A: {{ input.text_a }}
     TEXT B: {{ input.text_b }}
 
-    A CONTRADICTION means: Both statements CANNOT be true at the same time because they make OPPOSING claims about THE SAME subject.
+    STEP 1 - Identify subject of each statement:
+    - What is Text A about?
+    - What is Text B about?
 
-    IMPORTANT:
-    - Statements about DIFFERENT topics are NOT contradictions (e.g., "The sky is blue" and "Water is wet" - different subjects, no contradiction)
-    - Only mark as contradiction if one statement DIRECTLY opposes the other on the SAME topic
-    - Unrelated statements = NOT a contradiction
+    STEP 2 - Are they about the SAME subject?
+    - If NO (different subjects) → Answer: false
+    - If YES → Continue to Step 3
+
+    STEP 3 - Do they make OPPOSING claims about that subject?
+    - If YES → Answer: true
+    - If NO → Answer: false
+
+    CRITICAL RULE: Statements about DIFFERENT topics are NEVER contradictions.
 
     Examples:
-    - "It's raining" vs "It's sunny" → true (same topic, opposing)
-    - "The car is red" vs "The car is blue" → true (same subject, opposing)
-    - "I like pizza" vs "Dogs are mammals" → false (unrelated topics)
-    - "The sky is blue" vs "Water is wet" → false (different subjects)
+    - "It's raining" vs "It's sunny" → true (same topic: weather, opposing)
+    - "The car is red" vs "The car is blue" → true (same subject: car color, opposing)
+    - "I like pizza" vs "Dogs are mammals" → false (DIFFERENT topics)
+    - "The sky is blue" vs "Water is wet" → false (DIFFERENT topics: sky vs water)
+    - "Sales are up" vs "Profits are down" → false (related but not opposing - both can be true)
 
-    Respond with ONLY "true" or "false" - no explanation.
+    Think through steps 1-3, then respond with ONLY the word "true" or "false".
+    
+    CRITICAL: Your final response must be EXACTLY one word: true or false
+    Do NOT wrap in JSON. Do NOT add explanation after. Just: true or false
   rules:
     max_turns: 1
   output_schema:

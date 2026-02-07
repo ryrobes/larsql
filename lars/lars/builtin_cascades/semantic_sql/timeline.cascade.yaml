@@ -61,7 +61,7 @@ sql_function:
 
 cells:
   - name: extract_timeline
-    model: "{{ models.fast }}"
+    model: "{{ models.standard }}"
     instructions: |
       Extract a chronological timeline of events from this text.
 
@@ -89,11 +89,20 @@ cells:
       - `plan`: Scheduled event, proposed action, future intent
 
       Timestamp Formats (in order of preference):
-      1. ISO 8601: "2001-05-14T15:30:00"
-      2. Date only: "2001-05-14"
-      3. Relative resolved: "2001-05-13" (if reference_date provided and text says "yesterday")
-      4. Relative unresolved: "yesterday", "last week", "Q3 2001"
-      5. Sequence only: "before:contract_signed", "after:meeting"
+      1. ISO 8601 with 24-hour time: "2001-05-14T15:30:00"
+      2. 24-hour time only: "15:30" (for times without dates - convert 3:30 PM → 15:30)
+      3. Date only: "2001-05-14"
+      4. Relative resolved: "2001-05-13" (if reference_date provided and text says "yesterday")
+      5. Relative unresolved: "yesterday", "last week", "Q3 2001"
+      6. Sequence only: "before:contract_signed", "after:meeting"
+
+      IMPORTANT: Always convert 12-hour times to 24-hour format:
+      - 3:15 PM → 15:15
+      - 3:45 PM → 15:45
+      - 4:30 PM → 16:30
+      - 9:00 AM → 09:00
+      - 12:00 PM → 12:00
+      - 12:00 AM → 00:00
 
       Rules:
       - Order events chronologically (earliest first)

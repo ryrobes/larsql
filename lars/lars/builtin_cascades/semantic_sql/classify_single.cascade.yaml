@@ -20,7 +20,7 @@ sql_function:
     type: JSON
   returns: VARCHAR
   shape: SCALAR
-  cache: true
+  cache: false  # Temporarily disabled for testing
   test_cases:
   # Basic sentiment classification
   - sql: "SELECT semantic_classify('I love this product!', 'positive,negative,neutral')"
@@ -47,24 +47,26 @@ sql_function:
     description: "Alias classify(): Business news classified"
 cells:
 - name: classify
-  model: "{{ models.fast }}"
-  instructions: 'Classify this text into ONE of the provided topics.
-
+  model: "{{ models.standard }}"
+  instructions: |
+    Classify this text into ONE of the provided topics.
 
     TEXT: {{ input.text }}
 
-
     AVAILABLE TOPICS:
-
     {{ input.topics }}
 
+    SENTIMENT CLASSIFICATION GUIDE (when topics are positive/negative/neutral):
+    - POSITIVE: Expresses satisfaction, happiness, praise, enthusiasm, gratitude
+      Examples: "I love this!", "Excellent service!", "Best purchase ever!"
+    - NEGATIVE: Expresses dissatisfaction, complaint, frustration, disappointment
+      Examples: "Terrible product", "Worst experience", "Very disappointed"
+    - NEUTRAL: States facts without emotional judgment, objective observations
+      Examples: "The item arrived on time", "It's blue", "Received the package"
+
+    KEY: "The item arrived on time" is NEUTRAL - it's a factual statement, not expressing positive or negative sentiment. Arriving on time is expected/normal, not praiseworthy.
 
     Return ONLY the exact topic name that best fits this text.
-
     You must choose from the provided topics - do not create new ones.
-
-    Return the topic name exactly as it appears in the list.
-
-    '
   rules:
     max_turns: 1

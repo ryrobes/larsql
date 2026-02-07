@@ -53,27 +53,37 @@ sql_function:
     description: "Alias aligns(): detects thematic alignment"
 cells:
 - name: evaluate_alignment
-  model: "{{ models.fast }}"
-  instructions: "Rate how well this text aligns with the given narrative.\n\nTEXT:\n\
-    {{ input.text }}\n\nNARRATIVE:\n{{ input.narrative }}\n\nConsider multiple dimensions:\n\
-    - **Thematic alignment**: Does the text support the narrative's core themes?\n\
-    - **Evidence quality**: Does it provide evidence for or against?\n- **Consistency**:\
-    \ Does it contradict the narrative or support it?\n- **Relevance**: Is it about\
-    \ the same domain/topic?\n\nScoring guide:\n- 0.0-0.2: Actively contradicts or\
-    \ undermines the narrative\n- 0.2-0.4: Unrelated or weakly against\n- 0.4-0.6:\
-    \ Neutral or mixed signals\n- 0.6-0.8: Supports the narrative, aligned messaging\n\
-    - 0.8-1.0: Strongly validates the narrative, perfect alignment\n\nExamples:\n\
-    - Narrative: \"SQL is becoming important for AI workflows\"\n  Text: \"We're using\
-    \ SQL to query our LLM results\" → 0.85\n  Text: \"SQL is outdated for modern\
-    \ applications\" → 0.1\n  Text: \"Python is great for data science\" → 0.3 (unrelated)\n\
-    \n- Narrative: \"AI tools should be accessible to non-developers\"\n  Text: \"\
-    Natural language interfaces democratize AI\" → 0.9\n  Text: \"You need a PhD to\
-    \ use these tools\" → 0.05\n\nCRITICAL: Return ONLY a decimal number between 0.0\
-    \ and 1.0.\nDo NOT include any explanation, reasoning, or other text.\nDo NOT\
-    \ wrap in quotes or code blocks.\nJust the number: 0.85\n\nVERIFY THAT THE OUTPUT\
-    \ IS ONLY A NUMBER!\n"
+  model: "{{ models.standard }}"
+  instructions: |
+    Rate how well this text aligns with the given narrative/theme.
+
+    TEXT: {{ input.text }}
+    NARRATIVE: {{ input.narrative }}
+
+    ALIGNMENT means the text SUPPORTS, RELATES TO, or EXPRESSES the narrative's theme.
+
+    Scoring guide:
+    - 0.0-0.2: Actively contradicts or undermines the narrative
+    - 0.2-0.4: Unrelated or weakly against
+    - 0.4-0.6: Neutral or tangentially related
+    - 0.6-0.8: Supports the narrative, aligned messaging
+    - 0.8-1.0: Strongly validates the narrative, perfect alignment
+
+    KEY EXAMPLES:
+    - "We prioritize safety above all" + "safety first" → 0.85 (same theme!)
+    - "Our eco-friendly products reduce waste" + "sustainability" → 0.8 (eco = sustainability)
+    - "Innovation drives our strategy" + "forward-thinking" → 0.75 (innovation = forward-thinking)
+    - "Cost-cutting is our priority" + "quality first" → 0.2 (opposing priorities)
+    - "The weather is nice" + "financial growth" → 0.1 (unrelated)
+
+    Think about: Does the text EXPRESS or SUPPORT the narrative's core idea?
+    - "safety above all" clearly expresses "safety first" → HIGH score
+    - "eco-friendly reduces waste" clearly supports "sustainability" → HIGH score
+
+    Return ONLY a decimal number between 0.0 and 1.0.
+    No explanation, no quotes, just the number.
   rules:
-    max_turns: 2
+    max_turns: 1
   output_schema:
     type: number
     minimum: 0.0

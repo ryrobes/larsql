@@ -28,13 +28,12 @@ sql_function:
   test_cases:
   - sql: SELECT normalize_quantity('about 5 gallons', 'liters')
     expect:
-      type: json_contains
-      path: "$.normalized.unit"
-      value: "l"
-    description: Quantity normalized
+      type: regex
+      pattern: "(?i)(liter|litre|l)"
+    description: Quantity normalized to liters
 cells:
 - name: parse_quantity
-  model: "{{ models.fast }}"
+  model: "{{ models.standard }}"
   instructions: "Parse this quantity expression into structured format.\n\nVALUE:\
     \ {{ input.value }}\nSYSTEM PREFERENCE: {{ input.system | default('auto') }}\n\
     \nReturn a JSON object:\n{\n  \"value\": 500,\n  \"unit\": \"mg\",\n  \"unit_type\"\

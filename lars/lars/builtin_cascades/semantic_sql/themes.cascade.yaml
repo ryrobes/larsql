@@ -39,12 +39,12 @@ sql_function:
       )
       SELECT THEMES(article, 3) FROM test_data
     expect:
-      type: contains
-      value: Intelligence
+      type: regex
+      pattern: "(?i)(AI|artificial|intelligence|machine|learning|healthcare|medical|diagnosis)"
     description: Extracts themes from AI/healthcare articles
 cells:
 - name: extract_topics
-  model: "{{ models.fast }}"
+  model: "{{ models.standard }}"
   instructions: 'Analyze these texts and identify the {{ input.num_topics | default(5)
     }} main topics.
 

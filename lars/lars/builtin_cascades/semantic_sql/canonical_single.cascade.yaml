@@ -46,7 +46,7 @@ sql_function:
 
 cells:
   - name: canonicalize
-    model: "{{ models.fast }}"
+    model: "{{ models.standard }}"
 
     instructions: |
       Return the canonical/official form of this value.
@@ -54,27 +54,34 @@ cells:
       VALUE: {{ input.value }}
 
       Steps:
-      1. Detect what type of entity this is (company, person name, address, phone, email, etc.)
+      1. Detect what type of entity this is (company, city, person name, address, phone, etc.)
       2. Return the standard/canonical form
 
-      Guidelines:
-      - Companies: Use official name, proper capitalization
-      - Names: Title Case, "First Last" format
-      - Addresses: Expanded abbreviations, proper format
-      - Phones: E.164 format (+1XXXXXXXXXX)
-      - Emails: Lowercase, cleaned
-      - General text: Clean whitespace, fix obvious issues
+      CITY ABBREVIATIONS (expand these):
+      - "NYC" → "New York City"
+      - "LA" → "Los Angeles"
+      - "SF" → "San Francisco"
+      - "DC" → "Washington, D.C."
+      - "NOLA" → "New Orleans"
+      - "CHI" → "Chicago"
+      - "ATL" → "Atlanta"
+      - "BOS" → "Boston"
+      - "PHX" → "Phoenix"
 
-      Examples:
+      COMPANY NAMES:
       - "MICROSOFT CORP" → "Microsoft"
-      - "john.doe@GMAIL.COM" → "john.doe@gmail.com"
-      - "123 main st" → "123 Main Street"
-      - "(555) 123-4567" → "+15551234567"
-      - "dr john q smith jr" → "John Q. Smith Jr."
-      - "intl business machines" → "IBM"
+      - "INTL BUSINESS MACHINES" → "IBM"
+      - "AAPL" → "Apple"
+      - "GOOGL" → "Google"
 
-      Return ONLY the canonical form. No explanation.
-      If input is empty or cannot be processed, return "NULL".
+      OTHER:
+      - Addresses: Expand abbreviations ("123 main st" → "123 Main Street")
+      - Phones: E.164 format ("(555) 123-4567" → "+15551234567")
+      - Emails: Lowercase
+      - Names: Title Case ("dr john smith" → "Dr. John Smith")
+
+      Return ONLY the canonical form. No explanation, no quotes.
+      If input is empty, return NULL (without quotes).
 
     rules:
       max_turns: 1
