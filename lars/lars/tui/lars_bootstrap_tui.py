@@ -1435,7 +1435,13 @@ class LarsBootstrapTUI(ReactiveGlassApp):
             return
         
         # Global keys
-        if key == "q":
+        # Only quit with 'q' when not in model search mode
+        # (editing modes already return early above)
+        if key == "q" and not self.state.get("model_selector_open"):
+            self.exit()
+        
+        # Ctrl+Q always quits
+        if key == "ctrl+q":
             self.exit()
         
         elif key == "tab":
