@@ -127,8 +127,9 @@ def _extract_provider(model_id: str) -> str:
 
 def ensure_benchmark_table(db):
     """Create the model_benchmarks table if it doesn't exist."""
-    db.execute("""
-        CREATE TABLE IF NOT EXISTS model_benchmarks (
+    try:
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS model_benchmarks (
             benchmark_id    VARCHAR,
             run_id          VARCHAR,
             operator_id     VARCHAR,
@@ -149,6 +150,22 @@ def ensure_benchmark_table(db):
             created_at      TIMESTAMP
         )
     """)
+    except Exception as e:
+        console.print(f"[yellow]Warning: Could not create benchmark table via db_adapter, trying direct: {e}[/yellow]")
+        # Try direct DuckDB connection
+        from .lars_db import LarsDB
+        lars_db = LarsDB.get_instance()
+        conn = lars_db.get_cached_connection()
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS model_benchmarks (
+                benchmark_id VARCHAR, run_id VARCHAR, operator_id VARCHAR,
+                operator_name VARCHAR, model_id VARCHAR, input_hash VARCHAR,
+                input_tokens INTEGER, input_complexity DOUBLE, input_sample VARCHAR,
+                passed BOOLEAN, output_value VARCHAR, expected_value VARCHAR,
+                latency_ms DOUBLE, tokens_in INTEGER, tokens_out INTEGER,
+                cost DOUBLE, provider VARCHAR, created_at TIMESTAMP
+            )
+        """)
 
 
 # ---------------------------------------------------------------------------
@@ -400,31 +417,35 @@ def _run_single_benchmark(
 
 def _store_results(results: List[BenchmarkResult]):
     """Store benchmark results in DuckDB."""
-    from .db_adapter import get_db
+    from .lars_db import LarsDB
 
-    db = get_db()
-    ensure_benchmark_table(db)
+    lars_db = LarsDB.get_instance()
+    conn = lars_db.get_cached_connection()
+    
+    # Ensure table exists
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS model_benchmarks (
+            benchmark_id VARCHAR, run_id VARCHAR, operator_id VARCHAR,
+            operator_name VARCHAR, model_id VARCHAR, input_hash VARCHAR,
+            input_tokens INTEGER, input_complexity DOUBLE, input_sample VARCHAR,
+            passed BOOLEAN, output_value VARCHAR, expected_value VARCHAR,
+            latency_ms DOUBLE, tokens_in INTEGER, tokens_out INTEGER,
+            cost DOUBLE, provider VARCHAR, created_at TIMESTAMP
+        )
+    """)
 
     for r in results:
-        db.execute("""
-            INSERT INTO model_benchmarks VALUES (
-                %(benchmark_id)s, %(run_id)s, %(operator_id)s, %(operator_name)s,
-                %(model_id)s, %(input_hash)s, %(input_tokens)s, %(input_complexity)s,
-                %(input_sample)s, %(passed)s, %(output_value)s, %(expected_value)s,
-                %(latency_ms)s, %(tokens_in)s, %(tokens_out)s, %(cost)s,
-                %(provider)s, %(created_at)s
-            )
-        """, {
-            "benchmark_id": r.benchmark_id, "run_id": r.run_id,
-            "operator_id": r.operator_id, "operator_name": r.operator_name,
-            "model_id": r.model_id, "input_hash": r.input_hash,
-            "input_tokens": r.input_tokens, "input_complexity": r.input_complexity,
-            "input_sample": r.input_sample, "passed": r.passed,
-            "output_value": r.output_value, "expected_value": r.expected_value,
-            "latency_ms": r.latency_ms, "tokens_in": r.tokens_in,
-            "tokens_out": r.tokens_out, "cost": r.cost,
-            "provider": r.provider, "created_at": r.created_at,
-        })
+        conn.execute("""
+            INSERT INTO model_benchmarks VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, [
+            r.benchmark_id, r.run_id, r.operator_id, r.operator_name,
+            r.model_id, r.input_hash, r.input_tokens, r.input_complexity,
+            r.input_sample, r.passed, r.output_value, r.expected_value,
+            r.latency_ms, r.tokens_in, r.tokens_out, r.cost,
+            r.provider, r.created_at,
+        ])
+    
+    console.print(f"[green]Stored {len(results)} benchmark results[/green]")
 
 
 # ---------------------------------------------------------------------------
@@ -623,13 +644,25 @@ def _print_summary(results: List[BenchmarkResult], run_id: str):
 
 def print_routing_report():
     """Print the current routing recommendations based on all benchmark data."""
-    from .db_adapter import get_db
+    from .lars_db import LarsDB
 
-    db = get_db()
-    ensure_benchmark_table(db)
+    lars_db = LarsDB.get_instance()
+    conn = lars_db.get_cached_connection()
+
+    # Ensure table exists
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS model_benchmarks (
+            benchmark_id VARCHAR, run_id VARCHAR, operator_id VARCHAR,
+            operator_name VARCHAR, model_id VARCHAR, input_hash VARCHAR,
+            input_tokens INTEGER, input_complexity DOUBLE, input_sample VARCHAR,
+            passed BOOLEAN, output_value VARCHAR, expected_value VARCHAR,
+            latency_ms DOUBLE, tokens_in INTEGER, tokens_out INTEGER,
+            cost DOUBLE, provider VARCHAR, created_at TIMESTAMP
+        )
+    """)
 
     try:
-        results = db.execute("""
+        results = conn.execute("""
             SELECT
                 operator_name,
                 model_id,
