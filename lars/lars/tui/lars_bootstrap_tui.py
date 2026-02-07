@@ -214,6 +214,9 @@ def status_icon(status: str) -> str:
 class LarsBootstrapTUI(ReactiveGlassApp):
     """LARS Bootstrap TUI Application."""
     
+    # Spinner frames for progress animation
+    SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+    
     def __init__(self, background_image: str = None):
         if background_image is None:
             for bg in ["bk2.jpg", "background6.jpg", "alice.jpg"]:
@@ -222,6 +225,10 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                     break
         
         super().__init__(background_image=background_image, background_darken=0.4)
+        
+        # Track completion for post-exit output (persists after app.run())
+        self.bootstrap_completed = False
+        self.spinner_frame = 0
     
     def create_initial_state(self) -> Dict:
         """Initialize application state."""
@@ -672,6 +679,8 @@ class LarsBootstrapTUI(ReactiveGlassApp):
         elif action.type == "BOOTSTRAP_COMPLETE":
             new_state["bootstrap_running"] = False
             new_state["bootstrap_complete"] = True
+            # Set instance variable for post-exit check
+            self.bootstrap_completed = True
         
         return new_state
     
@@ -1306,12 +1315,17 @@ class LarsBootstrapTUI(ReactiveGlassApp):
         
         # Action panel
         if self.state.get("bootstrap_running"):
+            # Animated spinner
+            spinner = self.SPINNER_FRAMES[self.spinner_frame % len(self.SPINNER_FRAMES)]
+            self.spinner_frame += 1
+            
             action_content = [
-                f"[bold {colors['accent']}]⏳ Bootstrap Running...[/bold {colors['accent']}]",
-                separator(35),
+                f"[bold {colors['accent']}]{spinner} Bootstrap Running...[/bold {colors['accent']}]",
+                separator(45),
                 "",
             ]
-            for log in self.state.get("bootstrap_log", [])[-10:]:
+            # Show more log entries
+            for log in self.state.get("bootstrap_log", [])[-15:]:
                 action_content.append(f"  {log}")
         elif self.state.get("bootstrap_complete"):
             action_content = [
@@ -1339,7 +1353,10 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                 f"[bold {colors['accent']}]Press Enter to start →[/bold {colors['accent']}]",
             ]
         
-        widgets.append(glass_panel("action_panel", action_content, x + 58, 3, 35, 18, colors, "accent"))
+        # Larger panel during bootstrap to show more logs
+        panel_height = 24 if self.state.get("bootstrap_running") else 18
+        panel_width = 50 if self.state.get("bootstrap_running") else 35
+        widgets.append(glass_panel("action_panel", action_content, x + 58, 3, panel_width, panel_height, colors, "accent"))
         
         return widgets
     
@@ -1767,9 +1784,18 @@ class LarsBootstrapTUI(ReactiveGlassApp):
         else:
             self.dispatch(Action("SET_STATUS", f"Save failed: {path}"))
     
+    def _refresh_spinner(self):
+        """Refresh display to animate spinner during bootstrap."""
+        if self.state.get("bootstrap_running"):
+            self.refresh()  # Trigger redraw
+            self.set_timer(0.1, self._refresh_spinner)  # Schedule next refresh
+    
     def _run_bootstrap(self):
         """Run bootstrap in background with real initialization steps."""
         self.dispatch(Action("START_BOOTSTRAP"))
+        
+        # Start spinner animation
+        self.set_timer(0.1, self._refresh_spinner)
         
         def log(msg):
             self.call_later(lambda m=msg: self.dispatch(Action("BOOTSTRAP_LOG", m)))
@@ -2070,5 +2096,5 @@ if __name__ == "__main__":
     app.run()
     
     # After TUI exits, check if bootstrap completed and show post-run output
-    if app.state.get("bootstrap_complete"):
+    if app.bootstrap_completed:
         run_post_bootstrap()
