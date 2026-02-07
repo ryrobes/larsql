@@ -1650,6 +1650,9 @@ class LarsBootstrapTUI(ReactiveGlassApp):
     def on_key(self, event):
         """Handle keyboard input."""
         key = event.key
+        # Textual maps punctuation to names (full_stop, colon, slash, etc.)
+        # Use event.character for printable character input in editing fields
+        char = getattr(event, "character", None)
         screen = self.state.get("current_screen", Screen.WELCOME)
         
         # Editing mode handlers
@@ -1660,8 +1663,8 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                 self.dispatch(Action("FINISH_EDIT_ROOT"))
             elif key == "backspace":
                 self.dispatch(Action("EDIT_ROOT_BACKSPACE"))
-            elif len(key) == 1 and key.isprintable():
-                self.dispatch(Action("EDIT_ROOT_CHAR", key))
+            elif char and char.isprintable():
+                self.dispatch(Action("EDIT_ROOT_CHAR", char))
             return
         
         if self.state.get("openrouter_key_editing"):
@@ -1673,8 +1676,8 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                 self._validate_openrouter_key()
             elif key == "backspace":
                 self.dispatch(Action("EDIT_KEY_BACKSPACE"))
-            elif len(key) == 1 and key.isprintable():
-                self.dispatch(Action("EDIT_KEY_CHAR", key))
+            elif char and char.isprintable():
+                self.dispatch(Action("EDIT_KEY_CHAR", char))
             return
         
         if self.state.get("ollama_host_editing"):
@@ -1686,8 +1689,8 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                 self._validate_ollama_host()
             elif key == "backspace":
                 self.dispatch(Action("EDIT_OLLAMA_HOST_BACKSPACE"))
-            elif len(key) == 1 and key.isprintable():
-                self.dispatch(Action("EDIT_OLLAMA_HOST_CHAR", key))
+            elif char and char.isprintable():
+                self.dispatch(Action("EDIT_OLLAMA_HOST_CHAR", char))
             return
         
         if self.state.get("gemini_key_editing"):
@@ -1699,8 +1702,8 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                 self._validate_gemini_key()
             elif key == "backspace":
                 self.dispatch(Action("EDIT_GEMINI_KEY_BACKSPACE"))
-            elif len(key) == 1 and key.isprintable():
-                self.dispatch(Action("EDIT_GEMINI_KEY_CHAR", key))
+            elif char and char.isprintable():
+                self.dispatch(Action("EDIT_GEMINI_KEY_CHAR", char))
             return
         
         if self.state.get("bedrock_region_editing"):
@@ -1712,8 +1715,8 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                 self._validate_bedrock_credentials()
             elif key == "backspace":
                 self.dispatch(Action("EDIT_BEDROCK_REGION_BACKSPACE"))
-            elif len(key) == 1 and key.isprintable():
-                self.dispatch(Action("EDIT_BEDROCK_REGION_CHAR", key))
+            elif char and char.isprintable():
+                self.dispatch(Action("EDIT_BEDROCK_REGION_CHAR", char))
             return
         
         if self.state.get("anthropic_direct_key_editing"):
@@ -1724,8 +1727,8 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                 self._validate_anthropic_key()
             elif key == "backspace":
                 self.dispatch(Action("EDIT_ANTHROPIC_KEY_BACKSPACE"))
-            elif len(key) == 1 and key.isprintable():
-                self.dispatch(Action("EDIT_ANTHROPIC_KEY_CHAR", key))
+            elif char and char.isprintable():
+                self.dispatch(Action("EDIT_ANTHROPIC_KEY_CHAR", char))
             return
         
         if self.state.get("lmstudio_host_editing"):
@@ -1736,8 +1739,8 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                 self._validate_lmstudio_host()
             elif key == "backspace":
                 self.dispatch(Action("EDIT_LMSTUDIO_HOST_BACKSPACE"))
-            elif len(key) == 1 and key.isprintable():
-                self.dispatch(Action("EDIT_LMSTUDIO_HOST_CHAR", key))
+            elif char and char.isprintable():
+                self.dispatch(Action("EDIT_LMSTUDIO_HOST_CHAR", char))
             return
         
         if self.state.get("sql_conn_name_editing"):
@@ -1747,8 +1750,8 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                 self.dispatch(Action("FINISH_EDIT_SQL_NAME"))
             elif key == "backspace":
                 self.dispatch(Action("EDIT_SQL_NAME_BACKSPACE"))
-            elif len(key) == 1 and key.isprintable():
-                self.dispatch(Action("EDIT_SQL_NAME_CHAR", key))
+            elif char and char.isprintable():
+                self.dispatch(Action("EDIT_SQL_NAME_CHAR", char))
             return
         
         if self.state.get("sql_field_editing"):
@@ -1758,8 +1761,8 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                 self.dispatch(Action("FINISH_EDIT_SQL_FIELD"))
             elif key == "backspace":
                 self.dispatch(Action("EDIT_SQL_FIELD_BACKSPACE"))
-            elif len(key) == 1 and key.isprintable():
-                self.dispatch(Action("EDIT_SQL_FIELD_CHAR", key))
+            elif char and char.isprintable():
+                self.dispatch(Action("EDIT_SQL_FIELD_CHAR", char))
             return
         
         # Global keys
@@ -1864,9 +1867,9 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                     self.dispatch(Action("CLOSE_MODEL_SELECTOR"))
                 elif key == "backspace":
                     self.dispatch(Action("MODEL_SEARCH_BACKSPACE"))
-                elif len(key) == 1 and key.isprintable():
+                elif char and char.isprintable():
                     # Type to search
-                    self.dispatch(Action("MODEL_SEARCH_CHAR", key))
+                    self.dispatch(Action("MODEL_SEARCH_CHAR", char))
             else:
                 if key in ("j", "down"):
                     self.dispatch(Action("NAVIGATE_TIER", 1))
@@ -1909,8 +1912,8 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                     self.dispatch(Action("CANCEL_EDIT_ADMIN_PW"))
                 elif key == "backspace":
                     self.dispatch(Action("EDIT_ADMIN_PW_BACKSPACE"))
-                elif len(key) == 1:
-                    self.dispatch(Action("EDIT_ADMIN_PW_CHAR", key))
+                elif char:
+                    self.dispatch(Action("EDIT_ADMIN_PW_CHAR", char))
             elif key == "p" and not self.state.get("bootstrap_running"):
                 self.dispatch(Action("START_EDIT_ADMIN_PW"))
             elif key == "enter" and not self.state.get("bootstrap_running"):

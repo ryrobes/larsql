@@ -1346,6 +1346,9 @@ class LarsControlPanel(ReactiveGlassApp):
     def on_key(self, event):
         """Handle keyboard input."""
         key = event.key
+        # Textual maps punctuation to names (full_stop, colon, slash, etc.)
+        # Use event.character for printable character input in editing fields
+        char = getattr(event, "character", None)
         screen = self.state.get("current_screen", Screen.CONNECTIONS)
         editing = self.state.get("form_editing", False)
         
@@ -1362,8 +1365,8 @@ class LarsControlPanel(ReactiveGlassApp):
                 self.dispatch(Action("FORM_FINISH_EDIT"))
             elif key == "backspace":
                 self.dispatch(Action("FORM_EDIT_BACKSPACE"))
-            elif len(key) == 1 and key.isprintable():
-                self.dispatch(Action("FORM_EDIT_CHAR", key))
+            elif char and char.isprintable():
+                self.dispatch(Action("FORM_EDIT_CHAR", char))
             return
         
         # === GLOBAL KEYS ===
