@@ -44,6 +44,7 @@ Usage:
 
 import atexit
 import gc
+import logging
 import os
 import json
 import threading
@@ -1696,7 +1697,18 @@ class LarsDB:
         self.root = Path(root_path) if root_path else _get_data_root()
         self._ensure_directories()
         self._write_lock = threading.Lock()  # Serialize writes to same table
+        self._auto_compact_thread = None
+        self._auto_compact_stop = threading.Event()
         self._initialized = True
+
+        # Start auto-compaction if enabled (default: on)
+        auto_compact = os.environ.get("LARS_AUTO_COMPACT", "1").lower()
+        if auto_compact in ("1", "true", "yes", "on"):
+            interval = int(os.environ.get("LARS_AUTO_COMPACT_INTERVAL", "300"))
+            threshold = int(os.environ.get("LARS_AUTO_COMPACT_THRESHOLD", "10"))
+            self.start_auto_compaction(
+                interval_seconds=interval, file_threshold=threshold
+            )
     
     def _ensure_directories(self):
         """Create the directory structure if it doesn't exist."""
@@ -2502,7 +2514,95 @@ class LarsDB:
             if result["files_before"] > 0:  # Only include tables with data
                 results.append(result)
         return results
-    
+
+    # =========================================================================
+    # Auto-Compaction
+    # =========================================================================
+
+    def start_auto_compaction(
+        self,
+        interval_seconds: int = 300,
+        file_threshold: int = 10,
+    ):
+        """
+        Start a background thread that periodically compacts fragmented tables.
+
+        Args:
+            interval_seconds: How often to check (default: 5 minutes)
+            file_threshold: Minimum files in a partition/table before compacting
+        """
+        if self._auto_compact_thread and self._auto_compact_thread.is_alive():
+            return  # Already running
+
+        self._auto_compact_stop.clear()
+
+        def _auto_compact_loop():
+            import time as _time
+            log = logging.getLogger("lars.auto_compact")
+            log.info(
+                f"[AutoCompact] Started (interval={interval_seconds}s, "
+                f"threshold={file_threshold} files)"
+            )
+            while not self._auto_compact_stop.wait(interval_seconds):
+                try:
+                    compacted = []
+                    system_dir = self.root / "system"
+
+                    for table_name, schema_def in SYSTEM_TABLES.items():
+                        table_dir = system_dir / table_name
+                        if not table_dir.exists():
+                            continue
+
+                        hive_cols = schema_def.get("hive_partition_by", [])
+
+                        if hive_cols:
+                            # Check each partition directory
+                            all_pq = list(table_dir.glob("**/*.parquet"))
+                            part_dirs = set(f.parent for f in all_pq)
+                            needs_compact = any(
+                                len(list(d.glob("*.parquet"))) >= file_threshold
+                                for d in part_dirs
+                            )
+                        else:
+                            # Flat table
+                            file_count = len(list(table_dir.glob("*.parquet")))
+                            needs_compact = file_count >= file_threshold
+
+                        if needs_compact:
+                            result = self.compact(
+                                table_name, threshold=file_threshold
+                            )
+                            if result.get("files_before", 0) > result.get(
+                                "files_after", 0
+                            ):
+                                compacted.append(
+                                    f"{table_name}: "
+                                    f"{result['files_before']} → {result['files_after']} files"
+                                )
+
+                    if compacted:
+                        log.info(
+                            f"[AutoCompact] Compacted {len(compacted)} table(s): "
+                            + ", ".join(compacted)
+                        )
+
+                except Exception as e:
+                    log.warning(f"[AutoCompact] Error: {e}")
+
+            log.info("[AutoCompact] Stopped")
+
+        self._auto_compact_thread = threading.Thread(
+            target=_auto_compact_loop, daemon=True, name="lars-auto-compact"
+        )
+        self._auto_compact_thread.start()
+
+    def stop_auto_compaction(self):
+        """Stop the background auto-compaction thread."""
+        self._auto_compact_stop.set()
+        if self._auto_compact_thread:
+            self._auto_compact_thread.join(timeout=5)
+            self._auto_compact_thread = None
+
     def query(
         self, 
         sql: str, 
