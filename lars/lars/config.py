@@ -285,7 +285,7 @@ class Config(BaseModel):
     # =========================================================================
     provider_base_url: str = Field(default="https://openrouter.ai/api/v1")
     provider_api_key: Optional[str] = Field(
-        default_factory=lambda: os.getenv("OPENROUTER_API_KEY")
+        default_factory=lambda: os.getenv("OPENROUTER_API_KEY") or os.getenv("ANTHROPIC_API_KEY")
     )
     default_model: str = Field(default="x-ai/grok-4.1-fast")
     #default_model: str = Field(default="arcee-ai/trinity-large-preview:free")

@@ -270,6 +270,21 @@ class Agent:
                 base_model = model_id[8:]  # Remove "bedrock/" prefix
                 args["model"] = f"bedrock/converse/{base_model}"
 
+        # Anthropic OAuth token detection (sk-ant-oat-*)
+        # When a user provides an OAuth token from their Claude Pro/Max subscription,
+        # auto-start a local proxy that translates to the correct auth headers.
+        _effective_key = args.get("api_key") or os.environ.get("ANTHROPIC_API_KEY", "")
+        if _effective_key and _effective_key.startswith("sk-ant-oat"):
+            from .anthropic_oauth_proxy import ensure_oauth_proxy
+            proxy_url = ensure_oauth_proxy(_effective_key)
+            if proxy_url:
+                args["base_url"] = proxy_url
+                args["api_key"] = _effective_key  # Proxy doesn't check this, but litellm needs something
+                args["custom_llm_provider"] = "anthropic"
+                # Ensure model uses anthropic/ prefix for litellm routing
+                if not args["model"].startswith("anthropic/"):
+                    args["model"] = f"anthropic/{args['model']}"
+
         if self.tools:
             args["tools"] = self.tools
             args["tool_choice"] = "auto"
