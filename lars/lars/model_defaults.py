@@ -12,7 +12,7 @@ from typing import Dict, List, Optional, Tuple
 MODEL_PREFERENCES: Dict[str, List[Tuple[str, str]]] = {
     "fast": [
         ("anthropic-direct", "anthropic-direct/claude-haiku-4-5-20251001"),
-        ("openrouter", "openrouter/pony-alpha"),  # "google/gemini-2.5-flash"),
+        ("openrouter", "anthropic/claude-haiku-4.5"),  # "google/gemini-2.5-flash"),
         ("gemini", "gemini/gemini-2.5-flash"),
         ("ollama", "ollama/llama3"),
         ("lmstudio", "lmstudio/lmstudio-community/Meta-Llama-3-8B-Instruct-GGUF"),
@@ -20,8 +20,8 @@ MODEL_PREFERENCES: Dict[str, List[Tuple[str, str]]] = {
     ],
     "standard": [
         ("anthropic-direct", "anthropic-direct/claude-sonnet-4-5-2025092"),
-        # ("openrouter", "anthropic/claude-sonnet-4"),
-        ("openrouter", "openrouter/pony-alpha"),
+        ("openrouter", "anthropic/claude-sonnet-4.5"),
+        # ("openrouter", "openrouter/pony-alpha"),
         ("gemini", "gemini/gemini-2.5-pro"),
         ("ollama", "ollama/llama3:70b"),
         ("lmstudio", "lmstudio/lmstudio-community/Meta-Llama-3.1-70B-Instruct-GGUF"),
@@ -30,14 +30,15 @@ MODEL_PREFERENCES: Dict[str, List[Tuple[str, str]]] = {
     "quality": [
         ("anthropic-direct", "anthropic-direct/claude-sonnet-4-5-20250929"),
         # ("openrouter", "anthropic/claude-sonnet-4"),
-        ("openrouter", "openrouter/pony-alpha"),
+        # ("openrouter", "openrouter/pony-alpha"),
+        ("openrouter", "anthropic/claude-sonnet-4.5::high"),
         ("gemini", "gemini/gemini-2.5-pro"),
         ("bedrock", "bedrock/anthropic.claude-3-sonnet"),
     ],
     "flagship": [
         ("anthropic-direct", "anthropic-direct/claude-opus-4-6"),
         # ("openrouter", "anthropic/claude-opus-4"),
-        ("openrouter", "openrouter/pony-alpha"),
+        ("openrouter", "anthropic/claude-opus-4.6"),
         ("gemini", "gemini/gemini-2.5-pro"),
         ("bedrock", "bedrock/anthropic.claude-3-opus"),
     ],

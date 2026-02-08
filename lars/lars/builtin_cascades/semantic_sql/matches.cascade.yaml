@@ -1,11 +1,12 @@
 cascade_id: semantic_matches
 internal: true
-description: 'Semantic boolean filter - returns TRUE if text semantically matches
+description:
+  "Semantic boolean filter - returns TRUE if text semantically matches
   the criterion.
 
   Used for WHERE clauses with natural language conditions.
 
-  '
+  "
 inputs_schema:
   text: The text to evaluate
   criterion: The semantic criterion to match against
@@ -13,82 +14,83 @@ sql_function:
   name: semantic_matches
   description: Returns TRUE if text semantically matches the criterion
   args:
-  - name: text
-    type: VARCHAR
-  - name: criterion
-    type: VARCHAR
+    - name: text
+      type: VARCHAR
+    - name: criterion
+      type: VARCHAR
   returns: BOOLEAN
   shape: SCALAR
   operators:
-  - '{{ text }} MEANS {{ criterion }}'
-  - '{{ text }} MATCHES {{ criterion }}'
-  - '{{ text }} ~ {{ criterion }}'
+    - "{{ text }} MEANS {{ criterion }}"
+    - "{{ text }} MATCHES {{ criterion }}"
+    - "{{ text }} ~ {{ criterion }}"
   cache: true
   test_cases:
-  # MEANS infix operator
-  - sql: WITH t AS (SELECT 'apple pie recipe' AS text) SELECT * FROM t WHERE text MEANS 'dessert recipes'
-    expect:
-      type: contains
-      value: apple pie
-    description: "Infix MEANS: matches related content"
-  # Tilde operator (short form)
-  - sql: WITH t AS (SELECT 'quantum physics' AS topic) SELECT * FROM t WHERE topic ~ 'science'
-    expect:
-      type: contains
-      value: quantum
-    description: "Infix ~: matches semantic content"
-  # MATCHES infix operator
-  - sql: WITH t AS (SELECT 'customer complaint about shipping delay' AS msg) SELECT * FROM t WHERE msg MATCHES 'delivery issues'
-    expect:
-      type: contains
-      value: shipping
-    description: "Infix MATCHES: filters by semantic match"
-  # Function syntax
-  - sql: "SELECT semantic_matches('renewable energy investments', 'environmental topics')"
-    expect: true
-    description: "Function: returns true for semantic match"
-  # Skip flaky test - LLM interpretation can be overly generous
-  - sql: "SELECT semantic_matches('basketball game results', 'cooking recipes')"
-    skip: true
-    expect: false
-    description: "Function: returns false for unrelated topics (skipped - LLM varies)"
-  # Negative case with infix
-  - sql: WITH t AS (SELECT 'weather forecast' AS text) SELECT CASE WHEN text MEANS 'financial news' THEN 'yes' ELSE 'no' END FROM t
-    expect: "no"
-    description: "Infix MEANS: returns false for unrelated"
+    # MEANS infix operator
+    - sql: WITH t AS (SELECT 'apple pie recipe' AS text) SELECT * FROM t WHERE text MEANS 'dessert recipes'
+      expect:
+        type: contains
+        value: apple pie
+      description: "Infix MEANS: matches related content"
+    # Tilde operator (short form)
+    - sql: WITH t AS (SELECT 'quantum physics' AS topic) SELECT * FROM t WHERE topic ~ 'science'
+      expect:
+        type: contains
+        value: quantum
+      description: "Infix ~: matches semantic content"
+    # MATCHES infix operator
+    - sql: WITH t AS (SELECT 'customer complaint about shipping delay' AS msg) SELECT * FROM t WHERE msg MATCHES 'delivery issues'
+      expect:
+        type: contains
+        value: shipping
+      description: "Infix MATCHES: filters by semantic match"
+    # Function syntax
+    - sql: "SELECT semantic_matches('renewable energy investments', 'environmental topics')"
+      expect: true
+      description: "Function: returns true for semantic match"
+    # Skip flaky test - LLM interpretation can be overly generous
+    - sql: "SELECT semantic_matches('basketball game results', 'cooking recipes')"
+      skip: true
+      expect: false
+      description: "Function: returns false for unrelated topics (skipped - LLM varies)"
+    # Negative case with infix
+    - sql: WITH t AS (SELECT 'weather forecast' AS text) SELECT CASE WHEN text MEANS 'financial news' THEN 'yes' ELSE 'no' END FROM t
+      expect: "no"
+      description: "Infix MEANS: returns false for unrelated"
 cells:
-- name: evaluate
-  model: "{{ models.standard }}"
-  use_training: true
-  training_limit: 5
-  training_strategy: recent
-  training_min_confidence: 0.8
-  training_format: xml
-  instructions: |
-    Does this text semantically match the criterion?
+  - name: evaluate
+    model: "{{ models.standard }}"
+    use_training: true
+    training_limit: 5
+    training_strategy: recent
+    training_min_confidence: 0.8
+    training_format: xml
+    instructions: |
+      Does this text semantically match the criterion?
 
-    TEXT: {{ input.text }}
-    CRITERION: {{ input.criterion }}
+      TEXT: {{ input.text }}
+      CRITERION: {{ input.criterion }}
 
-    STEP 1: What topic/domain is the TEXT about?
-    STEP 2: What topic/domain is the CRITERION about?
-    STEP 3: Are these the SAME or CLOSELY RELATED topics?
+      STEP 1: What topic/domain is the TEXT about?
+      STEP 2: What topic/domain is the CRITERION about?
+      STEP 3: Are these the SAME or CLOSELY RELATED topics?
 
-    A MATCH means the text discusses the SAME or CLOSELY RELATED topic.
-    NOT A MATCH means the topics are from completely different domains.
+      A MATCH means the text discusses the SAME or CLOSELY RELATED topic.
+      NOT A MATCH means the topics are from completely different domains.
 
-    CLEAR EXAMPLES:
-    ✓ MATCH: "stock prices fell" + "financial news" (both: finance)
-    ✓ MATCH: "sunny weather tomorrow" + "forecast" (both: weather/predictions)
-    ✓ MATCH: "cute puppies" + "pets" (both: animals)
-    ✓ MATCH: "apple pie recipe" + "dessert recipes" (both: food/cooking)
+      CLEAR EXAMPLES:
+      ✓ MATCH: "stock prices fell" + "financial news" (both: finance)
+      ✓ MATCH: "sunny weather tomorrow" + "forecast" (both: weather/predictions)
+      ✓ MATCH: "cute puppies" + "pets" (both: animals)
+      ✓ MATCH: "apple pie recipe" + "dessert recipes" (both: food/cooking)
 
-    ✗ NO MATCH: "weather forecast" + "financial news" (weather ≠ finance)
-    ✗ NO MATCH: "basketball game results" + "cooking recipes" (sports ≠ cooking)
-    ✗ NO MATCH: "dog training tips" + "car maintenance" (pets ≠ automotive)
+      ✗ NO MATCH: "weather forecast" + "financial news" (weather ≠ finance)
+      ✗ NO MATCH: "basketball game results" + "cooking recipes" (sports ≠ cooking)
+      ✗ NO MATCH: "dog training tips" + "car maintenance" (pets ≠ automotive)
 
-    Think through steps 1-3, then respond with ONLY "true" or "false".
-  rules:
-    max_turns: 1
-  output_schema:
-    type: boolean
+      Think through steps 1-3, then respond with ONLY "true" or "false".
+      IMPORTANT: Do NOT respond with the STEPS or thinking, only true or false!
+    rules:
+      max_turns: 1
+    output_schema:
+      type: boolean

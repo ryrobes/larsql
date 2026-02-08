@@ -1281,7 +1281,7 @@ def fetch_models_from_anthropic_direct() -> List[Dict]:
 
 def fetch_models_from_lmstudio() -> List[Dict]:
     """Fetch models from LM Studio instance."""
-    cfg = get_app_config()
+    cfg = get_config()
     if not cfg.lmstudio_enabled:
         console.print("[dim]   LM Studio         disabled (skipping)[/dim]")
         return []
