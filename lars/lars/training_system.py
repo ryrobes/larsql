@@ -293,7 +293,7 @@ def mark_as_trainable(
         db = LarsDB()
 
         # Use LarsDB.write() for parquet-based persistence (same as benchmarks)
-        now_str = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+        now_ts = datetime.now(timezone.utc)
         rows = []
         for trace_id in trace_ids:
             row = {
@@ -303,7 +303,7 @@ def mark_as_trainable(
                 'confidence': float(confidence if confidence is not None else 1.0),
                 'notes': str(notes) if notes else '',
                 'tags': list(tags) if tags else [],
-                'annotated_at': now_str,
+                'annotated_at': now_ts,
                 'annotated_by': 'human'
             }
             rows.append(row)

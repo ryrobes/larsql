@@ -2227,6 +2227,7 @@ class LarsDB:
                 WHERE role = 'assistant' 
                   AND cascade_id IS NOT NULL AND cascade_id != '' 
                   AND content_json IS NOT NULL AND content_json != ''
+                  AND cascade_id != 'analyze_context_relevance'
             """)
         except Exception:
             pass
