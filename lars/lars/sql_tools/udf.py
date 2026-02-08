@@ -2406,6 +2406,10 @@ def make_vectorized_wrapper(
                         pending_futures[future] = (i, args, cache_key)
                         submitted_this_batch += 1
 
+                        # Small stagger to avoid slamming API endpoints simultaneously
+                        import time
+                        time.sleep(0.15)
+
                         if submitted_this_batch >= batch_size:
                             break
 
