@@ -5,6 +5,7 @@ Executes LARS cascades as SQL UDFs, bridging the SQL and cascade systems.
 """
 
 import json
+import os
 import re
 import asyncio
 import copy
@@ -454,6 +455,9 @@ def execute_cascade_udf(
     Returns:
         JSON string of the cascade result
     """
+    # Benchmark mode: disable cache so each model gets a fresh LLM call
+    if os.environ.get("LARS_BENCHMARK_NO_CACHE") == "1":
+        use_cache = False
     from .registry import get_sql_function, get_cached_result, set_cached_result
     from ..session_naming import generate_woodland_id
     from ..caller_context import get_caller_id
@@ -680,6 +684,7 @@ def execute_cascade_udf(
 
         # Post-process based on return type (for output_mode: value)
         if fn.returns == "BOOLEAN":
+            log.debug(f"[cascade_udf] BOOLEAN pre-coerce: output={output!r} type={type(output).__name__}")
             if isinstance(output, str):
                 # Models may include reasoning before the answer.
                 # Check the full string first, then try the last line/word.

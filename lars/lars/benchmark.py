@@ -389,6 +389,10 @@ def _run_single_benchmark(
         old_env[env_key] = os.environ.get(env_key)
         os.environ[env_key] = model_id
 
+    # Disable cascade cache so each model gets fresh LLM calls
+    old_env["LARS_BENCHMARK_NO_CACHE"] = os.environ.get("LARS_BENCHMARK_NO_CACHE")
+    os.environ["LARS_BENCHMARK_NO_CACHE"] = "1"
+
     try:
         actual, error = _execute_internal(test_sql, conn, lock, rewriter_func)
 
