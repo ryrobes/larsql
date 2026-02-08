@@ -285,16 +285,14 @@ def mark_as_trainable(
         >>> mark_as_trainable(['trace-123', 'trace-456'], trainable=True, verified=True, confidence=1.0)
         2
     """
-    from .db_adapter import get_db
-
     if not trace_ids:
         return 0
 
     try:
-        db = get_db()
+        from .lars_db import LarsDB
+        db = LarsDB()
 
-        # Prepare rows for insertion as dicts (required by insert_rows)
-        # Use ISO format string for datetime to avoid numpy serialization issues
+        # Use LarsDB.write() for parquet-based persistence (same as benchmarks)
         now_str = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
         rows = []
         for trace_id in trace_ids:
@@ -310,25 +308,7 @@ def mark_as_trainable(
             }
             rows.append(row)
 
-        # Insert using raw execute with proper value formatting
-        # Build parameterized insert to avoid numpy issues
-        for row in rows:
-            db.execute(f"""
-                INSERT INTO training_annotations
-                (trace_id, trainable, verified, confidence, notes, tags, annotated_at, annotated_by)
-                VALUES (
-                    %(trace_id)s,
-                    %(trainable)s,
-                    %(verified)s,
-                    %(confidence)s,
-                    %(notes)s,
-                    %(tags)s,
-                    %(annotated_at)s,
-                    %(annotated_by)s
-                )
-            """, row)
-
-        # DuckDB: no merge needed (was ClickHouse ReplacingMergeTree artifact)
+        db.write("training_annotations", rows)
 
         log.info(f"[training] Marked {len(rows)} traces as trainable={trainable}")
         return len(rows)

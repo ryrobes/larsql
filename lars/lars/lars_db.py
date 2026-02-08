@@ -2231,6 +2231,26 @@ class LarsDB:
         except Exception:
             pass
         
+        # Ensure training_annotations exists (may not have parquet files yet on fresh install)
+        try:
+            conn.execute("SELECT 1 FROM training_annotations LIMIT 0")
+        except Exception:
+            try:
+                conn.execute("""
+                    CREATE OR REPLACE TABLE training_annotations (
+                        trace_id VARCHAR,
+                        trainable BOOLEAN,
+                        verified BOOLEAN,
+                        confidence FLOAT,
+                        notes VARCHAR,
+                        tags VARCHAR[],
+                        annotated_at TIMESTAMP,
+                        annotated_by VARCHAR
+                    )
+                """)
+            except Exception:
+                pass
+
         # training_examples_with_annotations - training examples joined with annotations
         try:
             conn.execute("""
