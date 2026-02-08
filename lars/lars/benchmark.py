@@ -685,11 +685,16 @@ def run_benchmark(
                 pass
 
     # Backfill costs from the costs table
-    # Costs are written asynchronously with ~1-3s latency, so wait briefly
+    # Costs are written asynchronously with variable latency, retry until stable
     if results:
         import time as _time
         _time.sleep(3)
         _backfill_costs(results)
+        # Retry once more after additional wait for stragglers
+        unfilled = sum(1 for r in results if r.cost == 0.0 and r.provider not in ("ollama", "lmstudio"))
+        if unfilled > 0:
+            _time.sleep(5)
+            _backfill_costs(results)
 
     # Store results
     if results:
