@@ -10899,9 +10899,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                         examples=examples,
                         format=cell.training_format
                     )
-                    console.print(f"{indent}[dim green][INFO] Injected {len(examples)} training examples ({cell.training_strategy} strategy)[/dim green]")
-                else:
-                    console.print(f"{indent}[dim yellow][INFO] No training examples available yet for {cell.name}[/dim yellow]")
+                    console.print(f"{indent}[dim green][INFO] Injected {len(examples)} verified examples ({cell.training_strategy} strategy)[/dim green]")
 
             except Exception as e:
                 # Non-blocking: Don't crash if training fails

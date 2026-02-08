@@ -343,9 +343,9 @@ const TrainingView = () => {
       {/* Header */}
       <div className="training-header">
         <div className="training-header-left">
-          <Icon icon="mdi:school" width={20} style={{ color: '#00e5ff' }} />
-          <h1>Training Examples</h1>
-          <span className="training-subtitle">Universal Few-Shot Learning System</span>
+          <Icon icon="mdi:brain" width={20} style={{ color: '#00e5ff' }} />
+          <h1>Learn</h1>
+          <span className="training-subtitle">Review results · LARS optimizes automatically</span>
         </div>
 
         <div className="training-header-right">
@@ -563,8 +563,8 @@ const TrainingView = () => {
         onComplete={async (decisions) => {
           setHotOrNotOpen(false);
 
-          // Small delay to allow ClickHouse ReplacingMergeTree to process
-          await new Promise(resolve => setTimeout(resolve, 500));
+          // Small delay to allow annotations to flush
+          await new Promise(resolve => setTimeout(resolve, 300));
 
           // Refresh data after decisions are submitted
           await fetchExamples();

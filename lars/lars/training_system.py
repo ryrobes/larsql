@@ -328,9 +328,7 @@ def mark_as_trainable(
                 )
             """, row)
 
-        # Force merge to ensure new annotations are immediately visible in queries
-        # ReplacingMergeTree doesn't dedupe until background merge otherwise
-        db.execute("OPTIMIZE TABLE training_annotations FINAL")
+        # DuckDB: no merge needed (was ClickHouse ReplacingMergeTree artifact)
 
         log.info(f"[training] Marked {len(rows)} traces as trainable={trainable}")
         return len(rows)

@@ -114,9 +114,9 @@ export const router = createBrowserRouter([
         element: withSuspense(ReceiptsView),
       },
 
-      // Training - Universal few-shot learning system
+      // Learn - Self-optimizing feedback loop (review, calibrate, evolve)
       {
-        path: 'training',
+        path: 'learn',
         element: withSuspense(TrainingView),
       },
 

@@ -81,8 +81,8 @@ def get_training_examples():
         # Escape single quotes and use case-insensitive position search
         escaped_search = search.replace("'", "''")
         where_clauses.append(f"""(
-            positionCaseInsensitiveUTF8(user_input, '{escaped_search}') > 0
-            OR positionCaseInsensitiveUTF8(assistant_output, '{escaped_search}') > 0
+            user_input ILIKE '%' || '{escaped_search}' || '%'
+            OR assistant_output ILIKE '%' || '{escaped_search}' || '%'
         )""")
 
     where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
@@ -315,8 +315,8 @@ def run_confidence_assessment():
             if search:
                 escaped_search = search.replace("'", "''")
                 where_clauses.append(f"""(
-                    positionCaseInsensitiveUTF8(user_input, '{escaped_search}') > 0
-                    OR positionCaseInsensitiveUTF8(assistant_output, '{escaped_search}') > 0
+                    user_input ILIKE '%' || '{escaped_search}' || '%'
+                    OR assistant_output ILIKE '%' || '{escaped_search}' || '%'
                 )""")
 
             where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
@@ -401,8 +401,8 @@ def get_filter_options():
         if search:
             escaped_search = search.replace("'", "''")
             base_where.append(f"""(
-                positionCaseInsensitiveUTF8(user_input, '{escaped_search}') > 0
-                OR positionCaseInsensitiveUTF8(assistant_output, '{escaped_search}') > 0
+                user_input ILIKE '%' || '{escaped_search}' || '%'
+                OR assistant_output ILIKE '%' || '{escaped_search}' || '%'
             )""")
 
         base_where_sql = " AND ".join(base_where)

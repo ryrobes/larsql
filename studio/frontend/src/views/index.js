@@ -58,10 +58,10 @@ export const views = {
     enabled: true,
   },
 
-  training: {
+  learn: {
     component: lazy(() => import('./training/TrainingView')),
-    icon: 'mdi:school',
-    label: 'Training',
+    icon: 'mdi:brain',
+    label: 'Learn',
     position: 'top',
     enabled: true,
   },

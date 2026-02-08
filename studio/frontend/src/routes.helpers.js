@@ -31,8 +31,9 @@ export const ROUTES = {
   // Receipts
   RECEIPTS: '/receipts',
 
-  // Training - Universal few-shot learning system
-  TRAINING: '/training',
+  // Learn - Self-optimizing feedback loop
+  LEARN: '/learn',
+  TRAINING: '/learn',  // backward compat alias
 
   // SQL Trail
   SQL_TRAIL: '/sql-trail',
@@ -116,7 +117,7 @@ export function getViewFromPath(pathname) {
     'runtime-logs': 'runtime-logs',
     'outputs': 'outputs',
     'receipts': 'receipts',
-    'training': 'training',
+    'learn': 'learn',
     'sql-trail': 'sqltrail',
     'explore': 'explore',
     'evolution': 'evolution',
@@ -158,7 +159,7 @@ export function getRouteForView(viewId) {
     'runtime-logs': ROUTES.RUNTIME_LOGS,
     'outputs': ROUTES.OUTPUTS,
     'receipts': ROUTES.RECEIPTS,
-    'training': ROUTES.TRAINING,
+    'learn': ROUTES.LEARN,
     'sqltrail': ROUTES.SQL_TRAIL,
     'explore': ROUTES.EXPLORE,
     'evolution': ROUTES.EVOLUTION,
