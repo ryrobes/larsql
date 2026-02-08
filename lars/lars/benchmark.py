@@ -446,65 +446,67 @@ def _backfill_costs(results: List['BenchmarkResult']):
     """
     Backfill cost/token data from the costs parquet table.
 
-    Each result has t_before/t_after timestamps from execution.
-    Query costs table for entries in each result's time window.
+    Costs are batch-flushed with identical timestamps, so per-result
+    time windows don't work. Instead:
+    1. Get the full time window for each (operator, model) group
+    2. Query total costs in that window
+    3. Divide evenly across results in the group
     """
     try:
         from .lars_db import LarsDB
+        from datetime import timezone as _tz
+
         lars_db = LarsDB()
         cost_conn = lars_db.get_cached_connection()
 
-        # Get all costs since the earliest test started
-        t_min = min(getattr(r, '_t_before', None) or datetime.utcnow()
-                    for r in results)
-
-        all_costs = cost_conn.execute("""
-            SELECT timestamp, model, cost, tokens_in, tokens_out
-            FROM costs
-            WHERE timestamp >= ?
-            ORDER BY timestamp
-        """, [t_min]).fetchall()
-
-        if not all_costs:
-            console.print(f"[dim]No costs found since {t_min}[/dim]")
-            return
-
-        console.print(f"[dim]Found {len(all_costs)} cost entries to match against {len(results)} results[/dim]")
-        backfilled = 0
+        # Group results by model_id
+        from collections import defaultdict
+        model_groups = defaultdict(list)
         for r in results:
             t_before = getattr(r, '_t_before', None)
-            t_after = getattr(r, '_t_after', None)
-            if not t_before or not t_after:
+            if t_before:
+                model_groups[r.model_id].append(r)
+
+        if not model_groups:
+            return
+
+        def _to_utc(dt):
+            if dt.tzinfo is not None:
+                return dt.astimezone(_tz.utc)
+            return dt.replace(tzinfo=_tz.utc)
+
+        backfilled = 0
+        for model_id, group in model_groups.items():
+            # Get time window for this model's entire run
+            t_min = min(_to_utc(r._t_before) for r in group)
+            t_max = max(_to_utc(r._t_after) for r in group)
+
+            # Query costs for this time window
+            rows = cost_conn.execute("""
+                SELECT COALESCE(SUM(cost), 0),
+                       COALESCE(SUM(tokens_in), 0),
+                       COALESCE(SUM(tokens_out), 0),
+                       COUNT(*)
+                FROM costs
+                WHERE timestamp >= ? AND timestamp <= ?
+            """, [t_min, t_max]).fetchone()
+
+            if not rows or rows[3] == 0:
                 continue
 
-            # Sum costs within this result's execution window
-            total_cost = 0.0
-            total_in = 0
-            total_out = 0
-            for ts, model, cost, tok_in, tok_out in all_costs:
-                # Normalize all timestamps to UTC for comparison
-                from datetime import timezone as _tz
-                def _to_utc(dt):
-                    if dt.tzinfo is not None:
-                        return dt.astimezone(_tz.utc).replace(tzinfo=None)
-                    return dt
-                ts_utc = _to_utc(ts) if hasattr(ts, 'tzinfo') else ts
-                tb_utc = _to_utc(t_before)
-                ta_utc = _to_utc(t_after)
-                if tb_utc <= ts_utc <= ta_utc:
-                    total_cost += cost or 0.0
-                    total_in += tok_in or 0
-                    total_out += tok_out or 0
+            total_cost, total_in, total_out, n_entries = float(rows[0]), int(rows[1]), int(rows[2]), int(rows[3])
 
             if total_cost > 0 or total_in > 0:
-                r.cost = total_cost
-                r.tokens_in = total_in
-                r.tokens_out = total_out
-                backfilled += 1
-            elif backfilled == 0 and not getattr(r, '_debug_printed', False):
-                # Debug first miss
-                console.print(f"[dim]  No cost match for {r.model_id}: window {t_before} → {t_after}[/dim]")
-                r._debug_printed = True
+                # Distribute evenly across results in this model group
+                n_results = len(group)
+                per_cost = total_cost / n_results
+                per_in = total_in // n_results
+                per_out = total_out // n_results
+                for r in group:
+                    r.cost = per_cost
+                    r.tokens_in = per_in
+                    r.tokens_out = per_out
+                    backfilled += 1
 
         if backfilled > 0:
             console.print(f"[dim]Backfilled costs for {backfilled}/{len(results)} results[/dim]")
