@@ -2506,9 +2506,13 @@ class LarsDB:
         
         result = self._write_rows_to_file(filepath, rows, schema_def)
         
-        # For tables with dedup (interactive/mutable tables like training_annotations),
-        # invalidate cached connections so subsequent reads see the new file immediately.
-        if schema_def.get("dedup"):
+        # Invalidate cached connections so subsequent reads see the new parquet file.
+        # DuckDB caches the glob file list for read_parquet views, so new files are
+        # invisible to existing connections until views are re-registered.
+        # Skip for high-frequency append-only tables (unified_logs, session_state)
+        # where slight staleness is acceptable and churn would be expensive.
+        _HIGH_FREQ_TABLES = {'unified_logs', 'unified_logs_base', 'session_state', 'session_heartbeats'}
+        if table not in _HIGH_FREQ_TABLES:
             self.invalidate_all_connections()
         
         return result
