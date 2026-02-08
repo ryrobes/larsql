@@ -215,8 +215,22 @@ def discover_test_cases(operators: List[str] = None) -> List[dict]:
                 cases = sql_func.get("test_cases", [])
 
                 # Filter by requested operators
-                if operators and func_name not in operators and cascade_id not in operators:
-                    continue
+                # Match against: function name, cascade_id, or SQL operator keywords
+                if operators:
+                    op_patterns = sql_func.get("operators", [])
+                    # Extract keywords from operator patterns (e.g., "MEANS" from "{{ text }} MEANS {{ criterion }}")
+                    op_keywords = set()
+                    for pat in op_patterns:
+                        for word in pat.split():
+                            if not word.startswith("{"):
+                                op_keywords.add(word.lower().strip("'\""))
+                    match = (
+                        func_name in operators
+                        or cascade_id in operators
+                        or any(op.lower() in op_keywords for op in operators)
+                    )
+                    if not match:
+                        continue
 
                 for tc in cases:
                     if tc.get("skip"):
