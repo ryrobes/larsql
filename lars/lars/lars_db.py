@@ -49,6 +49,8 @@ import os
 import json
 import threading
 import uuid
+
+log = logging.getLogger(__name__)
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
@@ -2052,7 +2054,7 @@ class LarsDB:
                 pass
         
         if not unified_logs_created:
-            logger.warning("[Views] Could not create unified_logs view by any strategy")
+            log.warning("[Views] Could not create unified_logs view by any strategy")
         
         # lars_system.logs → alias for unified_logs (for clean namespace)
         try:
