@@ -2260,11 +2260,39 @@ class LarsDB:
         try:
             conn.execute("""
                 CREATE OR REPLACE VIEW training_examples_with_annotations AS
-                WITH latest_annotations AS (
-                    SELECT *, ROW_NUMBER() OVER (
-                        PARTITION BY trace_id ORDER BY annotated_at DESC
-                    ) AS _rn
+                WITH merged_annotations AS (
+                    -- Merge human + worker annotations per trace:
+                    -- Human wins for trainable/verified/notes, max confidence from any source
+                    SELECT
+                        trace_id,
+                        -- Human annotations take priority for selection flags
+                        COALESCE(
+                            BOOL_OR(trainable) FILTER (WHERE annotated_by = 'human'),
+                            BOOL_OR(trainable),
+                            false
+                        ) AS trainable,
+                        COALESCE(
+                            BOOL_OR(verified) FILTER (WHERE annotated_by = 'human'),
+                            BOOL_OR(verified),
+                            false
+                        ) AS verified,
+                        -- Best confidence from any source (human=1.0 or worker score)
+                        MAX(confidence) AS confidence,
+                        -- Latest human note, or latest note overall
+                        COALESCE(
+                            MAX(notes) FILTER (WHERE annotated_by = 'human' AND notes != ''),
+                            MAX(notes) FILTER (WHERE notes != ''),
+                            ''
+                        ) AS notes,
+                        -- Tags from latest annotation
+                        LAST(tags ORDER BY annotated_at) AS tags,
+                        MAX(annotated_at) AS annotated_at,
+                        -- Show 'human' if any human annotation exists
+                        CASE WHEN BOOL_OR(annotated_by = 'human') THEN 'human'
+                             ELSE MAX(annotated_by)
+                        END AS annotated_by
                     FROM training_annotations
+                    GROUP BY trace_id
                 )
                 SELECT
                     mv.*,
@@ -2276,7 +2304,7 @@ class LarsDB:
                     ta.annotated_at,
                     COALESCE(ta.annotated_by, '') AS annotated_by
                 FROM training_examples_mv AS mv
-                LEFT JOIN latest_annotations AS ta ON mv.trace_id = ta.trace_id AND ta._rn = 1
+                LEFT JOIN merged_annotations AS ta ON mv.trace_id = ta.trace_id
             """)
         except Exception:
             pass
