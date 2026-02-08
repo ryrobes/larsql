@@ -408,17 +408,26 @@ def _run_single_benchmark(
     os.environ["LARS_BENCHMARK_NO_CACHE"] = "1"
 
     try:
+        # Capture timestamp before execution for cost correlation
+        from datetime import datetime, timezone
+        t_before = datetime.now(timezone.utc)
+
         actual, error = _execute_internal(test_sql, conn, lock, rewriter_func)
 
+        t_after = datetime.now(timezone.utc)
+
         if error:
-            return {"output": None, "error": error, "tokens_in": 0, "tokens_out": 0, "cost": 0.0}
+            return {"output": None, "error": error, "tokens_in": 0, "tokens_out": 0, "cost": 0.0,
+                    "t_before": t_before, "t_after": t_after}
 
         return {
             "output": actual,
             "error": None,
-            "tokens_in": 0,   # TODO: extract from execution context
+            "tokens_in": 0,
             "tokens_out": 0,
             "cost": 0.0,
+            "t_before": t_before,
+            "t_after": t_after,
         }
     finally:
         # Restore environment
@@ -427,6 +436,75 @@ def _run_single_benchmark(
                 os.environ.pop(key, None)
             else:
                 os.environ[key] = val
+
+
+# ---------------------------------------------------------------------------
+# Cost backfill
+# ---------------------------------------------------------------------------
+
+def _backfill_costs(results: List['BenchmarkResult']):
+    """
+    Backfill cost/token data from the costs parquet table.
+
+    Each result has t_before/t_after timestamps from execution.
+    Query costs table for entries in each result's time window.
+    """
+    try:
+        from .lars_db import LarsDB
+        lars_db = LarsDB()
+        cost_conn = lars_db.get_cached_connection()
+
+        # Get all costs since the earliest test started
+        t_min = min(getattr(r, '_t_before', None) or datetime.utcnow()
+                    for r in results)
+
+        all_costs = cost_conn.execute("""
+            SELECT timestamp, model, cost, tokens_in, tokens_out
+            FROM costs
+            WHERE timestamp >= ?
+            ORDER BY timestamp
+        """, [t_min]).fetchall()
+
+        if not all_costs:
+            return
+
+        backfilled = 0
+        for r in results:
+            t_before = getattr(r, '_t_before', None)
+            t_after = getattr(r, '_t_after', None)
+            if not t_before or not t_after:
+                continue
+
+            # Sum costs within this result's execution window
+            total_cost = 0.0
+            total_in = 0
+            total_out = 0
+            for ts, model, cost, tok_in, tok_out in all_costs:
+                # Normalize all timestamps to UTC for comparison
+                from datetime import timezone as _tz
+                def _to_utc(dt):
+                    if dt.tzinfo is not None:
+                        return dt.astimezone(_tz.utc).replace(tzinfo=None)
+                    return dt
+                ts_utc = _to_utc(ts) if hasattr(ts, 'tzinfo') else ts
+                tb_utc = _to_utc(t_before)
+                ta_utc = _to_utc(t_after)
+                if tb_utc <= ts_utc <= ta_utc:
+                    total_cost += cost or 0.0
+                    total_in += tok_in or 0
+                    total_out += tok_out or 0
+
+            if total_cost > 0 or total_in > 0:
+                r.cost = total_cost
+                r.tokens_in = total_in
+                r.tokens_out = total_out
+                backfilled += 1
+
+        if backfilled > 0:
+            console.print(f"[dim]Backfilled costs for {backfilled}/{len(results)} results[/dim]")
+
+    except Exception as e:
+        console.print(f"[yellow]Cost backfill failed (non-fatal): {e}[/yellow]")
 
 
 # ---------------------------------------------------------------------------
@@ -568,6 +646,9 @@ def run_benchmark(
                     provider=_extract_provider(model_id),
                     created_at=datetime.utcnow().isoformat(),
                 )
+                # Stash execution timestamps for cost backfill
+                br._t_before = result.get("t_before")
+                br._t_after = result.get("t_after")
                 results.append(br)
 
             except Exception as e:
@@ -602,6 +683,13 @@ def run_benchmark(
                 cleanup_all_echoes()
             except Exception:
                 pass
+
+    # Backfill costs from the costs table
+    # Costs are written asynchronously with ~1-3s latency, so wait briefly
+    if results:
+        import time as _time
+        _time.sleep(3)
+        _backfill_costs(results)
 
     # Store results
     if results:
