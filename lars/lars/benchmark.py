@@ -466,8 +466,10 @@ def _backfill_costs(results: List['BenchmarkResult']):
         """, [t_min]).fetchall()
 
         if not all_costs:
+            console.print(f"[dim]No costs found since {t_min}[/dim]")
             return
 
+        console.print(f"[dim]Found {len(all_costs)} cost entries to match against {len(results)} results[/dim]")
         backfilled = 0
         for r in results:
             t_before = getattr(r, '_t_before', None)
@@ -499,6 +501,10 @@ def _backfill_costs(results: List['BenchmarkResult']):
                 r.tokens_in = total_in
                 r.tokens_out = total_out
                 backfilled += 1
+            elif backfilled == 0 and not getattr(r, '_debug_printed', False):
+                # Debug first miss
+                console.print(f"[dim]  No cost match for {r.model_id}: window {t_before} → {t_after}[/dim]")
+                r._debug_printed = True
 
         if backfilled > 0:
             console.print(f"[dim]Backfilled costs for {backfilled}/{len(results)} results[/dim]")
