@@ -1,0 +1,439 @@
+/* ─── Learn Insights Panel ─────────────────────────────────────────────────── */
+
+.learn-insights {
+  margin: 0 0 12px 0;
+  border: 1px solid #1a1628;
+  border-radius: 8px;
+  background: #050410;
+  overflow: hidden;
+}
+
+.learn-insights--expanded {
+  border-color: #2a2440;
+}
+
+/* ─── Header ──────────────────────────────────────────────────────────────── */
+
+.learn-insights-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+}
+
+.learn-insights-header:hover {
+  background: #0a0818;
+}
+
+.learn-insights-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.learn-insights-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.learn-insights-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #64748b;
+  margin-left: 8px;
+}
+
+.learn-insights-header-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.learn-dream-btn,
+.learn-refresh-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: 1px solid #2a2440;
+  border-radius: 4px;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.learn-dream-btn:hover,
+.learn-refresh-btn:hover {
+  background: #1a1628;
+  color: #cbd5e1;
+  border-color: #3a3450;
+}
+
+.learn-dream-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ─── Status Dot ──────────────────────────────────────────────────────────── */
+
+.learn-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #475569;
+  display: inline-block;
+}
+
+.learn-status-dot--active {
+  background: #34d399;
+  box-shadow: 0 0 6px #34d39966;
+  animation: learn-pulse 2s ease-in-out infinite;
+}
+
+@keyframes learn-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* ─── Body ────────────────────────────────────────────────────────────────── */
+
+.learn-insights-body {
+  border-top: 1px solid #1a1628;
+}
+
+/* ─── Status Bar ──────────────────────────────────────────────────────────── */
+
+.learn-status-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 12px;
+  background: #080614;
+  border-bottom: 1px solid #1a1628;
+}
+
+.learn-status-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+/* ─── Tabs ────────────────────────────────────────────────────────────────── */
+
+.learn-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid #1a1628;
+}
+
+.learn-tab {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 14px;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  font-size: 12px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s;
+}
+
+.learn-tab:hover {
+  color: #94a3b8;
+  background: #0a0818;
+}
+
+.learn-tab--active {
+  color: #00e5ff;
+  border-bottom-color: #00e5ff;
+}
+
+.learn-tab-badge {
+  background: #2a2440;
+  color: #a78bfa;
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 8px;
+  font-weight: 600;
+}
+
+/* ─── Tab Content ─────────────────────────────────────────────────────────── */
+
+.learn-tab-content {
+  max-height: 300px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #2a2440 transparent;
+}
+
+.learn-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.learn-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 24px;
+  color: #475569;
+  font-size: 12px;
+  text-align: center;
+  line-height: 1.5;
+}
+
+/* ─── Activity Feed ───────────────────────────────────────────────────────── */
+
+.learn-activity-feed {
+  padding: 4px 0;
+}
+
+.learn-activity-item {
+  display: flex;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #0a0818;
+  transition: background 0.1s;
+}
+
+.learn-activity-item:hover {
+  background: #0a0818;
+}
+
+.learn-activity-item:last-child {
+  border-bottom: none;
+}
+
+.learn-activity-icon {
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+.learn-activity-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.learn-activity-desc {
+  font-size: 12px;
+  color: #cbd5e1;
+  line-height: 1.4;
+  display: block;
+}
+
+.learn-activity-meta {
+  display: flex;
+  gap: 10px;
+  margin-top: 3px;
+  font-size: 10px;
+  color: #475569;
+}
+
+.learn-activity-time {
+  color: #64748b;
+}
+
+.learn-activity-duration {
+  color: #60a5fa;
+}
+
+.learn-activity-cost {
+  color: #34d399;
+}
+
+.learn-activity-session {
+  font-family: 'JetBrains Mono', monospace;
+  color: #475569;
+}
+
+/* ─── Routing Table ───────────────────────────────────────────────────────── */
+
+.learn-routing {
+  padding: 4px 0;
+}
+
+.learn-routing-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.learn-routing-table th {
+  padding: 6px 12px;
+  text-align: left;
+  color: #64748b;
+  font-weight: 600;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid #1a1628;
+}
+
+.learn-routing-table td {
+  padding: 8px 12px;
+  color: #cbd5e1;
+  border-bottom: 1px solid #0a0818;
+}
+
+.learn-routing-table tr:hover td {
+  background: #0a0818;
+}
+
+.learn-routing-op {
+  color: #fbbf24 !important;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.learn-routing-model {
+  color: #00e5ff !important;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.learn-routing-acc {
+  font-weight: 600;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.learn-routing-cost {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.learn-routing-latency {
+  color: #64748b !important;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.learn-routing-samples {
+  color: #64748b !important;
+}
+
+/* ─── Changelog ───────────────────────────────────────────────────────────── */
+
+.learn-changelog {
+  padding: 4px 0;
+}
+
+.learn-change-item {
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #0a0818;
+  transition: background 0.1s;
+}
+
+.learn-change-item:hover {
+  background: #0a0818;
+}
+
+.learn-change-item--reverted {
+  opacity: 0.5;
+}
+
+.learn-change-item:last-child {
+  border-bottom: none;
+}
+
+.learn-change-icon {
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+.learn-change-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.learn-change-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.learn-change-desc {
+  font-size: 12px;
+  color: #cbd5e1;
+  line-height: 1.4;
+}
+
+.learn-change-reverted-badge {
+  font-size: 9px;
+  padding: 1px 5px;
+  background: #7f1d1d;
+  color: #fca5a5;
+  border-radius: 3px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.learn-change-meta {
+  display: flex;
+  gap: 10px;
+  margin-top: 3px;
+  font-size: 10px;
+  color: #475569;
+}
+
+.learn-change-type {
+  color: #64748b;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.learn-change-operator {
+  color: #fbbf24;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* ─── Delta Badges ────────────────────────────────────────────────────────── */
+
+.learn-change-deltas {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.learn-delta {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.learn-delta--positive {
+  background: #052e16;
+  color: #34d399;
+}
+
+.learn-delta--negative {
+  background: #450a0a;
+  color: #fca5a5;
+}
+
+/* ─── Spin Animation ──────────────────────────────────────────────────────── */
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}

@@ -4,6 +4,7 @@ import { VideoLoader } from '../../components';
 import KPICard from './components/KPICard';
 import TrainingGrid from './components/TrainingGrid';
 import HotOrNotModal from './components/HotOrNotModal';
+import LearnInsights from './components/LearnInsights';
 import SearchableMultiSelect from './components/SearchableMultiSelect';
 import './TrainingView.css';
 import { API_BASE_URL } from '../../config/api';
@@ -469,6 +470,9 @@ const TrainingView = () => {
           color="#00e5ff"
         />
       </div>
+
+      {/* Learn Insights Panel — observability for the dream engine */}
+      <LearnInsights />
 
       {/* Action Buttons */}
       <div className="training-actions">
