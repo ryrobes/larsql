@@ -1588,6 +1588,64 @@ SYSTEM_TABLES = {
     },
 
     # =========================================================================
+    # Learn System Tables (self-optimization changelog + work log)
+    # =========================================================================
+
+    "learn_changelog": {
+        "columns": [
+            ("id", "VARCHAR"),
+            ("timestamp", "TIMESTAMP"),
+            ("change_type", "VARCHAR"),         # model_swap, prompt_mutation, calibration_run, few_shot_update
+            ("operator", "VARCHAR"),             # cascade/operator affected
+            ("description", "VARCHAR"),          # human-readable: "Moved VALID to gemma3 (local)"
+            ("before_state", "VARCHAR"),          # JSON snapshot of previous config
+            ("after_state", "VARCHAR"),           # JSON snapshot of new config
+            ("accuracy_before", "DOUBLE"),
+            ("accuracy_after", "DOUBLE"),
+            ("cost_before", "DOUBLE"),
+            ("cost_after", "DOUBLE"),
+            ("latency_before_ms", "DOUBLE"),
+            ("latency_after_ms", "DOUBLE"),
+            ("sample_count", "UINTEGER"),        # how many verified examples tested
+            ("triggered_by", "VARCHAR"),          # 'auto_calibration', 'manual', 'prompt_evolution', 'threshold'
+            ("reverted", "BOOLEAN"),
+            ("reverted_at", "TIMESTAMP"),
+        ],
+        "partition_by": None,
+    },
+
+    "learn_work_log": {
+        "columns": [
+            ("id", "VARCHAR"),
+            ("timestamp", "TIMESTAMP"),
+            ("activity_type", "VARCHAR"),        # calibration, mutation, validation, few_shot_inject, review_summary
+            ("operator", "VARCHAR"),
+            ("model", "VARCHAR"),
+            ("description", "VARCHAR"),          # what happened: "Ran MEANS calibration: 3 models, gemma3 won"
+            ("duration_ms", "DOUBLE"),
+            ("cost", "DOUBLE"),                  # cost of the dreaming activity itself
+            ("details", "VARCHAR"),              # JSON blob with full details
+            ("dream_session_id", "VARCHAR"),     # groups related activities from one dream cycle
+        ],
+        "partition_by": None,
+    },
+
+    "learn_model_routing": {
+        "columns": [
+            ("operator", "VARCHAR"),
+            ("model", "VARCHAR"),
+            ("accuracy", "DOUBLE"),
+            ("avg_cost", "DOUBLE"),
+            ("avg_latency_ms", "DOUBLE"),
+            ("sample_count", "UINTEGER"),
+            ("rank", "UINTEGER"),                # 1 = cheapest qualifying model
+            ("is_active", "BOOLEAN"),            # currently routed to this model
+            ("updated_at", "TIMESTAMP"),
+        ],
+        "partition_by": None,
+    },
+
+    # =========================================================================
     # Test Dashboard Tables
     # =========================================================================
 

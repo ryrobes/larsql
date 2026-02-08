@@ -1469,6 +1469,24 @@ def main():
     )
 
     # Benchmark command
+    # ── Learn ──────────────────────────────────────────────────────────────
+    learn_parser = subparsers.add_parser('learn', help='LARS Learn — self-optimization status and controls')
+    learn_parser.add_argument('--status', action='store_true', default=True,
+                              help='Show learn system status (default)')
+    learn_parser.add_argument('--changelog', action='store_true',
+                              help='Show recent automatic changes')
+    learn_parser.add_argument('--work-log', action='store_true',
+                              help='Show recent dream cycle activities')
+    learn_parser.add_argument('--routing', action='store_true',
+                              help='Show current model routing table')
+    learn_parser.add_argument('--calibrate', action='store_true',
+                              help='Trigger a dream cycle now')
+    learn_parser.add_argument('--savings', action='store_true',
+                              help='Show estimated cost savings')
+    learn_parser.add_argument('--rollback', type=str, default=None, metavar='CHANGE_ID',
+                              help='Rollback a specific change')
+
+    # ── Benchmark ─────────────────────────────────────────────────────────
     bench_parser = subparsers.add_parser('benchmark', help='Run model benchmarks for semantic operators')
     bench_parser.add_argument('--operators', default=None,
                               help='Comma-separated list of operators to benchmark (default: all)')
@@ -1882,6 +1900,173 @@ def main():
         cmd_doctor(args)
     elif args.command == 'bootstrap':
         cmd_bootstrap(args)
+    elif args.command == 'learn':
+        from rich.console import Console as RConsole
+        from rich.table import Table
+        from rich.panel import Panel
+        from .learn_engine import CALIBRATION_THRESHOLD, MUTATION_THRESHOLD
+        _con = RConsole()
+
+        if args.rollback:
+            from .learn_engine import revert_change
+            success = revert_change(args.rollback)
+            if success:
+                _con.print(f"[green]✓ Reverted change {args.rollback}[/green]")
+            else:
+                _con.print(f"[red]✗ Change {args.rollback} not found[/red]")
+
+        elif args.calibrate:
+            from .learn_engine import run_dream_cycle
+            _con.print("[cyan]💤 Running dream cycle...[/cyan]")
+            result = run_dream_cycle(triggered_by="manual_cli")
+            _con.print(f"[green]✓ Dream cycle complete ({result.get('elapsed_ms', 0):.0f}ms)[/green]")
+            for activity in result.get("activities", []):
+                _con.print(f"  • {activity.get('type', '?')}: {activity}")
+
+        elif args.changelog:
+            from .learn_engine import get_learn_status
+            status = get_learn_status()
+            changes = status.get("recent_changes", [])
+            if not changes:
+                _con.print("[dim]No changes recorded yet.[/dim]")
+            else:
+                table = Table(title="📋 Learn Changelog", border_style="dim")
+                table.add_column("Time", style="dim", width=20)
+                table.add_column("Type", style="cyan", width=16)
+                table.add_column("Operator", style="yellow", width=20)
+                table.add_column("Description", width=50)
+                table.add_column("Δ Accuracy", width=12)
+                table.add_column("Δ Cost", width=12)
+                for c in changes:
+                    acc_delta = ""
+                    if c.get("accuracy_before") and c.get("accuracy_after"):
+                        delta = c["accuracy_after"] - c["accuracy_before"]
+                        color = "green" if delta >= 0 else "red"
+                        acc_delta = f"[{color}]{delta:+.1%}[/{color}]"
+                    cost_delta = ""
+                    if c.get("cost_before") is not None and c.get("cost_after") is not None:
+                        delta = c["cost_after"] - c["cost_before"]
+                        color = "green" if delta <= 0 else "red"
+                        cost_delta = f"[{color}]${delta:+.4f}[/{color}]"
+                    table.add_row(
+                        str(c.get("timestamp", ""))[:19],
+                        c.get("change_type", ""),
+                        c.get("operator", ""),
+                        c.get("description", ""),
+                        acc_delta,
+                        cost_delta,
+                    )
+                _con.print(table)
+
+        elif args.work_log:
+            from .learn_engine import get_learn_status
+            status = get_learn_status()
+            work = status.get("recent_work", [])
+            if not work:
+                _con.print("[dim]No dream activity recorded yet.[/dim]")
+            else:
+                table = Table(title="💤 Dream Work Log", border_style="dim")
+                table.add_column("Time", style="dim", width=20)
+                table.add_column("Activity", style="cyan", width=20)
+                table.add_column("Operator", style="yellow", width=20)
+                table.add_column("Description", width=50)
+                table.add_column("Duration", width=10)
+                for w in work:
+                    dur = f"{w.get('duration_ms', 0):.0f}ms" if w.get('duration_ms') else ""
+                    table.add_row(
+                        str(w.get("timestamp", ""))[:19],
+                        w.get("activity_type", ""),
+                        w.get("operator", ""),
+                        w.get("description", ""),
+                        dur,
+                    )
+                _con.print(table)
+
+        elif args.routing:
+            from .learn_engine import get_active_routing
+            routing = get_active_routing()
+            if not routing:
+                _con.print("[dim]No routing data yet. Run benchmarks first, then dream.[/dim]")
+            else:
+                table = Table(title="🧭 Model Routing", border_style="dim")
+                table.add_column("Operator", style="yellow", width=20)
+                table.add_column("Model", style="cyan", width=30)
+                table.add_column("Accuracy", width=10)
+                table.add_column("Avg Cost", width=12)
+                table.add_column("Avg Latency", width=12)
+                table.add_column("Samples", width=10)
+                for op, info in routing.items():
+                    table.add_row(
+                        op,
+                        info["model"],
+                        f"{info['accuracy']:.0%}",
+                        f"${info['avg_cost']:.4f}",
+                        f"{info['avg_latency_ms']:.0f}ms",
+                        str(info["sample_count"]),
+                    )
+                _con.print(table)
+
+        elif args.savings:
+            from .learn_engine import get_savings_estimate
+            savings = get_savings_estimate()
+            _con.print(Panel(
+                f"Estimated monthly savings: [green]${savings['estimated_savings_monthly']:.2f}[/green]\n"
+                f"Queries routed: {savings['queries_routed']}\n"
+                f"Local model %: {savings['local_percentage']:.0%}\n"
+                f"\n[dim]{savings.get('note', '')}[/dim]",
+                title="💰 Learn Savings",
+                border_style="green",
+            ))
+
+        else:
+            # Default: show status
+            from .learn_engine import get_learn_status
+            status = get_learn_status()
+
+            # Header
+            dreaming_status = "[green]● Active[/green]" if status["dreaming"] else "[dim]○ Inactive[/dim]"
+            _con.print(Panel(
+                f"Dream thread: {dreaming_status} (every {status['dream_interval_s']}s)\n"
+                f"Total verified examples: [cyan]{status['total_verified']}[/cyan]\n"
+                f"Calibration threshold: {status['calibration_threshold']} examples\n"
+                f"Accuracy floor: {status['accuracy_floor']:.0%}",
+                title="🧠 LARS Learn Status",
+                border_style="cyan",
+            ))
+
+            # Verified counts per operator
+            if status["verified_counts"]:
+                table = Table(title="Verified Examples by Operator", border_style="dim")
+                table.add_column("Operator", style="yellow")
+                table.add_column("Count", style="cyan")
+                table.add_column("Status")
+                for op, count in sorted(status["verified_counts"].items()):
+                    if count >= MUTATION_THRESHOLD:
+                        s = "[green]● Ready for mutation[/green]"
+                    elif count >= CALIBRATION_THRESHOLD:
+                        s = "[cyan]● Ready for calibration[/cyan]"
+                    else:
+                        s = f"[dim]Need {CALIBRATION_THRESHOLD - count} more[/dim]"
+                    table.add_row(op, str(count), s)
+                _con.print(table)
+
+            # Active routing
+            if status["routing"]:
+                table = Table(title="Active Model Routing", border_style="dim")
+                table.add_column("Operator", style="yellow")
+                table.add_column("Routed To", style="cyan")
+                table.add_column("Accuracy")
+                table.add_column("Cost/query")
+                for op, info in status["routing"].items():
+                    table.add_row(
+                        op, info["model"],
+                        f"{info['accuracy']:.0%}",
+                        f"${info['avg_cost']:.4f}",
+                    )
+                _con.print(table)
+
+            _con.print("\n[dim]Commands: --changelog, --work-log, --routing, --calibrate, --savings, --rollback <id>[/dim]")
+
     elif args.command == 'benchmark':
         from .benchmark import run_benchmark, print_routing_report
 

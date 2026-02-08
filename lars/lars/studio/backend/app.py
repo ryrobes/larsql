@@ -66,6 +66,14 @@ if os.getenv("LARS_STUDIO_RUN_HOUSEKEEPING") == "1":
     except Exception as e:
         print(f"[Studio] Tool manifest sync failed: {e}")
 
+    # Start Learn dream thread (self-optimization background loop)
+    try:
+        from lars.learn_engine import start_dreaming
+        start_dreaming()
+        print("[Studio] Learn dream thread started")
+    except Exception as e:
+        print(f"[Studio] Learn dream thread failed to start: {e}")
+
 # Supported cascade file extensions
 CASCADE_EXTENSIONS = ('json', 'yaml', 'yml')
 
@@ -122,6 +130,7 @@ from apps_api import apps_bp
 from sql_trail_api import sql_trail_bp
 from hyper_sql_api import hyper_sql_bp
 from training_api import training_bp
+from learn_api import learn_bp
 from catalog_api import catalog_bp
 from watchers_api import watchers_bp
 from tests_api import tests_bp
@@ -155,6 +164,8 @@ app.register_blueprint(sql_trail_bp)
 app.register_blueprint(hyper_sql_bp)
 # Training API - Universal few-shot learning system
 app.register_blueprint(training_bp)
+# Learn API - Self-optimization observability (changelog, routing, dreaming)
+app.register_blueprint(learn_bp)
 # Catalog API - Unified system components browser
 app.register_blueprint(catalog_bp)
 # Watchers API - SQL watch subscriptions
