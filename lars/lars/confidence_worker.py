@@ -126,7 +126,7 @@ def assess_trace_ids_confidence(trace_ids: list, force: bool = False) -> dict:
                 # Run confidence assessment cascade
                 # NOTE: We intentionally do NOT skip internal cascades here
                 runner = LARSRunner(
-                    'cascades/semantic_sql/assess_confidence.cascade.yaml',
+                    'semantic_sql/assess_confidence.cascade.yaml',
                     session_id=f"confidence_ondemand_{uuid.uuid4().hex[:8]}",
                     parent_session_id=msg.get('session_id'),
                 )
@@ -349,7 +349,7 @@ def assess_training_confidence(session_id: str) -> Optional[dict]:
 
                 # Run confidence assessment cascade with inherited caller context
                 runner = LARSRunner(
-                    'cascades/semantic_sql/assess_confidence.cascade.yaml',
+                    'semantic_sql/assess_confidence.cascade.yaml',
                     session_id=f"confidence_assess_{uuid.uuid4().hex[:8]}",
                     parent_session_id=session_id,  # Link back to session being assessed
                     caller_id=parent_caller_id,     # Inherit caller_id from parent
