@@ -54,6 +54,7 @@ _dream_thread: Optional[threading.Thread] = None
 _dream_stop_event = threading.Event()
 _last_dream_time: Optional[float] = None
 _dream_lock = threading.Lock()
+_dream_file_lock_fd = None  # File descriptor for cross-process lock
 
 
 def _now_iso() -> str:
@@ -457,12 +458,52 @@ def run_dream_cycle(triggered_by: str = "auto") -> Dict[str, Any]:
 
 # ─── Background Thread ───────────────────────────────────────────────────────
 
+def _acquire_dream_lock() -> bool:
+    """Try to acquire a cross-process file lock so only one worker dreams."""
+    global _dream_file_lock_fd
+    import fcntl
+    try:
+        lock_dir = os.path.join(os.environ.get("LARS_ROOT", os.path.expanduser("~/.lars")), "data")
+        os.makedirs(lock_dir, exist_ok=True)
+        lock_path = os.path.join(lock_dir, ".dream.lock")
+        _dream_file_lock_fd = open(lock_path, "w")
+        fcntl.flock(_dream_file_lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        _dream_file_lock_fd.write(str(os.getpid()))
+        _dream_file_lock_fd.flush()
+        return True
+    except (IOError, OSError):
+        # Another worker already holds the lock
+        if _dream_file_lock_fd:
+            _dream_file_lock_fd.close()
+            _dream_file_lock_fd = None
+        return False
+
+
+def _release_dream_lock():
+    """Release the cross-process file lock."""
+    global _dream_file_lock_fd
+    if _dream_file_lock_fd:
+        import fcntl
+        try:
+            fcntl.flock(_dream_file_lock_fd, fcntl.LOCK_UN)
+            _dream_file_lock_fd.close()
+        except Exception:
+            pass
+        _dream_file_lock_fd = None
+
+
 def _dream_loop():
     """Background thread that runs dream cycles periodically."""
-    log.info(f"[learn] 💤 Dream thread started (interval: {DEFAULT_DREAM_INTERVAL}s)")
+    # Acquire cross-process lock — only one worker should dream
+    if not _acquire_dream_lock():
+        log.info("[learn] 💤 Another worker is already dreaming — this worker will skip")
+        return
+
+    log.info(f"[learn] 💤 Dream thread started (interval: {DEFAULT_DREAM_INTERVAL}s, pid: {os.getpid()})")
 
     # Wait a bit on startup to let the system initialize
     if _dream_stop_event.wait(30):
+        _release_dream_lock()
         return
 
     while not _dream_stop_event.is_set():
@@ -475,6 +516,7 @@ def _dream_loop():
         if _dream_stop_event.wait(DEFAULT_DREAM_INTERVAL):
             break
 
+    _release_dream_lock()
     log.info("[learn] 💤 Dream thread stopped")
 
 
@@ -511,6 +553,7 @@ def stop_dreaming():
             _dream_thread.join(timeout=5)
             log.info("[learn] Dream thread stopped")
         _dream_thread = None
+        _release_dream_lock()
 
 
 def is_dreaming() -> bool:
