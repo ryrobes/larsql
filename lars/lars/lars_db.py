@@ -1353,6 +1353,10 @@ SYSTEM_TABLES = {
             ("annotated_by", "VARCHAR"),
         ],
         "partition_by": None,
+        "dedup": {
+            "pk": "trace_id",
+            "order_by": "annotated_at DESC",
+        },
     },
 
     "training_preferences": {
@@ -2256,6 +2260,12 @@ class LarsDB:
         try:
             conn.execute("""
                 CREATE OR REPLACE VIEW training_examples_with_annotations AS
+                WITH latest_annotations AS (
+                    SELECT *, ROW_NUMBER() OVER (
+                        PARTITION BY trace_id ORDER BY annotated_at DESC
+                    ) AS _rn
+                    FROM training_annotations
+                )
                 SELECT
                     mv.*,
                     COALESCE(ta.trainable, false) AS trainable,
@@ -2266,7 +2276,7 @@ class LarsDB:
                     ta.annotated_at,
                     COALESCE(ta.annotated_by, '') AS annotated_by
                 FROM training_examples_mv AS mv
-                LEFT JOIN training_annotations AS ta ON mv.trace_id = ta.trace_id
+                LEFT JOIN latest_annotations AS ta ON mv.trace_id = ta.trace_id AND ta._rn = 1
             """)
         except Exception:
             pass

@@ -9,6 +9,7 @@ Provides:
 - Password hashing (for future web login)
 """
 
+import os
 import uuid
 import hashlib
 import time

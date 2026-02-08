@@ -57,7 +57,13 @@ _dream_lock = threading.Lock()
 _dream_file_lock_fd = None  # File descriptor for cross-process lock
 
 
+def _now_ts() -> datetime:
+    """Return a timezone-aware UTC datetime for PyArrow TIMESTAMP columns."""
+    return datetime.now(timezone.utc)
+
+
 def _now_iso() -> str:
+    """Legacy string format — avoid for parquet writes, use _now_ts() instead."""
     return datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
 
 
@@ -83,7 +89,7 @@ def log_work(
         db = LarsDB()
         db.write("learn_work_log", [{
             "id": _gen_id(),
-            "timestamp": _now_iso(),
+            "timestamp": _now_ts(),
             "activity_type": str(activity_type),
             "operator": str(operator) if operator else "",
             "model": str(model) if model else "",
@@ -119,7 +125,7 @@ def log_change(
         db = LarsDB()
         db.write("learn_changelog", [{
             "id": change_id,
-            "timestamp": _now_iso(),
+            "timestamp": _now_ts(),
             "change_type": str(change_type),
             "operator": str(operator) if operator else "",
             "description": str(description),
@@ -159,7 +165,7 @@ def revert_change(change_id: str) -> bool:
         db.write("learn_changelog", [{
             **entry,
             "reverted": True,
-            "reverted_at": _now_iso(),
+            "reverted_at": _now_ts(),
         }])
         log.info(f"[learn] Reverted change {change_id}")
         return True
@@ -277,7 +283,7 @@ def update_routing_table() -> Dict[str, str]:
                 "sample_count": int(r["sample_count"]),
                 "rank": rank,
                 "is_active": is_active,
-                "updated_at": _now_iso(),
+                "updated_at": _now_ts(),
             })
 
         if routing_entries:
@@ -333,7 +339,7 @@ def run_dream_cycle(triggered_by: str = "auto") -> Dict[str, Any]:
     summary = {
         "dream_id": dream_id,
         "triggered_by": triggered_by,
-        "started_at": _now_iso(),
+        "started_at": _now_ts(),
         "activities": [],
         "changes": [],
     }
