@@ -2476,7 +2476,14 @@ class LarsDB:
         filename = f"{timestamp}_{unique_id}{partition_suffix}.parquet"
         filepath = table_dir / filename
         
-        return self._write_rows_to_file(filepath, rows, schema_def)
+        result = self._write_rows_to_file(filepath, rows, schema_def)
+        
+        # For tables with dedup (interactive/mutable tables like training_annotations),
+        # invalidate cached connections so subsequent reads see the new file immediately.
+        if schema_def.get("dedup"):
+            self.invalidate_all_connections()
+        
+        return result
     
     def compact(self, table: str, threshold: int = 2, force: bool = False) -> dict:
         """
