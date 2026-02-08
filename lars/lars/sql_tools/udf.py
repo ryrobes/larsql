@@ -2300,8 +2300,14 @@ def make_vectorized_wrapper(
         cache = get_cache()
         cache_keys = [SemanticCache.make_cache_key(func_name, args) for args in rows]
 
+        # Benchmark mode: skip cache entirely so each model gets fresh LLM calls
+        benchmark_no_cache = os.environ.get("LARS_BENCHMARK_NO_CACHE") == "1"
+
         # Batch cache lookup
-        cached_results = cache.get_batch(func_name, rows, track_hit=True)
+        if benchmark_no_cache:
+            cached_results = {}
+        else:
+            cached_results = cache.get_batch(func_name, rows, track_hit=True)
 
         # Identify cache misses and coerce cache hits
         misses = []
@@ -2458,8 +2464,8 @@ def make_vectorized_wrapper(
         if skipped_due_to_early_term > 0:
             log.info(f"[VectorizedUDF] {func_name}: Early termination saved {skipped_due_to_early_term} LLM calls")
 
-        # Batch store new results
-        if new_cache_items and not is_shutdown_requested():
+        # Batch store new results (skip in benchmark mode)
+        if new_cache_items and not is_shutdown_requested() and not benchmark_no_cache:
             try:
                 cache.set_batch(func_name, new_cache_items)
             except Exception as e:

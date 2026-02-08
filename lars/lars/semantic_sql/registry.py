@@ -616,7 +616,9 @@ async def execute_sql_function(
         cache_key = _make_cache_key(cache_name, cleaned_args)
 
     # Check cache first (skip if takes - takes bypass cache for fresh sampling)
-    if not takes_config and fn.cache_enabled:
+    # Benchmark mode disables cache so each model gets fresh LLM calls
+    benchmark_no_cache = os.environ.get("LARS_BENCHMARK_NO_CACHE") == "1"
+    if not takes_config and fn.cache_enabled and not benchmark_no_cache:
         from ..sql_tools.cache_adapter import get_cache
         cache = get_cache()
 
@@ -900,7 +902,7 @@ async def execute_sql_function(
                 pass
 
     # Cache result (but not takes runs - they're for fresh sampling, and not errors)
-    if not takes_config and fn.cache_enabled and not is_error:
+    if not takes_config and fn.cache_enabled and not is_error and not benchmark_no_cache:
         # Use appropriate cache key strategy
         if use_fingerprint_cache:
             # Store with fingerprint-based key
