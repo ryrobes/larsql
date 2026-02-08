@@ -751,7 +751,7 @@ def _print_summary(results: List[BenchmarkResult], run_id: str):
             f"{passed}/{total}",
             f"[{acc_style}]{accuracy:.0f}%[/{acc_style}]",
             f"{avg_latency:.0f}ms",
-            f"${avg_cost:.4f}",
+            f"${avg_cost:.6f}",
         )
 
     console.print()
@@ -810,7 +810,7 @@ def print_routing_report():
                 row[0],
                 row[1],
                 f"{row[5]}%",
-                f"${row[6]:.4f}",
+                f"${row[6]:.6f}",
                 f"{row[7]:.0f}ms",
                 str(row[3]),
             )
@@ -833,7 +833,7 @@ def print_routing_report():
         full_table.add_row(
             row[0], row[1], str(row[3]),
             f"[{acc_style}]{acc}%[/{acc_style}]",
-            f"${row[6]:.4f}", f"{row[7]:.0f}ms",
+            f"${row[6]:.6f}", f"{row[7]:.0f}ms",
         )
 
     console.print()
