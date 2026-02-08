@@ -475,38 +475,57 @@ def _backfill_costs(results: List['BenchmarkResult']):
                 return dt.astimezone(_tz.utc)
             return dt.replace(tzinfo=_tz.utc)
 
+        # Use global time window (costs batch-flush after model finishes)
+        all_t = [_to_utc(r._t_before) for r in results if getattr(r, '_t_before', None)]
+        all_t += [_to_utc(r._t_after) for r in results if getattr(r, '_t_after', None)]
+        if not all_t:
+            return
+        t_min = min(all_t)
+        t_max = max(all_t)
+
+        # Get all costs in the benchmark window
+        all_costs = cost_conn.execute("""
+            SELECT model, COALESCE(SUM(cost), 0), COALESCE(SUM(tokens_in), 0),
+                   COALESCE(SUM(tokens_out), 0), COUNT(*)
+            FROM costs
+            WHERE timestamp >= ?
+            GROUP BY model
+        """, [t_min]).fetchall()
+
+        if not all_costs:
+            return
+
+        # Build model→costs lookup (cost model names may differ from benchmark names)
+        model_costs = {}
+        for model, cost, tok_in, tok_out, n in all_costs:
+            model_costs[model] = (float(cost), int(tok_in), int(tok_out))
+
         backfilled = 0
         for model_id, group in model_groups.items():
-            # Get time window for this model's entire run
-            t_min = min(_to_utc(r._t_before) for r in group)
-            t_max = max(_to_utc(r._t_after) for r in group)
+            # Try exact match first, then fuzzy match on model substring
+            costs = model_costs.get(model_id)
+            if not costs:
+                # Fuzzy: benchmark uses "anthropic/claude-sonnet-4" but costs have "anthropic/claude-4-sonnet-20250522"
+                for cost_model, cost_data in model_costs.items():
+                    # Match if either contains the other, or share a common base
+                    if (model_id in cost_model or cost_model in model_id or
+                        model_id.split("/")[-1].split("-")[0] in cost_model):
+                        costs = cost_data
+                        break
 
-            # Query costs for this time window
-            rows = cost_conn.execute("""
-                SELECT COALESCE(SUM(cost), 0),
-                       COALESCE(SUM(tokens_in), 0),
-                       COALESCE(SUM(tokens_out), 0),
-                       COUNT(*)
-                FROM costs
-                WHERE timestamp >= ? AND timestamp <= ?
-            """, [t_min, t_max]).fetchone()
-
-            if not rows or rows[3] == 0:
+            if not costs or (costs[0] == 0 and costs[1] == 0):
                 continue
 
-            total_cost, total_in, total_out, n_entries = float(rows[0]), int(rows[1]), int(rows[2]), int(rows[3])
-
-            if total_cost > 0 or total_in > 0:
-                # Distribute evenly across results in this model group
-                n_results = len(group)
-                per_cost = total_cost / n_results
-                per_in = total_in // n_results
-                per_out = total_out // n_results
-                for r in group:
-                    r.cost = per_cost
-                    r.tokens_in = per_in
-                    r.tokens_out = per_out
-                    backfilled += 1
+            total_cost, total_in, total_out = costs
+            n_results = len(group)
+            per_cost = total_cost / n_results
+            per_in = total_in // n_results
+            per_out = total_out // n_results
+            for r in group:
+                r.cost = per_cost
+                r.tokens_in = per_in
+                r.tokens_out = per_out
+                backfilled += 1
 
         if backfilled > 0:
             console.print(f"[dim]Backfilled costs for {backfilled}/{len(results)} results[/dim]")
