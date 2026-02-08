@@ -24,6 +24,36 @@ CONFIDENCE_ASSESSMENT_ENABLED = os.getenv("LARS_CONFIDENCE_ASSESSMENT_ENABLED", 
 # from analytics_worker checks this flag.
 
 
+def _extract_confidence(output: str) -> Optional[float]:
+    """Extract a 0.0-1.0 confidence score from various cascade output formats."""
+    import re, json as _json
+    # Try direct float parse
+    try:
+        val = float(output)
+        return max(0.0, min(1.0, val))
+    except (ValueError, TypeError):
+        pass
+    # Try JSON object with confidence key
+    try:
+        obj = _json.loads(output)
+        if isinstance(obj, dict):
+            for key in ('confidence', 'score', 'value'):
+                if key in obj:
+                    return max(0.0, min(1.0, float(obj[key])))
+        elif isinstance(obj, (int, float)):
+            return max(0.0, min(1.0, float(obj)))
+    except (ValueError, TypeError, _json.JSONDecodeError):
+        pass
+    # Extract first float-like number from text (e.g., "json 0.95")
+    m = re.search(r'(\d+\.?\d*)', output)
+    if m:
+        try:
+            return max(0.0, min(1.0, float(m.group(1))))
+        except (ValueError, TypeError):
+            pass
+    return None
+
+
 def assess_trace_ids_confidence(trace_ids: list, force: bool = False) -> dict:
     """
     Assess confidence for specific trace_ids (on-demand, from UI).
@@ -138,16 +168,14 @@ def assess_trace_ids_confidence(trace_ids: list, force: bool = False) -> dict:
                     'cell_name': msg['cell_name']
                 })
 
-                # Extract confidence score
+                # Extract confidence score from cascade output
+                # Output may be clean ("0.95"), prefixed ("json 0.95"), or JSON ({"confidence": 0.95})
                 confidence = None
                 if result and 'lineage' in result and len(result['lineage']) > 0:
-                    output = result['lineage'][-1].get('output', '')
-                    try:
-                        confidence = float(output)
-                        confidence = max(0.0, min(1.0, confidence))
-                    except (ValueError, TypeError):
-                        logger.warning(f"[confidence_worker] Invalid confidence: {output}")
-                        confidence = None
+                    output = str(result['lineage'][-1].get('output', '')).strip()
+                    confidence = _extract_confidence(output)
+                    if confidence is None:
+                        logger.warning(f"[confidence_worker] Could not extract confidence from: {output}")
 
                 if confidence is not None:
                     from datetime import datetime, timezone
@@ -366,14 +394,10 @@ def assess_training_confidence(session_id: str) -> Optional[dict]:
                 # Extract confidence score from result
                 confidence = None
                 if result and 'lineage' in result and len(result['lineage']) > 0:
-                    output = result['lineage'][-1].get('output', '')
-                    try:
-                        confidence = float(output)
-                        # Clamp to 0.0-1.0
-                        confidence = max(0.0, min(1.0, confidence))
-                    except (ValueError, TypeError):
-                        logger.warning(f"[confidence_worker] Invalid confidence score: {output}")
-                        confidence = None
+                    output = str(result['lineage'][-1].get('output', '')).strip()
+                    confidence = _extract_confidence(output)
+                    if confidence is None:
+                        logger.warning(f"[confidence_worker] Could not extract confidence from: {output}")
 
                 if confidence is not None:
                     # Insert into training_annotations
