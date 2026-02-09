@@ -5,7 +5,7 @@ inputs_schema:
   topic: A topic to write about
 cells:
 - instructions: 'Write a creative short paragraph about: {{ input.topic }}'
-  model: {{ models.standard }}
+  model: "{{ models.standard }}"
   name: creative_writing
   takes:
     evaluator_instructions: "Compare the creative writing outputs. Select the one\

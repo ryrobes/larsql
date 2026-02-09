@@ -20,7 +20,7 @@ template:
         Available data:
         - {{outputs.cell_name}}
 
-      model: {{ models.standard }}
+      model: "{{ models.standard }}"
 
       output_schema:
         type: array

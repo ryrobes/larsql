@@ -5,16 +5,16 @@ cells:
       factor: 6
       model_strategy: random
       models:
-        - {{ models.quality }}
-        - {{ models.standard }}
+        - "{{ models.quality }}"
+        - "{{ models.standard }}"
         - amazon/nova-premier-v1
         - openai/gpt-5.1
         - openai/gpt-4.1
-        - {{ models.reasoning }}
+        - "{{ models.reasoning }}"
         - xiaomi/mimo-v2-flash:free
         - allenai/olmo-3.1-32b-think:free
         - google/gemini-3-pro-preview
-        - {{ models.standard }}
+        - "{{ models.standard }}"
       mutate: true
       mutation_mode: rewrite
     handoffs:

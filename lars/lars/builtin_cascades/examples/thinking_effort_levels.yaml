@@ -4,7 +4,7 @@ inputs_schema:
   question: A question requiring thought
 cells:
 - name: reason
-  model: {{ models.quality }}::high
+  model: "{{ models.quality }}::high"
   instructions: 'Think carefully about this question:
 
 

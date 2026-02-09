@@ -31,10 +31,10 @@ cells:
         #- anthropic/claude-haiku-4.5
         #- deepseek/deepseek-v3.2
         #- allenai/olmo-3-7b-think
-        - {{ models.standard }}
+        - "{{ models.standard }}"
         #- openai/gpt-5-mini
         #- google/gemini-2.5-flash
-        - {{ models.standard }}
+        - "{{ models.standard }}"
     #model_strategy: random
     mutate: false
     instructions: |

@@ -27,7 +27,7 @@ cells:
     Be concise but thorough.
 
     '
-  model: {{ models.standard }}
+  model: "{{ models.standard }}"
   rules:
     max_turns: 2
   skills:
@@ -59,8 +59,8 @@ cells:
     factor: 6
     mutate: true
     models:
-    - {{ models.quality }}
-    - {{ models.standard }}
+    - "{{ models.quality }}"
+    - "{{ models.standard }}"
     - openai/gpt-4o-mini
     evaluator_instructions: 'Compare the three brainstorming outputs and select the
       winner.
@@ -133,7 +133,7 @@ cells:
           \n};\n"
   rules:
     max_turns: 2
-  model: {{ models.quality }}
+  model: "{{ models.quality }}"
 - name: iterative_improvement
   instructions: 'Review and improve the proposal to meet quality standards.
 
@@ -174,7 +174,7 @@ cells:
       Please revise to include all required components.
 
       '
-  model: {{ models.standard }}
+  model: "{{ models.standard }}"
 - name: reforged_synthesis
   instructions: 'Create a final synthesized document combining all insights.
 
@@ -198,8 +198,8 @@ cells:
   takes:
     factor: 2
     models:
-    - {{ models.quality }}
-    - {{ models.quality }}
+    - "{{ models.quality }}"
+    - "{{ models.quality }}"
     evaluator_instructions: 'Select the better synthesis based on clarity, completeness,
       and professionalism.
 
@@ -260,7 +260,7 @@ cells:
       '
   rules:
     max_turns: 1
-  model: {{ models.standard }}
+  model: "{{ models.standard }}"
 - name: save_results
   tool: set_state
   inputs:
@@ -333,7 +333,7 @@ cells:
     - status
   rules:
     max_turns: 1
-  model: {{ models.quality }}
+  model: "{{ models.quality }}"
 - name: request_revision
   instructions: 'Document the specific revisions needed.
 

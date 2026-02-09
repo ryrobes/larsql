@@ -18,8 +18,8 @@ cells:
     factor: 3
     model_strategy: round_robin
     models:
-    - {{ models.quality }}
-    - {{ models.standard }}
-    - {{ models.standard }}
+    - "{{ models.quality }}"
+    - "{{ models.standard }}"
+    - "{{ models.standard }}"
     mutate: false
   skills: []

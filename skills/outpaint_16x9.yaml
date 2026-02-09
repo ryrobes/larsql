@@ -18,7 +18,7 @@ cells:
     handoffs: [outpaint]
 
   - name: outpaint
-    model: {{ models.standard }}
+    model: "{{ models.standard }}"
     instructions: |
       Extend this image to 16:9 aspect ratio.
       Seamlessly continue the scene, matching style and lighting.

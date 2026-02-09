@@ -8,7 +8,7 @@ inputs_schema:
 memory: sql_rag_search
 validators:
   chart_image_ready:
-    model: {{ models.standard }}
+    model: "{{ models.standard }}"
     instructions: 'You are validating whether a chart was successfully created.
 
 

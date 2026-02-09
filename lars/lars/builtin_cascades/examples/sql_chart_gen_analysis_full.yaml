@@ -109,12 +109,12 @@ cells:
     factor: 7
     model_strategy: round-robin
     models:
-    - {{ models.quality }}
-    - {{ models.standard }}
+    - "{{ models.quality }}"
+    - "{{ models.standard }}"
     - amazon/nova-premier-v1
     - openai/gpt-5.1
     - openai/gpt-4.1
-    - {{ models.reasoning }}
+    - "{{ models.reasoning }}"
     - google/gemini-3-pro-preview
     mutate: true
     mutation_mode: rewrite
@@ -171,12 +171,12 @@ cells:
     factor: 7
     model_strategy: round-robin
     models:
-    - {{ models.quality }}
-    - {{ models.standard }}
+    - "{{ models.quality }}"
+    - "{{ models.standard }}"
     - amazon/nova-premier-v1
     - openai/gpt-5.1
     - openai/gpt-4.1
-    - {{ models.reasoning }}
+    - "{{ models.reasoning }}"
     - google/gemini-3-pro-preview
     mutate: true
     mutation_mode: rewrite
@@ -256,12 +256,12 @@ cells:
     factor: 7
     model_strategy: round-robin
     models:
-    - {{ models.quality }}
-    - {{ models.standard }}
+    - "{{ models.quality }}"
+    - "{{ models.standard }}"
     - amazon/nova-premier-v1
     - openai/gpt-5.1
     - openai/gpt-4.1
-    - {{ models.reasoning }}
+    - "{{ models.reasoning }}"
     - google/gemini-3-pro-preview
     mutate: true
     mutation_mode: rewrite
@@ -311,12 +311,12 @@ cells:
     factor: 7
     model_strategy: round-robin
     models:
-    - {{ models.quality }}
-    - {{ models.standard }}
+    - "{{ models.quality }}"
+    - "{{ models.standard }}"
     - amazon/nova-premier-v1
     - openai/gpt-5.1
     - openai/gpt-4.1
-    - {{ models.reasoning }}
+    - "{{ models.reasoning }}"
     - google/gemini-3-pro-preview
     mutate: true
     mutation_mode: rewrite
@@ -352,12 +352,12 @@ cells:
     factor: 7
     model_strategy: round-robin
     models:
-    - {{ models.quality }}
-    - {{ models.standard }}
+    - "{{ models.quality }}"
+    - "{{ models.standard }}"
     - amazon/nova-premier-v1
     - openai/gpt-5.1
     - openai/gpt-4.1
-    - {{ models.reasoning }}
+    - "{{ models.reasoning }}"
     - google/gemini-3-pro-preview
     mutate: true
     mutation_mode: rewrite
@@ -393,7 +393,7 @@ cells:
   instructions: Use the `say` tool to speak to the user and give a VERY short summary
     of the findings and chart. Persona is a sassy, foul mouthed, street kid turned
     corpo. Yet a beautiful vixen, none the less.
-  model: {{ models.quality }}
+  model: "{{ models.quality }}"
   name: say_summary_summarize
   rules:
     max_turns: 1

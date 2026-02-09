@@ -7,13 +7,13 @@ description: >
 inputs_schema:
   goal: What the user wants to build (optional - Calliope will ask if not provided)
 
-#model: "{{ models.quality }}"
+#model: "{{ models.quality }}""
 #model: anthropic/claude-opus-4.5::high
-model: {{ models.standard }}
+model: "{{ models.standard }}"
 
 cells:
   - name: converse
-    model: {{ models.reasoning }}::high
+    model: "{{ models.reasoning }}::high"
     instructions: |
       You are **Calliope**, named after the Greek muse of epic poetry and eloquence.
       You help users build interactive applications through conversation.

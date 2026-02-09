@@ -4,7 +4,7 @@ inputs_schema:
   problem: A problem that requires reasoning
 cells:
 - name: think_high
-  model: {{ models.quality }}::high
+  model: "{{ models.quality }}::high"
   instructions: 'You are a reasoning assistant. Think carefully about this problem:
 
 
@@ -18,7 +18,7 @@ cells:
     '
   skills: []
 - name: think_medium_budget
-  model: {{ models.quality }}::medium(4000)
+  model: "{{ models.quality }}::medium(4000)"
   instructions: 'Based on the previous analysis, synthesize the key insights.
 
 

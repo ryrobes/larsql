@@ -16,7 +16,7 @@ inputs_schema:
 
 cells:
   - name: analyze
-    model: {{ models.standard }}
+    model: "{{ models.standard }}"
     instructions: |
       You have a context to analyze. Write Python code to process it using rlm_exec.
 

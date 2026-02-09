@@ -6,7 +6,7 @@ cells:
 - instructions: '{{ input.prompt }}
 
     '
-  model: {{ models.standard }}
+  model: "{{ models.standard }}"
   name: llm_phase
   rules:
     max_turns: 1
@@ -18,9 +18,9 @@ cells:
     factor: 3
     model_strategy: round_robin
     models:
-    - {{ models.quality }}
+    - "{{ models.quality }}"
     - openai/gpt-4.1
-    - {{ models.standard }}
+    - "{{ models.standard }}"
     mutate: true
     mutation_mode: approach
     reforge:
@@ -35,7 +35,7 @@ cells:
       include:
       - output
   instructions: "Summarize this into markdown please:\n  \n{{ input.prompt }}\n"
-  model: {{ models.standard }}
+  model: "{{ models.standard }}"
   name: llm_phase_1
   rules:
     max_turns: 1

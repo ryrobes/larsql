@@ -17,7 +17,7 @@ inputs_schema:
 cells:
   # Step 1: LLM generates the analysis code
   - name: generate_code
-    model: {{ models.standard }}
+    model: "{{ models.standard }}"
     instructions: |
       Generate Python code to analyze a context using the RLM pattern.
 

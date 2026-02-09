@@ -8,7 +8,7 @@ inputs_schema:
   dataset_topic: What kind of data to visualize
 cells:
 - name: create_dashboard
-  model: {{ models.quality }}
+  model: "{{ models.quality }}"
   skills:
   - request_decision
   - route_to

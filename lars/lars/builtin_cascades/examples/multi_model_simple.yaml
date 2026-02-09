@@ -11,11 +11,11 @@ cells:
     factor: 6
     model_strategy: round_robin
     models:
-    - {{ models.quality }}
-    - {{ models.standard }}
-    - {{ models.quality }}
+    - "{{ models.quality }}"
+    - "{{ models.standard }}"
+    - "{{ models.quality }}"
     - amazon/nova-2-lite-v1:free
     - moonshotai/kimi-linear-48b-a3b-instruct
-    - {{ models.standard }}
+    - "{{ models.standard }}"
     - qwen/qwen-plus-2025-07-28
   skills: []

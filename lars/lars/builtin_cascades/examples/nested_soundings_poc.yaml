@@ -128,7 +128,7 @@ cells:
       ```\nWINNER: MERGED\nCONFIDENCE: low\nSOURCES: [indices of plans being merged]\n\
       MERGED_PLAN: [your synthesized superior plan]\n```\n"
     reforge:
-      model: {{ models.quality }}
+      model: "{{ models.quality }}"
       steps: 3
       factor_per_step: 2
       mutate: false
@@ -204,7 +204,7 @@ cells:
   rules:
     max_turns: 1
 - name: final_polish
-  model: {{ models.quality }}
+  model: "{{ models.quality }}"
   instructions: "## The Winning Plan\n\n{{ outputs.ideate_plans }}\n\n---\n\nYou are\
     \ doing a final polish pass on the winning plan.\n\nYour ONLY jobs:\n1. Fix any\
     \ formatting issues\n2. Ensure consistent terminology\n3. Add a \"Quick Start\"\
