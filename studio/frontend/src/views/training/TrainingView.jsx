@@ -68,6 +68,7 @@ const TrainingView = () => {
   const [hotOrNotOpen, setHotOrNotOpen] = useState(false);
   const [assessmentInProgress, setAssessmentInProgress] = useState(false);
   const [assessmentCount, setAssessmentCount] = useState(0);
+  const [gridFilteredCount, setGridFilteredCount] = useState(null); // null = no grid filter active
   const searchTimeoutRef = useRef(null);
 
   // Debounce search input
@@ -343,6 +344,9 @@ const TrainingView = () => {
     };
   }, [stats]);
 
+  // Working set = grid-filtered count if active, else filteredExamples count
+  const workingSetCount = gridFilteredCount !== null ? gridFilteredCount : filteredExamples.length;
+
   const trainablePercentage = metrics.total_executions > 0
     ? ((metrics.trainable_count / metrics.total_executions) * 100).toFixed(1)
     : 0;
@@ -515,7 +519,7 @@ const TrainingView = () => {
           disabled={examples.length === 0}
         >
           <Icon icon="mdi:fire" width={14} />
-          <span>Hot or Not ({filteredExamples.length})</span>
+          <span>Hot or Not ({workingSetCount})</span>
         </button>
         <button
           className="training-action-btn training-action-btn--secondary"
@@ -533,7 +537,7 @@ const TrainingView = () => {
           <span>
             {assessmentInProgress
               ? `Assessing ${assessmentCount}...`
-              : `Assess Confidence (${filteredExamples.length})`}
+              : `Assess Confidence (${workingSetCount})`}
           </span>
         </button>
       </div>
@@ -561,6 +565,7 @@ const TrainingView = () => {
         {!loading && !error && (
           <TrainingGrid
             examples={filteredExamples}
+            onFilteredCountChanged={setGridFilteredCount}
           />
         )}
       </div>

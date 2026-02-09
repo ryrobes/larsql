@@ -212,12 +212,13 @@ const ExpandedDetail = ({ data }) => {
  * TrainingGrid - AG-Grid table for training examples
  * Uses inline expandable rows and thumbs up/down rating
  */
-const TrainingGrid = ({ examples = [], onSelectionChanged, onMarkTrainable }) => {
+const TrainingGrid = ({ examples = [], onSelectionChanged, onMarkTrainable, onFilteredCountChanged }) => {
   const navigate = useNavigate();
   const gridRef = useRef(null);
   const [quickFilter, setQuickFilter] = useState('');
   const [excludeFilter, setExcludeFilter] = useState('');
   const [expandedTraceIds, setExpandedTraceIds] = useState(new Set());
+  const [displayedCount, setDisplayedCount] = useState(examples.length);
 
   // Toggle row expansion
   const toggleExpand = useCallback((traceId) => {
@@ -520,12 +521,32 @@ const TrainingGrid = ({ examples = [], onSelectionChanged, onMarkTrainable }) =>
     return true;
   }, []);
 
+  // Report filtered count to parent + local state
+  const reportFilteredCount = useCallback(() => {
+    if (!gridRef.current?.api) return;
+    let count = 0;
+    gridRef.current.api.forEachNodeAfterFilter((node) => {
+      if (!node.data?._isDetail) count++;
+    });
+    setDisplayedCount(count);
+    onFilteredCountChanged?.(count);
+  }, [onFilteredCountChanged]);
+
   // Re-run external filter when inputs change
   React.useEffect(() => {
     if (gridRef.current?.api) {
       gridRef.current.api.onFilterChanged();
     }
-  }, [quickFilter, excludeFilter]);
+    // Small delay to let AG Grid finish filtering before counting
+    const t = setTimeout(reportFilteredCount, 50);
+    return () => clearTimeout(t);
+  }, [quickFilter, excludeFilter, reportFilteredCount]);
+
+  // Report count when examples change (new data from parent)
+  React.useEffect(() => {
+    const t = setTimeout(reportFilteredCount, 100);
+    return () => clearTimeout(t);
+  }, [examples, reportFilteredCount]);
 
   const defaultColDef = useMemo(() => ({
     sortable: true,
@@ -582,7 +603,7 @@ const TrainingGrid = ({ examples = [], onSelectionChanged, onMarkTrainable }) =>
           </div>
         </div>
         <div className="training-grid-info">
-          <span>{examples.length} examples</span>
+          <span>{displayedCount !== examples.length ? `${displayedCount} / ${examples.length}` : examples.length} examples</span>
           <span className="training-grid-hint">· Click chevron to expand · Double-click to open in Studio</span>
         </div>
       </div>
