@@ -47,7 +47,7 @@ sql_function:
     description: Value bucketed
 cells:
 - name: classify_into_buckets
-  model: google/gemini-3-flash-preview
+  model: "{{ models.standard }}"
   instructions: "Classify these {{ input.texts | length }} texts into the specified\
     \ buckets.\n\nBUCKETS TO USE:\n{% for bucket in input.buckets.split(',') %}\n\
     - {{ bucket | trim }}\n{% endfor %}\n{% if not input.strict %}\n- Other (for items\

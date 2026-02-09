@@ -42,7 +42,7 @@ sql_function:
     description: Merges company records using best quality strategy
 cells:
 - name: merge_with_strategy
-  model: google/gemini-3-flash-preview
+  model: "{{ models.standard }}"
   instructions: "Merge these records using the specified conflict resolution strategy.\n\
     \nRECORDS:\n{{ input.records }}\n\nSTRATEGY: {{ input.strategy | default('best_quality')\
     \ }}\n\nStrategies:\n\n**best_quality** (default):\n- For each field, pick the\

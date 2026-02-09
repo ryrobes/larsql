@@ -47,7 +47,7 @@ sql_function:
     description: Clusters cities by geographic region
 cells:
 - name: identify_clusters
-  model: google/gemini-3-flash-preview
+  model: "{{ models.standard }}"
   instructions: "Analyze these values and identify {{ input.num_clusters | default(8)\
     \ }} semantic clusters.\n\nVALUES:\n{{ input['values'] }}\n\n{% if input.criterion\
     \ %}\nCLUSTERING CRITERION: {{ input.criterion }}\nGroup values by: {{ input.criterion\
@@ -76,7 +76,7 @@ cells:
             description:
               type: string
 - name: assign_values
-  model: google/gemini-3-flash-preview
+  model: "{{ models.standard }}"
   context:
     from:
     - identify_clusters

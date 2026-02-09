@@ -49,7 +49,7 @@ sql_function:
 
 cells:
   - name: strengthen_argument
-    model: google/gemini-3-flash-preview
+    model: "{{ models.standard }}"
     instructions: |
       Construct the STRONGEST possible version of this argument.
 

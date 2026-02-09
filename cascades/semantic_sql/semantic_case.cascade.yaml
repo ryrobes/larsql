@@ -58,7 +58,7 @@ sql_function:
     description: Semantic CASE classifies tech topic
 cells:
 - name: classify
-  model: google/gemini-3-flash-preview
+  model: "{{ models.standard }}"
   instructions: 'Evaluate this text against the conditions below IN ORDER.
 
     Return the result for the FIRST matching condition.

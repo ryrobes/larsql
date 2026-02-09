@@ -47,7 +47,7 @@ sql_function:
     description: Vibe extracted
 cells:
 - name: extract_and_assign
-  model: google/gemini-2.5-flash
+  model: "{{ models.standard }}"
   instructions: "Analyze these {{ input.texts | length }} texts and:\n1. Identify EXACTLY {{ input.num_vibes | default(5) }} distinct vibe categories\n2. Assign each text to its best-matching vibe\n\n{% if input.focus %}\nFocus on: {{ input.focus }}\n{% endif %}\n\nTexts to analyze (with index numbers):\n{% for v in input.texts %}\n[{{ loop.index0 }}] \"{{ v | replace('\"', '\\\\\"') }}\"\n{% endfor %}\n\nReturn a JSON object mapping each text's INDEX NUMBER to its assigned vibe:\n\n{\n  \"mapping\": {\n    \"0\": \"chill vibes\",\n    \"1\": \"chaotic energy\",\n    \"2\": \"chill vibes\",\n    ...\n  }\n}\n\nVIBE GUIDELINES:\n- Vibes capture mood, energy, tone, and atmosphere - the *feel* not just the topic\n- Use contemporary, expressive language: \"main character energy\", \"cozy autumn vibes\", \"that 3am energy\", \"unhinged but make it fashion\", \"soft life era\"\n- Be creative and evocative - vibes are about emotional resonance\n- Each vibe name should be 2-5 words max\n- You MUST create EXACTLY {{ input.num_vibes | default(5) }} vibe categories - no more, no fewer\n- Multiple texts can share the same vibe\n\nCRITICAL REQUIREMENTS:\n- Use the INDEX NUMBER (0, 1, 2, ...) as keys, NOT the original text\n- Every input text (indices 0 through {{ input.texts | length - 1 }}) must be assigned to exactly one vibe\n- Return ONLY the raw JSON object - no markdown fences, no explanation, no other text\n- The response must start with { and end with }\n"
   rules:
     max_turns: 1

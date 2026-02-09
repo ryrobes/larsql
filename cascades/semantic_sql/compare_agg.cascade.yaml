@@ -42,7 +42,7 @@ sql_function:
     description: Compares iPhone models to find differences
 cells:
 - name: analyze_comparison
-  model: google/gemini-3-flash-preview
+  model: "{{ models.standard }}"
   instructions: "Compare these values and identify patterns.\n\nVALUES:\n{{ input['values']\
     \ }}\n\nFOCUS: {{ input.focus | default('all') }}\n\nReturn a JSON object:\n{\n\
     \  \"value_count\": 3,\n  \"similarities\": [\n    \"All mention 'wireless connectivity'\"\

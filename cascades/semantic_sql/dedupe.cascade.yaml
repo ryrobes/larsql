@@ -43,7 +43,7 @@ sql_function:
     description: Deduplicates similar names
 cells:
 - name: deduplicate
-  model: google/gemini-3-flash-preview
+  model: "{{ models.standard }}"
   instructions: 'Deduplicate these items by semantic similarity.
 
     Group items that represent: {{ input.criteria | default(''the same entity or concept'')

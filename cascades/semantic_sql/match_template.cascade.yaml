@@ -23,7 +23,7 @@ sql_function:
     description: True statement returns true
 cells:
 - name: evaluate_statement
-  model: google/gemini-3-flash-preview
+  model: "{{ models.standard }}"
   instructions: 'Is the following statement true?
 
 

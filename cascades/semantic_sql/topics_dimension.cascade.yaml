@@ -65,7 +65,7 @@ sql_function:
     description: Topics extracted
 cells:
 - name: extract_and_assign
-  model: x-ai/grok-4
+  model: "{{ models.quality }}"
   instructions: "Analyze these {{ input.texts | length }} texts and:\n1. Extract {{\
     \ input.num_topics | default(8) }} meaningful topic categories\n2. Assign each\
     \ text to its best-matching topic\n\n{% if input.focus %}\nFocus on: {{ input.focus\

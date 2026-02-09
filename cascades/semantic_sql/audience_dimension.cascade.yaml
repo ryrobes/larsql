@@ -43,7 +43,7 @@ sql_function:
     description: Audience dimension returned
 cells:
 - name: identify_audience
-  model: google/gemini-3-flash-preview
+  model: "{{ models.standard }}"
   instructions: "Identify the TARGET AUDIENCE for these {{ input.texts | length }}\
     \ social media posts.\nWho is each author trying to reach?\n\n{% if input.domain\
     \ == 'tech' %}\nUSE THESE AUDIENCE CATEGORIES (Tech Domain):\n- Developers (software\

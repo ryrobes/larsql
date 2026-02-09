@@ -41,7 +41,7 @@ sql_function:
     description: Finds consensus in positive service reviews
 cells:
 - name: find_consensus
-  model: x-ai/grok-4
+  model: "{{ models.quality }}"
   instructions: 'Analyze these texts and identify what they have in common or agree
     on.
 

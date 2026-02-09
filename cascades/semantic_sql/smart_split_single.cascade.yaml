@@ -51,7 +51,7 @@ sql_function:
 
 cells:
   - name: smart_split
-    model: google/gemini-3-flash-preview
+    model: "{{ models.standard }}"
 
     instructions: |
       Split this value according to the instruction.

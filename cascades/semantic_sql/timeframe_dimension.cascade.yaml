@@ -37,7 +37,7 @@ sql_function:
     description: Timeframe extracted
 cells:
 - name: identify_timeframe
-  model: google/gemini-3-flash-preview
+  model: "{{ models.standard }}"
   instructions: "Analyze these {{ input.texts | length }} event descriptions to identify\n\
     {{ input.granularity | default('time_of_day') }}.\n\n{% if input.granularity ==\
     \ 'time_of_day' or not input.granularity %}\nIDENTIFY TIME OF DAY:\n- \"Early\

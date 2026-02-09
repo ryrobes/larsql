@@ -37,7 +37,7 @@ sql_function:
     description: Positive reviews should return positive sentiment score
 cells:
 - name: analyze_sentiment
-  model: google/gemini-3-flash-preview
+  model: "{{ models.standard }}"
   instructions: 'Analyze the overall sentiment of these texts.
 
 

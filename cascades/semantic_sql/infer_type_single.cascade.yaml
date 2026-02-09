@@ -32,7 +32,7 @@ sql_function:
     description: Email type detected
 cells:
 - name: detect_type
-  model: google/gemini-3-flash-preview
+  model: "{{ models.standard }}"
   instructions: 'What type of data is this value?
 
 

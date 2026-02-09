@@ -41,7 +41,7 @@ sql_function:
     description: Credibility assessed
 cells:
 - name: analyze_credibility
-  model: google/gemini-3-flash-preview
+  model: "{{ models.standard }}"
   instructions: "Analyze the credibility of these {{ input.texts | length }} descriptions.\n\
     \nEVALUATION STRICTNESS: {{ input.strictness | default('balanced') }}\n{% if input.strictness\
     \ == 'strict' %}\nApply STRICT criteria:\n- Require specific details (dates, times,\

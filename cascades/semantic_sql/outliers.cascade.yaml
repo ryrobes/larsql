@@ -45,7 +45,7 @@ sql_function:
     description: Identifies non-fruit item as outlier
 cells:
 - name: find_outliers
-  model: google/gemini-3-flash-preview
+  model: "{{ models.standard }}"
   instructions: 'Find the {{ input.num_outliers | default(5) }} most unusual or atypical
     items in this list.
 

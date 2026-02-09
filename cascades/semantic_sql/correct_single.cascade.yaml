@@ -31,7 +31,7 @@ sql_function:
     description: Zip corrected for city
 cells:
 - name: contextual_correct
-  model: google/gemini-3-flash-preview
+  model: "{{ models.standard }}"
   instructions: 'Correct this value using the provided context.
 
 

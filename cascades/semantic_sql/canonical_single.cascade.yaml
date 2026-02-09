@@ -46,7 +46,7 @@ sql_function:
 
 cells:
   - name: canonicalize
-    model: google/gemini-3-flash-preview
+    model: "{{ models.standard }}"
 
     instructions: |
       Return the canonical/official form of this value.

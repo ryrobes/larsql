@@ -28,7 +28,7 @@ sql_function:
     description: Phonetically similar names match
 cells:
 - name: check_phonetic
-  model: google/gemini-3-flash-preview
+  model: "{{ models.standard }}"
   instructions: 'Do these two words sound similar when spoken aloud?
 
 

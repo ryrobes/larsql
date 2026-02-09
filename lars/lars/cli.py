@@ -1063,8 +1063,8 @@ def main():
     serve_studio_parser.add_argument(
         '--workers',
         type=int,
-        default=2,
-        help='Number of Gunicorn workers (default: 2, ignored in dev mode)'
+        default=5,
+        help='Number of Gunicorn workers (default: 5, ignored in dev mode)'
     )
     serve_studio_parser.add_argument(
         '--dev',

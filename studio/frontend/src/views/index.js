@@ -119,7 +119,7 @@ export const views = {
     icon: 'mdi:brush',
     label: 'Calliope',
     position: 'top',
-    enabled: true, // Micro-app builder
+    enabled: false, // Micro-app builder — hidden for 3.0 release
   },
 
   warren: {

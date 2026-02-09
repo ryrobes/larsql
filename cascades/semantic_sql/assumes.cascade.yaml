@@ -53,7 +53,7 @@ sql_function:
 
 cells:
   - name: extract_assumptions
-    model: google/gemini-3-flash-preview
+    model: "{{ models.standard }}"
     instructions: |
       What implicit assumptions does this argument rely on?
 

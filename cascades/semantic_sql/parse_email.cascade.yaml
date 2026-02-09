@@ -49,7 +49,7 @@ sql_function:
 
 cells:
   - name: generate_parser
-    model: google/gemini-3-flash-preview
+    model: "{{ models.standard }}"
     rules:
       max_turns: 1
       loop_until: validate_sql_expression

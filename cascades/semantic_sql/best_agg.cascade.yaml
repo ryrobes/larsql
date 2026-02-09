@@ -44,7 +44,7 @@ sql_function:
     description: Selects best quality email from group
 cells:
 - name: select_best
-  model: google/gemini-3-flash-preview
+  model: "{{ models.standard }}"
   instructions: 'Select the single best value from this group.
 
 

@@ -37,7 +37,7 @@ sql_function:
 cells:
 - name: generate_extractor
   #model: google/gemini-3-flash-preview
-  model: x-ai/grok-4
+  model: "{{ models.quality }}"
   rules:
     max_turns: 1
   instructions: 'You are a DuckDB SQL expert. Generate a SQL expression to extract

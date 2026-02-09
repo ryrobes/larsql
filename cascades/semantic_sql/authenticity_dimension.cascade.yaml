@@ -47,7 +47,7 @@ sql_function:
     description: Authenticity assessed
 cells:
 - name: assess_authenticity
-  model: google/gemini-3-flash-preview
+  model: "{{ models.standard }}"
   instructions: "Assess the AUTHENTICITY of these {{ input.texts | length }} social\
     \ media posts.\nHow genuine/organic vs artificial/manufactured does each one appear?\n\
     \n{% if input.focus == 'bot' %}\nFOCUS ON BOT-LIKE PATTERNS:\n- Repetitive/formulaic\

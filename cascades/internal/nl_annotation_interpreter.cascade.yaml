@@ -31,7 +31,7 @@ inputs_schema:
 
 cells:
   - name: interpret
-    model: anthropic/claude-sonnet-4
+    model: "{{ models.quality }}"
     skills: [validate_cascade_overrides]
     rules:
       max_turns: 3
