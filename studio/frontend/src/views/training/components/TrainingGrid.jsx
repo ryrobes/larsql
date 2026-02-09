@@ -138,7 +138,7 @@ const ExpandedDetail = ({ data }) => {
               wrapLongLines={true}
               customStyle={{
                 margin: 0, borderRadius: 4, background: 'rgba(255,255,255,0.02)',
-                fontSize: '11px', maxHeight: '500px', overflow: 'auto', padding: '10px',
+                fontSize: '11px', overflow: 'auto', padding: '10px',
                 whiteSpace: 'pre-wrap', wordBreak: 'break-word',
               }}
               codeTagProps={{ style: { fontFamily: "'JetBrains Mono', monospace", whiteSpace: 'pre-wrap', wordBreak: 'break-word' } }}
@@ -160,7 +160,7 @@ const ExpandedDetail = ({ data }) => {
               wrapLongLines={true}
               customStyle={{
                 margin: 0, borderRadius: 4, background: 'rgba(255,255,255,0.02)',
-                fontSize: '12px', maxHeight: '500px', overflow: 'auto', padding: '10px',
+                fontSize: '12px', overflow: 'auto', padding: '10px',
                 whiteSpace: 'pre-wrap', wordBreak: 'break-word',
               }}
               codeTagProps={{ style: { fontFamily: "'JetBrains Mono', monospace", color: '#34d399', whiteSpace: 'pre-wrap', wordBreak: 'break-word' } }}
@@ -549,8 +549,18 @@ const TrainingGrid = ({ examples = [], onSelectionChanged, onMarkTrainable }) =>
           onRowDoubleClicked={handleRowDoubleClick}
           getRowId={(params) => params.data.trace_id}
           getRowHeight={(params) => {
-            if (params.data?._isDetail) return null; // auto-height for detail rows
-            return undefined; // default height
+            if (params.data?._isDetail) {
+              // Estimate height based on content length
+              const inputLen = params.data.user_input?.length || 0;
+              const outputLen = params.data.assistant_output?.length || 0;
+              const maxLen = Math.max(inputLen, outputLen);
+              // ~80 chars per line, ~16px per line, plus headers/meta (~120px)
+              const estimatedLines = Math.ceil(maxLen / 80);
+              const contentHeight = Math.max(estimatedLines * 16, 80);
+              // Clamp between 200 and 800
+              return Math.min(Math.max(contentHeight + 120, 200), 800);
+            }
+            return undefined;
           }}
           isFullWidthRow={isFullWidthRow}
           fullWidthCellRenderer={fullWidthCellRenderer}
