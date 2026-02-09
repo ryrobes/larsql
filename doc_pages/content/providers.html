@@ -12,6 +12,9 @@
     <li><a href="#vertex-ai">Google Vertex AI</a></li>
     <li><a href="#bedrock">AWS Bedrock</a></li>
     <li><a href="#azure">Azure OpenAI</a></li>
+    <li><a href="#anthropic-direct">Anthropic Direct</a></li>
+    <li><a href="#gemini">Gemini (Google AI)</a></li>
+    <li><a href="#lmstudio">LM Studio (Local)</a></li>
     <li><a href="#ollama">Ollama (Local)</a></li>
     <li><a href="#model-selection">Model Selection</a></li>
     <li><a href="#cli">CLI Commands</a></li>
@@ -75,6 +78,18 @@ bedrock/us.amazon.nova-premier-v1:0
 <span class="cmt"># Azure OpenAI</span>
 azure/my-gpt4-deployment
 azure/my-o1-deployment
+
+<span class="cmt"># Anthropic Direct</span>
+anthropic/claude-sonnet-4
+anthropic/claude-opus-4
+
+<span class="cmt"># Gemini (Google AI Studio)</span>
+gemini/gemini-2.5-pro
+gemini/gemini-2.5-flash
+
+<span class="cmt"># LM Studio (local)</span>
+lmstudio/deepseek-coder-v2
+lmstudio/llama-3.1-8b
 
 <span class="cmt"># Ollama (local)</span>
 ollama/llama3.3:70b
@@ -397,6 +412,240 @@ ollama/qwen2.5-coder:32b</pre>
 
 <hr>
 
+<h2 id="anthropic-direct">Anthropic Direct / OAuth</h2>
+
+<p>
+  Connect directly to Anthropic's API, bypassing OpenRouter. Supports both standard API keys
+  and OAuth tokens from Claude Pro/Max subscriptions. Ideal for teams with existing Anthropic billing
+  or flat-rate Claude subscriptions where you want cost=0 tracking.
+</p>
+
+<h3>Authentication Options</h3>
+
+<p><strong>Option 1: API Key</strong></p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Anthropic API Key</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">ANTHROPIC_API_KEY</span>=<span class="str">sk-ant-xxxxxxxxxxxx</span></pre>
+  </div>
+</div>
+
+<p><strong>Option 2: OAuth Token (Claude Pro/Max Subscriptions)</strong></p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Anthropic OAuth</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">ANTHROPIC_OAUTH_TOKEN</span>=<span class="str">your-oauth-token</span></pre>
+  </div>
+</div>
+
+<div class="info-box tip">
+  <div class="info-box-title">Flat-Rate Subscriptions</div>
+  <p>
+    If you're using a Claude Pro or Max subscription, set cost=0 in your cascade configurations
+    since inference is included in your subscription. LARS will track usage without billing attribution.
+  </p>
+</div>
+
+<h3>Usage</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Using Anthropic Direct</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># In cascade YAML - use anthropic/ prefix</span>
+- <span class="key">name</span>: analyze
+  <span class="key">model</span>: <span class="str">anthropic/claude-sonnet-4</span>
+  <span class="key">instructions</span>: <span class="str">"Analyze the data"</span>
+
+<span class="cmt"># In SQL</span>
+<span class="cmt">-- @ model: anthropic/claude-opus-4</span>
+<span class="kw">SELECT</span> <span class="fn">ASK</span>(<span class="str">'Deep analysis'</span>, text) <span class="kw">FROM</span> docs</pre>
+  </div>
+</div>
+
+<h3>Configuration in models.yaml</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">models.yaml</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">providers</span>:
+  <span class="key">anthropic_direct</span>:
+    <span class="key">enabled</span>: <span class="kw">true</span>
+    <span class="key">oauth_token_env</span>: ANTHROPIC_OAUTH_TOKEN</pre>
+  </div>
+</div>
+
+<hr>
+
+<h2 id="gemini">Gemini (Google AI Studio)</h2>
+
+<p>
+  Connect directly to Google AI Studio for Gemini models. This is the consumer/developer
+  API (different from Vertex AI's enterprise offering). Simpler setup—just an API key.
+</p>
+
+<h3>Environment Variables</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Gemini Configuration</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Required: Google AI Studio API key</span>
+<span class="key">GEMINI_API_KEY</span>=<span class="str">your-gemini-api-key</span></pre>
+  </div>
+</div>
+
+<div class="info-box note">
+  <div class="info-box-title">Gemini vs Vertex AI</div>
+  <p>
+    <strong>Gemini (Google AI Studio)</strong> — Consumer API, API key auth, simpler setup. Good for development and small teams.<br>
+    <strong>Vertex AI</strong> — Enterprise GCP platform, service account auth, data residency controls. Use for production workloads with compliance requirements.
+  </p>
+</div>
+
+<h3>Usage</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Using Gemini Models</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># In cascade YAML - use gemini/ prefix</span>
+- <span class="key">name</span>: analyze
+  <span class="key">model</span>: <span class="str">gemini/gemini-2.5-pro</span>
+  <span class="key">instructions</span>: <span class="str">"Analyze the data"</span>
+
+<span class="cmt"># In SQL</span>
+<span class="cmt">-- @ model: gemini/gemini-2.5-flash</span>
+<span class="kw">SELECT</span> <span class="fn">ASK</span>(<span class="str">'Summarize this'</span>, text) <span class="kw">FROM</span> docs</pre>
+  </div>
+</div>
+
+<h3>Configuration in models.yaml</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">models.yaml</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">providers</span>:
+  <span class="key">gemini</span>:
+    <span class="key">enabled</span>: <span class="kw">true</span>
+    <span class="key">api_key_env</span>: GEMINI_API_KEY</pre>
+  </div>
+</div>
+
+<h3>Service Account Support</h3>
+
+<p>Gemini also supports service account authentication for server-to-server workflows:</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Service Account</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">GOOGLE_APPLICATION_CREDENTIALS</span>=<span class="str">/path/to/service-account.json</span></pre>
+  </div>
+</div>
+
+<hr>
+
+<h2 id="lmstudio">LM Studio (Local)</h2>
+
+<p>
+  Run models locally using LM Studio's OpenAI-compatible API server.
+  LM Studio provides a GUI for downloading and managing local models,
+  and LARS auto-discovers available models from the running server.
+</p>
+
+<h3>Prerequisites</h3>
+
+<ul>
+  <li>LM Studio installed: <a href="https://lmstudio.ai" target="_blank">lmstudio.ai</a></li>
+  <li>A model downloaded and loaded in LM Studio</li>
+  <li>The local server started (LM Studio &rarr; Local Server &rarr; Start)</li>
+</ul>
+
+<h3>Configuration</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">LM Studio Setup</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># LM Studio runs on port 1234 by default</span>
+<span class="cmt"># No environment variables needed if using defaults</span>
+
+<span class="cmt"># Optional: Override host URL</span>
+<span class="key">LARS_LMSTUDIO_HOST</span>=<span class="str">http://localhost:1234</span></pre>
+  </div>
+</div>
+
+<h3>Usage</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Using LM Studio Models</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># In cascade YAML - use lmstudio/ prefix</span>
+- <span class="key">name</span>: code_review
+  <span class="key">model</span>: <span class="str">lmstudio/deepseek-coder-v2</span>
+  <span class="key">instructions</span>: <span class="str">"Review this code"</span>
+
+<span class="cmt"># In SQL</span>
+<span class="cmt">-- @ model: lmstudio/llama-3.1-8b</span>
+<span class="kw">SELECT</span> <span class="fn">ASK</span>(<span class="str">'Explain this'</span>, concept) <span class="kw">FROM</span> topics</pre>
+  </div>
+</div>
+
+<h3>Model Discovery</h3>
+
+<p>LARS automatically discovers models loaded in LM Studio when you run:</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Model Discovery</span>
+  </div>
+  <div class="code-block-content">
+    <pre>lars models refresh</pre>
+  </div>
+</div>
+
+<h3>Configuration in models.yaml</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">models.yaml</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">providers</span>:
+  <span class="key">lmstudio</span>:
+    <span class="key">enabled</span>: <span class="kw">true</span>
+    <span class="key">host</span>: http://localhost:1234</pre>
+  </div>
+</div>
+
+<div class="info-box tip">
+  <div class="info-box-title">Free Local Inference</div>
+  <p>
+    Like Ollama, LM Studio models have zero API costs. LM Studio offers a more
+    visual experience for model management, while Ollama is better for headless/server deployments.
+  </p>
+</div>
+
+<hr>
+
 <h2 id="ollama">Ollama (Local)</h2>
 
 <p>
@@ -584,6 +833,21 @@ lars models stats</pre>
       <td><strong>Azure</strong></td>
       <td><code>azure/</code></td>
       <td><code>AZURE_API_KEY</code>, <code>AZURE_API_BASE</code></td>
+    </tr>
+    <tr>
+      <td><strong>Anthropic</strong></td>
+      <td><code>anthropic/</code></td>
+      <td><code>ANTHROPIC_API_KEY</code> or <code>ANTHROPIC_OAUTH_TOKEN</code></td>
+    </tr>
+    <tr>
+      <td><strong>Gemini</strong></td>
+      <td><code>gemini/</code></td>
+      <td><code>GEMINI_API_KEY</code></td>
+    </tr>
+    <tr>
+      <td><strong>LM Studio</strong></td>
+      <td><code>lmstudio/</code></td>
+      <td>None (auto-detected at <code>localhost:1234</code>)</td>
     </tr>
     <tr>
       <td><strong>Ollama</strong></td>

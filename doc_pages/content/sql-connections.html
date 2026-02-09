@@ -103,6 +103,11 @@
       <td>Native ATTACH (ClickHouse materializes)</td>
     </tr>
     <tr>
+      <td><strong>Enterprise Databases</strong></td>
+      <td><code>oracle</code>, <code>mssql</code>, <code>db2</code></td>
+      <td>Materializes to DuckDB</td>
+    </tr>
+    <tr>
       <td><strong>Cloud Warehouses</strong></td>
       <td><code>bigquery</code>, <code>snowflake</code>, <code>motherduck</code></td>
       <td>Native ATTACH via extensions</td>
@@ -305,6 +310,14 @@
 </div>
 
 <h3>ClickHouse</h3>
+
+<div class="callout callout-info">
+  <div class="callout-title"><iconify-icon icon="mdi:lightbulb-outline"></iconify-icon> External ClickHouse</div>
+  <p>
+    This connector is for connecting to <strong>external ClickHouse servers</strong> as a data source.
+    LARS itself uses DuckDB internally for all storage — no ClickHouse installation is needed to run LARS.
+  </p>
+</div>
 
 <div class="callout callout-warning">
   <div class="callout-title"><iconify-icon icon="mdi:alert-outline"></iconify-icon> Materialization</div>

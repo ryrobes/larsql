@@ -6,8 +6,8 @@
 <div class="info-box tip">
   <div class="info-box-title">Quick Start</div>
   <p>
-    Install with <code>pip install larsql</code> and run your first cascade
-    with <code>lars run examples/simple_flow.json --input '{"data": "test"}'</code>
+    Install with <code>pip install larsql</code>, run <code>lars bootstrap</code>, then try your first cascade
+    with <code>lars run cascades/examples/hello_world.yaml --input '{"data": "test"}'</code>
   </p>
 </div>
 
@@ -489,6 +489,41 @@ lars serve studio --dev
 <span class="cmt">#   - /calliope: Conversational cascade builder</span></pre>
   </div>
 </div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     TRAINING UI
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+<h2 id="training-ui">Training UI</h2>
+
+<p>
+  LARS Studio includes a built-in <strong>training interface</strong> for improving cascade outputs over time:
+</p>
+
+<ul>
+  <li><strong>Thumbs up/down rating</strong> — Rate cascade outputs directly in Studio to signal quality</li>
+  <li><strong>Confidence assessment</strong> — LARS can auto-assess output confidence scores</li>
+  <li><strong>LARS Learn integration</strong> — Ratings feed into the self-optimization dream loop (LARS Learn),
+    which uses your feedback to calibrate prompts, adjust model selections, and mutate cascade
+    configurations for better results</li>
+</ul>
+
+<p>Enable confidence assessment with:</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">config.yaml</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">features</span>:
+  <span class="key">confidence_assessment</span>: <span class="kw">true</span></pre>
+  </div>
+</div>
+
+<p>
+  The learning system runs periodically (configurable via <code>learning.interval</code> in config.yaml),
+  analyzing accumulated ratings to improve cascade performance automatically.
+</p>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
      SEMANTIC SQL

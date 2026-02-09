@@ -89,15 +89,17 @@ pip install larsql[all]</pre>
   </div>
 </div>
 
-<p>This single command handles everything:</p>
+<p>Bootstrap launches an <strong>interactive TUI wizard</strong> that walks you through the complete setup:</p>
 
 <ul>
-  <li>Creates workspace directories (cascades, skills, data, logs, etc.)</li>
-  <li>Initializes the DuckDB database schema</li>
-  <li>Downloads and registers built-in tools</li>
-  <li>Sets up model configurations</li>
-  <li>Runs initial SQL schema discovery</li>
+  <li><strong>Provider selection</strong> — Choose from OpenRouter, Ollama, Gemini, Anthropic Direct, LM Studio, etc.</li>
+  <li><strong>API key validation</strong> — Tests your credentials against the selected provider</li>
+  <li><strong>Model discovery</strong> — Scans available models and assigns them to tiers (fast, standard, quality, etc.)</li>
+  <li><strong>SQL connections</strong> — Optionally configure database connections</li>
+  <li><strong>Admin password</strong> — Sets the password for Studio and SQL server authentication</li>
 </ul>
+
+<p>The wizard generates <code>config.yaml</code> and <code>models.yaml</code> in your workspace root.</p>
 
 <div class="info-box tip">
   <div class="info-box-title">Bootstrap Options</div>

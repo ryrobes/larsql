@@ -522,11 +522,11 @@ lars serve sql --port <span class="num">15432</span>
 lars sql server --port <span class="num">15432</span>
 
 <span class="cmt"># Connect with psql</span>
-psql -h localhost -p <span class="num">15432</span> -U lars -d lars
+psql -h localhost -p <span class="num">15432</span> -U admin -d default
 
 <span class="cmt"># Connect with Python</span>
 <span class="kw">import</span> psycopg2
-conn = psycopg2.connect(host=<span class="str">"localhost"</span>, port=<span class="num">15432</span>, user=<span class="str">"lars"</span>, dbname=<span class="str">"lars"</span>)</pre>
+conn = psycopg2.connect(host=<span class="str">"localhost"</span>, port=<span class="num">15432</span>, user=<span class="str">"admin"</span>, password=<span class="str">"admin"</span>, dbname=<span class="str">"default"</span>)</pre>
   </div>
 </div>
 
