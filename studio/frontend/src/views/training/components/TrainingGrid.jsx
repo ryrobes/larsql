@@ -488,38 +488,44 @@ const TrainingGrid = ({ examples = [], onSelectionChanged, onMarkTrainable }) =>
     },
   ], [expandedTraceIds, toggleExpand]);
 
-  // External filter: combines include + exclude
-  const isExternalFilterPresent = useCallback(() => {
-    return quickFilter.length > 0 || excludeFilter.length > 0;
-  }, [quickFilter, excludeFilter]);
+  // External filter refs (avoid stale closures with AG Grid)
+  const quickFilterRef = useRef('');
+  const excludeFilterRef = useRef('');
+  quickFilterRef.current = quickFilter;
+  excludeFilterRef.current = excludeFilter;
+
+  const isExternalFilterPresent = useCallback(() => true, []);
 
   const doesExternalFilterPass = useCallback((node) => {
-    if (node.data?._isDetail) return true; // always show detail rows if parent passes
-    const rowText = JSON.stringify(node.data).toLowerCase();
-    // Include filter: all terms must match
-    if (quickFilter) {
-      const terms = quickFilter.toLowerCase().split(/\s+/).filter(Boolean);
+    if (node.data?._isDetail) return true;
+    const qf = quickFilterRef.current;
+    const ef = excludeFilterRef.current;
+    if (!qf && !ef) return true;
+
+    // Build searchable text from key fields only (not internal metadata)
+    const d = node.data;
+    const rowText = [
+      d.cascade_id, d.cell_name, d.user_input, d.assistant_output,
+      d.model, d.caller_id, d.rating
+    ].filter(Boolean).join(' ').toLowerCase();
+
+    if (qf) {
+      const terms = qf.toLowerCase().split(/\s+/).filter(Boolean);
       if (!terms.every(term => rowText.includes(term))) return false;
     }
-    // Exclude filter: none of the terms should match
-    if (excludeFilter) {
-      const terms = excludeFilter.toLowerCase().split(/\s+/).filter(Boolean);
+    if (ef) {
+      const terms = ef.toLowerCase().split(/\s+/).filter(Boolean);
       if (terms.some(term => rowText.includes(term))) return false;
     }
     return true;
-  }, [quickFilter, excludeFilter]);
+  }, []);
 
-  // Trigger filter re-evaluation when filters change
-  const onFilterChanged = useCallback(() => {
+  // Re-run external filter when inputs change
+  React.useEffect(() => {
     if (gridRef.current?.api) {
       gridRef.current.api.onFilterChanged();
     }
-  }, []);
-
-  // Re-run external filter when quickFilter or excludeFilter changes
-  React.useEffect(() => {
-    onFilterChanged();
-  }, [quickFilter, excludeFilter, onFilterChanged]);
+  }, [quickFilter, excludeFilter]);
 
   const defaultColDef = useMemo(() => ({
     sortable: true,
