@@ -25,19 +25,24 @@ const darkTheme = themeQuartz.withParams({
 });
 
 /**
- * Extract a short preview from inputs_summary dict string
+ * Parse inputs from either JSON string or Python dict repr
  */
-const extractInputPreview = (inputStr) => {
-  if (!inputStr) return '';
-  // inputs_summary is a Python dict repr like {'text': '...', 'criterion': '...'}
-  const textMatch = inputStr.match(/'text':\s*'([^']{0,120})/);
-  const criterionMatch = inputStr.match(/'criterion':\s*'([^']{0,80})/);
-  if (textMatch && criterionMatch) {
-    return `"${textMatch[1]}…" ${criterionMatch[1]}`;
+const parseInputs = (inputsJson, inputsSummary) => {
+  // Try JSON first (new format)
+  if (inputsJson) {
+    try {
+      const parsed = JSON.parse(inputsJson);
+      if (typeof parsed === 'object' && parsed !== null) return parsed;
+    } catch {}
   }
-  if (textMatch) return textMatch[1];
-  // Fallback: just show truncated
-  return inputStr.length > 120 ? inputStr.slice(0, 120) + '…' : inputStr;
+  // Fall back to Python dict parsing
+  const src = inputsSummary || '';
+  const result = {};
+  const matches = src.matchAll(/'(\w+)':\s*'([^']*)'/g);
+  for (const m of matches) {
+    result[m[1]] = m[2];
+  }
+  return Object.keys(result).length > 0 ? result : null;
 };
 
 /**
@@ -121,66 +126,77 @@ const ExpandedSQLDetail = ({ data }) => {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
           <thead>
             <tr style={{ borderBottom: '1px solid #1a1628' }}>
-              <th style={thStyle}>Operator</th>
-              <th style={thStyle}>Input</th>
-              <th style={thStyle}>Result</th>
+              <th style={thStyle}>Call</th>
+              <th style={{ ...thStyle, width: 70 }}>Result</th>
               <th style={{ ...thStyle, width: 60 }}>Cost</th>
               <th style={{ ...thStyle, width: 90 }}>Rating</th>
             </tr>
           </thead>
           <tbody>
-            {cells.map((cell, i) => (
-              <tr key={cell.trace_id || i} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
-                <td style={tdStyle}>
-                  <span style={{ color: '#60a5fa', fontFamily: "'JetBrains Mono', monospace" }}>
-                    {cell.operator}
-                  </span>
-                </td>
-                <td style={{ ...tdStyle, maxWidth: 400 }}>
-                  <span style={{ color: '#94a3b8', wordBreak: 'break-word' }}>
-                    {extractInputPreview(cell.inputs_summary)}
-                  </span>
-                </td>
-                <td style={tdStyle}>
-                  <span style={{
-                    color: cleanResult(cell.result) === 'true' ? '#34d399'
-                         : cleanResult(cell.result) === 'false' ? '#ff006e'
-                         : '#cbd5e1',
-                    fontWeight: ['true', 'false'].includes(cleanResult(cell.result)) ? 600 : 400,
-                    fontFamily: "'JetBrains Mono', monospace",
-                  }}>
-                    {cleanResult(cell.result).length > 100
-                      ? cleanResult(cell.result).slice(0, 100) + '…'
-                      : cleanResult(cell.result)}
-                  </span>
-                </td>
-                <td style={tdStyle}>
-                  <span style={{ color: '#34d399', fontFamily: "'JetBrains Mono', monospace", fontSize: 11 }}>
-                    ${cell.cost?.toFixed(4) || '0.0000'}
-                  </span>
-                </td>
-                <td style={{ ...tdStyle }}>
-                  <div className="training-rating-cell">
-                    <button
-                      className={`training-rating-btn ${cell.rating === 'positive' ? 'active-positive' : ''}`}
-                      onClick={() => handleCellRate(cell.trace_id, 'positive', cell.rating, i)}
-                      title="Good output"
-                    >
-                      <Icon icon="mdi:thumb-up" width={14}
-                        style={{ color: cell.rating === 'positive' ? '#34d399' : '#334155' }} />
-                    </button>
-                    <button
-                      className={`training-rating-btn ${cell.rating === 'negative' ? 'active-negative' : ''}`}
-                      onClick={() => handleCellRate(cell.trace_id, 'negative', cell.rating, i)}
-                      title="Bad output"
-                    >
-                      <Icon icon="mdi:thumb-down" width={14}
-                        style={{ color: cell.rating === 'negative' ? '#ff006e' : '#334155' }} />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
+            {cells.map((cell, i) => {
+              const args = parseInputs(cell.inputs_json, cell.inputs_summary);
+              const opName = cell.sql_operator || cell.operator?.replace('semantic_', '').toUpperCase() || '?';
+              const result = cleanResult(cell.result);
+              const argEntries = args ? Object.entries(args) : [];
+
+              return (
+                <tr key={cell.trace_id || i} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                  <td style={{ ...tdStyle, fontFamily: "'JetBrains Mono', monospace", fontSize: 12 }}>
+                    <span style={{ color: '#a78bfa', fontWeight: 600 }}>{opName}</span>
+                    <span style={{ color: '#475569' }}>(</span>
+                    {argEntries.map(([key, val], j) => (
+                      <span key={key}>
+                        {j > 0 && <span style={{ color: '#475569' }}>, </span>}
+                        <span style={{ color: '#64748b', fontSize: 10 }}>{key}=</span>
+                        <span style={{ color: '#cbd5e1' }}>
+                          '{typeof val === 'string' && val.length > 80 ? val.slice(0, 80) + '…' : val}'
+                        </span>
+                      </span>
+                    ))}
+                    {!args && (
+                      <span style={{ color: '#94a3b8' }}>
+                        {cell.inputs_summary?.length > 100 ? cell.inputs_summary.slice(0, 100) + '…' : cell.inputs_summary}
+                      </span>
+                    )}
+                    <span style={{ color: '#475569' }}>)</span>
+                  </td>
+                  <td style={tdStyle}>
+                    <span style={{
+                      color: result === 'true' ? '#34d399' : result === 'false' ? '#ff006e' : '#cbd5e1',
+                      fontWeight: ['true', 'false'].includes(result) ? 600 : 400,
+                      fontFamily: "'JetBrains Mono', monospace",
+                    }}>
+                      {result.length > 60 ? result.slice(0, 60) + '…' : result}
+                    </span>
+                  </td>
+                  <td style={tdStyle}>
+                    <span style={{ color: '#34d399', fontFamily: "'JetBrains Mono', monospace", fontSize: 11 }}>
+                      ${cell.cost?.toFixed(4) || '0.0000'}
+                    </span>
+                  </td>
+                  <td style={{ ...tdStyle }}>
+                    <div className="training-rating-cell">
+                      <button
+                        className={`training-rating-btn ${cell.rating === 'positive' ? 'active-positive' : ''}`}
+                        onClick={() => handleCellRate(cell.trace_id, 'positive', cell.rating, i)}
+                        title="Good output"
+                      >
+                        <Icon icon="mdi:thumb-up" width={14}
+                          style={{ color: cell.rating === 'positive' ? '#34d399' : '#334155' }} />
+                      </button>
+                      <button
+                        className={`training-rating-btn ${cell.rating === 'negative' ? 'active-negative' : ''}`}
+                        onClick={() => handleCellRate(cell.trace_id, 'negative', cell.rating, i)}
+                        title="Bad output"
+                      >
+                        <Icon icon="mdi:thumb-down" width={14}
+                          style={{ color: cell.rating === 'negative' ? '#ff006e' : '#334155' }} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

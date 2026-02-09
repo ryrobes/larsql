@@ -694,8 +694,10 @@ def get_sql_call_cells(caller_id):
             SELECT
                 u.caller_id,
                 u.operator,
+                u.sql_operator,
                 u.session_id,
                 u.inputs_summary,
+                u.inputs_json,
                 u.timestamp,
                 u.trace_id,
                 u.result,
@@ -722,8 +724,10 @@ def get_sql_call_cells(caller_id):
                 cells.append({
                     'caller_id': str(row.get('caller_id', '')),
                     'operator': str(row.get('operator', '')),
+                    'sql_operator': str(row.get('sql_operator', '')),
                     'session_id': str(row.get('session_id', '')),
                     'inputs_summary': str(row.get('inputs_summary', '')),
+                    'inputs_json': str(row.get('inputs_json', '')),
                     'timestamp': row['timestamp'].isoformat() if hasattr(row.get('timestamp'), 'isoformat') else str(row.get('timestamp', '')),
                     'trace_id': str(row.get('trace_id', '')),
                     'result': str(row.get('result', '')),

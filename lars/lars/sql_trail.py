@@ -885,7 +885,8 @@ def register_cascade_execution(
     cascade_id: str,
     cascade_path: str,
     session_id: str,
-    inputs: Optional[Dict] = None
+    inputs: Optional[Dict] = None,
+    sql_operator: Optional[str] = None,
 ):
     """
     Register a cascade execution for a SQL query.
@@ -910,12 +911,15 @@ def register_cascade_execution(
         from .db_adapter import get_db
         db = get_db()
 
+        import json as _json
         row_data = {
             'caller_id': caller_id,
             'cascade_id': cascade_id,
             'cascade_path': cascade_path,
             'session_id': session_id,
             'inputs_summary': str(inputs)[:200] if inputs else '',
+            'inputs_json': _json.dumps(inputs) if inputs else None,
+            'sql_operator': sql_operator or '',
             'timestamp': datetime.now(timezone.utc)
         }
         if _DEBUG:

@@ -688,6 +688,18 @@ async def execute_sql_function(
         import uuid
         session_id = f"sql_fn_{name}_{uuid.uuid4().hex[:8]}"
 
+    # Extract SQL operator name from first operator pattern (e.g., "{{ text }} MATCHES {{ criterion }}" → "MATCHES")
+    _sql_op_name = None
+    try:
+        _op_patterns = fn.operators
+        if _op_patterns:
+            import re
+            # Find uppercase words that aren't template vars
+            _words = re.findall(r'[A-Z_]{2,}', _op_patterns[0].replace('{{', '').replace('}}', ''))
+            _sql_op_name = _words[0] if _words else name.upper()
+    except Exception:
+        pass
+
     # Register cascade execution for SQL Trail
     if caller_id:
         try:
@@ -696,7 +708,8 @@ async def execute_sql_function(
                 cascade_id=name,
                 cascade_path=fn.cascade_path,
                 session_id=session_id,
-                inputs=cleaned_args
+                inputs=cleaned_args,
+                sql_operator=_sql_op_name
             )
         except Exception as e:
             log.debug(f"[sql_fn] Failed to register cascade execution: {e}")
