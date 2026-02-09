@@ -1,0 +1,317 @@
+<h1>Persistence & Materialization</h1>
+<p class="lead">
+  Save query results as durable tables with <code>INTO</code>. Materialized tables persist as Parquet files,
+  survive across sessions and connections, and are automatically discoverable via the <code>into_*</code> naming convention.
+</p>
+
+<div class="callout info">
+  <div class="callout-title">Why INTO instead of CREATE TABLE AS?</div>
+  <p>
+    LARS uses DuckDB with ephemeral, per-connection databases. Each SQL connection gets its own
+    isolated DuckDB instance — there's no shared catalog like PostgreSQL or MySQL. <code>CREATE TABLE AS</code>
+    only exists for the lifetime of your connection. <code>INTO</code> solves this by writing results to Parquet
+    files on disk, making them accessible from any connection, any session, at any time.
+  </p>
+</div>
+
+<div class="toc">
+  <div class="toc-title">On This Page</div>
+  <ul>
+    <li><a href="#overview">Overview</a></li>
+    <li><a href="#basic-syntax">Basic INTO Syntax</a></li>
+    <li><a href="#then-pass-into">THEN PASS INTO</a></li>
+    <li><a href="#per-stage-into">Per-Stage Materialization</a></li>
+    <li><a href="#hyper-dashboards">INTO in Hyper Dashboards</a></li>
+    <li><a href="#discovery">Discovering Materialized Tables</a></li>
+    <li><a href="#lifecycle">Lifecycle & Storage</a></li>
+    <li><a href="#arrow-alias">Arrow Alias Syntax</a></li>
+    <li><a href="#examples">Examples</a></li>
+  </ul>
+</div>
+
+<h2 id="overview">Overview</h2>
+
+<p>
+  INTO is LARS's answer to the ephemeral nature of DuckDB connections. When you run a query
+  through LARS's PostgreSQL wire protocol, your DuckDB instance is created fresh for each connection.
+  Traditional <code>CREATE TABLE AS</code> statements would lose their results the moment you disconnect.
+</p>
+
+<div class="feature-grid">
+  <div class="feature-card">
+    <div class="feature-card-icon"><iconify-icon icon="mdi:file-table-box"></iconify-icon></div>
+    <h4>Parquet-Backed</h4>
+    <p>Results are written as Parquet files to disk — fast columnar storage that any connection can read.</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon magenta"><iconify-icon icon="mdi:connection"></iconify-icon></div>
+    <h4>Cross-Session</h4>
+    <p>INTO tables survive disconnections, server restarts, and can be queried from any client connected to the same LARS instance.</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon green"><iconify-icon icon="mdi:magnify-scan"></iconify-icon></div>
+    <h4>Auto-Discoverable</h4>
+    <p>All materialized tables follow the <code>into_*</code> naming convention. Query them directly — LARS rewrites references to read from the underlying Parquet files.</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon purple"><iconify-icon icon="mdi:pipe"></iconify-icon></div>
+    <h4>Pipeline-Native</h4>
+    <p>INTO integrates naturally with LARS's <code>THEN</code> pipeline syntax, enabling intermediate snapshots at every stage.</p>
+  </div>
+</div>
+
+<h2 id="basic-syntax">Basic INTO Syntax</h2>
+
+<p>Append <code>INTO table_name</code> to any query to materialize the results:</p>
+
+<pre><code class="language-sql">SELECT *
+FROM products
+WHERE category = 'Electronics'
+INTO electronics;</code></pre>
+
+<p>This creates a table accessible as <code>into_electronics</code>. Query it from any connection:</p>
+
+<pre><code class="language-sql">SELECT * FROM into_electronics;</code></pre>
+
+<p>The original name (without prefix) also works within the same session:</p>
+
+<pre><code class="language-sql">SELECT * FROM electronics;</code></pre>
+
+<div class="callout tip">
+  <div class="callout-title">Naming Convention</div>
+  <p>
+    When you write <code>INTO my_table</code>, LARS stores it as <code>into_my_table</code>. This prefix makes
+    materialized tables instantly recognizable and avoids collisions with source tables.
+  </p>
+</div>
+
+<h2 id="then-pass-into">THEN PASS INTO</h2>
+
+<p>
+  <code>THEN PASS INTO</code> is a pipeline stage that materializes results without any transformation.
+  It's the simplest way to save data for downstream use:
+</p>
+
+<pre><code class="language-sql">SELECT customer_id, name, total_spend
+FROM customers
+WHERE total_spend > 1000
+THEN PASS INTO high_value_customers;</code></pre>
+
+<p>
+  <code>PASS</code> is a no-op stage — it passes data through unchanged. Combined with <code>INTO</code>, it becomes
+  a materialization command. This is especially useful in two contexts:
+</p>
+
+<ol>
+  <li><strong>Saving query results</strong> for later analysis without modifying them</li>
+  <li><strong>Sharing data between Hyper dashboard panels</strong> (see <a href="#hyper-dashboards">INTO in Hyper Dashboards</a>)</li>
+</ol>
+
+<h3>PASS INTO with MUTE</h3>
+
+<p>If you only want to save data and don't need to see the results, add <code>THEN MUTE</code>:</p>
+
+<pre><code class="language-sql">SELECT * FROM raw_events
+WHERE event_date = CURRENT_DATE
+THEN PASS INTO todays_events
+THEN MUTE;</code></pre>
+
+<p><code>MUTE</code> suppresses the result set and returns a single status row confirming how many rows were saved.</p>
+
+<h2 id="per-stage-into">Per-Stage Materialization</h2>
+
+<p>Every stage in a pipeline can have its own <code>INTO</code>, creating snapshots at each step:</p>
+
+<pre><code class="language-sql">SELECT * FROM raw_data INTO step0_raw
+THEN DEDUPE('email') INTO step1_deduped
+THEN FILTER('active customers only') INTO step2_active
+THEN ANALYZE 'segment by purchasing behavior' INTO step3_segments;</code></pre>
+
+<p>After execution, you have four queryable tables:</p>
+<ul>
+  <li><code>into_step0_raw</code> — the original data</li>
+  <li><code>into_step1_deduped</code> — after deduplication</li>
+  <li><code>into_step2_active</code> — after filtering</li>
+  <li><code>into_step3_segments</code> — the final analysis</li>
+</ul>
+
+<p>This is invaluable for:</p>
+<ul>
+  <li><strong>Debugging</strong> — inspect intermediate results to find where things went wrong</li>
+  <li><strong>Audit trails</strong> — keep a record of each transformation step</li>
+  <li><strong>Incremental pipelines</strong> — reuse intermediate results in other queries</li>
+</ul>
+
+<div class="callout tip">
+  <div class="callout-title">Compliance & Debugging</div>
+  <p>
+    Use per-stage INTO for compliance and debugging. Each intermediate table is a
+    permanent record of exactly what data flowed through each transformation.
+  </p>
+</div>
+
+<h2 id="hyper-dashboards">INTO in Hyper Dashboards</h2>
+
+<p>
+  Hyper dashboards use <code>THEN PASS INTO</code> as a shared data layer. Dashboard panels execute in
+  parallel — they can't depend on each other's results. Instead, setup SQL materializes shared
+  data that all panels reference:
+</p>
+
+<pre><code class="language-sql">--- HYPER 'Sales Dashboard'
+
+SELECT * FROM sales_data
+WHERE year = 2024
+THEN PASS INTO shared_sales;
+
+--- PANEL 'Revenue by Region' (1, 1, 1, 1)
+SELECT region, SUM(revenue) as total
+FROM into_shared_sales GROUP BY region;
+
+--- PANEL 'Revenue by Month' (2, 1, 1, 1)
+SELECT month, SUM(revenue) as total
+FROM into_shared_sales GROUP BY month;
+
+--- PANEL 'Top Products' (1, 2, 2, 1)
+SELECT product, SUM(units_sold) as units
+FROM into_shared_sales GROUP BY product
+ORDER BY units DESC LIMIT 10;</code></pre>
+
+<p>
+  The setup SQL runs once, materializing <code>into_shared_sales</code>. Then each panel query runs in
+  parallel against the materialized result — fast and consistent.
+</p>
+
+<p>See also: <a href="hyper.html#dashboard-panels">Hyper SQL Client</a> for full dashboard documentation.</p>
+
+<h2 id="discovery">Discovering Materialized Tables</h2>
+
+<p>All INTO tables follow the <code>into_*</code> naming convention, making them easy to find:</p>
+
+<pre><code class="language-sql">-- Query any INTO table directly
+SELECT * FROM into_electronics;
+SELECT COUNT(*) FROM into_step1_deduped;
+
+-- Join INTO tables with source data
+SELECT e.*, p.supplier
+FROM into_electronics e
+JOIN product_suppliers p ON e.product_id = p.product_id;</code></pre>
+
+<h3>How It Works</h3>
+
+<p>
+  Behind the scenes, LARS's <code>into_table_rewriter</code> detects <code>into_*</code> references in your SQL and
+  rewrites them to <code>read_parquet()</code> calls pointing at the stored Parquet files. This happens
+  transparently — you just write normal SQL.
+</p>
+
+<pre><code class="language-sql">-- What you write:
+SELECT * FROM into_electronics;
+
+-- What LARS executes:
+SELECT * FROM read_parquet('.../into_electronics/data.parquet') AS into_electronics;</code></pre>
+
+<h2 id="lifecycle">Lifecycle & Storage</h2>
+
+<h3>Storage Location</h3>
+
+<p>INTO tables are stored as Parquet files under LARS's data directory:</p>
+
+<pre><code>$LARS_ROOT/data/user/&lt;results_db&gt;/into_&lt;name&gt;/data.parquet</code></pre>
+
+<p>Where <code>&lt;results_db&gt;</code> is derived from the database name in your connection string (e.g., <code>lars_results_myproject</code>).</p>
+
+<h3>Persistence</h3>
+
+<ul>
+  <li><strong>Across sessions:</strong> INTO tables persist on disk. Reconnect and they're still there.</li>
+  <li><strong>Across server restarts:</strong> Parquet files survive server restarts — no data loss.</li>
+  <li><strong>Re-execution:</strong> Running <code>INTO</code> with the same name replaces the previous data (atomic overwrite).</li>
+</ul>
+
+<h3>Namespace Scoping</h3>
+
+<p>
+  The <code>&lt;results_db&gt;</code> namespace is derived from the database name you connect with. Different
+  database names create isolated namespaces:
+</p>
+
+<pre><code>psql -d myproject    →  $LARS_ROOT/data/user/lars_results_myproject/
+psql -d analytics    →  $LARS_ROOT/data/user/lars_results_analytics/</code></pre>
+
+<h3>Cleanup</h3>
+
+<p>
+  INTO tables are not automatically cleaned up. To remove materialized data, delete the
+  corresponding directory under <code>$LARS_ROOT/data/user/</code>.
+</p>
+
+<h2 id="arrow-alias">Arrow Alias Syntax</h2>
+
+<p>LARS also supports an arrow syntax (<code>-&gt;</code>) as a shorthand for saving query results:</p>
+
+<pre><code class="language-sql">SELECT * FROM products WHERE active = true -> active_products;</code></pre>
+
+<p>The <code>SHADOW AS</code> keyword provides a more SQL-like alternative:</p>
+
+<pre><code class="language-sql">SELECT * FROM products WHERE active = true SHADOW AS active_products;</code></pre>
+
+<div class="callout note">
+  <div class="callout-title">Note</div>
+  <p>
+    Arrow aliases and <code>INTO</code> serve similar purposes but work through different mechanisms.
+    <code>INTO</code> is the recommended approach for pipeline materialization and cross-session persistence.
+  </p>
+</div>
+
+<h2 id="examples">Examples</h2>
+
+<h3>Staging for Multi-Step Analysis</h3>
+
+<pre><code class="language-sql">-- Step 1: Materialize the base dataset
+SELECT * FROM transactions
+WHERE amount > 100 AND date >= '2024-01-01'
+THEN PASS INTO large_transactions;
+
+-- Step 2: Analyze in a separate query
+SELECT category, COUNT(*) as cnt, AVG(amount) as avg_amount
+FROM into_large_transactions
+GROUP BY category
+ORDER BY avg_amount DESC;</code></pre>
+
+<h3>Pipeline with Intermediate Snapshots</h3>
+
+<pre><code class="language-sql">SELECT * FROM customer_feedback INTO raw_feedback
+THEN FILTER('English language only') INTO english_only
+THEN ANALYZE 'classify sentiment and extract key themes' INTO analyzed
+THEN FILTER('negative sentiment') INTO negative_feedback;</code></pre>
+
+<h3>Dashboard Data Sharing</h3>
+
+<pre><code class="language-sql">--- HYPER 'Customer Health'
+
+SELECT c.*, o.total_orders, o.last_order_date
+FROM customers c
+JOIN (SELECT customer_id, COUNT(*) as total_orders,
+             MAX(order_date) as last_order_date
+      FROM orders GROUP BY customer_id) o
+ON c.id = o.customer_id
+THEN PASS INTO customer_health;
+
+--- PANEL 'At Risk' (1, 1)
+SELECT * FROM into_customer_health
+WHERE last_order_date < CURRENT_DATE - INTERVAL '90 days'
+ORDER BY total_orders DESC;
+
+--- PANEL 'Champions' (2, 1)
+SELECT * FROM into_customer_health
+WHERE total_orders > 50
+ORDER BY last_order_date DESC;</code></pre>
+
+<h3>Silent Background Materialization</h3>
+
+<pre><code class="language-sql">-- Save data without displaying results
+SELECT * FROM daily_metrics
+WHERE metric_date = CURRENT_DATE
+THEN PASS INTO todays_metrics
+THEN MUTE;</code></pre>

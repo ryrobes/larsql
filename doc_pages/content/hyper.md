@@ -97,6 +97,9 @@ FROM into_shared_data GROUP BY month;
 
 The setup SQL runs once, then each panel query runs in parallel against the materialized result.
 
+> For full documentation on `INTO` — including per-stage materialization, lifecycle, storage details,
+> and the `into_*` naming convention — see [Persistence & Materialization](persistence.html).
+
 ### Dashboard Naming
 
 Name your dashboard with the `--- HYPER` directive:

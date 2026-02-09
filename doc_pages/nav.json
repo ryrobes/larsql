@@ -280,6 +280,21 @@
           ]
         },
         {
+          "id": "persistence",
+          "title": "Persistence & Materialization",
+          "sections": [
+            { "anchor": "overview", "title": "Overview" },
+            { "anchor": "basic-syntax", "title": "Basic INTO Syntax" },
+            { "anchor": "then-pass-into", "title": "THEN PASS INTO" },
+            { "anchor": "per-stage-into", "title": "Per-Stage Materialization" },
+            { "anchor": "hyper-dashboards", "title": "INTO in Hyper Dashboards" },
+            { "anchor": "discovery", "title": "Discovering Materialized Tables" },
+            { "anchor": "lifecycle", "title": "Lifecycle & Storage" },
+            { "anchor": "arrow-alias", "title": "Arrow Alias Syntax" },
+            { "anchor": "examples", "title": "Examples" }
+          ]
+        },
+        {
           "id": "embedding",
           "title": "Vector Search & Embedding",
           "sections": [

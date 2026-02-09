@@ -134,6 +134,11 @@ FROM into_shared_data GROUP BY month;</code></pre>
   The setup SQL runs once, then each panel query runs in parallel against the materialized result.
 </p>
 
+<p>
+  For full documentation on <code>INTO</code> — including per-stage materialization, lifecycle, storage details,
+  and the <code>into_*</code> naming convention — see <a href="persistence.html">Persistence & Materialization</a>.
+</p>
+
 <h3>Dashboard Naming</h3>
 
 <div class="code-block">
