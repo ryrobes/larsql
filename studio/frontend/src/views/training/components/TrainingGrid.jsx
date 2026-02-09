@@ -138,7 +138,7 @@ const ExpandedDetail = ({ data }) => {
               wrapLongLines={true}
               customStyle={{
                 margin: 0, borderRadius: 4, background: 'rgba(255,255,255,0.02)',
-                fontSize: '11px', maxHeight: '300px', overflow: 'auto', padding: '10px',
+                fontSize: '11px', maxHeight: '500px', overflow: 'auto', padding: '10px',
                 whiteSpace: 'pre-wrap', wordBreak: 'break-word',
               }}
               codeTagProps={{ style: { fontFamily: "'JetBrains Mono', monospace", whiteSpace: 'pre-wrap', wordBreak: 'break-word' } }}
@@ -160,7 +160,7 @@ const ExpandedDetail = ({ data }) => {
               wrapLongLines={true}
               customStyle={{
                 margin: 0, borderRadius: 4, background: 'rgba(255,255,255,0.02)',
-                fontSize: '12px', maxHeight: '300px', overflow: 'auto', padding: '10px',
+                fontSize: '12px', maxHeight: '500px', overflow: 'auto', padding: '10px',
                 whiteSpace: 'pre-wrap', wordBreak: 'break-word',
               }}
               codeTagProps={{ style: { fontFamily: "'JetBrains Mono', monospace", color: '#34d399', whiteSpace: 'pre-wrap', wordBreak: 'break-word' } }}
@@ -549,7 +549,7 @@ const TrainingGrid = ({ examples = [], onSelectionChanged, onMarkTrainable }) =>
           onRowDoubleClicked={handleRowDoubleClick}
           getRowId={(params) => params.data.trace_id}
           getRowHeight={(params) => {
-            if (params.data?._isDetail) return 350;
+            if (params.data?._isDetail) return null; // auto-height for detail rows
             return undefined; // default height
           }}
           isFullWidthRow={isFullWidthRow}
