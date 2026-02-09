@@ -580,6 +580,9 @@ def resolve_cell_model(cell_model: Optional[str], default_model: str) -> str:
         Resolved model ID ready to use with LLM provider
     """
     if cell_model is None:
+        # Also resolve default if it's a template
+        if "{{" in default_model and "models." in default_model:
+            return resolve_model(default_model)
         return default_model
     
     # Check for tier template

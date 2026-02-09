@@ -6768,7 +6768,8 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
 
         # Case 2: List of models - apply strategy (round-robin, random, etc.)
         if isinstance(takes_config.models, list):
-            models = takes_config.models
+            # Resolve any Jinja tier templates (e.g. "{{ models.standard }}" → actual model ID)
+            models = [resolve_cell_model(m, self.model) for m in takes_config.models]
             strategy = takes_config.model_strategy
 
             if strategy == "round_robin":
@@ -6787,8 +6788,9 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
         elif isinstance(takes_config.models, dict):
             assigned = []
             for model_name, config in takes_config.models.items():
-                # Add this model N times based on its factor
-                assigned.extend([model_name] * config.factor)
+                # Resolve any Jinja tier templates
+                resolved_name = resolve_cell_model(model_name, self.model)
+                assigned.extend([resolved_name] * config.factor)
             return assigned
 
         # Fallback: use default

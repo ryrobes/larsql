@@ -22,7 +22,35 @@ from datetime import datetime, timezone
 from functools import lru_cache
 from typing import Dict, List, Optional, Any
 
+import math
+
 logger = logging.getLogger(__name__)
+
+
+def _safe_int(val) -> int:
+    """Convert to int, treating None/NaN as 0."""
+    if val is None:
+        return 0
+    try:
+        f = float(val)
+        if math.isnan(f) or math.isinf(f):
+            return 0
+        return int(f)
+    except (ValueError, TypeError):
+        return 0
+
+
+def _safe_float(val) -> float:
+    """Convert to float, treating None/NaN as 0.0."""
+    if val is None:
+        return 0.0
+    try:
+        f = float(val)
+        if math.isnan(f) or math.isinf(f):
+            return 0.0
+        return f
+    except (ValueError, TypeError):
+        return 0.0
 
 # Semaphore to limit concurrent relevance analysis cascades
 # Prevents CPU spikes from too many parallel background analytics
@@ -495,15 +523,15 @@ def _fetch_session_data(session_id: str, db) -> Optional[Dict]:
             'invocation_metadata': session_info.get('invocation_metadata_json', '{}'),  # [OK] Include metadata
 
             # Aggregated metrics
-            'total_cost': float(metrics.get('total_cost', 0) or 0),
-            'total_duration_ms': float(metrics.get('total_duration_ms', 0) or 0),
-            'total_tokens_in': int(metrics.get('total_tokens_in', 0) or 0),
-            'total_tokens_out': int(metrics.get('total_tokens_out', 0) or 0),
-            'total_tokens': int(metrics.get('total_tokens_in', 0) or 0) + int(metrics.get('total_tokens_out', 0) or 0),
-            'message_count': int(metrics.get('message_count', 0) or 0),
-            'cell_count': int(metrics.get('cell_count', 0) or 0),
-            'error_count': int(metrics.get('error_count', 0) or 0),
-            'take_count': int(metrics.get('take_count', 0) or 0),
+            'total_cost': _safe_float(metrics.get('total_cost', 0)),
+            'total_duration_ms': _safe_float(metrics.get('total_duration_ms', 0)),
+            'total_tokens_in': _safe_int(metrics.get('total_tokens_in', 0)),
+            'total_tokens_out': _safe_int(metrics.get('total_tokens_out', 0)),
+            'total_tokens': _safe_int(metrics.get('total_tokens_in', 0)) + _safe_int(metrics.get('total_tokens_out', 0)),
+            'message_count': _safe_int(metrics.get('message_count', 0)),
+            'cell_count': _safe_int(metrics.get('cell_count', 0)),
+            'error_count': _safe_int(metrics.get('error_count', 0)),
+            'take_count': _safe_int(metrics.get('take_count', 0)),
             'winner_take_index': metrics.get('winner_take_index'),
         }
 
