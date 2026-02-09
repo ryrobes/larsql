@@ -405,7 +405,7 @@
   border: 1px solid var(--color-border-dim, rgba(0, 229, 255, 0.15));
   border-radius: var(--radius-sm, 4px);
   color: var(--color-text-secondary, #cbd5e1);
-  font-family: var(--font-mono, 'Google Sans Code', monospace);
+  font-family: var(--font-mono, 'Geist Mono', monospace);
   font-size: var(--font-size-sm, 11px);
   transition: all 0.15s;
 }
@@ -536,7 +536,7 @@
   border: 1px solid var(--color-border-dim, rgba(0, 229, 255, 0.15));
   border-radius: var(--radius-sm, 4px);
   color: var(--color-text-secondary, #cbd5e1);
-  font-family: var(--font-mono, 'Google Sans Code', monospace);
+  font-family: var(--font-mono, 'Geist Mono', monospace);
   font-size: var(--font-size-sm, 11px);
 }
 

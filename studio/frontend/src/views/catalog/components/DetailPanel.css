@@ -214,7 +214,7 @@
   margin: 0;
   overflow-x: auto;
   max-height: 300px;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -311,13 +311,13 @@
   flex: 1;
   color: #f59e0b;
   font-weight: 500;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
 }
 
 .detail-column-type {
   color: #64748b;
   font-size: 10px;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
 }
 
 .detail-column-required {

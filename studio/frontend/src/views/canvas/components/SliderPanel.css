@@ -33,7 +33,7 @@
 }
 
 .slider-panel-value {
-  font-family: 'Google Sans Code', 'SF Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 32px;
   font-weight: 600;
   color: var(--slider-color, #00e5ff);

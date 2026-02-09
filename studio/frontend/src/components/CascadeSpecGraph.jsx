@@ -141,9 +141,13 @@ const CellNode = React.memo(({ cell, isBranch, isMerge, status }) => {
             <Icon icon="mdi:repeat" width="12" />
           </span>
         )}
-        {cell.model && (
-          <span className="spec-feature model" title={cell.model}>
+        {(cell.resolved_model || cell.model) && (
+          <span className="spec-feature model" title={cell.resolved_model || cell.model}>
             <Icon icon="mdi:chip" width="12" />
+            <span className="spec-model-name">
+              {cell.model_tier ? `${cell.model_tier}` : ''}
+              {cell.resolved_model ? ` · ${cell.resolved_model.split('/').pop()}` : ''}
+            </span>
           </span>
         )}
         {cell.max_turns > 1 && (

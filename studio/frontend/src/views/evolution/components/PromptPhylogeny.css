@@ -36,7 +36,7 @@
 .species-hash {
   font-size: 11px;
   color: #64748b;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   background: rgba(255, 255, 255, 0.04);
   padding: 4px 8px;
   border-radius: 4px;
@@ -418,7 +418,7 @@
   border-radius: 3px;
   display: inline-block;
   margin-bottom: 8px;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   border: 1px solid #1a1628;
 }
 

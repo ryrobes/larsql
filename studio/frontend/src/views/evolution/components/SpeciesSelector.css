@@ -63,7 +63,7 @@
 }
 
 .chip-hash {
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
 }
 
@@ -83,7 +83,7 @@
 .stat-item {
   font-size: 10px;
   color: #64748b;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   font-weight: 600;
 }
 

@@ -134,7 +134,7 @@
 }
 
 .params-panel-key-name {
-  font-family: 'Google Sans Code', 'SF Mono', monospace;
+  font-family: var(--font-mono);
   color: #f8fafc;
   font-weight: 500;
 }
@@ -162,7 +162,7 @@
 
 .params-panel-item-value {
   flex: 1;
-  font-family: 'Google Sans Code', 'SF Mono', monospace;
+  font-family: var(--font-mono);
   color: #94a3b8;
   overflow: hidden;
   text-overflow: ellipsis;

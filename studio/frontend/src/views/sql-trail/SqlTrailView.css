@@ -1159,7 +1159,7 @@
 }
 
 .detail-sql-content code {
-  font-family: 'Google Sans Code', 'JetBrains Mono', 'Fira Code', 'Menlo', 'Monaco', 'Consolas', monospace !important;
+  font-family: var(--font-mono) !important;
   font-size: 13px !important;
   line-height: 1.6 !important;
 }
@@ -1227,7 +1227,7 @@
 .semantic-sql-code {
   margin: 0;
   padding: 16px;
-  font-family: 'Google Sans Code', 'JetBrains Mono', 'Fira Code', 'Menlo', 'Monaco', 'Consolas', monospace;
+  font-family: var(--font-mono);
   font-size: 13px;
   line-height: 1.6;
   white-space: pre-wrap;
@@ -2709,7 +2709,7 @@
 .results-viewer-location-small {
   font-size: 11px;
   color: #64748b;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
 }
 
 /* ==========================================================================
@@ -2764,7 +2764,7 @@
   background: rgba(167, 139, 250, 0.12);
   border-radius: 4px;
   color: #c4b5fd;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
 }
 
 .results-viewer-attribution-col svg {
@@ -2893,7 +2893,7 @@
 .cell-detail-meta-value {
   font-size: 12px;
   color: #cbd5e1;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
 }
 
 .cell-detail-meta-value.accent-green {
@@ -3007,7 +3007,7 @@
 .cell-detail-message-phase {
   font-size: 10px;
   color: #64748b;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
 }
 
 .cell-detail-message-cost {
@@ -3041,7 +3041,7 @@
   border-radius: 4px;
   font-size: 10px;
   color: #34d399;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
 }
 
 /* Actions footer */
@@ -3188,7 +3188,7 @@
 .cell-detail-message-phase {
   font-size: 10px;
   color: #64748b;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   padding: 2px 6px;
   background: rgba(100, 116, 139, 0.1);
   border-radius: 3px;
@@ -3232,7 +3232,7 @@
   border-radius: 4px;
   font-size: 11px;
   color: #34d399;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
 }
 
 .cell-detail-tool-call svg {
@@ -3261,6 +3261,6 @@
 
 .cell-detail-tokens {
   color: #64748b;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
 }

@@ -28,7 +28,7 @@
 }
 
 .cost-badge-value {
-  font-family: 'Google Sans Code', 'Menlo', monospace;
+  font-family: var(--font-mono);
   font-weight: 600;
 }
 

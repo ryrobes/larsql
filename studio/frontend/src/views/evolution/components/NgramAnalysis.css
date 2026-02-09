@@ -208,7 +208,7 @@
   font-size: 13px;
   font-weight: 600;
   color: #f0f4f8;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
 }
 
 /* Stats Section */
@@ -259,7 +259,7 @@
   font-size: 11px;
   font-weight: 700;
   color: #cbd5e1;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   width: 35px;
   text-align: right;
 }
@@ -275,7 +275,7 @@
   border-radius: 3px;
   font-size: 10px;
   font-weight: 700;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
 }
 
 .count-badge.winner {
@@ -294,7 +294,7 @@
 .heat-score {
   font-size: 11px;
   font-weight: 700;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   min-width: 80px;
   text-align: right;
 }

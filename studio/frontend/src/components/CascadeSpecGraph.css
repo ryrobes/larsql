@@ -275,6 +275,17 @@
 .spec-feature.model {
   background: rgba(167, 139, 250, 0.2);
   color: #a78bfa;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spec-model-name {
+  font-size: 9px;
+  opacity: 0.9;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .spec-feature.turns {
@@ -538,7 +549,7 @@
   color: #00e5ff;
   font-size: 11px;
   font-weight: 600;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   letter-spacing: 0.5px;
 }
 

@@ -1017,7 +1017,7 @@ function CascadeNavigator() {
   useEffect(() => {
     console.log('[CascadeNavigator] Checkpoint polling setup:', { checkpointSessionId, cascadeSessionId, replaySessionId, viewMode });
 
-    if (!checkpointSessionId) {
+    if (!checkpointSessionId || viewMode === 'replay') {
       setPendingCheckpoint(null);
       return;
     }
@@ -1056,7 +1056,7 @@ function CascadeNavigator() {
     const interval = setInterval(fetchCheckpoint, isRunningAll ? 2000 : 5000);
 
     return () => clearInterval(interval);
-  }, [checkpointSessionId, isRunningAll]);
+  }, [checkpointSessionId, isRunningAll, viewMode]);
 
   // Handle checkpoint response
   const handleCheckpointResponse = useCallback(async (response) => {

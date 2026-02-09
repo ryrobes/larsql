@@ -20,7 +20,7 @@
   border-radius: 6px;
   color: #f0f4f8;
   font-size: 13px;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   cursor: pointer;
   outline: none;
   transition: all 0.15s ease;

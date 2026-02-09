@@ -709,6 +709,8 @@ def get_cascade_definitions():
                                         "async_cascades": p.get("async_cascades"),
                                         # Model & tools
                                         "model": p.get("model"),
+                                        "resolved_model": None,  # filled below
+                                        "model_tier": None,      # e.g. "standard", "fast"
                                         "skills": p.get("tackle"),
                                         "handoffs": p.get("handoffs"),
                                         "context": p.get("context"),
@@ -739,6 +741,26 @@ def get_cascade_definitions():
                                 }
                         except:
                             continue
+
+            # Resolve Jinja model templates to actual model IDs
+            try:
+                from lars.models import resolve_model, MODEL_TEMPLATE_PATTERN
+                import re
+                for cascade_data in all_cascades.values():
+                    for cell in cascade_data.get('cells', []):
+                        raw_model = cell.get('model')
+                        if raw_model:
+                            match = MODEL_TEMPLATE_PATTERN.search(raw_model)
+                            if match:
+                                cell['model_tier'] = match.group(1)
+                            try:
+                                cell['resolved_model'] = resolve_model(raw_model)
+                            except Exception:
+                                cell['resolved_model'] = raw_model
+                        else:
+                            cell['resolved_model'] = None
+            except Exception as e:
+                print(f"[CASCADE-CACHE] Warning: Could not resolve model templates: {e}")
 
             # Cache the cascade definitions
             _cascade_definitions_cache['data'] = all_cascades.copy()

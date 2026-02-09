@@ -84,7 +84,7 @@
 
 .schema-tree-type {
   font-size: 10px;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   margin-left: 8px;
   text-transform: lowercase;
 }
@@ -158,6 +158,6 @@
   color: #2dd4bf;
   padding: 2px 6px;
   border-radius: 4px;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
 }

@@ -1441,7 +1441,8 @@ apps_bp = Blueprint('apps', __name__, url_prefix='/apps')
 BASECOAT_HEAD = '''
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@300;400;500;600;700&family=Google+Sans+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/geist@1/dist/fonts/geist-sans/style.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/geist@1/dist/fonts/geist-mono/style.css" rel="stylesheet">
 
     <!-- Basecoat CSS Variables - Matched to LARS Studio native UI -->
     <style>
@@ -1498,7 +1499,7 @@ BASECOAT_HEAD = '''
 
       /* Base styles */
       body {
-        font-family: 'Quicksand', system-ui, sans-serif;
+        font-family: 'Geist', system-ui, sans-serif;
         font-size: 13px;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
@@ -1541,8 +1542,8 @@ BASECOAT_HEAD = '''
               sm: 'calc(var(--radius) - 4px)',
             },
             fontFamily: {
-              sans: ['Quicksand', 'system-ui', 'sans-serif'],
-              mono: ['Google Sans Mono', 'monospace'],
+              sans: ['Geist', 'system-ui', 'sans-serif'],
+              mono: ['Geist Mono', 'monospace'],
             },
           }
         }

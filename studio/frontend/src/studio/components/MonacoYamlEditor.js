@@ -73,7 +73,7 @@ function MonacoYamlEditor({
   const editorOptions = {
     minimap: { enabled: false },
     fontSize: 12,
-    fontFamily: "'Google Sans Code', 'Menlo', monospace",
+    fontFamily: "var(--font-mono)",
     lineNumbers: 'off',
     renderLineHighlight: 'line',
     renderLineHighlightOnlyWhenFocus: true,

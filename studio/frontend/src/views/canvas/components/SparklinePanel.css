@@ -25,7 +25,7 @@
 }
 
 .sparkline-panel-metric {
-  font-family: 'Google Sans Code', 'SF Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 28px;
   font-weight: 600;
   line-height: 1.1;

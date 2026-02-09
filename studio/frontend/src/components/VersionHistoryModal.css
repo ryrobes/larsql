@@ -67,7 +67,7 @@
   margin: 0;
   font-size: 18px;
   font-weight: 600;
-  font-family: 'Google Sans', sans-serif;
+  font-family: var(--font-sans);
 }
 
 .version-history-close {
@@ -130,7 +130,7 @@
   margin-bottom: 20px;
   font-size: 13px;
   color: #cbd5e1;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
 }
 
 /* Timeline */
@@ -206,7 +206,7 @@
   color: #f0f4f8;
   font-weight: 600;
   font-size: 15px;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
 }
 
 .current-badge {
@@ -236,7 +236,7 @@
 .version-timestamp {
   color: #94a3b8;
   font-size: 12px;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
 }
 
 /* Metadata */
@@ -261,7 +261,7 @@
 }
 
 .metadata-instance {
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   color: #64748b;
 }
 
@@ -282,7 +282,7 @@
 }
 
 .content-hash {
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   color: #64748b;
   background: #050410;
@@ -311,7 +311,7 @@
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.2s;
-  font-family: 'Google Sans', sans-serif;
+  font-family: var(--font-sans);
 }
 
 .version-action-btn:hover {
@@ -339,7 +339,7 @@
   padding: 4px 8px;
   border-radius: 4px;
   font-size: 12px;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   cursor: pointer;
   transition: all 0.2s;
 }

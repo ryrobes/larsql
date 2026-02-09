@@ -145,7 +145,7 @@
   border-radius: 6px;
   color: #fca5a5;
   font-size: 13px;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   overflow: auto;
   white-space: pre-wrap;
   word-break: break-word;

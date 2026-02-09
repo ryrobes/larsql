@@ -131,7 +131,7 @@ function SqlEditor() {
   const editorOptions = {
     minimap: { enabled: false },
     fontSize: 14,
-    fontFamily: "'Google Sans Code', 'Google Sans Code', 'Menlo', monospace",
+    fontFamily: "var(--font-mono)",
     lineNumbers: 'on',
     renderLineHighlight: 'line',
     renderLineHighlightOnlyWhenFocus: true,

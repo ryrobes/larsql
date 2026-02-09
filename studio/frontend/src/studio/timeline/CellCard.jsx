@@ -107,7 +107,7 @@ const CellCard = ({ cell, index, cellState, cellLogs = [], isSelected, onSelect,
   // Extract model - from cell YAML or cellState (executed) or default
   // Only show for LLM cells (deterministic data cells don't use models)
   const isLLMCell = !!(cell.tool === 'lars_data' || cell.instructions);
-  const modelToDisplay = isLLMCell ? (cell.model || cellState?.model || defaultModel) : null;
+  const modelToDisplay = isLLMCell ? (cell.resolved_model || cellState?.model || cell.model || defaultModel) : null;
 
   // Extract takes config from YAML (before execution)
   const takesConfig = cell.takes;

@@ -128,7 +128,7 @@
   font-size: 13px;
   font-weight: 600;
   color: #f0f4f8;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
 }
 
 .model-meta {
@@ -139,12 +139,12 @@
 
 .model-record {
   color: #94a3b8;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
 }
 
 .model-avg-cost {
   color: #34d399;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   font-weight: 600;
 }
 
@@ -173,13 +173,13 @@
 .win-rate-label {
   font-size: 12px;
   font-weight: 700;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
 }
 
 .total-cost-label {
   font-size: 11px;
   color: #64748b;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
 }
 
 /* Interpretation */

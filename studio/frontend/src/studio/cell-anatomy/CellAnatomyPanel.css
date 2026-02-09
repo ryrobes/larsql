@@ -10,7 +10,7 @@
   background-color: #000000;
   border-left: 1px solid #1a1628;
   overflow: hidden;
-  font-family: 'Google Sans', system-ui, sans-serif;
+  font-family: var(--font-sans);
 }
 
 /* ============================================

@@ -96,18 +96,18 @@ export function configureMonacoTheme(monaco) {
   if (!fontLoadingInitialized && typeof document !== 'undefined') {
     fontLoadingInitialized = true;
 
-    // Wait for Google Sans Code font to load, then tell Monaco to remeasure
+    // Wait for Geist Mono font to load, then tell Monaco to remeasure
     document.fonts.ready.then(() => {
       // Check if our font is loaded
-      if (document.fonts.check("12px 'Google Sans Code'")) {
+      if (document.fonts.check("12px 'Geist Mono'")) {
         monaco.editor.remeasureFonts();
       } else {
         // Font not loaded yet, wait for it
-        document.fonts.load("12px 'Google Sans Code'").then(() => {
+        document.fonts.load("12px 'Geist Mono'").then(() => {
           monaco.editor.remeasureFonts();
         }).catch(() => {
           // Font failed to load, Monaco will use fallback
-          console.warn('[Monaco] Google Sans Code font failed to load, using fallback');
+          console.warn('[Monaco] Geist Mono font failed to load, using fallback');
         });
       }
     });
@@ -134,7 +134,7 @@ export function handleEditorMount(editor, monaco) {
 export const studioEditorOptions = {
   minimap: { enabled: false },
   fontSize: 12,
-  fontFamily: "'Google Sans Code', 'Menlo', monospace",
+  fontFamily: "var(--font-mono)",
   lineNumbers: 'off',
   renderLineHighlight: 'line',
   renderLineHighlightOnlyWhenFocus: true,

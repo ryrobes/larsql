@@ -1563,27 +1563,65 @@ def get_session_cascade(session_id):
             config_path = row['config_path']
 
             # Parse cascade definition (could be YAML or JSON)
-            try:
-                # Try YAML first (works for both YAML and JSON)
-                cascade_def = yaml.safe_load(cascade_def_raw) if cascade_def_raw else {}
-            except Exception as e:
-                # Fallback to JSON if YAML fails
+            cascade_def = None
+            if cascade_def_raw:
                 try:
-                    cascade_def = json.loads(cascade_def_raw) if cascade_def_raw else {}
+                    cascade_def = yaml.safe_load(cascade_def_raw)
                 except Exception:
-                    return jsonify({'error': f'Failed to parse cascade definition: {e}'}), 500
+                    try:
+                        cascade_def = json.loads(cascade_def_raw)
+                    except Exception:
+                        cascade_def = None
 
-            # Parse input data (always JSON)
-            input_data = json.loads(input_data_json) if input_data_json else {}
+            # If definition is empty/missing, try loading from filesystem using cascade_id
+            if not cascade_def or not cascade_def.get('cells'):
+                if cascade_id:
+                    try:
+                        # Use the same find_cascade_file + load_config_file from app.py
+                        # (safe to import here since app.py is already loaded when blueprints execute)
+                        from lars.studio.backend.app import find_cascade_file as _find, load_config_file as _load
+                        _fp = _find(cascade_id)
+                        if _fp:
+                            cascade_def = _load(_fp)
+                            config_path = config_path or _fp
+                            print(f"[session-cascade] Loaded cascade '{cascade_id}' from filesystem: {_fp}")
+                        else:
+                            # Also try builtin directories
+                            import glob
+                            from lars.config import get_builtin_cascades_dir, get_builtin_skills_dir, get_builtin_cell_types_dir
+                            for _bdir in [get_builtin_cascades_dir(), get_builtin_skills_dir(), get_builtin_cell_types_dir()]:
+                                if not os.path.exists(_bdir):
+                                    continue
+                                for _ext in ['yaml', 'yml', 'json']:
+                                    for _bfp in glob.glob(f"{_bdir}/**/*.{_ext}", recursive=True):
+                                        try:
+                                            _cd = _load(_bfp)
+                                            if _cd.get('cascade_id') == cascade_id:
+                                                cascade_def = _cd
+                                                config_path = config_path or _bfp
+                                                print(f"[session-cascade] Loaded cascade '{cascade_id}' from builtins: {_bfp}")
+                                                break
+                                        except:
+                                            continue
+                                    if cascade_def and cascade_def.get('cells'):
+                                        break
+                                if cascade_def and cascade_def.get('cells'):
+                                    break
+                    except Exception as e:
+                        print(f"[session-cascade] Warning: Could not load cascade '{cascade_id}' from filesystem: {e}")
 
-            return jsonify({
-                'cascade': cascade_def,
-                'input_data': input_data,
-                'cascade_id': cascade_id,
-                'created_at': str(created_at) if created_at else None,
-                'config_path': config_path if config_path else None,
-                'source': 'cascade_sessions_table'  # Indicates this is from the new storage system
-            })
+            if cascade_def and cascade_def.get('cells'):
+                # Parse input data (always JSON)
+                input_data = json.loads(input_data_json) if input_data_json else {}
+
+                return jsonify({
+                    'cascade': cascade_def,
+                    'input_data': input_data,
+                    'cascade_id': cascade_id,
+                    'created_at': str(created_at) if created_at else None,
+                    'config_path': config_path if config_path else None,
+                    'source': 'cascade_sessions_table'
+                })
 
         # Fallback: Reconstruct from logs (old sessions before migration)
         query_fallback = f"""

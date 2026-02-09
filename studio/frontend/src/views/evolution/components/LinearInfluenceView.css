@@ -153,7 +153,7 @@
 
 .block-model {
   color: #64748b;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   padding: 3px 6px;
   background: #000000;
   border-radius: 3px;
@@ -161,7 +161,7 @@
 
 .block-cost {
   color: #34d399;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   font-weight: 600;
 }
 

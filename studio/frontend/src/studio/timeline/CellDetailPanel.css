@@ -386,7 +386,7 @@
 .cell-detail-raw-json {
   padding: 16px;
   margin: 0;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.6;
 }
@@ -619,7 +619,7 @@
 
 .cell-detail-error-detail pre {
   margin: 0;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.6;
   color: #f87171;
@@ -765,7 +765,7 @@
 
 .cell-detail-evaluator-content pre {
   margin: 0;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   white-space: pre-wrap;
   word-wrap: break-word;
 }
@@ -852,7 +852,7 @@
 
 .cell-detail-message-content pre {
   margin: 0;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.6;
   color: #e6edf3;
@@ -902,7 +902,7 @@
 
 .cell-detail-tool-call pre {
   margin: 0;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   line-height: 1.6;
   color: #94a3b8;
@@ -995,7 +995,7 @@
 
 .cell-detail-error-message {
   margin: 0;
-  font-family: 'Google Sans Code', 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   color: #fca5a5;
   white-space: pre-wrap;
@@ -1422,7 +1422,7 @@
 .browser-result-value {
   font-size: 13px;
   color: #f0f4f8;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
 }
 
 .browser-result-link {
@@ -1576,7 +1576,7 @@
   margin: 0;
   padding: 12px;
   font-size: 11px;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   color: rgba(255, 255, 255, 0.7);
   background: rgba(0, 0, 0, 0.2);
   max-height: 300px;

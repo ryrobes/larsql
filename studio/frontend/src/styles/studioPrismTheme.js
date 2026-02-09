@@ -17,7 +17,7 @@ export const studioDarkPrismTheme = {
     color: '#cbd5e1',              // Light gray text
     background: '#050508',         // Pure black (match Studio)
     textShadow: 'none',
-    fontFamily: "'Google Sans Code', 'Menlo', 'Monaco', 'Consolas', monospace",
+    fontFamily: "var(--font-mono)",
     fontSize: '13px',              // Larger font size
     textAlign: 'left',
     whiteSpace: 'pre',
@@ -32,7 +32,7 @@ export const studioDarkPrismTheme = {
     color: '#cbd5e1',
     background: '#050508',
     textShadow: 'none',
-    fontFamily: "'Google Sans Code', 'Menlo', 'Monaco', 'Consolas', monospace",
+    fontFamily: "var(--font-mono)",
     fontSize: '13px',              // Larger font size
     textAlign: 'left',
     whiteSpace: 'pre',

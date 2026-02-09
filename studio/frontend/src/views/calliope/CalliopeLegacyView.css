@@ -73,7 +73,7 @@
   background: #000;
   color: #cbd5e1;
   font-size: 12px;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
 }
 
 .goal-input:focus {
@@ -280,7 +280,7 @@
   border: 1px solid rgba(0, 229, 255, 0.1);
   color: #cbd5e1;
   font-size: 15px;
-  font-family: 'Quicksand';
+  font-family: var(--font-sans);
   line-height: 1.5;
   max-width: calc(100% - 20px);
 }
@@ -313,7 +313,7 @@
   border: 1px solid rgba(0, 229, 255, 0.15);
   color: #00e5ff;
   font-size: 10px;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
 }
 
 /* Thinking indicator */
@@ -414,7 +414,7 @@
   font-size: 12px;
   font-weight: 600;
   color: #f1f5f9;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
 }
 
 .cascade-title svg {
@@ -475,7 +475,7 @@
   overflow-x: auto;
   white-space: pre-wrap;
   word-break: break-word;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
 }
 
 .cascade-validation {
@@ -609,7 +609,7 @@
   border: 1px dashed rgba(0, 229, 255, 0.2);
   color: #00e5ff;
   font-size: 10px;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
 }
 
 /* ============================================
@@ -667,7 +667,7 @@
   gap: 4px;
   color: #334155;
   font-size: 9px;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
 }
 
 .tool-group-item svg {
@@ -713,7 +713,7 @@
   background: rgba(0, 0, 0, 0.5);
   padding: 1px 4px;
   border-radius: 2px;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   color: #a78bfa;
   font-size: 11px;
 }

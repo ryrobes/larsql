@@ -455,11 +455,11 @@ body {
    ============================================================================ */
 
 .font-mono {
-    font-family: 'Google Sans Mono', 'IBM Plex Mono', monospace;
+    font-family: 'Geist Mono', 'IBM Plex Mono', monospace;
 }
 
 pre, code {
-    font-family: 'Google Sans Mono', 'IBM Plex Mono', monospace;
+    font-family: 'Geist Mono', 'IBM Plex Mono', monospace;
     font-size: 0.75rem;
 }
 

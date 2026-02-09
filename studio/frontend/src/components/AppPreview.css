@@ -42,7 +42,7 @@
   color: var(--accent-purple, #a78bfa);
   border-radius: 4px;
   font-size: 11px;
-  font-family: var(--font-mono, 'Google Sans Code', monospace);
+  font-family: var(--font-mono, 'Geist Mono', monospace);
 }
 
 .app-preview-cell svg {

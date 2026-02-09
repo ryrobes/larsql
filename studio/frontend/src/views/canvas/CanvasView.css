@@ -517,7 +517,7 @@
 
 /* Gutter cost text - appears before the line */
 .query-cost-gutter-text {
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   font-weight: 700;
   margin-right: 8px;
@@ -713,7 +713,7 @@
   font-weight: 600;
   font-size: 11px;
   letter-spacing: 0.3px;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   padding: 1px 4px;
   border-radius: 3px;
   margin-right: 4px;

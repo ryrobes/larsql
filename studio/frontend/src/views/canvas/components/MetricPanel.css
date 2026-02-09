@@ -25,7 +25,7 @@
 }
 
 .metric-panel-value {
-  font-family: 'Google Sans Code', 'SF Mono', monospace;
+  font-family: var(--font-mono);
   font-weight: 600;
   color: var(--metric-color, #00e5ff);
   line-height: 1.1;

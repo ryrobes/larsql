@@ -83,7 +83,7 @@
   color: #2dd4bf;
   font-weight: 500;
   text-decoration: none;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   padding: 2px 6px;
   border-radius: 4px;
   transition: all 0.15s ease;
@@ -349,7 +349,7 @@
   background: rgba(45, 212, 191, 0.15);
   padding: 2px 5px;
   border-radius: 3px;
-  font-family: 'Google Sans Code', 'Menlo', monospace;
+  font-family: var(--font-mono);
   white-space: nowrap;
 }
 
@@ -403,7 +403,7 @@
 
 .nav-column-type {
   font-size: 10px;
-  font-family: 'Google Sans Code', 'Menlo', monospace;
+  font-family: var(--font-mono);
   opacity: 0.8;
 }
 
@@ -430,7 +430,7 @@
 }
 
 .nav-table-name {
-  font-family: 'Google Sans Code', 'Menlo', monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
 }
 
@@ -438,7 +438,7 @@
   padding: 8px 12px 4px 32px;
   font-size: 10px;
   color: #475569;
-  font-family: 'Google Sans Code', 'Menlo', monospace;
+  font-family: var(--font-mono);
 }
 
 /* ============================================
@@ -836,7 +836,7 @@
   transition: all 0.15s ease;
   user-select: none;
   font-size: 10px;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
 }
 
 .var-pill:hover {
@@ -1429,7 +1429,7 @@
   transition: all 0.15s ease;
   user-select: none;
   font-size: 10px;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   width: 100%;
 }
 

@@ -191,7 +191,7 @@
   color: #000;
   font-size: 9px;
   font-weight: 700;
-  font-family: var(--font-mono, 'Google Sans Code', monospace);
+  font-family: var(--font-mono, 'Geist Mono', monospace);
 }
 
 /* Annotation mode indicator */

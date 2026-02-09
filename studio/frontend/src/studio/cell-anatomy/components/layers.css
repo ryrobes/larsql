@@ -102,7 +102,7 @@
 }
 
 .layer-input-tool-name {
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 600;
 }
@@ -161,7 +161,7 @@
 }
 
 .layer-input-param-key {
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   color: #fbbf24;
   background-color: rgba(251, 191, 36, 0.1);
   padding: 2px 6px;
@@ -322,7 +322,7 @@
 }
 
 .layer-ward-name {
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   color: #f0f4f8;
   flex: 1;
 }
@@ -465,7 +465,7 @@
 
 .layer-takes-loop-until-preview {
   font-size: 10px;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   color: #cbd5e1;
   white-space: pre-wrap;
   word-break: break-word;
@@ -535,7 +535,7 @@
   align-items: center;
   gap: 3px;
   font-size: 10px;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   padding: 2px 8px;
   background-color: rgba(0, 0, 0, 0.4);
   border: 1px solid #1a1628;
@@ -755,7 +755,7 @@
 
 .take-lane-model-name {
   font-size: 10px;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   color: #94a3b8;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -932,7 +932,7 @@
   font-size: 8px;
   color: #60a5fa;
   margin-left: auto;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
 }
 
 /* ============================================
@@ -1008,7 +1008,7 @@
 
 .convergence-section-name {
   font-size: 11px;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   color: #94a3b8;
 }
 
@@ -1292,7 +1292,7 @@
 }
 
 .layer-pareto-legend-model {
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   letter-spacing: 0.3px;
 }
 
@@ -1570,7 +1570,7 @@
   font-size: 8px;
   color: #34d399;
   margin-top: 2px;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
 }
 
 /* Turn complete state */
@@ -1650,7 +1650,7 @@
 }
 
 .layer-output-schema-type {
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   color: #34d399;
   background-color: rgba(52, 211, 153, 0.1);
   padding: 2px 8px;
@@ -1672,7 +1672,7 @@
 }
 
 .layer-output-extraction-pattern {
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   color: #f472b6;
   background-color: rgba(244, 114, 182, 0.1);
@@ -1731,7 +1731,7 @@
 .layer-output-result-preview {
   font-size: 11px;
   color: #94a3b8;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   background-color: rgba(0, 0, 0, 0.3);
   padding: 8px 10px;
   border-radius: 4px;
@@ -1813,5 +1813,5 @@
   font-size: 8px;
   color: #60a5fa;
   margin-left: auto;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
 }

@@ -680,7 +680,7 @@ def _generate_index_html(artifacts):
     <title>LARS Artifacts Export</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/geist@1/dist/fonts/geist-sans/style.css" rel="stylesheet">
     <style>
         :root {{
             --bg-darkest: #000001;
@@ -695,7 +695,7 @@ def _generate_index_html(artifacts):
         * {{ box-sizing: border-box; margin: 0; padding: 0; }}
 
         body {{
-            font-family: 'Quicksand', -apple-system, sans-serif;
+            font-family: 'Geist', -apple-system, sans-serif;
             background: var(--bg-darkest);
             color: var(--text-primary);
             min-height: 100vh;
@@ -897,7 +897,7 @@ def _get_base_styles():
 body {
   margin: 0;
   padding: 16px;
-  font-family: 'Quicksand', -apple-system, sans-serif;
+  font-family: 'Geist', -apple-system, sans-serif;
   font-size: 14px;
   line-height: 1.6;
   color: var(--text-primary);
@@ -970,7 +970,7 @@ def _add_navigation_to_artifact(html_content, artifact):
         display: flex;
         align-items: center;
         justify-content: space-between;
-        font-family: 'Quicksand', -apple-system, sans-serif;
+        font-family: 'Geist', -apple-system, sans-serif;
     ">
         <a href="index.html" style="
             display: flex;
@@ -1044,7 +1044,7 @@ def _add_navigation_to_artifact(html_content, artifact):
     <title>{title}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/geist@1/dist/fonts/geist-sans/style.css" rel="stylesheet">
     <style>{base_styles}</style>
     {cdn_libs}
 </head>

@@ -263,7 +263,7 @@
   color: #a78bfa;
   font-size: 12px;
   font-weight: 600;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   box-shadow: 0 8px 24px rgba(167, 139, 250, 0.4);
 }
 
@@ -278,7 +278,7 @@
   color: #00e5ff;
   font-size: 12px;
   font-weight: 600;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   box-shadow: 0 8px 24px rgba(0, 229, 255, 0.4);
 }
 
@@ -331,6 +331,6 @@
   color: #fbbf24;
   font-size: 12px;
   font-weight: 600;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   box-shadow: 0 8px 24px rgba(251, 191, 36, 0.4);
 }

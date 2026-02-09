@@ -149,7 +149,7 @@
 .stat-value {
   font-size: 1.125rem;
   font-weight: 700;
-  font-family: 'Google Sans Code', 'SF Mono', monospace;
+  font-family: var(--font-mono);
   letter-spacing: -0.02em;
 }
 
@@ -249,7 +249,7 @@
 
 .timeline-chart .recharts-text {
   fill: #64748b;
-  font-family: 'Google Sans Code', 'SF Mono', monospace;
+  font-family: var(--font-mono);
 }
 
 /* Model breakdown */
@@ -352,7 +352,7 @@
 
 .breakdown-cost {
   font-size: 0.6875rem;
-  font-family: 'Google Sans Code', 'SF Mono', monospace;
+  font-family: var(--font-mono);
   font-weight: 600;
   color: #00e5ff;
   min-width: 38px;
@@ -361,7 +361,7 @@
 
 .breakdown-percent {
   font-size: 0.625rem;
-  font-family: 'Google Sans Code', 'SF Mono', monospace;
+  font-family: var(--font-mono);
   color: #64748b;
   min-width: 24px;
   text-align: right;
@@ -378,7 +378,7 @@
 
 .filter-value {
   color: #a78bfa;
-  font-family: 'Google Sans Code', 'SF Mono', monospace;
+  font-family: var(--font-mono);
   font-weight: 500;
 }
 
@@ -406,7 +406,7 @@
 
 .tooltip-total-v2 {
   font-size: 1.125rem;
-  font-family: 'Google Sans Code', 'SF Mono', monospace;
+  font-family: var(--font-mono);
   font-weight: 700;
   color: #00e5ff;
   letter-spacing: -0.02em;
@@ -438,7 +438,7 @@
 
 .tooltip-model-cost {
   font-size: 0.6875rem;
-  font-family: 'Google Sans Code', 'SF Mono', monospace;
+  font-family: var(--font-mono);
   font-weight: 500;
   color: #a78bfa;
   flex-shrink: 0;
@@ -460,7 +460,7 @@
 
 .token-value {
   font-size: 0.75rem;
-  font-family: 'Google Sans Code', 'SF Mono', monospace;
+  font-family: var(--font-mono);
   font-weight: 600;
   color: #F0F4F8;
 }

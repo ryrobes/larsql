@@ -88,7 +88,7 @@
   align-items: center;
   gap: 3px;
   font-weight: 700;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   height: 100%;
 }

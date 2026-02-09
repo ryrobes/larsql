@@ -305,10 +305,17 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
   // Poll for execution updates - either live or replay session
   const sessionToPoll = viewMode === 'replay' ? replaySessionId : cascadeSessionId;
 
-  // SMART POLLING: In replay mode, poll once to get historical data
+  // SMART POLLING: In replay mode, poll once to get historical data then stop
   // In live mode, use isRunningAll flag (which is now data-driven from the store)
+  const [replayLoaded, setReplayLoaded] = useState(false);
+  const prevReplaySessionRef = useRef(null);
+  // Reset replayLoaded when replay session changes
+  if (replaySessionId !== prevReplaySessionRef.current) {
+    prevReplaySessionRef.current = replaySessionId;
+    if (replayLoaded) setReplayLoaded(false);
+  }
   const shouldPoll = viewMode === 'replay'
-    ? !!replaySessionId
+    ? !!(replaySessionId && !replayLoaded)
     : !!(cascadeSessionId && isRunningAll);
 
   // console.log('[CascadeTimeline] Polling logic:', {
@@ -324,6 +331,16 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
 
   // Get budget data for this session (use sessionToPoll and shouldPoll to match timeline polling logic)
   const { events: budgetEvents } = useBudgetData(sessionToPoll, shouldPoll);
+
+  // Mark replay as loaded once we receive logs AND cellStates are derived (stops polling)
+  useEffect(() => {
+    if (viewMode === 'replay' && logs && logs.length > 0 && !replayLoaded &&
+        polledCellStates && Object.keys(polledCellStates).length > 0) {
+      // Small delay to ensure state propagates through the store
+      const timer = setTimeout(() => setReplayLoaded(true), 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [viewMode, logs, replayLoaded, polledCellStates]);
 
   // Debug: Check if logs now include context data & notify parent
   useEffect(() => {
@@ -465,7 +482,7 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
   useEffect(() => {
     console.log('[CascadeTimeline] Checkpoint polling setup:', { checkpointSessionId, cascadeSessionId, viewMode });
 
-    if (!checkpointSessionId) {
+    if (!checkpointSessionId || viewMode === 'replay') {
       setBlockedCellName(null);
       return;
     }
@@ -501,7 +518,7 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
     const interval = setInterval(fetchCheckpoint, isRunningAll ? 2000 : 5000);
 
     return () => clearInterval(interval);
-  }, [checkpointSessionId, isRunningAll]);
+  }, [checkpointSessionId, isRunningAll, viewMode]);
 
   // Update analytics when polling returns new data
   const prevAnalyticsHashRef = useRef('');
@@ -1029,9 +1046,10 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
   return (
     <div className="cascade-timeline">
         {/* DEBUG BANNER - TEMPORARY */}
-        {/* <div style={{ background: '#ff0066', color: '#fff', padding: '8px', fontSize: '11px', fontFamily: 'monospace' }}>
-          DEBUG: cells={cells.length} | cascade.cells={cascade?.cells?.length} | nodes={layout.nodes.length} |
-          cascadeId={cascade?.cascade_id} | cellNames={cells.map(c => c.name).join(', ')}
+        {/* <div style={{ background: '#ff0066', color: '#fff', padding: '8px', fontSize: '11px', fontFamily: 'monospace', zIndex: 9999 }}>
+          DEBUG: cells={cells.length} | nodes={layout.nodes.length} | logs={logs.length} |
+          viewMode={viewMode} | sessionToPoll={sessionToPoll} | shouldPoll={String(shouldPoll)} |
+          replayLoaded={String(replayLoaded)} | cellStates={Object.keys(polledCellStates||{}).length}
         </div> */}
 
         {/* Top Control Bar */}

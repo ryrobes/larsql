@@ -563,8 +563,8 @@ function buildIframeDocument(bodyHTML, checkpointId, sessionId) {
   --space-xl: 24px;
 
   /* Typography */
-  --font-sans: 'Quicksand', -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-mono: 'Google Sans Mono', 'IBM Plex Mono', monospace;
+  --font-sans: 'Geist', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'Geist Mono', 'IBM Plex Mono', monospace;
   --font-size-xs: 10px;
   --font-size-sm: 11px;
   --font-size-base: 12px;
@@ -1171,7 +1171,7 @@ form { display: flex; flex-direction: column; gap: var(--space-md); }
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@300;400;500;600;700&family=Google+Sans+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/geist@1/dist/fonts/geist-sans/style.css" rel="stylesheet">
 
   <!-- 1. Tailwind CSS Play CDN FIRST -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -1297,7 +1297,7 @@ form { display: flex; flex-direction: column; gap: var(--space-md); }
           diagramMarginX: 20,
           diagramMarginY: 20
         },
-        fontFamily: "'Google Sans Mono', 'IBM Plex Mono', monospace"
+        fontFamily: "var(--font-mono)"
       });
       //console.log('[HTMX iframe] Mermaid initialized with LARS dark theme');
     }

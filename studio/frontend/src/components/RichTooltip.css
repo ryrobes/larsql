@@ -166,7 +166,7 @@
 .rct-meta-value {
   font-size: 11px;
   color: #94a3b8;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   text-align: right;
   max-width: 180px;
   overflow: hidden;
@@ -219,7 +219,7 @@
   background: rgba(100, 116, 139, 0.3);
   border: 1px solid rgba(100, 116, 139, 0.4);
   border-radius: 4px;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   color: #94a3b8;
   margin-top: 2px;

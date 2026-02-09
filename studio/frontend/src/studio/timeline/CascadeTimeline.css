@@ -100,7 +100,7 @@
 
 .cascade-session-id-value {
   font-size: 11px;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   font-weight: 500;
   color: #cbd5e1;
   max-width: 200px; /* Constrain width */
@@ -122,7 +122,7 @@
   font-size: 16px;
   font-weight: 700;
   color: #34d399;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   white-space: nowrap;
 }
 
@@ -144,7 +144,7 @@
   font-size: 11px;
   font-weight: 600;
   color: #60a5fa;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   white-space: nowrap;
   letter-spacing: 0.3px;
 }

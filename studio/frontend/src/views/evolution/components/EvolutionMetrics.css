@@ -56,14 +56,14 @@
   font-size: 16px;
   font-weight: 700;
   color: #f0f4f8;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   line-height: 1;
 }
 
 .metric-subvalue {
   font-size: 10px;
   color: #94a3b8;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   margin-top: 2px;
 }
 

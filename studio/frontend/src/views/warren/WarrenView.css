@@ -72,7 +72,7 @@
   background: #000;
   color: #cbd5e1;
   font-size: 13px;
-  font-family: 'Quicksand', sans-serif;
+  font-family: var(--font-sans);
   resize: vertical;
   min-height: 70px;
 }
@@ -313,7 +313,7 @@
 .burrow-model {
   font-size: 9px;
   color: #475569;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   padding: 0 2px;
 }
 
@@ -345,7 +345,7 @@
   background: rgba(0, 0, 0, 0.5);
   padding: 2px 4px;
   border-radius: 2px;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   color: #a78bfa;
   font-size: 12px;
   word-break: break-all;
@@ -507,7 +507,7 @@
   border: 1px solid rgba(167, 139, 250, 0.12);
   color: #cbd5e1;
   font-size: 16px;
-  font-family: 'Quicksand', sans-serif;
+  font-family: var(--font-sans);
   line-height: 1.65;
   overflow: hidden;
   word-wrap: break-word;
@@ -544,7 +544,7 @@
   background: rgba(0, 0, 0, 0.5);
   padding: 2px 6px;
   border-radius: 3px;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   color: #a78bfa;
   font-size: 14px;
   word-break: break-all;

@@ -189,7 +189,7 @@
   color: #a78bfa;
   font-size: 0.7rem;
   font-weight: 700;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
 }
 
 /* Mobile responsiveness */

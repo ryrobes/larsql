@@ -49,7 +49,7 @@
   margin: 0;
   font-size: 18px;
   font-weight: 600;
-  font-family: 'Google Sans', sans-serif;
+  font-family: var(--font-sans);
 }
 
 .cascade-diff-title svg {
@@ -90,7 +90,7 @@
   font-size: 13px;
   font-weight: 600;
   color: #cbd5e1;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
 }
 
 .cascade-diff-label.left {
@@ -137,7 +137,7 @@
 .cascade-diff-error p {
   margin: 0;
   font-size: 14px;
-  font-family: 'Google Sans', sans-serif;
+  font-family: var(--font-sans);
 }
 
 @keyframes spin {

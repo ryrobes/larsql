@@ -64,7 +64,7 @@
   align-items: center;
   gap: 5px;
   font-size: var(--font-size-xs, 10px);
-  font-family: var(--font-mono, 'Google Sans Code', monospace);
+  font-family: var(--font-mono, 'Geist Mono', monospace);
   color: var(--color-text-muted, #94a3b8);
 }
 

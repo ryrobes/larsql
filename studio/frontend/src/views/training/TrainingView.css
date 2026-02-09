@@ -66,7 +66,7 @@
   border: none;
   color: #64748b;
   font-size: 12px;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono);
   cursor: pointer;
   transition: all 0.15s;
 }
