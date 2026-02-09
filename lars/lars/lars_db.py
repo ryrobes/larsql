@@ -2172,8 +2172,10 @@ class LarsDB:
                     col_defs = ", ".join(f"NULL::{dtype} AS {name}" for name, dtype in cols)
                     try:
                         conn.execute(f"CREATE OR REPLACE VIEW lars_system.{view_name} AS SELECT {col_defs} WHERE false")
-                    except Exception:
-                        pass
+                    except Exception as stub_err:
+                        log.warning(f"[Views] Could not create lars_system.{view_name} stub: {stub_err}")
+                else:
+                    log.warning(f"[Views] No schema found for {schema_key}, cannot create lars_system.{view_name} stub")
         
         _create_system_view("sessions", "session_state")
         _create_system_view("sql_log", "ui_sql_log")
