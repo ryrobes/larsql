@@ -12,6 +12,7 @@ The UI specs are JSON objects that can be rendered by any frontend.
 from typing import Dict, Any, Optional, List, Union
 import json
 
+from .config import get_config
 from .cascade import (
     HumanInputConfig, HumanInputType,
     HumanTakeEvalConfig, HumanEvalPresentation, HumanEvalSelectionMode
@@ -251,7 +252,7 @@ Return ONLY the JSON, no explanation."""
 
         try:
             import os
-            model = os.getenv("LARS_UI_GENERATOR_MODEL", "google/gemini-2.5-flash-lite")
+            model = os.getenv("LARS_UI_GENERATOR_MODEL") or get_config().generative_ui_model
             agent = Agent(model=model)
             response = agent.call([{"role": "user", "content": prompt}])
 
@@ -364,7 +365,7 @@ Return the HTML template only, no explanation."""
 
         try:
             import os
-            model = os.getenv("LARS_UI_GENERATOR_MODEL", "google/gemini-2.5-flash-lite")
+            model = os.getenv("LARS_UI_GENERATOR_MODEL") or get_config().generative_ui_model
             agent = Agent(model=model)
             response = agent.call([{"role": "user", "content": prompt}])
 
@@ -618,7 +619,7 @@ def _classify_question(question: str, context: str | None = None, session_id: st
     from datetime import datetime
 
     config = get_config()
-    model = os.getenv("LARS_UI_GENERATOR_MODEL", "google/gemini-2.5-flash-lite")
+    model = os.getenv("LARS_UI_GENERATOR_MODEL") or get_config().generative_ui_model
 
     # Get session context for logging
     if not session_id:

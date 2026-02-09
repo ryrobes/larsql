@@ -6542,7 +6542,8 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
                 from .cascade import CascadeConfig, CellConfig, RuleConfig
 
                 # Use configured model or default to a cheap/fast model
-                validator_model = inline_config.model or "google/gemini-2.5-flash-lite"
+                from .models import fast_model
+                validator_model = inline_config.model or fast_model()
 
                 # Render instructions with input context
                 from .prompts import render_instruction

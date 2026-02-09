@@ -51,7 +51,11 @@ from ..blocking_cost import extract_provider_from_model
 
 # Default model for bodybuilder planning (converts natural language to API body)
 # Uses a fast, cheap model for the planning step
-DEFAULT_PLANNER_MODEL = "google/gemini-2.5-flash-lite"
+try:
+    from ..models import fast_model as _fast_model
+    DEFAULT_PLANNER_MODEL = _fast_model()
+except Exception:
+    DEFAULT_PLANNER_MODEL = "google/gemini-2.5-flash-lite"
 
 
 def _execute_single_body(

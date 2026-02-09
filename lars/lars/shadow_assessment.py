@@ -23,6 +23,7 @@ import uuid
 import logging
 import threading
 from .config import get_config
+from .models import fast_model
 from typing import Dict, Any, List, Optional, Set, Tuple
 from datetime import datetime
 from dataclasses import dataclass, field
@@ -117,7 +118,7 @@ class ShadowAssessor:
     def __init__(
         self,
         selection_config: Optional[Dict] = None,
-        llm_model: str = "google/gemini-2.5-flash-lite",
+        llm_model: str = fast_model(),
         session_id: Optional[str] = None,
         cascade_id: Optional[str] = None
     ):
@@ -630,7 +631,7 @@ def _process_assessment_request(request_data: Dict):
 
         # Create assessor with session context for proper logging
         assessor = ShadowAssessor(
-            llm_model=request_data.get("llm_model", "google/gemini-2.5-flash-lite"),
+            llm_model=request_data.get("llm_model", fast_model()),
             session_id=request.session_id,
             cascade_id=request.cascade_id
         )
@@ -798,7 +799,7 @@ def queue_shadow_assessment(
     actual_included_hashes: Set[str],
     actual_mode: str = "explicit",
     budget_total: int = 30000,
-    llm_model: str = "google/gemini-2.5-flash-lite"
+    llm_model: str = fast_model()
 ):
     """
     Queue a shadow assessment request for background processing.

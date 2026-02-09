@@ -64,7 +64,7 @@ class ContextCardGenerator:
 
     def __init__(
         self,
-        summarizer_model: str = "google/gemini-2.5-flash-lite",
+        summarizer_model: str = None,
         embed_model: Optional[str] = None,
         batch_size: int = 10,
         worker_threads: int = 2,
@@ -80,6 +80,9 @@ class ContextCardGenerator:
             worker_threads: Number of background worker threads
             enabled: Whether to generate context cards
         """
+        if summarizer_model is None:
+            from .models import fast_model
+            summarizer_model = fast_model()
         self.summarizer_model = summarizer_model
         self.embed_model = embed_model
         self.batch_size = batch_size

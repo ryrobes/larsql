@@ -933,6 +933,16 @@ def _apply_models_yaml(config: Config):
         if models_config.models.get("standard"):
             config.default_model = models_config.models["standard"]
         
+        # Apply fast tier to utility models (unless explicitly overridden by env var)
+        fast = models_config.models.get("fast")
+        if fast:
+            if not os.getenv("LARS_SMART_SEARCH_MODEL"):
+                config.smart_search_model = fast
+            if not os.getenv("LARS_CONTEXT_SELECTOR_MODEL"):
+                config.context_selector_model = fast
+            if not os.getenv("LARS_GENERATIVE_UI_MODEL"):
+                config.generative_ui_model = fast
+        
         # Apply Ollama settings
         config.ollama_enabled = models_config.providers.ollama_enabled
         if models_config.providers.ollama_hosts:

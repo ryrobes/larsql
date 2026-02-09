@@ -138,8 +138,9 @@ class ResearchSessionAutoSaveHooks(LARSHooks):
                 context = "\n".join([f"- {t}" for t in checkpoint_texts])
 
                 # Create agent with cheap model
+                from .models import fast_model
                 agent = Agent(
-                    model="google/gemini-2.5-flash-lite",
+                    model=fast_model(),
                     system_prompt="",
                     base_url=config.provider_base_url,
                     api_key=config.provider_api_key
@@ -173,7 +174,7 @@ Return ONLY the title, nothing else."""
                     cell_name="title_generation",
                     role="assistant",
                     content=title,
-                    model=response.get("model", "google/gemini-2.5-flash-lite"),
+                    model=response.get("model", fast_model()),
                     cost=response.get("cost", 0),
                     tokens_in=response.get("tokens_in", 0),
                     tokens_out=response.get("tokens_out", 0)

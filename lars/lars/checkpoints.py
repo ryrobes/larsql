@@ -713,8 +713,9 @@ class CheckpointManager:
                 truncated = cell_output[:1500] if cell_output else "No content"
 
                 # Create agent with proper OpenRouter config
+                from .models import fast_model
                 agent = Agent(
-                    model="google/gemini-2.5-flash-lite",
+                    model=fast_model(),
                     system_prompt="",
                     base_url=config.provider_base_url,
                     api_key=config.provider_api_key
@@ -734,7 +735,7 @@ class CheckpointManager:
                     cell_name="summary_generation",
                     role="assistant",
                     content=summary,
-                    model=response.get("model", "google/gemini-2.5-flash-lite"),
+                    model=response.get("model", fast_model()),
                     cost=response.get("cost", 0),
                     tokens_in=response.get("tokens_in", 0),
                     tokens_out=response.get("tokens_out", 0)

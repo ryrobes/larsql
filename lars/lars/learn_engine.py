@@ -253,12 +253,12 @@ def get_candidate_models() -> List[str]:
     except Exception:
         pass
 
-    # Fallback defaults
-    return [
-        "google/gemini-2.5-flash-lite",
-        "anthropic/claude-haiku-4.5",
-        "anthropic/claude-sonnet-4.5",
-    ]
+    # Fallback: use fast + standard tiers
+    try:
+        from .models import fast_model, standard_model
+        return sorted(set(filter(None, [fast_model(), standard_model()])))
+    except Exception:
+        return ["google/gemini-2.5-flash-lite"]
 
 
 def calibrate_operator(

@@ -53,7 +53,7 @@ logger = logging.getLogger(__name__)
 class SmartSearchConfig:
     """Configuration for smart search behavior."""
     enabled: bool = True
-    model: str = "google/gemini-2.5-flash-lite"
+    model: str = ""  # Empty = use fast tier model
     fetch_multiplier: int = 3  # Fetch k*3 results, filter to k
     explore_multiplier: int = 4  # In explore mode, fetch k*4
     max_raw_results: int = 30  # Cap on raw results to process
@@ -276,8 +276,9 @@ Evaluation criteria:
 Return ONLY valid JSON, no explanation."""
 
     try:
+        from ..models import fast_model
         agent = Agent(
-            model=config.model,
+            model=config.model or fast_model(),
             system_prompt="You are a search result evaluator. Return only valid JSON."
         )
         response = agent.run(input_message=prompt)
@@ -449,8 +450,9 @@ Evaluation criteria:
 Return ONLY valid JSON."""
 
     try:
+        from ..models import fast_model
         agent = Agent(
-            model=config.model,
+            model=config.model or fast_model(),
             system_prompt="You are a SQL schema analyst. Return only valid JSON."
         )
         response = agent.run(input_message=prompt)
