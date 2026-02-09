@@ -24,6 +24,12 @@
   flex-shrink: 0;
 }
 
+.training-filters {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
 .training-search-box {
   display: flex;
   align-items: center;
@@ -32,13 +38,18 @@
   border: 1px solid rgba(100, 116, 139, 0.15);
   border-radius: 4px;
   padding: 6px 10px;
-  min-width: 300px;
+  min-width: 200px;
   transition: all 0.15s ease;
 }
 
 .training-search-box:focus-within {
-  border-color: rgba(0, 229, 255, 0.4);
-  background: rgba(0, 229, 255, 0.03);
+  border-color: rgba(52, 211, 153, 0.4);
+  background: rgba(52, 211, 153, 0.03);
+}
+
+.training-exclude-box:focus-within {
+  border-color: rgba(255, 0, 110, 0.4) !important;
+  background: rgba(255, 0, 110, 0.03) !important;
 }
 
 .training-search-input {

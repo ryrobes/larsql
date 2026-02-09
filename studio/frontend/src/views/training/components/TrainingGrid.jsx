@@ -216,6 +216,7 @@ const TrainingGrid = ({ examples = [], onSelectionChanged, onMarkTrainable }) =>
   const navigate = useNavigate();
   const gridRef = useRef(null);
   const [quickFilter, setQuickFilter] = useState('');
+  const [excludeFilter, setExcludeFilter] = useState('');
   const [expandedTraceIds, setExpandedTraceIds] = useState(new Set());
 
   // Toggle row expansion
@@ -487,6 +488,39 @@ const TrainingGrid = ({ examples = [], onSelectionChanged, onMarkTrainable }) =>
     },
   ], [expandedTraceIds, toggleExpand]);
 
+  // External filter: combines include + exclude
+  const isExternalFilterPresent = useCallback(() => {
+    return quickFilter.length > 0 || excludeFilter.length > 0;
+  }, [quickFilter, excludeFilter]);
+
+  const doesExternalFilterPass = useCallback((node) => {
+    if (node.data?._isDetail) return true; // always show detail rows if parent passes
+    const rowText = JSON.stringify(node.data).toLowerCase();
+    // Include filter: all terms must match
+    if (quickFilter) {
+      const terms = quickFilter.toLowerCase().split(/\s+/).filter(Boolean);
+      if (!terms.every(term => rowText.includes(term))) return false;
+    }
+    // Exclude filter: none of the terms should match
+    if (excludeFilter) {
+      const terms = excludeFilter.toLowerCase().split(/\s+/).filter(Boolean);
+      if (terms.some(term => rowText.includes(term))) return false;
+    }
+    return true;
+  }, [quickFilter, excludeFilter]);
+
+  // Trigger filter re-evaluation when filters change
+  const onFilterChanged = useCallback(() => {
+    if (gridRef.current?.api) {
+      gridRef.current.api.onFilterChanged();
+    }
+  }, []);
+
+  // Re-run external filter when quickFilter or excludeFilter changes
+  React.useEffect(() => {
+    onFilterChanged();
+  }, [quickFilter, excludeFilter, onFilterChanged]);
+
   const defaultColDef = useMemo(() => ({
     sortable: true,
     resizable: true,
@@ -519,15 +553,27 @@ const TrainingGrid = ({ examples = [], onSelectionChanged, onMarkTrainable }) =>
     <div className="training-grid-container">
       {/* Quick Search Bar */}
       <div className="training-grid-toolbar">
-        <div className="training-search-box">
-          <Icon icon="mdi:magnify" width={14} style={{ color: '#64748b' }} />
-          <input
-            type="text"
-            placeholder="Quick search..."
-            value={quickFilter}
-            onChange={(e) => setQuickFilter(e.target.value)}
-            className="training-search-input"
-          />
+        <div className="training-filters">
+          <div className="training-search-box">
+            <Icon icon="mdi:magnify" width={14} style={{ color: '#34d399' }} />
+            <input
+              type="text"
+              placeholder="Include..."
+              value={quickFilter}
+              onChange={(e) => setQuickFilter(e.target.value)}
+              className="training-search-input"
+            />
+          </div>
+          <div className="training-search-box training-exclude-box">
+            <Icon icon="mdi:minus-circle-outline" width={14} style={{ color: '#ff006e' }} />
+            <input
+              type="text"
+              placeholder="Exclude..."
+              value={excludeFilter}
+              onChange={(e) => setExcludeFilter(e.target.value)}
+              className="training-search-input"
+            />
+          </div>
         </div>
         <div className="training-grid-info">
           <span>{examples.length} examples</span>
@@ -564,7 +610,8 @@ const TrainingGrid = ({ examples = [], onSelectionChanged, onMarkTrainable }) =>
           }}
           isFullWidthRow={isFullWidthRow}
           fullWidthCellRenderer={fullWidthCellRenderer}
-          quickFilterText={quickFilter}
+          isExternalFilterPresent={isExternalFilterPresent}
+          doesExternalFilterPass={doesExternalFilterPass}
           animateRows={true}
           domLayout="normal"
           pagination={true}
