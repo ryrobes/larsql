@@ -427,9 +427,6 @@ const TrainingView = () => {
         </div>
 
         <div className="training-selection-info">
-          {selectedRows.length > 0 && (
-            <span>{selectedRows.length} selected</span>
-          )}
         </div>
       </div>
 
@@ -503,31 +500,6 @@ const TrainingView = () => {
               : 'Assess Confidence'}
           </span>
         </button>
-        <div className="training-actions-divider" />
-        <button
-          className="training-action-btn training-action-btn--primary"
-          onClick={() => handleMarkTrainable(true, false)}
-          disabled={selectedRows.length === 0}
-        >
-          <Icon icon="mdi:check-circle" width={14} />
-          <span>Mark as Trainable</span>
-        </button>
-        <button
-          className="training-action-btn training-action-btn--success"
-          onClick={() => handleMarkTrainable(true, true)}
-          disabled={selectedRows.length === 0}
-        >
-          <Icon icon="mdi:shield-check" width={14} />
-          <span>Mark as Verified</span>
-        </button>
-        <button
-          className="training-action-btn training-action-btn--danger"
-          onClick={() => handleMarkTrainable(false, false)}
-          disabled={selectedRows.length === 0}
-        >
-          <Icon icon="mdi:close-circle" width={14} />
-          <span>Remove from Training</span>
-        </button>
       </div>
 
       {/* Content Area */}
@@ -553,8 +525,6 @@ const TrainingView = () => {
         {!loading && !error && (
           <TrainingGrid
             examples={examples}
-            onSelectionChanged={setSelectedRows}
-            onMarkTrainable={handleMarkTrainable}
           />
         )}
       </div>
