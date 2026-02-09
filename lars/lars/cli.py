@@ -1338,6 +1338,13 @@ def main():
         help='Show detailed information'
     )
 
+    # Config command - View and manage config.yaml
+    config_parser = subparsers.add_parser('config', help='View and manage LARS configuration (config.yaml)')
+    config_subparsers = config_parser.add_subparsers(dest='config_command', help='Config subcommands')
+    config_subparsers.add_parser('show', help='Print effective configuration as YAML')
+    config_subparsers.add_parser('init', help='Generate config.yaml with defaults and comments')
+    config_subparsers.add_parser('path', help='Print path to config.yaml')
+
     # Bootstrap command - Initialize everything for a fresh installation
     bootstrap_parser = subparsers.add_parser(
         'bootstrap',
@@ -1898,6 +1905,8 @@ def main():
         cmd_eject(args)
     elif args.command == 'doctor':
         cmd_doctor(args)
+    elif args.command == 'config':
+        cmd_config(args)
     elif args.command == 'bootstrap':
         cmd_bootstrap(args)
     elif args.command == 'learn':
@@ -9142,6 +9151,33 @@ def bootstrap_wizard():
     }
 
 
+def cmd_config(args):
+    """View and manage LARS configuration (config.yaml)."""
+    from .config import (
+        get_config, generate_config_yaml, write_config_yaml, get_config_yaml_path
+    )
+
+    sub = getattr(args, 'config_command', None)
+
+    if sub == 'path':
+        print(get_config_yaml_path())
+
+    elif sub == 'init':
+        path = write_config_yaml(get_config())
+        print(f"✓ Wrote {path}")
+
+    elif sub == 'show':
+        print(generate_config_yaml(get_config()))
+
+    else:
+        # No subcommand - show help
+        print("Usage: lars config {show|init|path}")
+        print()
+        print("  show  - Print effective configuration as YAML")
+        print("  init  - Generate config.yaml with defaults and comments")
+        print("  path  - Print path to config.yaml")
+
+
 def cmd_bootstrap(args):
     """Initialize everything for a fresh LARS installation.
 
@@ -9234,8 +9270,12 @@ def cmd_bootstrap(args):
             print(f"✓ Wrote {models_yaml_path}")
             
             # Reload config to pick up models.yaml settings
-            from .config import reload_config
+            from .config import reload_config, write_config_yaml, get_config
             reload_config()
+
+            # Write config.yaml with sensible defaults
+            config_yaml_path = write_config_yaml(get_config(), str(lars_root / 'config.yaml'))
+            print(f"✓ Wrote {config_yaml_path}")
 
             # Write sql_connections as YAML files
             import ruamel.yaml

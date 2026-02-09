@@ -17,6 +17,7 @@ import json
 from pathlib import Path
 from typing import Optional, List, Any, Dict
 from pydantic import BaseModel, Field, ConfigDict
+import yaml as _yaml
 
 # Get LARS_ROOT once at module load
 # Default to ~/.lars (cross-platform via Path.home())
@@ -29,6 +30,222 @@ LARS_ROOT = _LARS_ROOT
 
 # Debug mode for verbose internal logging
 _DEBUG = os.environ.get('LARS_DEBUG', '').lower() in ('1', 'true', 'yes')
+
+
+# ============================================================================
+# config.yaml Support
+# ============================================================================
+
+# Cached YAML config dict (loaded once at module init)
+_yaml_config: Dict[str, Any] = {}
+
+
+def _load_config_yaml() -> Dict[str, Any]:
+    """Load config.yaml from LARS_ROOT if it exists. Returns flat + nested dict."""
+    yaml_path = os.path.join(_LARS_ROOT, "config.yaml")
+    if not os.path.exists(yaml_path):
+        return {}
+    try:
+        with open(yaml_path, 'r') as f:
+            data = _yaml.safe_load(f)
+        return data if isinstance(data, dict) else {}
+    except Exception as e:
+        print(f"[Config] Warning: Failed to load {yaml_path}: {e}")
+        return {}
+
+
+def _yget(key: str, default=None, *, section: str = None):
+    """Get a value from config.yaml, returning default if not found.
+    
+    Checks env var first (env always wins), then YAML, then default.
+    """
+    # Build env var name
+    if section:
+        env_name = f"LARS_{section.upper()}_{key.upper()}"
+    else:
+        env_name = f"LARS_{key.upper()}"
+    
+    env_val = os.environ.get(env_name)
+    if env_val is not None:
+        return env_val
+    
+    # Check YAML (nested or flat)
+    if section and section in _yaml_config and isinstance(_yaml_config[section], dict):
+        if key in _yaml_config[section]:
+            return _yaml_config[section][key]
+    elif key in _yaml_config:
+        return _yaml_config[key]
+    
+    return default
+
+
+# ============================================================================
+# config.yaml Generation
+# ============================================================================
+
+# The canonical config.yaml structure with comments, groups, and defaults.
+# Each entry: (yaml_key, env_var_override, default, comment, section)
+_CONFIG_YAML_SCHEMA = [
+    # ─── General ─────────────────────────────
+    ("_section", "General", None, None, None),
+    ("debug", "LARS_DEBUG", False, "Enable verbose debug logging", None),
+    ("default_model", "LARS_DEFAULT_MODEL", "x-ai/grok-4.1-fast", "Default LLM model for queries", None),
+    ("no_splash", "LARS_NO_SPLASH", False, "Disable startup splash art", None),
+    ("session_id_style", "LARS_SESSION_ID_STYLE", "woodland", "Session naming style: woodland, uuid, short", None),
+    ("data_format", "LARS_DATA_FORMAT", "auto", "Output format: auto, table, json, csv", None),
+    ("show_cli_images", "LARS_SHOW_CLI_IMAGES", True, "Render images in CLI output", None),
+
+    # ─── Server ──────────────────────────────
+    ("_section", "Server", None, None, None),
+    ("parallel_workers", "LARS_PARALLEL_WORKERS", 8, "Parallel workers for semantic SQL operators", None),
+    ("result_max_rows", "LARS_RESULT_MAX_ROWS", 100000, "Maximum rows returned per query", None),
+    ("studio_pgwire_port", "LARS_STUDIO_PGWIRE_PORT", 5444, "PostgreSQL wire-protocol port", None),
+
+    # ─── Learning / Dreaming ─────────────────
+    ("_section", "Learning / Dreaming", None, None, None),
+    ("enabled", "LARS_LEARN_ENABLED", True, "Enable the self-optimization dream loop", "learning"),
+    ("interval", "LARS_LEARN_INTERVAL", 3600, "Dream loop interval in seconds", "learning"),
+    ("calibration_threshold", "LARS_LEARN_CALIBRATION_THRESHOLD", 5, "Min data points before calibrating", "learning"),
+    ("accuracy_floor", "LARS_LEARN_ACCURACY_FLOOR", 0.90, "Minimum accuracy before mutations", "learning"),
+    ("mutation_threshold", "LARS_LEARN_MUTATION_THRESHOLD", 10, "Min data points before mutating", "learning"),
+    ("models", "LARS_LEARN_MODELS", [], "Model list for dreaming (empty = use default)", "learning"),
+
+    # ─── Features ────────────────────────────
+    ("_section", "Features", None, None, None),
+    ("smart_search", "LARS_SMART_SEARCH", True, "LLM-powered post-filtering of search results", "features"),
+    ("research_mode", "LARS_RESEARCH_MODE", False, "Enable research mode by default", "features"),
+    ("embeddings", "LARS_ENABLE_EMBEDDINGS", False, "Enable embedding worker", "features"),
+    ("context_cards", "LARS_CONTEXT_CARDS_ENABLED", False, "Enable context card generation", "features"),
+    ("ephemeral_rag", "LARS_EPHEMERAL_RAG_ENABLED", True, "Auto-index large content for RAG", "features"),
+    ("mcp", "LARS_MCP_ENABLED", True, "Enable Model Context Protocol servers", "features"),
+    ("file_watcher", "LARS_ENABLE_FILE_WATCHER", True, "Watch for file changes in artifacts", "features"),
+    ("relevance_analysis", "LARS_ENABLE_RELEVANCE_ANALYSIS", True, "Run relevance analysis on queries", "features"),
+    ("confidence_assessment", "LARS_CONFIDENCE_ASSESSMENT_ENABLED", False, "Enable confidence scoring", "features"),
+    ("shadow_assessment", "LARS_SHADOW_ASSESSMENT_ENABLED", False, "Enable shadow quality assessment", "features"),
+    ("analytics", "LARS_DISABLE_ANALYTICS", False, "Disable analytics collection (set true to disable)", "features"),
+    ("auto_save_research", "LARS_AUTO_SAVE_RESEARCH", True, "Auto-save research sessions", "features"),
+    ("harbor", "LARS_HARBOR_ENABLED", True, "Enable HuggingFace Spaces integration", "features"),
+
+    # ─── Display / UI ────────────────────────
+    ("_section", "Display / UI", None, None, None),
+    ("chart_theme", "LARS_CHART_THEME", "dark", "Chart color theme: dark, light", "display"),
+    ("toon_transport", "LARS_TOON_TRANSPORT", True, "Enable rich table transport", "display"),
+    ("toon_min_rows", "LARS_TOON_MIN_ROWS", 5, "Minimum rows for table rendering", "display"),
+
+    # ─── Context Management ──────────────────
+    ("_section", "Context Management", None, None, None),
+    ("keep_recent_images", "LARS_KEEP_RECENT_IMAGES", 0, "Max recent images to keep in context (0=all)", "context"),
+    ("keep_recent_turns", "LARS_KEEP_RECENT_TURNS", 0, "Max recent turns to keep in context (0=all)", "context"),
+
+    # ─── Sync / File Watcher ─────────────────
+    ("_section", "Sync / File Watcher", None, None, None),
+    ("sync_poll_interval", "LARS_SYNC_POLL_INTERVAL", 30, "DB poll interval for artifact sync (seconds)", "sync"),
+    ("sync_write_files", "LARS_SYNC_WRITE_FILES", True, "Write synced artifacts to disk", "sync"),
+    ("watch_debounce_delay", "LARS_WATCH_DEBOUNCE_DELAY", 1.0, "File watcher debounce delay (seconds)", "sync"),
+]
+
+
+def generate_config_yaml(config: "Config" = None, include_comments: bool = True) -> str:
+    """Generate a config.yaml string with current values and comments."""
+    lines = [
+        "# LARS Configuration",
+        "# Environment variables (LARS_*) always override values in this file.",
+        "",
+    ]
+
+    current_section = None
+    active_nested = None  # Track which nested section key is currently open
+    for entry in _CONFIG_YAML_SCHEMA:
+        key, env_or_label, default, comment, section = entry
+
+        # Section header (comment only)
+        if key == "_section":
+            if current_section is not None:
+                lines.append("")
+            current_section = env_or_label
+            active_nested = None
+            if include_comments:
+                lines.append(f"# ─── {env_or_label} {'─' * max(1, 40 - len(env_or_label))}")
+            continue
+
+        # Determine effective value
+        val = default
+        if config:
+            val = _resolve_effective_value(key, section, config, default)
+
+        # Format the value
+        if section:
+            # Nested under section key - only emit the key once
+            if active_nested != section:
+                lines.append(f"{section}:")
+                active_nested = section
+            comment_str = f"  # {comment}" if include_comments and comment else ""
+            lines.append(f"  {key}: {_yaml_format(val)}{comment_str}")
+        else:
+            active_nested = None
+            comment_str = f"  # {comment}" if include_comments and comment else ""
+            lines.append(f"{key}: {_yaml_format(val)}{comment_str}")
+
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _resolve_effective_value(key, section, config, default):
+    """Resolve the effective value for a config key from the Config object."""
+    # Map yaml keys to Config field names
+    field_map = {
+        ("debug", None): "debug",
+        ("default_model", None): "default_model",
+        ("parallel_workers", None): "parallel_workers",
+        ("smart_search", "features"): "smart_search_enabled",
+        ("ephemeral_rag", "features"): "ephemeral_rag_enabled",
+        ("mcp", "features"): "mcp_enabled",
+        ("harbor", "features"): "harbor_enabled",
+    }
+    mapped = field_map.get((key, section))
+    if mapped and hasattr(config, mapped):
+        return getattr(config, mapped)
+    return default
+
+
+def _yaml_format(val) -> str:
+    """Format a Python value as YAML inline."""
+    if val is None:
+        return "null"
+    if isinstance(val, bool):
+        return "true" if val else "false"
+    if isinstance(val, (int, float)):
+        return str(val)
+    if isinstance(val, list):
+        if not val:
+            return "[]"
+        return _yaml.dump(val, default_flow_style=True).strip()
+    if isinstance(val, str):
+        # Quote strings that might be ambiguous
+        if val in ("true", "false", "null", "yes", "no", "") or not val.replace("-", "").replace("/", "").replace(".", "").replace("_", "").isalnum():
+            return f'"{val}"'
+        return f'"{val}"'
+    return str(val)
+
+
+def write_config_yaml(config: "Config" = None, path: str = None) -> str:
+    """Write config.yaml to disk. Returns the path written."""
+    if path is None:
+        path = os.path.join(_LARS_ROOT, "config.yaml")
+    content = generate_config_yaml(config)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, 'w') as f:
+        f.write(content)
+    return path
+
+
+def get_config_yaml_path() -> str:
+    """Return the path to config.yaml."""
+    return os.path.join(_LARS_ROOT, "config.yaml")
+
+
+# Load YAML config at module init
+_yaml_config = _load_config_yaml()
 
 
 # ============================================================================
@@ -735,12 +952,13 @@ def get_config() -> Config:
 
 def reload_config():
     """
-    Reload the global configuration from environment variables and models.yaml.
+    Reload the global configuration from environment variables, config.yaml, and models.yaml.
     
-    Call this after modifying os.environ or models.yaml to pick up new values.
+    Call this after modifying os.environ, config.yaml, or models.yaml to pick up new values.
     Typically used after bootstrap wizard writes configuration.
     """
-    global _global_config
+    global _global_config, _yaml_config
+    _yaml_config = _load_config_yaml()
     _global_config = Config()
     _normalize_chdb_path(_global_config)
     _ensure_directories(_global_config)
