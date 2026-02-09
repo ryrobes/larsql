@@ -5,7 +5,7 @@ inputs_schema:
 cells:
 - instructions: 'Solve this coding problem: {{ input.problem }}. Write code and test
     it using the run_code tool.'
-  model: google/gemini-3-pro-preview
+  model: "{{ models.quality }}"
   name: solve_and_test
   rules:
     max_turns: 3
