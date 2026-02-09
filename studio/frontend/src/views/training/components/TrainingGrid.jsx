@@ -2,10 +2,10 @@ import React, { useState, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AgGridReact } from 'ag-grid-react';
 import { ModuleRegistry, AllCommunityModule, themeQuartz } from 'ag-grid-community';
-import Split from 'react-split';
 import { Icon } from '@iconify/react';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { studioDarkPrismTheme } from '../../../styles/studioPrismTheme';
 import { ROUTES } from '../../../routes.helpers';
-import TrainingDetailPanel from './TrainingDetailPanel';
 import './TrainingGrid.css';
 import { API_BASE_URL } from '../../../config/api';
 
@@ -31,82 +31,200 @@ const darkTheme = themeQuartz.withParams({
 });
 
 /**
+ * Format content for display - tries to parse JSON and pretty-print
+ */
+const formatContent = (text) => {
+  if (!text) return '';
+  // Strip outer quotes if simple quoted string
+  if (text.startsWith('"') && text.endsWith('"')) {
+    const unquoted = text.slice(1, -1);
+    try {
+      const parsed = JSON.parse(unquoted);
+      return JSON.stringify(parsed, null, 2);
+    } catch {
+      return unquoted;
+    }
+  }
+  try {
+    const parsed = JSON.parse(text);
+    return JSON.stringify(parsed, null, 2);
+  } catch {
+    return text;
+  }
+};
+
+/**
+ * Extract semantic SQL params if present
+ */
+const extractSemanticParams = (input) => {
+  const textMatch = input?.match(/TEXT:\s*([^\n]+)/);
+  const criterionMatch = input?.match(/CRITERION:\s*([^\n]+)/);
+  if (textMatch && criterionMatch) {
+    return { text: textMatch[1].trim(), criterion: criterionMatch[1].trim(), isSemanticSQL: true };
+  }
+  return { isSemanticSQL: false };
+};
+
+/**
+ * Inline detail renderer for expanded rows
+ */
+const DetailCellRenderer = ({ data }) => {
+  const navigate = useNavigate();
+  const semanticParams = extractSemanticParams(data.user_input);
+
+  const handleNavigateToSession = () => {
+    if (data.session_id && data.cascade_id) {
+      navigate(ROUTES.studioWithSession(data.cascade_id, data.session_id));
+    }
+  };
+
+  return (
+    <div className="training-detail-inline">
+      {/* Semantic SQL params if applicable */}
+      {semanticParams.isSemanticSQL && (
+        <div className="training-detail-semantic">
+          <div className="training-detail-semantic-row">
+            <span className="training-detail-semantic-label">TEXT:</span>
+            <code className="training-detail-semantic-value">{semanticParams.text}</code>
+          </div>
+          <div className="training-detail-semantic-row">
+            <span className="training-detail-semantic-label">CRITERION:</span>
+            <code className="training-detail-semantic-value">{semanticParams.criterion}</code>
+          </div>
+        </div>
+      )}
+
+      <div className="training-detail-columns">
+        {/* Input */}
+        <div className="training-detail-col">
+          <div className="training-detail-col-header">
+            <Icon icon="mdi:code-braces" width={13} style={{ color: '#60a5fa' }} />
+            <span>Input</span>
+            <span className="training-detail-chars">{data.user_input?.length || 0} chars</span>
+          </div>
+          <div className="training-detail-code">
+            <SyntaxHighlighter
+              language="json"
+              style={studioDarkPrismTheme}
+              customStyle={{
+                margin: 0, borderRadius: 4, background: 'rgba(255,255,255,0.02)',
+                fontSize: '11px', maxHeight: '250px', overflow: 'auto', padding: '8px'
+              }}
+              codeTagProps={{ style: { fontFamily: "'JetBrains Mono', monospace" } }}
+            >
+              {formatContent(data.user_input)}
+            </SyntaxHighlighter>
+          </div>
+        </div>
+
+        {/* Output */}
+        <div className="training-detail-col">
+          <div className="training-detail-col-header">
+            <Icon icon="mdi:message-reply" width={13} style={{ color: '#34d399' }} />
+            <span>Output</span>
+          </div>
+          <div className="training-detail-code">
+            <SyntaxHighlighter
+              language={data.assistant_output?.startsWith('{') || data.assistant_output?.startsWith('[') ? 'json' : 'text'}
+              style={studioDarkPrismTheme}
+              customStyle={{
+                margin: 0, borderRadius: 4, background: 'rgba(255,255,255,0.02)',
+                fontSize: '12px', maxHeight: '250px', overflow: 'auto', padding: '8px'
+              }}
+              codeTagProps={{ style: { fontFamily: "'JetBrains Mono', monospace", color: '#34d399' } }}
+            >
+              {formatContent(data.assistant_output)}
+            </SyntaxHighlighter>
+          </div>
+        </div>
+      </div>
+
+      {/* Metadata strip */}
+      <div className="training-detail-meta-strip">
+        <span className="training-detail-meta-item">
+          <Icon icon="mdi:identifier" width={12} />
+          <code onClick={handleNavigateToSession} style={{ cursor: 'pointer', color: '#00e5ff' }}>
+            {data.session_id?.slice(0, 16)}...
+          </code>
+        </span>
+        <span className="training-detail-meta-item">
+          <Icon icon="mdi:tag" width={12} />
+          {data.trace_id?.slice(0, 12)}...
+        </span>
+        {data.confidence != null && (
+          <span className="training-detail-meta-item" style={{
+            color: data.confidence >= 0.9 ? '#34d399' : data.confidence >= 0.7 ? '#fbbf24' : '#ff006e'
+          }}>
+            <Icon icon="mdi:gauge" width={12} />
+            Confidence: {data.confidence.toFixed(2)}
+          </span>
+        )}
+        {data.notes && (
+          <span className="training-detail-meta-item">
+            <Icon icon="mdi:note-text" width={12} />
+            {data.notes}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+};
+
+/**
  * TrainingGrid - AG-Grid table for training examples
- * Supports multi-select, inline toggling, filtering
+ * Uses expandable rows and thumbs up/down rating
  */
 const TrainingGrid = ({ examples = [], onSelectionChanged, onMarkTrainable }) => {
   const navigate = useNavigate();
   const gridRef = useRef(null);
   const [quickFilter, setQuickFilter] = useState('');
-  const [selectedExample, setSelectedExample] = useState(null);
 
-  // Handle row selection
+  // Handle row selection for bulk actions
   const handleSelectionChanged = useCallback(() => {
     if (!gridRef.current) return;
     const selected = gridRef.current.api.getSelectedRows();
     onSelectionChanged && onSelectionChanged(selected);
   }, [onSelectionChanged]);
 
-  // Handle trainable toggle (inline click)
-  const handleTrainableToggle = async (trace_id, currentValue) => {
+  // Handle rating (thumbs up / thumbs down)
+  const handleRate = async (trace_id, rating, currentRating) => {
+    // If clicking same rating, clear it (toggle off)
+    const newRating = currentRating === rating ? null : rating;
+
     try {
-      await fetch(`${API_BASE_URL}/api/training/mark-trainable`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          trace_ids: [trace_id],
-          trainable: !currentValue
-        })
-      });
+      if (newRating) {
+        await fetch(`${API_BASE_URL}/api/training/rate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ trace_ids: [trace_id], rating: newRating })
+        });
+      } else {
+        // Clear rating by marking as unverified
+        await fetch(`${API_BASE_URL}/api/training/mark-trainable`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            trace_ids: [trace_id],
+            trainable: false,
+            verified: false
+          })
+        });
+      }
 
       // Update local state optimistically
       if (gridRef.current) {
         const rowNode = gridRef.current.api.getRowNode(trace_id);
         if (rowNode) {
-          rowNode.setDataValue('trainable', !currentValue);
+          rowNode.setDataValue('rating', newRating);
+          rowNode.setDataValue('trainable', !!newRating);
+          rowNode.setDataValue('verified', !!newRating);
+          rowNode.setDataValue('confidence', newRating === 'positive' ? 1.0 : newRating === 'negative' ? 0.0 : rowNode.data.confidence);
         }
       }
     } catch (err) {
-      console.error('Failed to toggle trainable:', err);
+      console.error('Failed to rate:', err);
     }
   };
-
-  // Handle verified toggle (inline click)
-  const handleVerifiedToggle = async (trace_id, currentValue) => {
-    try {
-      await fetch(`${API_BASE_URL}/api/training/mark-trainable`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          trace_ids: [trace_id],
-          trainable: true,  // Must be trainable to be verified
-          verified: !currentValue
-        })
-      });
-
-      // Update local state optimistically
-      if (gridRef.current) {
-        const rowNode = gridRef.current.api.getRowNode(trace_id);
-        if (rowNode) {
-          rowNode.setDataValue('verified', !currentValue);
-          rowNode.setDataValue('trainable', true);
-        }
-      }
-    } catch (err) {
-      console.error('Failed to toggle verified:', err);
-    }
-  };
-
-  // Single click - show detail panel
-  const handleRowClick = useCallback((event) => {
-    const clickedExample = event.data;
-    // Toggle selection - if clicking same row, deselect
-    if (selectedExample?.trace_id === clickedExample.trace_id) {
-      setSelectedExample(null);
-    } else {
-      setSelectedExample(clickedExample);
-    }
-  }, [selectedExample]);
 
   // Double click - navigate to session
   const handleRowDoubleClick = (event) => {
@@ -116,55 +234,54 @@ const TrainingGrid = ({ examples = [], onSelectionChanged, onMarkTrainable }) =>
     }
   };
 
-  // Close detail panel
-  const closeDetailPanel = useCallback(() => {
-    setSelectedExample(null);
-  }, []);
-
   const columnDefs = useMemo(() => [
     {
-      field: 'trainable',
-      headerName: 'Trainable',
-      width: 100,
-      checkboxSelection: false,
-      cellRenderer: (params) => {
-        const checked = params.value;
-        return (
-          <div
-            className="training-toggle-cell"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleTrainableToggle(params.data.trace_id, checked);
-            }}
-          >
-            <Icon
-              icon={checked ? 'mdi:checkbox-marked' : 'mdi:checkbox-blank-outline'}
-              width={18}
-              style={{ color: checked ? '#34d399' : '#475569', cursor: 'pointer' }}
-            />
-          </div>
-        );
-      }
+      headerName: '',
+      field: 'expand',
+      width: 40,
+      cellRenderer: 'agGroupCellRenderer',
+      suppressHeaderMenuButton: true,
+      sortable: false,
+      filter: false,
+      resizable: false,
     },
     {
-      field: 'verified',
-      headerName: 'Verified',
-      width: 100,
+      field: 'rating',
+      headerName: 'Rating',
+      width: 90,
+      suppressHeaderMenuButton: true,
       cellRenderer: (params) => {
-        const checked = params.value;
+        const rating = params.data.rating;
         return (
-          <div
-            className="training-toggle-cell"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleVerifiedToggle(params.data.trace_id, checked);
-            }}
-          >
-            <Icon
-              icon={checked ? 'mdi:shield-check' : 'mdi:shield-outline'}
-              width={18}
-              style={{ color: checked ? '#a78bfa' : '#475569', cursor: 'pointer' }}
-            />
+          <div className="training-rating-cell" style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+            <button
+              className={`training-rating-btn ${rating === 'positive' ? 'active-positive' : ''}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleRate(params.data.trace_id, 'positive', rating);
+              }}
+              title="Good output"
+            >
+              <Icon
+                icon="mdi:thumb-up"
+                width={16}
+                style={{ color: rating === 'positive' ? '#34d399' : '#334155' }}
+              />
+            </button>
+            <button
+              className={`training-rating-btn ${rating === 'negative' ? 'active-negative' : ''}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleRate(params.data.trace_id, 'negative', rating);
+              }}
+              title="Bad output"
+            >
+              <Icon
+                icon="mdi:thumb-down"
+                width={16}
+                style={{ color: rating === 'negative' ? '#ff006e' : '#334155' }}
+              />
+            </button>
           </div>
         );
       }
@@ -195,24 +312,22 @@ const TrainingGrid = ({ examples = [], onSelectionChanged, onMarkTrainable }) =>
     {
       field: 'user_input',
       headerName: 'Input',
-      width: 300,
+      flex: 1,
+      minWidth: 200,
       filter: 'agTextColumnFilter',
       cellClass: 'training-text-cell',
-      tooltipField: 'user_input',
       wrapText: false,
       autoHeight: false
     },
     {
       field: 'assistant_output',
       headerName: 'Output',
-      width: 300,
+      width: 250,
       filter: 'agTextColumnFilter',
       cellClass: 'training-text-cell',
-      tooltipField: 'assistant_output',
       wrapText: false,
       autoHeight: false,
       cellRenderer: (params) => {
-        // Highlight boolean outputs
         const val = params.value;
         if (val === 'true' || val === 'false') {
           return (
@@ -229,10 +344,9 @@ const TrainingGrid = ({ examples = [], onSelectionChanged, onMarkTrainable }) =>
     },
     {
       field: 'confidence',
-      headerName: 'Confidence',
-      width: 120,
+      headerName: 'Conf.',
+      width: 80,
       filter: 'agNumberColumnFilter',
-      valueFormatter: (params) => params.value?.toFixed(2) || '0.00',
       cellRenderer: (params) => {
         const value = params.value || 0;
         const color = value >= 0.9 ? '#34d399' : value >= 0.7 ? '#fbbf24' : '#ff006e';
@@ -240,7 +354,8 @@ const TrainingGrid = ({ examples = [], onSelectionChanged, onMarkTrainable }) =>
           <span style={{
             color,
             fontFamily: "'JetBrains Mono', monospace",
-            fontWeight: 600
+            fontWeight: 600,
+            fontSize: '12px'
           }}>
             {value.toFixed(2)}
           </span>
@@ -250,11 +365,10 @@ const TrainingGrid = ({ examples = [], onSelectionChanged, onMarkTrainable }) =>
     {
       field: 'model',
       headerName: 'Model',
-      width: 220,
+      width: 180,
       filter: 'agTextColumnFilter',
       cellRenderer: (params) => {
         if (!params.value) return '-';
-        // Show just the model name (after /)
         const parts = params.value.split('/');
         const modelName = parts[parts.length - 1];
         return (
@@ -271,16 +385,15 @@ const TrainingGrid = ({ examples = [], onSelectionChanged, onMarkTrainable }) =>
     {
       field: 'cost',
       headerName: 'Cost',
-      width: 100,
+      width: 80,
       filter: 'agNumberColumnFilter',
-      valueFormatter: (params) => params.value ? `$${params.value.toFixed(4)}` : '$0.0000',
       cellRenderer: (params) => {
         const value = params.value || 0;
         return (
           <span style={{
             color: '#34d399',
             fontFamily: "'JetBrains Mono', monospace",
-            fontSize: '12px'
+            fontSize: '11px'
           }}>
             ${value.toFixed(4)}
           </span>
@@ -290,55 +403,33 @@ const TrainingGrid = ({ examples = [], onSelectionChanged, onMarkTrainable }) =>
     {
       field: 'timestamp',
       headerName: 'Time',
-      width: 160,
+      width: 130,
       filter: 'agDateColumnFilter',
       valueFormatter: (params) => {
         if (!params.value) return '-';
         try {
           const date = new Date(params.value);
           return date.toLocaleString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
+            month: 'short', day: 'numeric',
+            hour: '2-digit', minute: '2-digit'
           });
-        } catch {
-          return params.value;
-        }
+        } catch { return params.value; }
       }
     },
-    {
-      field: 'caller_id',
-      headerName: 'Caller',
-      width: 180,
-      filter: 'agTextColumnFilter',
-      cellRenderer: (params) => {
-        if (!params.value) return '-';
-        const parts = params.value.split('-');
-        const identifier = parts[parts.length - 1];
-        return (
-          <span style={{
-            color: '#64748b',
-            fontSize: '11px',
-            fontFamily: "'JetBrains Mono', monospace"
-          }}>
-            {identifier}
-          </span>
-        );
-      }
-    }
   ], []);
 
   const defaultColDef = useMemo(() => ({
     sortable: true,
     resizable: true,
     filter: true,
-    floatingFilter: false,  // Can enable for more filtering
+    floatingFilter: false,
   }), []);
 
-  // Grid content (reusable whether in split or standalone)
-  const gridContent = (
-    <>
+  // Master/Detail configuration for expandable rows
+  const detailCellRenderer = useMemo(() => DetailCellRenderer, []);
+
+  return (
+    <div className="training-grid-container">
       {/* Quick Search Bar */}
       <div className="training-grid-toolbar">
         <div className="training-search-box">
@@ -353,11 +444,11 @@ const TrainingGrid = ({ examples = [], onSelectionChanged, onMarkTrainable }) =>
         </div>
         <div className="training-grid-info">
           <span>{examples.length} examples</span>
-          {selectedExample && <span className="training-grid-hint">· Click row again to deselect</span>}
+          <span className="training-grid-hint">· Expand rows to see full content · Double-click to open in Studio</span>
         </div>
       </div>
 
-      {/* AG-Grid Table */}
+      {/* AG-Grid Table with Master/Detail */}
       <div className="training-grid-wrapper">
         <AgGridReact
           ref={gridRef}
@@ -365,10 +456,13 @@ const TrainingGrid = ({ examples = [], onSelectionChanged, onMarkTrainable }) =>
           rowData={examples}
           columnDefs={columnDefs}
           defaultColDef={defaultColDef}
+          masterDetail={true}
+          detailCellRenderer={detailCellRenderer}
+          detailRowHeight={350}
+          detailRowAutoHeight={true}
           rowSelection="multiple"
           suppressRowClickSelection={true}
           onSelectionChanged={handleSelectionChanged}
-          onRowClicked={handleRowClick}
           onRowDoubleClicked={handleRowDoubleClick}
           getRowId={(params) => params.data.trace_id}
           quickFilterText={quickFilter}
@@ -378,38 +472,8 @@ const TrainingGrid = ({ examples = [], onSelectionChanged, onMarkTrainable }) =>
           paginationPageSize={100}
           paginationPageSizeSelector={[50, 100, 200, 500]}
           enableCellTextSelection={true}
-          tooltipShowDelay={500}
         />
       </div>
-    </>
-  );
-
-  return (
-    <div className="training-grid-container">
-      {selectedExample ? (
-        /* Split view with detail panel */
-        <Split
-          className="training-split-container"
-          direction="vertical"
-          sizes={[60, 40]}
-          minSize={[200, 150]}
-          gutterSize={6}
-          cursor="row-resize"
-        >
-          <div className="training-split-pane">
-            {gridContent}
-          </div>
-          <div className="training-split-pane">
-            <TrainingDetailPanel
-              example={selectedExample}
-              onClose={closeDetailPanel}
-            />
-          </div>
-        </Split>
-      ) : (
-        /* Grid only - no detail panel */
-        gridContent
-      )}
     </div>
   );
 };

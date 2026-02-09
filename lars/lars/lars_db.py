@@ -1347,6 +1347,7 @@ SYSTEM_TABLES = {
             ("trainable", "BOOLEAN"),
             ("verified", "BOOLEAN"),
             ("confidence", "FLOAT"),
+            ("rating", "VARCHAR"),              # 'positive', 'negative', or NULL (unrated)
             ("notes", "VARCHAR"),
             ("tags", "VARCHAR[]"),
             ("annotated_at", "TIMESTAMP"),
@@ -2247,6 +2248,7 @@ class LarsDB:
                         trainable BOOLEAN,
                         verified BOOLEAN,
                         confidence FLOAT,
+                        rating VARCHAR,
                         notes VARCHAR,
                         tags VARCHAR[],
                         annotated_at TIMESTAMP,
@@ -2278,6 +2280,11 @@ class LarsDB:
                         ) AS verified,
                         -- Best confidence from any source (human=1.0 or worker score)
                         MAX(confidence) AS confidence,
+                        -- Human rating wins (positive/negative/null)
+                        COALESCE(
+                            LAST(rating ORDER BY annotated_at) FILTER (WHERE annotated_by = 'human' AND rating IS NOT NULL),
+                            LAST(rating ORDER BY annotated_at) FILTER (WHERE rating IS NOT NULL)
+                        ) AS rating,
                         -- Latest human note, or latest note overall
                         COALESCE(
                             MAX(notes) FILTER (WHERE annotated_by = 'human' AND notes != ''),
@@ -2299,6 +2306,7 @@ class LarsDB:
                     COALESCE(ta.trainable, false) AS trainable,
                     COALESCE(ta.verified, false) AS verified,
                     ta.confidence AS confidence,
+                    ta.rating AS rating,
                     COALESCE(ta.notes, '') AS notes,
                     ta.tags,
                     ta.annotated_at,

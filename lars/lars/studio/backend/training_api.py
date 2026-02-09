@@ -98,6 +98,7 @@ def get_training_examples():
             trainable,
             verified,
             confidence,
+            rating,
             timestamp,
             model,
             cost,
@@ -198,6 +199,7 @@ def mark_trainable():
     trainable = data.get('trainable', True)
     verified = data.get('verified', False)
     confidence = data.get('confidence')
+    rating = data.get('rating')
     notes = data.get('notes', '')
     tags = data.get('tags', [])
 
@@ -210,10 +212,49 @@ def mark_trainable():
             trainable=trainable,
             verified=verified,
             confidence=confidence,
+            rating=rating,
             notes=notes,
             tags=tags
         )
         return jsonify({'updated': count, 'message': f'Marked {count} traces as trainable={trainable}'})
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@training_bp.route('/api/training/rate', methods=['POST'])
+def rate_examples():
+    """
+    Rate training examples with thumbs up/down.
+
+    Body:
+        {
+            "trace_ids": ["uuid1", "uuid2", ...],
+            "rating": "positive" | "negative"
+        }
+    """
+    data = request.json or {}
+    trace_ids = data.get('trace_ids', [])
+    rating = data.get('rating')
+
+    if not trace_ids:
+        return jsonify({'error': 'trace_ids required'}), 400
+    if rating not in ('positive', 'negative'):
+        return jsonify({'error': 'rating must be "positive" or "negative"'}), 400
+
+    try:
+        # positive = trainable + verified + confidence 1.0
+        # negative = trainable (as negative example) + verified + confidence 0.0
+        is_positive = rating == 'positive'
+        count = mark_as_trainable(
+            trace_ids=trace_ids,
+            trainable=True,
+            verified=True,
+            confidence=1.0 if is_positive else 0.0,
+            rating=rating,
+            notes=f'Rated {rating} via UI',
+        )
+        return jsonify({'updated': count, 'rating': rating})
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500

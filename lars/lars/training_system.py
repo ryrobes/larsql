@@ -264,6 +264,7 @@ def mark_as_trainable(
     trainable: bool = True,
     verified: bool = False,
     confidence: Optional[float] = None,
+    rating: Optional[str] = None,
     notes: str = '',
     tags: Optional[List[str]] = None
 ) -> int:
@@ -275,6 +276,7 @@ def mark_as_trainable(
         trainable: Set trainable flag
         verified: Set verified flag
         confidence: Optional confidence override (0.0-1.0)
+        rating: 'positive', 'negative', or None (unrated)
         notes: Human annotations/reasoning
         tags: Categories/tags (e.g., ['semantic_sql', 'correct', 'edge_case'])
 
@@ -282,7 +284,7 @@ def mark_as_trainable(
         Number of rows inserted/updated
 
     Example:
-        >>> mark_as_trainable(['trace-123', 'trace-456'], trainable=True, verified=True, confidence=1.0)
+        >>> mark_as_trainable(['trace-123', 'trace-456'], trainable=True, verified=True, confidence=1.0, rating='positive')
         2
     """
     if not trace_ids:
@@ -301,6 +303,7 @@ def mark_as_trainable(
                 'trainable': bool(trainable),
                 'verified': bool(verified),
                 'confidence': float(confidence if confidence is not None else 1.0),
+                'rating': str(rating) if rating else None,
                 'notes': str(notes) if notes else '',
                 'tags': list(tags) if tags else [],
                 'annotated_at': now_ts,
@@ -310,7 +313,7 @@ def mark_as_trainable(
 
         db.write("training_annotations", rows)
 
-        log.info(f"[training] Marked {len(rows)} traces as trainable={trainable}")
+        log.info(f"[training] Marked {len(rows)} traces as trainable={trainable} rating={rating}")
         return len(rows)
 
     except Exception as e:
