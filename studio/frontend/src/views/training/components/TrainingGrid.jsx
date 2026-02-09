@@ -35,22 +35,17 @@ const darkTheme = themeQuartz.withParams({
  */
 const formatContent = (text) => {
   if (!text) return '';
-  // Strip outer quotes if simple quoted string
   if (text.startsWith('"') && text.endsWith('"')) {
     const unquoted = text.slice(1, -1);
     try {
       const parsed = JSON.parse(unquoted);
       return JSON.stringify(parsed, null, 2);
-    } catch {
-      return unquoted;
-    }
+    } catch { return unquoted; }
   }
   try {
     const parsed = JSON.parse(text);
     return JSON.stringify(parsed, null, 2);
-  } catch {
-    return text;
-  }
+  } catch { return text; }
 };
 
 /**
@@ -66,21 +61,14 @@ const extractSemanticParams = (input) => {
 };
 
 /**
- * Inline detail renderer for expanded rows
+ * Inline expanded detail for a row
  */
-const DetailCellRenderer = ({ data }) => {
+const ExpandedDetail = ({ data }) => {
   const navigate = useNavigate();
   const semanticParams = extractSemanticParams(data.user_input);
 
-  const handleNavigateToSession = () => {
-    if (data.session_id && data.cascade_id) {
-      navigate(ROUTES.studioWithSession(data.cascade_id, data.session_id));
-    }
-  };
-
   return (
     <div className="training-detail-inline">
-      {/* Semantic SQL params if applicable */}
       {semanticParams.isSemanticSQL && (
         <div className="training-detail-semantic">
           <div className="training-detail-semantic-row">
@@ -95,7 +83,6 @@ const DetailCellRenderer = ({ data }) => {
       )}
 
       <div className="training-detail-columns">
-        {/* Input */}
         <div className="training-detail-col">
           <div className="training-detail-col-header">
             <Icon icon="mdi:code-braces" width={13} style={{ color: '#60a5fa' }} />
@@ -117,7 +104,6 @@ const DetailCellRenderer = ({ data }) => {
           </div>
         </div>
 
-        {/* Output */}
         <div className="training-detail-col">
           <div className="training-detail-col-header">
             <Icon icon="mdi:message-reply" width={13} style={{ color: '#34d399' }} />
@@ -139,11 +125,17 @@ const DetailCellRenderer = ({ data }) => {
         </div>
       </div>
 
-      {/* Metadata strip */}
       <div className="training-detail-meta-strip">
         <span className="training-detail-meta-item">
           <Icon icon="mdi:identifier" width={12} />
-          <code onClick={handleNavigateToSession} style={{ cursor: 'pointer', color: '#00e5ff' }}>
+          <code
+            onClick={() => {
+              if (data.session_id && data.cascade_id) {
+                navigate(ROUTES.studioWithSession(data.cascade_id, data.session_id));
+              }
+            }}
+            style={{ cursor: 'pointer', color: '#00e5ff' }}
+          >
             {data.session_id?.slice(0, 16)}...
           </code>
         </span>
@@ -172,12 +164,26 @@ const DetailCellRenderer = ({ data }) => {
 
 /**
  * TrainingGrid - AG-Grid table for training examples
- * Uses expandable rows and thumbs up/down rating
+ * Uses inline expandable rows and thumbs up/down rating
  */
 const TrainingGrid = ({ examples = [], onSelectionChanged, onMarkTrainable }) => {
   const navigate = useNavigate();
   const gridRef = useRef(null);
   const [quickFilter, setQuickFilter] = useState('');
+  const [expandedTraceIds, setExpandedTraceIds] = useState(new Set());
+
+  // Toggle row expansion
+  const toggleExpand = useCallback((traceId) => {
+    setExpandedTraceIds(prev => {
+      const next = new Set(prev);
+      if (next.has(traceId)) {
+        next.delete(traceId);
+      } else {
+        next.add(traceId);
+      }
+      return next;
+    });
+  }, []);
 
   // Handle row selection for bulk actions
   const handleSelectionChanged = useCallback(() => {
@@ -188,7 +194,6 @@ const TrainingGrid = ({ examples = [], onSelectionChanged, onMarkTrainable }) =>
 
   // Handle rating (thumbs up / thumbs down)
   const handleRate = async (trace_id, rating, currentRating) => {
-    // If clicking same rating, clear it (toggle off)
     const newRating = currentRating === rating ? null : rating;
 
     try {
@@ -199,7 +204,6 @@ const TrainingGrid = ({ examples = [], onSelectionChanged, onMarkTrainable }) =>
           body: JSON.stringify({ trace_ids: [trace_id], rating: newRating })
         });
       } else {
-        // Clear rating by marking as unverified
         await fetch(`${API_BASE_URL}/api/training/mark-trainable`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -237,13 +241,29 @@ const TrainingGrid = ({ examples = [], onSelectionChanged, onMarkTrainable }) =>
   const columnDefs = useMemo(() => [
     {
       headerName: '',
-      field: 'expand',
       width: 40,
-      cellRenderer: 'agGroupCellRenderer',
       suppressHeaderMenuButton: true,
       sortable: false,
       filter: false,
       resizable: false,
+      cellRenderer: (params) => {
+        const isExpanded = expandedTraceIds.has(params.data.trace_id);
+        return (
+          <div
+            className="training-expand-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleExpand(params.data.trace_id);
+            }}
+          >
+            <Icon
+              icon={isExpanded ? 'mdi:chevron-down' : 'mdi:chevron-right'}
+              width={16}
+              style={{ color: '#64748b', cursor: 'pointer', transition: 'transform 0.15s' }}
+            />
+          </div>
+        );
+      }
     },
     {
       field: 'rating',
@@ -253,7 +273,7 @@ const TrainingGrid = ({ examples = [], onSelectionChanged, onMarkTrainable }) =>
       cellRenderer: (params) => {
         const rating = params.data.rating;
         return (
-          <div className="training-rating-cell" style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+          <div className="training-rating-cell">
             <button
               className={`training-rating-btn ${rating === 'positive' ? 'active-positive' : ''}`}
               onClick={(e) => {
@@ -416,7 +436,7 @@ const TrainingGrid = ({ examples = [], onSelectionChanged, onMarkTrainable }) =>
         } catch { return params.value; }
       }
     },
-  ], []);
+  ], [expandedTraceIds, toggleExpand]);
 
   const defaultColDef = useMemo(() => ({
     sortable: true,
@@ -425,8 +445,26 @@ const TrainingGrid = ({ examples = [], onSelectionChanged, onMarkTrainable }) =>
     floatingFilter: false,
   }), []);
 
-  // Master/Detail configuration for expandable rows
-  const detailCellRenderer = useMemo(() => DetailCellRenderer, []);
+  // Build row data with expansion rows interleaved
+  const rowDataWithExpansions = useMemo(() => {
+    const rows = [];
+    for (const example of examples) {
+      rows.push({ ...example, _isDetail: false });
+      if (expandedTraceIds.has(example.trace_id)) {
+        rows.push({ ...example, _isDetail: true, trace_id: `detail_${example.trace_id}` });
+      }
+    }
+    return rows;
+  }, [examples, expandedTraceIds]);
+
+  // Use isFullWidthRow to render expanded details
+  const isFullWidthRow = useCallback((params) => {
+    return params.rowNode.data?._isDetail === true;
+  }, []);
+
+  const fullWidthCellRenderer = useCallback((params) => {
+    return <ExpandedDetail data={params.data} />;
+  }, []);
 
   return (
     <div className="training-grid-container">
@@ -444,27 +482,29 @@ const TrainingGrid = ({ examples = [], onSelectionChanged, onMarkTrainable }) =>
         </div>
         <div className="training-grid-info">
           <span>{examples.length} examples</span>
-          <span className="training-grid-hint">· Expand rows to see full content · Double-click to open in Studio</span>
+          <span className="training-grid-hint">· Click chevron to expand · Double-click to open in Studio</span>
         </div>
       </div>
 
-      {/* AG-Grid Table with Master/Detail */}
+      {/* AG-Grid Table */}
       <div className="training-grid-wrapper">
         <AgGridReact
           ref={gridRef}
           theme={darkTheme}
-          rowData={examples}
+          rowData={rowDataWithExpansions}
           columnDefs={columnDefs}
           defaultColDef={defaultColDef}
-          masterDetail={true}
-          detailCellRenderer={detailCellRenderer}
-          detailRowHeight={350}
-          detailRowAutoHeight={true}
           rowSelection="multiple"
           suppressRowClickSelection={true}
           onSelectionChanged={handleSelectionChanged}
           onRowDoubleClicked={handleRowDoubleClick}
           getRowId={(params) => params.data.trace_id}
+          getRowHeight={(params) => {
+            if (params.data?._isDetail) return 350;
+            return undefined; // default height
+          }}
+          isFullWidthRow={isFullWidthRow}
+          fullWidthCellRenderer={fullWidthCellRenderer}
           quickFilterText={quickFilter}
           animateRows={true}
           domLayout="normal"
