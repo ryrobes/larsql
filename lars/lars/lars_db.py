@@ -2128,7 +2128,23 @@ class LarsDB:
                 pass
         
         if not unified_logs_created:
-            log.warning("[Views] Could not create unified_logs view by any strategy")
+            # Create empty stub so downstream views (lars_system.logs, training_udf_calls) don't fail
+            try:
+                conn.execute("""
+                    CREATE OR REPLACE VIEW unified_logs AS
+                    SELECT NULL::VARCHAR as session_id, NULL::VARCHAR as cascade_id,
+                           NULL::VARCHAR as cell_name, NULL::VARCHAR as role,
+                           NULL::VARCHAR as content, NULL::VARCHAR as model,
+                           NULL::DOUBLE as cost, NULL::DOUBLE as duration_ms,
+                           NULL::BIGINT as input_tokens, NULL::BIGINT as output_tokens,
+                           NULL::TIMESTAMP as created_at, NULL::INTEGER as take_index,
+                           NULL::BOOLEAN as is_sql_udf, NULL::VARCHAR as udf_name
+                    WHERE false
+                """)
+                unified_logs_created = True
+                log.info("[Views] Created empty unified_logs stub (no data yet)")
+            except Exception as e:
+                log.warning(f"[Views] Could not create unified_logs view by any strategy: {e}")
         
         # lars_system.logs → alias for unified_logs (for clean namespace)
         try:
