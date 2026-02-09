@@ -7864,14 +7864,18 @@ def cmd_tui(args):
     
     tui_command = getattr(args, 'tui_command', None)
     
+    # Force truecolor support for proper TUI rendering
+    tui_env = os.environ.copy()
+    tui_env['COLORTERM'] = 'truecolor'
+    
     if tui_command == 'bootstrap':
         # Run bootstrap TUI as module for proper relative imports
-        result = subprocess.run([sys.executable, '-m', 'lars.tui.bootstrap'])
+        result = subprocess.run([sys.executable, '-m', 'lars.tui.bootstrap'], env=tui_env)
         sys.exit(result.returncode)
     
     elif tui_command == 'config':
         # Run config panel TUI as module for proper relative imports
-        result = subprocess.run([sys.executable, '-m', 'lars.tui.config'])
+        result = subprocess.run([sys.executable, '-m', 'lars.tui.config'], env=tui_env)
         sys.exit(result.returncode)
     
     else:
@@ -9195,6 +9199,7 @@ def cmd_bootstrap(args):
             if can_run_tui():
                 # Launch TUI bootstrap instead
                 print("Launching visual setup wizard...")
+                os.environ['COLORTERM'] = 'truecolor'
                 os.execlp('lars', 'lars', 'tui', 'bootstrap')
                 # execlp replaces the process, so we won't reach here
         except ImportError:
