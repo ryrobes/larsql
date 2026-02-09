@@ -141,15 +141,15 @@ const ExpandedSQLDetail = ({ data }) => {
 
               return (
                 <tr key={cell.trace_id || i} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
-                  <td style={{ ...tdStyle, fontFamily: "'JetBrains Mono', monospace", fontSize: 12 }}>
+                  <td style={{ ...tdStyle, fontFamily: "'JetBrains Mono', monospace", fontSize: 12, wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
                     <span style={{ color: '#a78bfa', fontWeight: 600 }}>{opName}</span>
                     <span style={{ color: '#475569' }}>(</span>
                     {argEntries.map(([key, val], j) => (
                       <span key={key}>
                         {j > 0 && <span style={{ color: '#475569' }}>, </span>}
                         <span style={{ color: '#64748b', fontSize: 10 }}>{key}=</span>
-                        <span style={{ color: '#cbd5e1' }}>
-                          '{typeof val === 'string' && val.length > 80 ? val.slice(0, 80) + '…' : val}'
+                        <span style={{ color: '#cbd5e1', wordBreak: 'break-word' }}>
+                          '{val}'
                         </span>
                       </span>
                     ))}
