@@ -2821,7 +2821,7 @@ class LarsDB:
                 return result
                 
             except Exception as e:
-                print(f"[LarsDB] Compaction failed for {table}: {e}")
+                print(f"[LarsDB] Compaction failed for {table_dir.name}: {e}")
                 result["error"] = str(e)
                 return result
     
