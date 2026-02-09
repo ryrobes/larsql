@@ -10,7 +10,7 @@ cells:
   name: answer
   rag:
     directory: /home/ryanr/repos/lars/examples
-    model: qwen/qwen3-embedding-8b
+    model: "{{ models.embedding }}"
   rules:
     max_turns: 1
   skills:
