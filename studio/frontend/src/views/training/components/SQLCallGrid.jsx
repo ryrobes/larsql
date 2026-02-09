@@ -59,10 +59,14 @@ const ExpandedSQLDetail = ({ data }) => {
   const [cells, setCells] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // Strip "detail_" prefix to get real caller_id
+  const realCallerId = data.caller_id?.replace(/^detail_/, '') || '';
+
   useEffect(() => {
+    if (!realCallerId) return;
     const fetchCells = async () => {
       try {
-        const res = await fetch(`${API_BASE_URL}/api/training/sql-call/${encodeURIComponent(data.caller_id)}/cells`);
+        const res = await fetch(`${API_BASE_URL}/api/training/sql-call/${encodeURIComponent(realCallerId)}/cells`);
         const json = await res.json();
         setCells(json.cells || []);
       } catch (err) {
@@ -72,7 +76,7 @@ const ExpandedSQLDetail = ({ data }) => {
       }
     };
     fetchCells();
-  }, [data.caller_id]);
+  }, [realCallerId]);
 
   if (loading) {
     return (
@@ -83,11 +87,34 @@ const ExpandedSQLDetail = ({ data }) => {
     );
   }
 
+  const handleCellRate = async (trace_id, rating, currentRating, cellIndex) => {
+    const newRating = currentRating === rating ? null : rating;
+    try {
+      if (newRating) {
+        await fetch(`${API_BASE_URL}/api/training/rate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ trace_ids: [trace_id], rating: newRating })
+        });
+      } else {
+        await fetch(`${API_BASE_URL}/api/training/mark-trainable`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ trace_ids: [trace_id], trainable: false, verified: false })
+        });
+      }
+      // Optimistic update
+      setCells(prev => prev.map((c, i) => i === cellIndex ? { ...c, rating: newRating } : c));
+    } catch (err) {
+      console.error('Failed to rate cell:', err);
+    }
+  };
+
   return (
     <div className="training-detail-inline" style={{ padding: '12px 16px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
         <Icon icon="mdi:identifier" width={13} style={{ color: '#64748b' }} />
-        <code style={{ color: '#94a3b8', fontSize: 11 }}>{data.caller_id}</code>
+        <code style={{ color: '#94a3b8', fontSize: 11 }}>{realCallerId}</code>
         <span style={{ color: '#475569', fontSize: 11 }}>· {cells.length} UDF calls</span>
       </div>
       <div className="sql-call-cells-table">
@@ -98,7 +125,7 @@ const ExpandedSQLDetail = ({ data }) => {
               <th style={thStyle}>Input</th>
               <th style={thStyle}>Result</th>
               <th style={{ ...thStyle, width: 60 }}>Cost</th>
-              <th style={{ ...thStyle, width: 60 }}>Rating</th>
+              <th style={{ ...thStyle, width: 90 }}>Rating</th>
             </tr>
           </thead>
           <tbody>
@@ -132,10 +159,25 @@ const ExpandedSQLDetail = ({ data }) => {
                     ${cell.cost?.toFixed(4) || '0.0000'}
                   </span>
                 </td>
-                <td style={{ ...tdStyle, textAlign: 'center' }}>
-                  {cell.rating === 'positive' && <Icon icon="mdi:thumb-up" width={14} style={{ color: '#34d399' }} />}
-                  {cell.rating === 'negative' && <Icon icon="mdi:thumb-down" width={14} style={{ color: '#ff006e' }} />}
-                  {!cell.rating && <span style={{ color: '#334155' }}>—</span>}
+                <td style={{ ...tdStyle }}>
+                  <div className="training-rating-cell">
+                    <button
+                      className={`training-rating-btn ${cell.rating === 'positive' ? 'active-positive' : ''}`}
+                      onClick={() => handleCellRate(cell.trace_id, 'positive', cell.rating, i)}
+                      title="Good output"
+                    >
+                      <Icon icon="mdi:thumb-up" width={14}
+                        style={{ color: cell.rating === 'positive' ? '#34d399' : '#334155' }} />
+                    </button>
+                    <button
+                      className={`training-rating-btn ${cell.rating === 'negative' ? 'active-negative' : ''}`}
+                      onClick={() => handleCellRate(cell.trace_id, 'negative', cell.rating, i)}
+                      title="Bad output"
+                    >
+                      <Icon icon="mdi:thumb-down" width={14}
+                        style={{ color: cell.rating === 'negative' ? '#ff006e' : '#334155' }} />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}

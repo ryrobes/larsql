@@ -14,6 +14,10 @@ import { API_BASE_URL } from '../../config/api';
 const STORAGE_KEY_CASCADE_FILTER = 'training_cascadeFilter';
 const STORAGE_KEY_CELL_FILTER = 'training_cellFilter';
 const STORAGE_KEY_SHOW_TRAINABLE_ONLY = 'training_showTrainableOnly';
+const STORAGE_KEY_VIEW_MODE = 'training_viewMode';
+const STORAGE_KEY_RATING_FILTER = 'training_ratingFilter';
+const STORAGE_KEY_CONFIDENCE_THRESHOLD = 'training_confidenceThreshold';
+const STORAGE_KEY_CONFIDENCE_DIRECTION = 'training_confidenceDirection';
 
 // Read initial values from localStorage (now arrays)
 const getInitialCascadeFilter = () => {
@@ -65,14 +69,22 @@ const TrainingView = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedRows, setSelectedRows] = useState([]);
-  const [ratingFilter, setRatingFilter] = useState(null); // 'positive', 'negative', 'unrated', or null
-  const [confidenceThreshold, setConfidenceThreshold] = useState(null); // null = no filter, 0-1
-  const [confidenceDirection, setConfidenceDirection] = useState('gte'); // 'gte' or 'lte'
+  const [ratingFilter, setRatingFilter] = useState(() => {
+    try { const v = localStorage.getItem(STORAGE_KEY_RATING_FILTER); return v && v !== 'null' ? v : null; } catch { return null; }
+  });
+  const [confidenceThreshold, setConfidenceThreshold] = useState(() => {
+    try { const v = localStorage.getItem(STORAGE_KEY_CONFIDENCE_THRESHOLD); return v !== null && v !== 'null' ? parseFloat(v) : null; } catch { return null; }
+  });
+  const [confidenceDirection, setConfidenceDirection] = useState(() => {
+    try { return localStorage.getItem(STORAGE_KEY_CONFIDENCE_DIRECTION) || 'gte'; } catch { return 'gte'; }
+  });
   const [hotOrNotOpen, setHotOrNotOpen] = useState(false);
   const [assessmentInProgress, setAssessmentInProgress] = useState(false);
   const [assessmentCount, setAssessmentCount] = useState(0);
   const [gridFilteredCount, setGridFilteredCount] = useState(null); // null = no grid filter active
-  const [viewMode, setViewMode] = useState('cells'); // 'cells' or 'sql'
+  const [viewMode, setViewMode] = useState(() => {
+    try { return localStorage.getItem(STORAGE_KEY_VIEW_MODE) || 'cells'; } catch { return 'cells'; }
+  });
   const [sqlCalls, setSqlCalls] = useState([]);
   const [sqlCallsLoading, setSqlCallsLoading] = useState(false);
   const searchTimeoutRef = useRef(null);
@@ -316,6 +328,16 @@ const TrainingView = () => {
       localStorage.setItem(STORAGE_KEY_SHOW_TRAINABLE_ONLY, String(value));
     } catch (e) {}
   }, []);
+
+  // Persist filter settings to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY_VIEW_MODE, viewMode);
+      localStorage.setItem(STORAGE_KEY_RATING_FILTER, ratingFilter || 'null');
+      localStorage.setItem(STORAGE_KEY_CONFIDENCE_THRESHOLD, confidenceThreshold !== null ? String(confidenceThreshold) : 'null');
+      localStorage.setItem(STORAGE_KEY_CONFIDENCE_DIRECTION, confidenceDirection);
+    } catch {}
+  }, [viewMode, ratingFilter, confidenceThreshold, confidenceDirection]);
 
   // Initial fetch
   useEffect(() => {
