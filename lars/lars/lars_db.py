@@ -2128,19 +2128,20 @@ class LarsDB:
                 pass
         
         if not unified_logs_created:
-            # Create empty stub so downstream views (lars_system.logs, training_udf_calls) don't fail
+            # Create empty stub with full schema so downstream views don't fail
             try:
-                conn.execute("""
-                    CREATE OR REPLACE VIEW unified_logs AS
-                    SELECT NULL::VARCHAR as session_id, NULL::VARCHAR as cascade_id,
-                           NULL::VARCHAR as cell_name, NULL::VARCHAR as role,
-                           NULL::VARCHAR as content, NULL::VARCHAR as model,
-                           NULL::DOUBLE as cost, NULL::DOUBLE as duration_ms,
-                           NULL::BIGINT as input_tokens, NULL::BIGINT as output_tokens,
-                           NULL::TIMESTAMP as created_at, NULL::INTEGER as take_index,
-                           NULL::BOOLEAN as is_sql_udf, NULL::VARCHAR as udf_name
-                    WHERE false
-                """)
+                ulb_schema = SYSTEM_TABLES.get("unified_logs_base", {})
+                cols = ulb_schema.get("columns", [])
+                if cols:
+                    col_defs = ", ".join(
+                        f"NULL::{dtype} AS {name}" for name, dtype in cols
+                    )
+                    conn.execute(f"""
+                        CREATE OR REPLACE VIEW unified_logs AS
+                        SELECT {col_defs} WHERE false
+                    """)
+                else:
+                    conn.execute("CREATE OR REPLACE VIEW unified_logs AS SELECT 1 WHERE false")
                 unified_logs_created = True
                 log.info("[Views] Created empty unified_logs stub (no data yet)")
             except Exception as e:
@@ -2155,50 +2156,30 @@ class LarsDB:
         except Exception:
             pass
         
-        # lars_system.sessions → session_state
-        try:
-            conn.execute("""
-                CREATE OR REPLACE VIEW lars_system.sessions AS
-                SELECT * FROM session_state
-            """)
-        except Exception:
-            pass
+        # Helper: create lars_system view from base table, with empty stub fallback
+        def _create_system_view(view_name, base_table, system_table_key=None):
+            try:
+                conn.execute(f"""
+                    CREATE OR REPLACE VIEW lars_system.{view_name} AS
+                    SELECT * FROM {base_table}
+                """)
+            except Exception:
+                # Base table doesn't exist — create empty stub from schema
+                schema_key = system_table_key or base_table
+                schema_def = SYSTEM_TABLES.get(schema_key, {})
+                cols = schema_def.get("columns", [])
+                if cols:
+                    col_defs = ", ".join(f"NULL::{dtype} AS {name}" for name, dtype in cols)
+                    try:
+                        conn.execute(f"CREATE OR REPLACE VIEW lars_system.{view_name} AS SELECT {col_defs} WHERE false")
+                    except Exception:
+                        pass
         
-        # lars_system.sql_log → ui_sql_log  
-        try:
-            conn.execute("""
-                CREATE OR REPLACE VIEW lars_system.sql_log AS
-                SELECT * FROM ui_sql_log
-            """)
-        except Exception:
-            pass
-        
-        # lars_system.costs → costs
-        try:
-            conn.execute("""
-                CREATE OR REPLACE VIEW lars_system.costs AS
-                SELECT * FROM costs
-            """)
-        except Exception:
-            pass
-        
-        # lars_system.checkpoints → checkpoints
-        try:
-            conn.execute("""
-                CREATE OR REPLACE VIEW lars_system.checkpoints AS
-                SELECT * FROM checkpoints
-            """)
-        except Exception:
-            pass
-        
-        # lars_system.cascades → cascade_sessions
-        try:
-            conn.execute("""
-                CREATE OR REPLACE VIEW lars_system.cascades AS
-                SELECT * FROM cascade_sessions
-            """)
-        except Exception:
-            pass
+        _create_system_view("sessions", "session_state")
+        _create_system_view("sql_log", "ui_sql_log")
+        _create_system_view("costs", "costs")
+        _create_system_view("checkpoints", "checkpoints")
+        _create_system_view("cascades", "cascade_sessions")
         
         # lars_system.embeddings - placeholder for future embedding storage
         # Currently empty view with expected schema
