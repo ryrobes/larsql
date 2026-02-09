@@ -67,6 +67,18 @@ bedrock/us.amazon.nova-premier-v1:0
 azure/my-gpt4-deployment
 azure/my-o1-deployment
 
+# Anthropic Direct
+anthropic/claude-sonnet-4
+anthropic/claude-opus-4
+
+# Gemini (Google AI Studio)
+gemini/gemini-2.5-pro
+gemini/gemini-2.5-flash
+
+# LM Studio (local)
+lmstudio/deepseek-coder-v2
+lmstudio/llama-3.1-8b
+
 # Ollama (local)
 ollama/llama3.3:70b
 ollama/qwen2.5-coder:32b
@@ -331,6 +343,168 @@ SELECT ASK('Reason through this', problem) FROM cases
 4. Use the deployment name (not the model name) with the `azure/` prefix
 
 
+## Anthropic Direct / OAuth
+
+
+Connect directly to Anthropic's API, bypassing OpenRouter. Supports both standard API keys
+  and OAuth tokens from Claude Pro/Max subscriptions. Ideal for teams with existing Anthropic billing
+  or flat-rate Claude subscriptions where you want cost=0 tracking.
+
+### Authentication Options
+
+**Option 1: API Key**
+
+```anthropic api key
+ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxx
+```
+
+**Option 2: OAuth Token (Claude Pro/Max Subscriptions)**
+
+```anthropic oauth
+ANTHROPIC_OAUTH_TOKEN=your-oauth-token
+```
+
+> **TIP: Flat-Rate Subscriptions**
+>
+> 
+> If you're using a Claude Pro or Max subscription, set cost=0 in your cascade configurations
+>     since inference is included in your subscription. LARS will track usage without billing attribution.
+> 
+
+### Usage
+
+```using anthropic direct
+# In cascade YAML - use anthropic/ prefix
+- name: analyze
+  model: anthropic/claude-sonnet-4
+  instructions: "Analyze the data"
+
+# In SQL
+-- @ model: anthropic/claude-opus-4
+SELECT ASK('Deep analysis', text) FROM docs
+```
+
+### Configuration in models.yaml
+
+```models.yaml
+providers:
+  anthropic_direct:
+    enabled: true
+    oauth_token_env: ANTHROPIC_OAUTH_TOKEN
+```
+
+
+## Gemini (Google AI Studio)
+
+
+Connect directly to Google AI Studio for Gemini models. This is the consumer/developer
+  API (different from Vertex AI's enterprise offering). Simpler setup—just an API key.
+
+### Environment Variables
+
+```gemini configuration
+# Required: Google AI Studio API key
+GEMINI_API_KEY=your-gemini-api-key
+```
+
+> **NOTE: Gemini vs Vertex AI**
+>
+> 
+> **Gemini (Google AI Studio)** — Consumer API, API key auth, simpler setup. Good for development and small teams.
+> **Vertex AI** — Enterprise GCP platform, service account auth, data residency controls. Use for production workloads with compliance requirements.
+> 
+
+### Usage
+
+```using gemini models
+# In cascade YAML - use gemini/ prefix
+- name: analyze
+  model: gemini/gemini-2.5-pro
+  instructions: "Analyze the data"
+
+# In SQL
+-- @ model: gemini/gemini-2.5-flash
+SELECT ASK('Summarize this', text) FROM docs
+```
+
+### Configuration in models.yaml
+
+```models.yaml
+providers:
+  gemini:
+    enabled: true
+    api_key_env: GEMINI_API_KEY
+```
+
+### Service Account Support
+
+Gemini also supports service account authentication for server-to-server workflows:
+
+```service account
+GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+```
+
+
+## LM Studio (Local)
+
+
+Run models locally using LM Studio's OpenAI-compatible API server.
+  LM Studio provides a GUI for downloading and managing local models,
+  and LARS auto-discovers available models from the running server.
+
+### Prerequisites
+- LM Studio installed: [lmstudio.ai](https://lmstudio.ai)
+- A model downloaded and loaded in LM Studio
+- The local server started (LM Studio → Local Server → Start)
+
+### Configuration
+
+```lm studio setup
+# LM Studio runs on port 1234 by default
+# No environment variables needed if using defaults
+
+# Optional: Override host URL
+LARS_LMSTUDIO_HOST=http://localhost:1234
+```
+
+### Usage
+
+```using lm studio models
+# In cascade YAML - use lmstudio/ prefix
+- name: code_review
+  model: lmstudio/deepseek-coder-v2
+  instructions: "Review this code"
+
+# In SQL
+-- @ model: lmstudio/llama-3.1-8b
+SELECT ASK('Explain this', concept) FROM topics
+```
+
+### Model Discovery
+
+LARS automatically discovers models loaded in LM Studio when you run:
+
+```model discovery
+lars models refresh
+```
+
+### Configuration in models.yaml
+
+```models.yaml
+providers:
+  lmstudio:
+    enabled: true
+    host: http://localhost:1234
+```
+
+> **TIP: Free Local Inference**
+>
+> 
+> Like Ollama, LM Studio models have zero API costs. LM Studio offers a more
+>     visual experience for model management, while Ollama is better for headless/server deployments.
+> 
+
+
 ## Ollama (Local)
 
 
@@ -459,6 +633,9 @@ lars models stats
 | **Vertex AI**  | `vertex_ai/` | `LARS_VERTEX_PROJECT`, `GOOGLE_APPLICATION_CREDENTIALS`     |
 | **Bedrock**    | `bedrock/`   | `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` (or IAM role) |
 | **Azure**      | `azure/`     | `AZURE_API_KEY`, `AZURE_API_BASE`                           |
+| **Anthropic**  | `anthropic/` | `ANTHROPIC_API_KEY` or `ANTHROPIC_OAUTH_TOKEN`              |
+| **Gemini**     | `gemini/`    | `GEMINI_API_KEY`                                            |
+| **LM Studio**  | `lmstudio/`  | None (auto-detected at `localhost:1234`)                     |
 | **Ollama**     | `ollama/`    | None (auto-detected)                                        |
 
 

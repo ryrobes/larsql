@@ -46,22 +46,24 @@ export OPENROUTER_API_KEY=sk-or-v1-...
 ## Bootstrap
 
 
-Run the bootstrap command to set up your LARS workspace in one step:
+Run the bootstrap command to set up your LARS workspace:
 
 ```bash
 lars bootstrap
 ```
 
 
-This single command handles everything:
-- Creates workspace directories (cascades, skills, data, logs, etc.)
-- Initializes the DuckDB database schema
-- Downloads and registers built-in tools
-- Sets up model configurations
-- Runs initial SQL schema discovery
+Bootstrap launches an **interactive TUI wizard** that walks you through the complete setup:
+- **Provider selection** — Choose from OpenRouter, Ollama, Gemini, Anthropic Direct, LM Studio, etc.
+- **API key validation** — Tests your credentials against the selected provider
+- **Model discovery** — Scans available models and assigns them to tiers (fast, standard, quality, etc.)
+- **SQL connections** — Optionally configure database connections
+- **Admin password** — Sets the password for Studio and SQL server authentication
+
+The wizard generates `config.yaml` and `models.yaml` in your workspace root.
 
 
-> **TIP: Bootstrap Options**
+> **TIP: Non-Interactive Mode**
 >
 > 
 > Skip specific steps if needed:

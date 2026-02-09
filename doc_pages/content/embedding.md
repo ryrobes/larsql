@@ -14,6 +14,14 @@ On This Page
 ## Overview
 
 
+> **NOTE: Native DuckDB Vector Storage**
+>
+> 
+> LARS stores all embeddings natively in DuckDB — no external vector database (ChromaDB, Pinecone, etc.)
+>     is needed. Vectors are stored alongside your data for efficient similarity search without additional infrastructure.
+> 
+
+
 LARS's embedding system allows you to:
 - Index text columns from any table with vector embeddings
 - Search using natural language with `SIMILAR_TO` operator

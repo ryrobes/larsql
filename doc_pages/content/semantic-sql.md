@@ -360,11 +360,11 @@ lars serve sql --port 15432
 lars sql server --port 15432
 
 # Connect with psql
-psql -h localhost -p 15432 -U lars -d lars
+psql -h localhost -p 15432 -U admin -d default
 
 # Connect with Python
 import psycopg2
-conn = psycopg2.connect(host="localhost", port=15432, user="lars", dbname="lars")
+conn = psycopg2.connect(host="localhost", port=15432, user="admin", password="admin", dbname="default")
 ```
 
 ### Session Architecture

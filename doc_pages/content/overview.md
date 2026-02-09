@@ -7,8 +7,8 @@ Stop writing imperative glue code. Start orchestrating agents declaratively.
 > **TIP: Quick Start**
 >
 > 
-> Install with `pip install larsql` and run your first cascade
->     with `lars run examples/simple_flow.json --input '{"data": "test"}'`
+> Install with `pip install larsql`, run `lars bootstrap`, then try your first cascade
+>     with `lars run cascades/examples/hello_world.yaml --input '{"data": "test"}'`
 > 
 
 
@@ -370,6 +370,29 @@ lars serve studio --dev
 #   - /sessions: Session explorer
 #   - /calliope: Conversational cascade builder
 ```
+
+## Training UI
+
+
+LARS Studio includes a built-in **training interface** for improving cascade outputs over time:
+
+- **Thumbs up/down rating** — Rate cascade outputs directly in Studio to signal quality
+- **Confidence assessment** — LARS can auto-assess output confidence scores
+- **LARS Learn integration** — Ratings feed into the self-optimization dream loop (LARS Learn),
+  which uses your feedback to calibrate prompts, adjust model selections, and mutate cascade
+  configurations for better results
+
+Enable confidence assessment with:
+
+```yaml
+# In config.yaml
+features:
+  confidence_assessment: true
+```
+
+The learning system runs periodically (configurable via `learning.interval` in config.yaml),
+  analyzing accumulated ratings to improve cascade performance automatically.
+
 
 ## Semantic SQL
 

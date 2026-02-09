@@ -71,7 +71,8 @@ lars sql query "SELECT * FROM my_postgres.public.users LIMIT 10"
 
 | Category                  | Types                                             | Federation                              |
 |---------------------------|---------------------------------------------------|-----------------------------------------|
-| **Traditional Databases** | `postgres`, `mysql`, `sqlite`, `clickhouse`       | Native ATTACH (ClickHouse materializes) |
+| **Traditional Databases** | `postgres`, `mysql`, `sqlite`, `clickhouse`       | Native ATTACH (ClickHouse materializes)  |
+| **Enterprise Databases**  | `oracle`, `mssql`, `db2`                          | Materializes to DuckDB                   |
 | **Cloud Warehouses**      | `bigquery`, `snowflake`, `motherduck`             | Native ATTACH via extensions            |
 | **Object Storage**        | `s3`, `gcs`, `azure`, `http`                      | Direct file reads (Parquet, CSV, JSON)  |
 | **Lakehouse**             | `delta`, `iceberg`                                | Native format support                   |
@@ -187,6 +188,12 @@ enabled: true
 
 ### ClickHouse
 
+> **NOTE: External ClickHouse**
+>
+> 
+> This connector is for connecting to **external ClickHouse servers** as a data source.
+>     LARS itself uses DuckDB internally for all storage — no ClickHouse installation is needed to run LARS.
+> 
 
 > **WARNING: Materialization**
 >
@@ -212,6 +219,128 @@ sample_row_limit: 1000
 ```dependency
 pip install clickhouse-connect
 ```
+
+## Enterprise Databases
+
+> **WARNING: Materialization**
+>
+> 
+> Enterprise database connectors **materialize** (copy) data into DuckDB via Python drivers.
+>     Use `sample_row_limit` to control how many rows are copied per table.
+> 
+
+
+#### Oracle
+
+
+Pure Python via `oracledb` thin mode (no Oracle Client needed).
+
+
+Default port: 1521
+
+
+#### Microsoft SQL Server
+
+
+Pure Python via `pymssql` (no ODBC drivers needed).
+
+
+Default port: 1433
+
+
+#### IBM DB2
+
+
+IBM's official `ibm-db` Python driver.
+
+
+Default port: 50000
+
+### Oracle
+
+
+| Field          | Required | Default | Description                                  |
+|----------------|----------|---------|----------------------------------------------|
+| `host`         | Yes      | —       | Oracle server hostname                       |
+| `port`         | No       | 1521    | Oracle listener port                         |
+| `service_name` | Yes*     | —       | Oracle service name (or use `database` for SID) |
+| `database`     | Yes*     | —       | Oracle SID (alternative to `service_name`)   |
+| `user`         | Yes      | —       | Oracle username                              |
+| `password_env` | Yes      | —       | Environment variable containing password     |
+
+
+```sql_connections/oracle_erp.yaml
+connection_name: oracle_erp
+type: oracle
+host: oracle.example.com
+port: 1521
+service_name: ORCL
+user: readonly_user
+password_env: ORACLE_PASSWORD
+enabled: true
+sample_row_limit: 1000
+```
+
+```dependency
+pip install oracledb pandas
+```
+
+### Microsoft SQL Server (MSSQL)
+
+
+| Field          | Required | Default | Description                              |
+|----------------|----------|---------|------------------------------------------|
+| `host`         | Yes      | —       | SQL Server hostname                      |
+| `port`         | No       | 1433    | SQL Server port                          |
+| `database`     | Yes      | —       | Database name                            |
+| `user`         | Yes      | —       | SQL Server username                      |
+| `password_env` | Yes      | —       | Environment variable containing password |
+
+
+```sql_connections/mssql_warehouse.yaml
+connection_name: mssql_warehouse
+type: mssql
+host: sqlserver.example.com
+port: 1433
+database: analytics
+user: reader
+password_env: MSSQL_PASSWORD
+enabled: true
+sample_row_limit: 1000
+```
+
+```dependency
+pip install pymssql pandas
+```
+
+### IBM DB2
+
+
+| Field          | Required | Default | Description                              |
+|----------------|----------|---------|------------------------------------------|
+| `host`         | Yes      | —       | DB2 server hostname                      |
+| `port`         | No       | 50000   | DB2 port                                 |
+| `database`     | Yes      | —       | Database name                            |
+| `user`         | Yes      | —       | DB2 username                             |
+| `password_env` | Yes      | —       | Environment variable containing password |
+
+
+```sql_connections/db2_mainframe.yaml
+connection_name: db2_mainframe
+type: db2
+host: db2.example.com
+port: 50000
+database: PRODDB
+user: db2reader
+password_env: DB2_PASSWORD
+enabled: true
+sample_row_limit: 1000
+```
+
+```dependency
+pip install ibm-db pandas
+```
+
 
 ## Cloud Data Warehouses
 
@@ -730,6 +859,9 @@ export MONGODB_URI="mongodb://user:password@host:27017"
 | `mongodb`                             | `pip install pymongo pandas`             |
 | `cassandra`                           | `pip install cassandra-driver pandas`    |
 | `clickhouse`                          | `pip install clickhouse-connect`         |
+| `oracle`                              | `pip install oracledb pandas`            |
+| `mssql`                               | `pip install pymssql pandas`             |
+| `db2`                                 | `pip install ibm-db pandas`              |
 | `excel`                               | `pip install openpyxl`                   |
 | `gsheets`                             | DuckDB extension + service account       |
 | `odbc`                                | System ODBC drivers                      |

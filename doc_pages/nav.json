@@ -11,8 +11,7 @@
           "sections": [
             { "anchor": "install", "title": "Install" },
             { "anchor": "configure", "title": "Configure" },
-            { "anchor": "clickhouse", "title": "Start ClickHouse" },
-            { "anchor": "initialize", "title": "Initialize Project" },
+            { "anchor": "bootstrap", "title": "Bootstrap" },
             { "anchor": "sql-server", "title": "Start SQL Server" },
             { "anchor": "studio", "title": "Launch Studio" },
             { "anchor": "next-steps", "title": "Next Steps" },
@@ -69,6 +68,9 @@
             { "anchor": "bedrock", "title": "AWS Bedrock" },
             { "anchor": "azure", "title": "Azure OpenAI" },
             { "anchor": "ollama", "title": "Ollama (Local)" },
+            { "anchor": "anthropic-direct", "title": "Anthropic Direct" },
+            { "anchor": "gemini", "title": "Gemini (Google AI)" },
+            { "anchor": "lmstudio", "title": "LM Studio (Local)" },
             { "anchor": "model-selection", "title": "Model Selection" },
             { "anchor": "cli", "title": "CLI Commands" }
           ]
@@ -94,6 +96,18 @@
             { "anchor": "ui", "title": "UI & Visualization" },
             { "anchor": "third-party", "title": "Third-Party Services" },
             { "anchor": "misc", "title": "Miscellaneous" }
+          ]
+        },
+        {
+          "id": "configuration",
+          "title": "Configuration Files",
+          "sections": [
+            { "anchor": "overview", "title": "Overview" },
+            { "anchor": "config-yaml", "title": "config.yaml" },
+            { "anchor": "models-yaml", "title": "models.yaml" },
+            { "anchor": "model-tiers", "title": "Model Tiers" },
+            { "anchor": "jinja-templates", "title": "Jinja Templates in Cascades" },
+            { "anchor": "cli", "title": "CLI Commands" }
           ]
         },
         {
@@ -188,6 +202,7 @@
             { "anchor": "quick-start", "title": "Quick Start" },
             { "anchor": "connection-types", "title": "Connection Types" },
             { "anchor": "databases", "title": "Traditional Databases" },
+            { "anchor": "enterprise-databases", "title": "Enterprise Databases" },
             { "anchor": "cloud-warehouses", "title": "Cloud Data Warehouses" },
             { "anchor": "object-storage", "title": "Object Storage" },
             { "anchor": "lakehouse", "title": "Lakehouse Formats" },

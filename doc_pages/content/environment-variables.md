@@ -62,7 +62,10 @@ These variables configure essential LARS services. At minimum, you need an `OPEN
 
 | Variable                  | Default              | Description                                                                                                         |
 |---------------------------|----------------------|---------------------------------------------------------------------------------------------------------------------|
-| `OPENROUTER_API_KEY`      | *Required*           | OpenRouter API key for LLM inference (primary provider)                                                             |
+| `OPENROUTER_API_KEY`      | *Required**          | OpenRouter API key for LLM inference (primary provider)                                                             |
+| `ANTHROPIC_API_KEY`       | *Optional*           | Anthropic API key for direct Anthropic provider (`anthropic/` prefix)                                               |
+| `ANTHROPIC_OAUTH_TOKEN`   | *Optional*           | OAuth token for Claude Pro/Max subscriptions (alternative to API key)                                               |
+| `GEMINI_API_KEY`          | *Optional*           | Google AI Studio API key for Gemini provider (`gemini/` prefix)                                                     |
 | `LARS_ROOT`               | Current directory    | Root directory for all LARS data, cascades, skills, and artifacts                                                   |
 | `LARS_DEFAULT_MODEL`      | `x-ai/grok-4.1-fast` | Default LLM model used everywhere a model isn't explicitly specified. Only set if you want to override the default. |
 | `LARS_AUTH_ENABLED`       | `1`                  | Enable authentication (default: enabled)                                                                            |
@@ -174,6 +177,31 @@ LARS_OLLAMA_HOSTS='{"gpu1": "http://10.10.10.1:11434", "gpu2": "http://192.168.1
 # Then use in cascades:
 # model: ollama@gpu1/llama3.3:70b
 ```
+
+## LM Studio
+
+
+| Variable               | Default                  | Description                     |
+|------------------------|--------------------------|---------------------------------|
+| `LARS_LMSTUDIO_HOST`  | `http://localhost:1234`  | LM Studio server URL            |
+
+
+## Anthropic Direct
+
+
+| Variable                | Default | Description                                            |
+|-------------------------|---------|--------------------------------------------------------|
+| `ANTHROPIC_API_KEY`     | *none*  | Anthropic API key for direct access                    |
+| `ANTHROPIC_OAUTH_TOKEN` | *none*  | OAuth token for Claude Pro/Max subscriptions            |
+
+
+## Gemini (Google AI Studio)
+
+
+| Variable        | Default | Description                        |
+|-----------------|---------|-------------------------------------|
+| `GEMINI_API_KEY` | *none*  | Google AI Studio API key for Gemini |
+
 
 ## Google Vertex AI
 
