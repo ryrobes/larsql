@@ -65,6 +65,8 @@ const TrainingView = () => {
   const [error, setError] = useState(null);
   const [selectedRows, setSelectedRows] = useState([]);
   const [ratingFilter, setRatingFilter] = useState(null); // 'positive', 'negative', 'unrated', or null
+  const [confidenceThreshold, setConfidenceThreshold] = useState(null); // null = no filter, 0-1
+  const [confidenceDirection, setConfidenceDirection] = useState('gte'); // 'gte' or 'lte'
   const [hotOrNotOpen, setHotOrNotOpen] = useState(false);
   const [assessmentInProgress, setAssessmentInProgress] = useState(false);
   const [assessmentCount, setAssessmentCount] = useState(0);
@@ -313,14 +315,23 @@ const TrainingView = () => {
   // Compute aggregate metrics
   // Apply rating filter on top of API-filtered examples
   const filteredExamples = React.useMemo(() => {
-    if (!ratingFilter) return examples;
-    return examples.filter(e => {
-      if (ratingFilter === 'positive') return e.rating === 'positive';
-      if (ratingFilter === 'negative') return e.rating === 'negative';
-      if (ratingFilter === 'unrated') return !e.rating;
-      return true;
-    });
-  }, [examples, ratingFilter]);
+    let filtered = examples;
+    if (ratingFilter) {
+      filtered = filtered.filter(e => {
+        if (ratingFilter === 'positive') return e.rating === 'positive';
+        if (ratingFilter === 'negative') return e.rating === 'negative';
+        if (ratingFilter === 'unrated') return !e.rating;
+        return true;
+      });
+    }
+    if (confidenceThreshold !== null) {
+      filtered = filtered.filter(e => {
+        const conf = e.confidence ?? 0;
+        return confidenceDirection === 'gte' ? conf >= confidenceThreshold : conf <= confidenceThreshold;
+      });
+    }
+    return filtered;
+  }, [examples, ratingFilter, confidenceThreshold, confidenceDirection]);
 
   const metrics = React.useMemo(() => {
     if (!stats || stats.length === 0) {
@@ -438,6 +449,41 @@ const TrainingView = () => {
             <Icon icon="mdi:help-circle-outline" width={13} />
             <span>{examples.filter(e => !e.rating).length}</span>
           </button>
+        </div>
+
+        <div className="training-filter-group training-confidence-filter">
+          <button
+            className={`training-confidence-dir-btn ${confidenceThreshold !== null ? 'active' : ''}`}
+            onClick={() => setConfidenceDirection(d => d === 'gte' ? 'lte' : 'gte')}
+            title={`Toggle: currently showing ${confidenceDirection === 'gte' ? '≥' : '≤'} threshold`}
+          >
+            <Icon icon={confidenceDirection === 'gte' ? 'mdi:greater-than-or-equal' : 'mdi:less-than-or-equal'} width={14} />
+          </button>
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.05"
+            value={confidenceThreshold ?? 0}
+            onChange={(e) => {
+              const val = parseFloat(e.target.value);
+              setConfidenceThreshold(val === 0 && confidenceDirection === 'gte' ? null : val);
+            }}
+            className="training-confidence-slider"
+            title={confidenceThreshold !== null ? `Confidence ${confidenceDirection === 'gte' ? '≥' : '≤'} ${confidenceThreshold.toFixed(2)}` : 'Confidence filter (off)'}
+          />
+          <span className="training-confidence-value" style={{ opacity: confidenceThreshold !== null ? 1 : 0.4 }}>
+            {confidenceThreshold !== null ? confidenceThreshold.toFixed(2) : 'Conf'}
+          </span>
+          {confidenceThreshold !== null && (
+            <button
+              className="training-confidence-clear"
+              onClick={() => setConfidenceThreshold(null)}
+              title="Clear confidence filter"
+            >
+              <Icon icon="mdi:close" width={12} />
+            </button>
+          )}
         </div>
 
         <div className="training-filter-spacer" />
