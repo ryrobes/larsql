@@ -585,3 +585,213 @@ def get_session_logs():
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@training_bp.route('/api/training/sql-calls', methods=['GET'])
+def get_sql_calls():
+    """
+    Get rolled-up SQL call view — one row per caller_id (SQL query execution).
+
+    Query params:
+        operator: Filter by operator name (repeatable)
+        rating: 'positive', 'negative', 'unrated', or 'mixed'
+        limit: Max results (default 200)
+        offset: Pagination offset
+        search: Text search in inputs_summary
+    """
+    try:
+        db = get_db()
+
+        where_clauses = []
+        operators = request.args.getlist('operator')
+        if operators:
+            op_list = ", ".join(f"'{o}'" for o in operators)
+            where_clauses.append(f"""caller_id IN (
+                SELECT DISTINCT caller_id FROM training_udf_calls WHERE operator IN ({op_list})
+            )""")
+
+        rating = request.args.get('rating')
+        if rating == 'positive':
+            where_clauses.append("aggregate_rating = 'positive'")
+        elif rating == 'negative':
+            where_clauses.append("aggregate_rating = 'negative'")
+        elif rating == 'mixed':
+            where_clauses.append("aggregate_rating = 'mixed'")
+        elif rating == 'unrated':
+            where_clauses.append("aggregate_rating IS NULL")
+
+        search = request.args.get('search', '').strip()
+        if search:
+            safe_search = search.replace("'", "''")
+            where_clauses.append(f"""caller_id IN (
+                SELECT DISTINCT caller_id FROM training_udf_calls
+                WHERE inputs_summary ILIKE '%{safe_search}%'
+                   OR result ILIKE '%{safe_search}%'
+            )""")
+
+        where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
+        limit = int(request.args.get('limit', 200))
+        offset = int(request.args.get('offset', 0))
+
+        query = f"""
+            SELECT * FROM training_sql_calls
+            WHERE {where_sql}
+            ORDER BY started_at DESC
+            LIMIT {limit} OFFSET {offset}
+        """
+
+        rows = db.query(query)
+        calls = []
+        for row in rows:
+            try:
+                calls.append({
+                    'caller_id': str(row.get('caller_id', '')),
+                    'operators': list(row.get('operators', [])) if row.get('operators') else [],
+                    'udf_call_count': int(row.get('udf_call_count', 0)),
+                    'total_cost': float(row.get('total_cost', 0) or 0),
+                    'total_duration_ms': float(row.get('total_duration_ms', 0) or 0),
+                    'started_at': row['started_at'].isoformat() if hasattr(row.get('started_at'), 'isoformat') else str(row.get('started_at', '')),
+                    'models': list(row.get('models', [])) if row.get('models') else [],
+                    'aggregate_rating': row.get('aggregate_rating'),
+                    'avg_confidence': float(row['avg_confidence']) if row.get('avg_confidence') is not None and not (isinstance(row.get('avg_confidence'), float) and math.isnan(row['avg_confidence'])) else None,
+                    'rated_count': int(row.get('rated_count', 0)),
+                    'positive_count': int(row.get('positive_count', 0)),
+                    'negative_count': int(row.get('negative_count', 0)),
+                })
+            except Exception as e:
+                logger.warning(f"Failed to serialize sql call row: {e}")
+                continue
+
+        return jsonify({'sql_calls': calls, 'count': len(calls)})
+
+    except Exception as e:
+        logger.error(f"SQL calls error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@training_bp.route('/api/training/sql-call/<caller_id>/cells', methods=['GET'])
+def get_sql_call_cells(caller_id):
+    """
+    Get individual UDF cells for a specific SQL call (caller_id).
+    """
+    try:
+        db = get_db()
+        safe_id = caller_id.replace("'", "''")
+
+        query = f"""
+            SELECT
+                u.caller_id,
+                u.operator,
+                u.session_id,
+                u.inputs_summary,
+                u.timestamp,
+                u.trace_id,
+                u.result,
+                u.cost,
+                u.model,
+                u.duration_ms,
+                u.cell_name,
+                COALESCE(ta.rating, '') AS rating,
+                ta.confidence,
+                COALESCE(ta.trainable, false) AS trainable
+            FROM training_udf_calls u
+            LEFT JOIN (
+                SELECT trace_id, rating, confidence, trainable
+                FROM training_examples_with_annotations
+            ) ta ON u.trace_id = ta.trace_id
+            WHERE u.caller_id = '{safe_id}'
+            ORDER BY u.timestamp ASC
+        """
+
+        rows = db.query(query)
+        cells = []
+        for row in rows:
+            try:
+                cells.append({
+                    'caller_id': str(row.get('caller_id', '')),
+                    'operator': str(row.get('operator', '')),
+                    'session_id': str(row.get('session_id', '')),
+                    'inputs_summary': str(row.get('inputs_summary', '')),
+                    'timestamp': row['timestamp'].isoformat() if hasattr(row.get('timestamp'), 'isoformat') else str(row.get('timestamp', '')),
+                    'trace_id': str(row.get('trace_id', '')),
+                    'result': str(row.get('result', '')),
+                    'cost': float(row.get('cost', 0) or 0),
+                    'model': str(row.get('model', '')),
+                    'duration_ms': float(row.get('duration_ms', 0) or 0),
+                    'cell_name': str(row.get('cell_name', '')),
+                    'rating': row.get('rating') or None,
+                    'confidence': float(row['confidence']) if row.get('confidence') is not None and not (isinstance(row.get('confidence'), float) and math.isnan(row['confidence'])) else None,
+                    'trainable': bool(row.get('trainable', False)),
+                })
+            except Exception as e:
+                logger.warning(f"Failed to serialize cell row: {e}")
+                continue
+
+        return jsonify({'cells': cells, 'count': len(cells), 'caller_id': caller_id})
+
+    except Exception as e:
+        logger.error(f"SQL call cells error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@training_bp.route('/api/training/rate-sql-call', methods=['POST'])
+def rate_sql_call():
+    """
+    Rate all cells in a SQL call (caller_id) with a single thumbs up/down.
+    """
+    try:
+        data = request.get_json()
+        caller_id = data.get('caller_id')
+        rating = data.get('rating')  # 'positive', 'negative', or null
+
+        if not caller_id:
+            return jsonify({'error': 'caller_id required'}), 400
+        if rating not in ('positive', 'negative', None):
+            return jsonify({'error': 'rating must be positive, negative, or null'}), 400
+
+        db = get_db()
+        safe_id = caller_id.replace("'", "''")
+
+        traces = db.query(f"""
+            SELECT trace_id FROM training_udf_calls
+            WHERE caller_id = '{safe_id}'
+              AND trace_id IS NOT NULL
+        """)
+
+        trace_ids = [r['trace_id'] for r in traces if r.get('trace_id')]
+
+        if not trace_ids:
+            return jsonify({'error': 'No traces found for caller_id', 'caller_id': caller_id}), 404
+
+        if rating:
+            for tid in trace_ids:
+                mark_as_trainable(
+                    trace_id=tid,
+                    trainable=True,
+                    verified=True,
+                    confidence=1.0 if rating == 'positive' else 0.0,
+                    notes=f'Rated via SQL call view ({caller_id})',
+                    rating=rating,
+                    annotated_by='human'
+                )
+        else:
+            for tid in trace_ids:
+                mark_as_trainable(
+                    trace_id=tid,
+                    trainable=False,
+                    verified=False,
+                    notes='',
+                    rating=None,
+                    annotated_by='human'
+                )
+
+        return jsonify({
+            'success': True,
+            'caller_id': caller_id,
+            'rating': rating,
+            'traces_rated': len(trace_ids)
+        })
+
+    except Exception as e:
+        logger.error(f"Rate SQL call error: {e}")
+        return jsonify({'error': str(e)}), 500

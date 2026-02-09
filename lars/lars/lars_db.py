@@ -2313,6 +2313,89 @@ class LarsDB:
         except Exception:
             pass
         
+        # training_udf_calls - each UDF invocation with its result from unified_logs
+        try:
+            conn.execute("""
+                CREATE OR REPLACE VIEW training_udf_calls AS
+                SELECT
+                    ce.caller_id,
+                    ce.cascade_id AS operator,
+                    ce.session_id,
+                    ce.inputs_summary,
+                    ce.timestamp,
+                    ul.trace_id,
+                    ul.content_json AS result,
+                    ul.cost,
+                    ul.model,
+                    ul.duration_ms,
+                    ul.cell_name
+                FROM sql_cascade_executions ce
+                LEFT JOIN (
+                    SELECT session_id, trace_id, content_json, cost, model, duration_ms, cell_name,
+                           ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY timestamp DESC) AS rn
+                    FROM unified_logs
+                    WHERE role = 'assistant'
+                      AND cascade_id IS NOT NULL AND cascade_id != ''
+                      AND content_json IS NOT NULL AND content_json != ''
+                      AND cascade_id != 'analyze_context_relevance'
+                ) ul ON ce.session_id = ul.session_id AND ul.rn = 1
+            """)
+        except Exception:
+            pass
+
+        # training_sql_calls - roll-up by caller_id for the SQL Call view
+        try:
+            conn.execute("""
+                CREATE OR REPLACE VIEW training_sql_calls AS
+                WITH udf_with_annotations AS (
+                    SELECT
+                        u.caller_id,
+                        u.operator,
+                        u.session_id,
+                        u.inputs_summary,
+                        u.timestamp,
+                        u.trace_id,
+                        u.result,
+                        u.cost,
+                        u.model,
+                        u.duration_ms,
+                        u.cell_name,
+                        ta.rating,
+                        ta.confidence,
+                        ta.trainable
+                    FROM training_udf_calls u
+                    LEFT JOIN (
+                        SELECT trace_id, rating, confidence, trainable
+                        FROM training_examples_with_annotations
+                    ) ta ON u.trace_id = ta.trace_id
+                )
+                SELECT
+                    caller_id,
+                    array_agg(DISTINCT operator) AS operators,
+                    COUNT(*) AS udf_call_count,
+                    COALESCE(SUM(cost), 0) AS total_cost,
+                    COALESCE(SUM(duration_ms), 0) AS total_duration_ms,
+                    MIN(timestamp) AS started_at,
+                    MAX(timestamp) AS ended_at,
+                    array_agg(DISTINCT model) FILTER (WHERE model IS NOT NULL) AS models,
+                    -- Rating: 'mixed' if both positive+negative exist, else unanimous rating, else null
+                    CASE
+                        WHEN COUNT(DISTINCT rating) FILTER (WHERE rating IS NOT NULL) > 1 THEN 'mixed'
+                        WHEN COUNT(rating) FILTER (WHERE rating IS NOT NULL) > 0 THEN MAX(rating) FILTER (WHERE rating IS NOT NULL)
+                        ELSE NULL
+                    END AS aggregate_rating,
+                    -- Confidence: average across all cells
+                    CASE WHEN isnan(AVG(confidence)) THEN NULL ELSE AVG(confidence) END AS avg_confidence,
+                    COUNT(*) FILTER (WHERE trainable = true) AS rated_count,
+                    COUNT(*) FILTER (WHERE rating = 'positive') AS positive_count,
+                    COUNT(*) FILTER (WHERE rating = 'negative') AS negative_count
+                FROM udf_with_annotations
+                GROUP BY caller_id
+                ORDER BY started_at DESC
+            """)
+        except Exception:
+            pass
+
         # training_stats_by_cascade - aggregate stats for training page
         try:
             conn.execute("""

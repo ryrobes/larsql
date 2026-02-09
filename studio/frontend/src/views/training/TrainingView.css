@@ -50,6 +50,41 @@
   gap: 10px;
 }
 
+.training-view-toggle {
+  display: flex;
+  border: 1px solid rgba(100, 116, 139, 0.2);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.training-view-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  background: transparent;
+  border: none;
+  color: #64748b;
+  font-size: 12px;
+  font-family: 'Google Sans Code', monospace;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.training-view-toggle-btn:not(:last-child) {
+  border-right: 1px solid rgba(100, 116, 139, 0.2);
+}
+
+.training-view-toggle-btn:hover {
+  color: #94a3b8;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.training-view-toggle-btn.active {
+  color: #00e5ff;
+  background: rgba(0, 229, 255, 0.08);
+}
+
 .training-refresh-btn {
   display: flex;
   align-items: center;

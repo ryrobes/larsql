@@ -3,6 +3,7 @@ import { Icon } from '@iconify/react';
 import { VideoLoader } from '../../components';
 import KPICard from './components/KPICard';
 import TrainingGrid from './components/TrainingGrid';
+import SQLCallGrid from './components/SQLCallGrid';
 import HotOrNotModal from './components/HotOrNotModal';
 import LearnInsights from './components/LearnInsights';
 import SearchableMultiSelect from './components/SearchableMultiSelect';
@@ -71,6 +72,9 @@ const TrainingView = () => {
   const [assessmentInProgress, setAssessmentInProgress] = useState(false);
   const [assessmentCount, setAssessmentCount] = useState(0);
   const [gridFilteredCount, setGridFilteredCount] = useState(null); // null = no grid filter active
+  const [viewMode, setViewMode] = useState('cells'); // 'cells' or 'sql'
+  const [sqlCalls, setSqlCalls] = useState([]);
+  const [sqlCallsLoading, setSqlCallsLoading] = useState(false);
   const searchTimeoutRef = useRef(null);
 
   // Debounce search input
@@ -178,6 +182,31 @@ const TrainingView = () => {
       setError(err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Fetch SQL calls for the SQL view
+  const fetchSqlCalls = async () => {
+    setSqlCallsLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (debouncedSearch && debouncedSearch.trim()) {
+        params.append('search', debouncedSearch.trim());
+      }
+      if (ratingFilter) {
+        params.append('rating', ratingFilter);
+      }
+      params.append('limit', '200');
+
+      const res = await fetch(`${API_BASE_URL}/api/training/sql-calls?${params}`);
+      const data = await res.json();
+      if (!data.error) {
+        setSqlCalls(data.sql_calls || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch SQL calls:', err);
+    } finally {
+      setSqlCallsLoading(false);
     }
   };
 
@@ -298,7 +327,13 @@ const TrainingView = () => {
   useEffect(() => {
     fetchExamples();
     fetchFilterOptions();
+    if (viewMode === 'sql') fetchSqlCalls();
   }, [cascadeFilter, cellFilter, showTrainableOnly, debouncedSearch]);
+
+  // Fetch SQL calls when switching to SQL view
+  useEffect(() => {
+    if (viewMode === 'sql' && sqlCalls.length === 0) fetchSqlCalls();
+  }, [viewMode]);
 
   // Refresh on interval (30 seconds) - but not during active search
   useEffect(() => {
@@ -307,6 +342,7 @@ const TrainingView = () => {
         fetchStats();
         fetchExamples();
         fetchFilterOptions();
+        if (viewMode === 'sql') fetchSqlCalls();
       }
     }, 30000);
     return () => clearInterval(interval);
@@ -377,11 +413,30 @@ const TrainingView = () => {
         </div>
 
         <div className="training-header-right">
+          <div className="training-view-toggle">
+            <button
+              className={`training-view-toggle-btn ${viewMode === 'cells' ? 'active' : ''}`}
+              onClick={() => setViewMode('cells')}
+              title="Cell View — individual LLM calls"
+            >
+              <Icon icon="mdi:view-list" width={14} />
+              <span>Cells</span>
+            </button>
+            <button
+              className={`training-view-toggle-btn ${viewMode === 'sql' ? 'active' : ''}`}
+              onClick={() => setViewMode('sql')}
+              title="SQL View — grouped by SQL query"
+            >
+              <Icon icon="mdi:database-search" width={14} />
+              <span>SQL Calls</span>
+            </button>
+          </div>
           <button
             className="training-refresh-btn"
             onClick={() => {
               fetchStats();
               fetchExamples();
+              if (viewMode === 'sql') fetchSqlCalls();
             }}
             title="Refresh data"
           >
@@ -608,11 +663,22 @@ const TrainingView = () => {
           />
         )}
 
-        {!loading && !error && (
+        {!loading && !error && viewMode === 'cells' && (
           <TrainingGrid
             examples={filteredExamples}
             onFilteredCountChanged={setGridFilteredCount}
           />
+        )}
+
+        {!error && viewMode === 'sql' && (
+          sqlCallsLoading && sqlCalls.length === 0 ? (
+            <VideoLoader size="medium" message="Loading SQL calls..." className="video-loader--flex" />
+          ) : (
+            <SQLCallGrid
+              sqlCalls={sqlCalls}
+              onFilteredCountChanged={setGridFilteredCount}
+            />
+          )
         )}
       </div>
 
