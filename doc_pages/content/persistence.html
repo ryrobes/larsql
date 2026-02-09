@@ -56,18 +56,39 @@
   <div class="feature-card">
     <div class="feature-card-icon purple"><iconify-icon icon="mdi:pipe"></iconify-icon></div>
     <h4>Pipeline-Native</h4>
-    <p>INTO integrates naturally with LARS's <code>THEN</code> pipeline syntax, enabling intermediate snapshots at every stage.</p>
+    <p><code>INTO</code> is a pipeline clause — it integrates naturally with LARS's <code>THEN</code> syntax, enabling intermediate snapshots at every stage.</p>
   </div>
 </div>
 
 <h2 id="basic-syntax">Basic INTO Syntax</h2>
 
-<p>Append <code>INTO table_name</code> to any query to materialize the results:</p>
+<p>
+  <code>INTO</code> is a clause available on pipeline stages. To materialize a plain query, you need at least
+  one pipeline step — that's where <code>THEN PASS</code> comes in.
+</p>
+
+<div class="callout warning">
+  <div class="callout-title">INTO requires pipeline mode</div>
+  <p>
+    <code>SELECT * FROM users INTO my_table</code> is <strong>not valid</strong>. The <code>INTO</code> clause only works on
+    pipeline stages (after <code>THEN</code>). To materialize a plain query, use <code>THEN PASS INTO</code>:
+  </p>
+  <pre><code class="language-sql">-- ✗ Not valid
+SELECT * FROM users INTO my_table;
+
+-- ✓ Valid — THEN PASS enters pipeline mode
+SELECT * FROM users THEN PASS INTO my_table;
+
+-- ✓ Valid — already in pipeline mode
+SELECT * FROM users THEN ENRICH('add demographics') INTO enriched;</code></pre>
+</div>
+
+<p>The simplest materialization uses <code>THEN PASS INTO</code>:</p>
 
 <pre><code class="language-sql">SELECT *
 FROM products
 WHERE category = 'Electronics'
-INTO electronics;</code></pre>
+THEN PASS INTO electronics;</code></pre>
 
 <p>This creates a table accessible as <code>into_electronics</code>. Query it from any connection:</p>
 
@@ -88,8 +109,8 @@ INTO electronics;</code></pre>
 <h2 id="then-pass-into">THEN PASS INTO</h2>
 
 <p>
-  <code>THEN PASS INTO</code> is a pipeline stage that materializes results without any transformation.
-  It's the simplest way to save data for downstream use:
+  <code>THEN PASS</code> is a no-op pipeline stage — it passes data through unchanged. It exists specifically
+  to bridge plain queries into the pipeline pathway, which is what enables the <code>INTO</code> clause.
 </p>
 
 <pre><code class="language-sql">SELECT customer_id, name, total_spend
@@ -98,14 +119,14 @@ WHERE total_spend > 1000
 THEN PASS INTO high_value_customers;</code></pre>
 
 <p>
-  <code>PASS</code> is a no-op stage — it passes data through unchanged. Combined with <code>INTO</code>, it becomes
-  a materialization command. This is especially useful in two contexts:
+  Without <code>THEN PASS</code>, there's no way to materialize a query that doesn't otherwise need pipeline
+  stages. Think of it as the on-ramp to persistence:
 </p>
 
-<ol>
-  <li><strong>Saving query results</strong> for later analysis without modifying them</li>
-  <li><strong>Sharing data between Hyper dashboard panels</strong> (see <a href="#hyper-dashboards">INTO in Hyper Dashboards</a>)</li>
-</ol>
+<ul>
+  <li><strong>Plain query, needs saving?</strong> → <code>THEN PASS INTO my_table</code></li>
+  <li><strong>Already using pipeline stages?</strong> → Just add <code>INTO my_table</code> after any stage</li>
+</ul>
 
 <h3>PASS INTO with MUTE</h3>
 
@@ -120,16 +141,17 @@ THEN MUTE;</code></pre>
 
 <h2 id="per-stage-into">Per-Stage Materialization</h2>
 
-<p>Every stage in a pipeline can have its own <code>INTO</code>, creating snapshots at each step:</p>
+<p>Every pipeline stage can have its own <code>INTO</code>, creating snapshots at each step:</p>
 
-<pre><code class="language-sql">SELECT * FROM raw_data INTO step0_raw
+<pre><code class="language-sql">SELECT * FROM raw_data
+THEN PASS INTO step0_raw
 THEN DEDUPE('email') INTO step1_deduped
 THEN FILTER('active customers only') INTO step2_active
 THEN ANALYZE 'segment by purchasing behavior' INTO step3_segments;</code></pre>
 
 <p>After execution, you have four queryable tables:</p>
 <ul>
-  <li><code>into_step0_raw</code> — the original data</li>
+  <li><code>into_step0_raw</code> — the original data (saved by the PASS no-op)</li>
   <li><code>into_step1_deduped</code> — after deduplication</li>
   <li><code>into_step2_active</code> — after filtering</li>
   <li><code>into_step3_segments</code> — the final analysis</li>
@@ -281,7 +303,8 @@ ORDER BY avg_amount DESC;</code></pre>
 
 <h3>Pipeline with Intermediate Snapshots</h3>
 
-<pre><code class="language-sql">SELECT * FROM customer_feedback INTO raw_feedback
+<pre><code class="language-sql">SELECT * FROM customer_feedback
+THEN PASS INTO raw_feedback
 THEN FILTER('English language only') INTO english_only
 THEN ANALYZE 'classify sentiment and extract key themes' INTO analyzed
 THEN FILTER('negative sentiment') INTO negative_feedback;</code></pre>

@@ -57,20 +57,39 @@ All materialized tables follow the `into_*` naming convention. Query them
 #### Pipeline-Native
 
 
-INTO integrates naturally with LARS's `THEN` pipeline syntax, enabling
-      intermediate snapshots at every stage.
+`INTO` is a pipeline clause — it integrates naturally with LARS's `THEN` syntax,
+      enabling intermediate snapshots at every stage.
 
 
 ## Basic INTO Syntax {#basic-syntax}
 
 
-Append `INTO table_name` to any query to materialize the results:
+`INTO` is a clause available on pipeline stages. To materialize a plain query, you need at least
+  one pipeline step — that's where `THEN PASS` comes in.
+
+> **WARNING: INTO requires pipeline mode**
+>
+> `SELECT * FROM users INTO my_table` is **not valid**. The `INTO` clause only works on
+> pipeline stages (after `THEN`). To materialize a plain query, use `THEN PASS INTO`:
+>
+> ```sql
+> -- ✗ Not valid
+> SELECT * FROM users INTO my_table;
+>
+> -- ✓ Valid — THEN PASS enters pipeline mode
+> SELECT * FROM users THEN PASS INTO my_table;
+>
+> -- ✓ Valid — already in pipeline mode
+> SELECT * FROM users THEN ENRICH('add demographics') INTO enriched;
+> ```
+
+The simplest materialization uses `THEN PASS INTO`:
 
 ```sql
 SELECT *
 FROM products
 WHERE category = 'Electronics'
-INTO electronics;
+THEN PASS INTO electronics;
 ```
 
 This creates a table accessible as `into_electronics`. Query it from any connection:
@@ -95,8 +114,8 @@ SELECT * FROM electronics;
 ## THEN PASS INTO {#then-pass-into}
 
 
-`THEN PASS INTO` is a pipeline stage that materializes results without any transformation.
-  It's the simplest way to save data for downstream use:
+`THEN PASS` is a no-op pipeline stage — it passes data through unchanged. It exists specifically
+  to bridge plain queries into the pipeline pathway, which is what enables the `INTO` clause.
 
 ```sql
 SELECT customer_id, name, total_spend
@@ -105,11 +124,11 @@ WHERE total_spend > 1000
 THEN PASS INTO high_value_customers;
 ```
 
-`PASS` is a no-op stage — it passes data through unchanged. Combined with `INTO`, it becomes
-  a materialization command. This is especially useful in two contexts:
+Without `THEN PASS`, there's no way to materialize a query that doesn't otherwise need pipeline
+  stages. Think of it as the on-ramp to persistence:
 
-1. **Saving query results** for later analysis without modifying them
-2. **Sharing data between Hyper dashboard panels** (see [INTO in Hyper Dashboards](#hyper-dashboards))
+- **Plain query, needs saving?** → `THEN PASS INTO my_table`
+- **Already using pipeline stages?** → Just add `INTO my_table` after any stage
 
 ### PASS INTO with MUTE
 
@@ -128,17 +147,18 @@ THEN MUTE;
 ## Per-Stage Materialization {#per-stage-into}
 
 
-Every stage in a pipeline can have its own `INTO`, creating snapshots at each step:
+Every pipeline stage can have its own `INTO`, creating snapshots at each step:
 
 ```sql
-SELECT * FROM raw_data INTO step0_raw
+SELECT * FROM raw_data
+THEN PASS INTO step0_raw
 THEN DEDUPE('email') INTO step1_deduped
 THEN FILTER('active customers only') INTO step2_active
 THEN ANALYZE 'segment by purchasing behavior' INTO step3_segments;
 ```
 
 After execution, you have four queryable tables:
-- `into_step0_raw` — the original data
+- `into_step0_raw` — the original data (saved by the PASS no-op)
 - `into_step1_deduped` — after deduplication
 - `into_step2_active` — after filtering
 - `into_step3_segments` — the final analysis
@@ -296,7 +316,8 @@ ORDER BY avg_amount DESC;
 ### Pipeline with Intermediate Snapshots
 
 ```sql
-SELECT * FROM customer_feedback INTO raw_feedback
+SELECT * FROM customer_feedback
+THEN PASS INTO raw_feedback
 THEN FILTER('English language only') INTO english_only
 THEN ANALYZE 'classify sentiment and extract key themes' INTO analyzed
 THEN FILTER('negative sentiment') INTO negative_feedback;
