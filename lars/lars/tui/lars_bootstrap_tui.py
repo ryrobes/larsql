@@ -1588,18 +1588,6 @@ class LarsBootstrapTUI(ReactiveGlassApp):
         
         widgets.append(glass_panel("summary_panel", summary_content, x, 3, 55, 32, colors, "primary"))
         
-        # Admin password input (field 11)
-        widgets.append({
-            "type": "text_input",
-            "id": "field_11",
-            "x": 59, "y": 25 if visible else 9999,
-            "width": 35,
-            "value": self.state.get("admin_password", ""),
-            "placeholder": "admin",
-            "label": "Admin Password (optional):",
-            "password": True,
-        })
-        
         # Action panel
         if self.state.get("bootstrap_running"):
             # Animated spinner
