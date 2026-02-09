@@ -87,6 +87,24 @@
 }
 
 /* ========================================
+   Expand Button
+   ======================================== */
+
+.training-expand-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.training-expand-btn:hover svg {
+  color: #00e5ff !important;
+}
+
+/* ========================================
    Rating Buttons (Thumbs Up / Down)
    ======================================== */
 
@@ -182,6 +200,12 @@
   grid-template-columns: 1fr 1fr;
   gap: 12px;
   margin-bottom: 8px;
+  min-width: 0; /* prevent grid overflow */
+}
+
+.training-detail-col {
+  min-width: 0; /* prevent flex/grid children from overflowing */
+  overflow: hidden;
 }
 
 .training-detail-col-header {
@@ -206,6 +230,17 @@
   border: 1px solid rgba(100, 116, 139, 0.12);
   border-radius: 4px;
   overflow: hidden;
+  min-width: 0; /* prevent flex overflow */
+}
+
+.training-detail-code pre {
+  white-space: pre-wrap !important;
+  word-break: break-word !important;
+}
+
+.training-detail-code code {
+  white-space: pre-wrap !important;
+  word-break: break-word !important;
 }
 
 /* Metadata strip */

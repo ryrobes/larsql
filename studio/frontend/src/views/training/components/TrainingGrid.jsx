@@ -31,21 +31,33 @@ const darkTheme = themeQuartz.withParams({
 });
 
 /**
- * Format content for display - tries to parse JSON and pretty-print
+ * Format content for display - tries to parse JSON and pretty-print,
+ * and converts literal \n to real newlines for readable text.
  */
 const formatContent = (text) => {
   if (!text) return '';
-  if (text.startsWith('"') && text.endsWith('"')) {
-    const unquoted = text.slice(1, -1);
-    try {
-      const parsed = JSON.parse(unquoted);
-      return JSON.stringify(parsed, null, 2);
-    } catch { return unquoted; }
+  // Strip outer quotes if simple quoted string
+  let cleaned = text;
+  if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
+    cleaned = cleaned.slice(1, -1);
   }
+  // Try to parse as JSON and pretty-print
   try {
-    const parsed = JSON.parse(text);
+    const parsed = JSON.parse(cleaned);
     return JSON.stringify(parsed, null, 2);
-  } catch { return text; }
+  } catch {
+    // Not JSON — convert literal \n to real newlines for readable text
+    return cleaned.replace(/\\n/g, '\n').replace(/\\t/g, '\t');
+  }
+};
+
+/**
+ * Detect if content is JSON-like
+ */
+const isJsonContent = (text) => {
+  if (!text) return false;
+  const trimmed = text.trim();
+  return (trimmed.startsWith('{') || trimmed.startsWith('[') || trimmed.startsWith('"'));
 };
 
 /**
@@ -91,13 +103,15 @@ const ExpandedDetail = ({ data }) => {
           </div>
           <div className="training-detail-code">
             <SyntaxHighlighter
-              language="json"
+              language={isJsonContent(data.user_input) ? 'json' : 'markdown'}
               style={studioDarkPrismTheme}
+              wrapLongLines={true}
               customStyle={{
                 margin: 0, borderRadius: 4, background: 'rgba(255,255,255,0.02)',
-                fontSize: '11px', maxHeight: '250px', overflow: 'auto', padding: '8px'
+                fontSize: '11px', maxHeight: '300px', overflow: 'auto', padding: '10px',
+                whiteSpace: 'pre-wrap', wordBreak: 'break-word',
               }}
-              codeTagProps={{ style: { fontFamily: "'JetBrains Mono', monospace" } }}
+              codeTagProps={{ style: { fontFamily: "'JetBrains Mono', monospace", whiteSpace: 'pre-wrap', wordBreak: 'break-word' } }}
             >
               {formatContent(data.user_input)}
             </SyntaxHighlighter>
@@ -111,13 +125,15 @@ const ExpandedDetail = ({ data }) => {
           </div>
           <div className="training-detail-code">
             <SyntaxHighlighter
-              language={data.assistant_output?.startsWith('{') || data.assistant_output?.startsWith('[') ? 'json' : 'text'}
+              language={isJsonContent(data.assistant_output) ? 'json' : 'markdown'}
               style={studioDarkPrismTheme}
+              wrapLongLines={true}
               customStyle={{
                 margin: 0, borderRadius: 4, background: 'rgba(255,255,255,0.02)',
-                fontSize: '12px', maxHeight: '250px', overflow: 'auto', padding: '8px'
+                fontSize: '12px', maxHeight: '300px', overflow: 'auto', padding: '10px',
+                whiteSpace: 'pre-wrap', wordBreak: 'break-word',
               }}
-              codeTagProps={{ style: { fontFamily: "'JetBrains Mono', monospace", color: '#34d399' } }}
+              codeTagProps={{ style: { fontFamily: "'JetBrains Mono', monospace", color: '#34d399', whiteSpace: 'pre-wrap', wordBreak: 'break-word' } }}
             >
               {formatContent(data.assistant_output)}
             </SyntaxHighlighter>
@@ -241,7 +257,9 @@ const TrainingGrid = ({ examples = [], onSelectionChanged, onMarkTrainable }) =>
   const columnDefs = useMemo(() => [
     {
       headerName: '',
-      width: 40,
+      width: 50,
+      minWidth: 50,
+      maxWidth: 50,
       suppressHeaderMenuButton: true,
       sortable: false,
       filter: false,
@@ -258,8 +276,8 @@ const TrainingGrid = ({ examples = [], onSelectionChanged, onMarkTrainable }) =>
           >
             <Icon
               icon={isExpanded ? 'mdi:chevron-down' : 'mdi:chevron-right'}
-              width={16}
-              style={{ color: '#64748b', cursor: 'pointer', transition: 'transform 0.15s' }}
+              width={18}
+              style={{ color: isExpanded ? '#00e5ff' : '#64748b', cursor: 'pointer', transition: 'all 0.15s' }}
             />
           </div>
         );
