@@ -11,11 +11,11 @@ cells:
     factor: 6
     model_strategy: round_robin
     models:
-    - anthropic/claude-sonnet-4.5
-    - x-ai/grok-4.1-fast
-    - anthropic/claude-sonnet-4.5
+    - {{ models.quality }}
+    - {{ models.standard }}
+    - {{ models.quality }}
     - amazon/nova-2-lite-v1:free
     - moonshotai/kimi-linear-48b-a3b-instruct
-    - google/gemini-3-flash-preview
+    - {{ models.standard }}
     - qwen/qwen-plus-2025-07-28
   skills: []

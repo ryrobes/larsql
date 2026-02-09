@@ -4,7 +4,7 @@ inputs_schema:
   riddle: A riddle to solve
 cells:
 - name: solve_with_budget
-  model: anthropic/claude-sonnet-4::6000
+  model: {{ models.quality }}::6000
   instructions: 'Solve this riddle with careful reasoning:
 
 
@@ -16,7 +16,7 @@ cells:
     '
   skills: []
 - name: solve_with_effort
-  model: anthropic/claude-sonnet-4::high
+  model: {{ models.quality }}::high
   instructions: 'Provide an alternative interpretation of the riddle:
 
 

@@ -18,10 +18,10 @@ cells:
     factor: 10
     model_strategy: round-robin
     models:
-    - anthropic/claude-sonnet-4.5
-    - x-ai/grok-4.1-fast
+    - {{ models.quality }}
+    - {{ models.standard }}
     - openai/gpt-5.1
-    - anthropic/claude-opus-4.5
+    - {{ models.reasoning }}
     - google/gemini-3-pro-preview
     mutate: true
     mutation_mode: rewrite

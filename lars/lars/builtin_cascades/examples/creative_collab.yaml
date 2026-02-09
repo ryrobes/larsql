@@ -12,7 +12,7 @@ inputs_schema:
   context: Additional context or background (optional)
 cells:
 - name: ideate
-  model: anthropic/claude-sonnet-4
+  model: {{ models.quality }}
   instructions: "You are a creative collaborator. Your job is to generate multiple\
     \ distinct\napproaches to the human's request and let them choose their preferred\
     \ direction.\n\n## Creative Brief\n{{ input.brief }}\n\n{% if input.style %}\n\
@@ -65,7 +65,7 @@ cells:
     routing:
       _continue: next
 - name: execute
-  model: anthropic/claude-sonnet-4
+  model: {{ models.quality }}
   instructions: 'The human has chosen their preferred creative direction.
 
 

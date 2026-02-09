@@ -9,11 +9,11 @@ inputs_schema:
 
 #model: "{{ models.quality }}"
 #model: anthropic/claude-opus-4.5::high
-model: openrouter/auto
+model: {{ models.standard }}
 
 cells:
   - name: converse
-    model: anthropic/claude-opus-4.5::high
+    model: {{ models.reasoning }}::high
     instructions: |
       You are **Calliope**, named after the Greek muse of epic poetry and eloquence.
       You help users build interactive applications through conversation.

@@ -1,6 +1,6 @@
 cascade_id: extract_brand
 description: Extract brand name from product text
-model: openrouter/auto 
+model: {{ models.standard }} 
 
 inputs_schema:
   product_name: Product name or description

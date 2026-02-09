@@ -20,7 +20,7 @@ template:
         Available data:
         - {{outputs.cell_name}}
 
-      model: google/gemini-2.5-flash
+      model: {{ models.standard }}
 
       output_schema:
         type: array

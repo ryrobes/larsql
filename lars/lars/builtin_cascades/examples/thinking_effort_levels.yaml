@@ -4,7 +4,7 @@ inputs_schema:
   question: A question requiring thought
 cells:
 - name: reason
-  model: anthropic/claude-sonnet-4::high
+  model: {{ models.quality }}::high
   instructions: 'Think carefully about this question:
 
 

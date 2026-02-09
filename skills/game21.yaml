@@ -6,7 +6,7 @@ cells:
 - instructions: '{{ input.prompt }}
 
     '
-  model: google/gemini-3-flash-preview
+  model: {{ models.standard }}
   name: llm_phase
   rules:
     max_turns: 1
@@ -18,9 +18,9 @@ cells:
     factor: 3
     model_strategy: round_robin
     models:
-    - anthropic/claude-sonnet-4
+    - {{ models.quality }}
     - openai/gpt-4.1
-    - google/gemini-2.5-flash
+    - {{ models.standard }}
     mutate: true
     mutation_mode: approach
     reforge:
@@ -35,7 +35,7 @@ cells:
       include:
       - output
   instructions: "Summarize this into markdown please:\n  \n{{ input.prompt }}\n"
-  model: google/gemini-3-flash-preview
+  model: {{ models.standard }}
   name: llm_phase_1
   rules:
     max_turns: 1

@@ -4,7 +4,7 @@ inputs_schema:
   puzzle: A puzzle to solve
 cells:
 - name: solve
-  model: anthropic/claude-sonnet-4::8000
+  model: {{ models.quality }}::8000
   instructions: 'Solve this puzzle using careful reasoning:
 
 

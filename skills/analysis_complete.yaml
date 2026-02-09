@@ -8,7 +8,7 @@ inputs_schema:
 
 cells:
   - name: validate
-    model: google/gemini-3-flash-preview
+    model: {{ models.standard }}
     instructions: |
       Check if this output contains a complete data analysis.
 

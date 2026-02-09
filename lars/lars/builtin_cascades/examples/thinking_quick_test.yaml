@@ -5,7 +5,7 @@ inputs_schema:
   num2: Second number
 cells:
 - name: calculate
-  model: anthropic/claude-sonnet-4::high
+  model: {{ models.quality }}::high
   instructions: 'Calculate the result of {{ input.num1 }} * {{ input.num2 }}.
 
 

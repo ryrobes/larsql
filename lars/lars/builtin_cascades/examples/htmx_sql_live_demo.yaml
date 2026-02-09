@@ -9,7 +9,7 @@ inputs_schema:
   question: What analysis or visualization to create
 cells:
 - name: discover_and_create
-  model: anthropic/claude-sonnet-4.5
+  model: {{ models.quality }}
   skills:
   - sql_search
   - list_sql_connections

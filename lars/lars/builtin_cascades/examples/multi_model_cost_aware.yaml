@@ -18,8 +18,8 @@ cells:
     factor: 3
     model_strategy: round_robin
     models:
-    - anthropic/claude-sonnet-4.5
-    - x-ai/grok-4.1-fast
-    - google/gemini-3-flash-preview
+    - {{ models.quality }}
+    - {{ models.standard }}
+    - {{ models.standard }}
     mutate: false
   skills: []

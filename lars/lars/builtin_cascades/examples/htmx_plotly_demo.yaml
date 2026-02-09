@@ -8,7 +8,7 @@ inputs_schema:
   analysis_topic: What data to analyze and visualize
 cells:
 - name: analyze_and_visualize
-  model: anthropic/claude-sonnet-4.5
+  model: {{ models.quality }}
   skills:
   - request_decision
   - route_to

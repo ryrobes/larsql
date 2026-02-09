@@ -27,6 +27,6 @@ token_budget:
   reserve_for_output: 3000
   strategy: summarize
   summarizer:
-    model: google/gemini-3-flash-preview
+    model: {{ models.standard }}
     target_size: 2000
   warning_threshold: 0.75

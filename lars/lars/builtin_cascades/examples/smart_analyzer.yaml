@@ -11,7 +11,7 @@ inputs_schema:
   task: What kind of analysis to perform (optional - LLM will infer if not provided)
 cells:
 - name: analyze_and_decide
-  model: anthropic/claude-sonnet-4
+  model: {{ models.quality }}
   instructions: "You are an intelligent analyzer. Your job is to examine the provided\
     \ content\nand identify any issues, ambiguities, or decisions that require human\
     \ input.\n\n## Input\n**Content to analyze:**\n```\n{{ input.content }}\n```\n\

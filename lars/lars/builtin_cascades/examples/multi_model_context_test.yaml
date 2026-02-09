@@ -28,7 +28,7 @@ cells:
 
 
     Be thorough and comprehensive in your analysis.'
-  model: x-ai/grok-4.1-fast
+  model: {{ models.standard }}
   name: analyze_with_multi_model
   takes:
     evaluator_instructions: 'Compare the analyses and select the one that is most
@@ -52,10 +52,10 @@ cells:
     factor: 6
     model_strategy: round_robin
     models:
-    - x-ai/grok-4.1-fast
-    - google/gemini-3-flash-preview
-    - anthropic/claude-sonnet-4.5
-    - openai/gpt-4o
+    - {{ models.standard }}
+    - {{ models.standard }}
+    - {{ models.quality }}
+    - {{ models.quality }}
     - meta-llama/llama-3.1-8b-instruct
     - qwen/qwen3-8b
   skills: []
