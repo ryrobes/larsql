@@ -96,6 +96,10 @@ MODEL_TIERS = {
         "description": "Smarter reasoning — summaries, analysis, multi-step tasks",
         "icon": "🎯",
     },
+    "reasoning": {
+        "description": "Thinking models — chain-of-thought, math, code generation",
+        "icon": "🧠",
+    },
     "flagship": {
         "description": "Best available — complex decisions, research, critical output",
         "icon": "🚀",

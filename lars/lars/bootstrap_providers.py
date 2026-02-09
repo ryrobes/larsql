@@ -812,6 +812,7 @@ def get_recommended_defaults() -> Dict[str, str]:
         "fast": "google/gemini-2.5-flash-lite",
         "standard": "google/gemini-3-flash-preview",
         "quality": "anthropic/claude-sonnet-4",
+        "reasoning": "openai/o3",
         "flagship": "anthropic/claude-opus-4",
     }
 

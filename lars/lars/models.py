@@ -27,6 +27,7 @@ DEFAULT_MODELS = {
     "fast": "google/gemini-2.5-flash-lite",
     "standard": "google/gemini-3-flash-preview",
     "quality": "anthropic/claude-sonnet-4",
+    "reasoning": "openai/o3",
     "flagship": "anthropic/claude-opus-4",
 }
 
@@ -38,7 +39,7 @@ LEGACY_ENV_MAPPING = {
 }
 
 # Valid tier names
-VALID_TIERS = {"embedding", "fast", "standard", "quality", "flagship"}
+VALID_TIERS = {"embedding", "fast", "standard", "quality", "reasoning", "flagship"}
 
 
 # =============================================================================
@@ -345,7 +346,7 @@ def get_model_for_tier(tier: str, config: Optional[ModelsConfig] = None) -> str:
     Get the model assigned to a specific tier.
     
     Args:
-        tier: One of "embedding", "fast", "standard", "quality", "flagship"
+        tier: One of "embedding", "fast", "standard", "quality", "reasoning", "flagship"
         config: ModelsConfig instance (loads default if None)
     
     Returns:

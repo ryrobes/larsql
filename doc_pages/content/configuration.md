@@ -146,6 +146,7 @@ models:
   fast: google/gemini-2.5-flash-lite
   standard: google/gemini-3-flash-preview
   quality: anthropic/claude-sonnet-4
+  reasoning: openai/o3
   flagship: anthropic/claude-opus-4
 ```
 
@@ -161,6 +162,7 @@ LARS uses a tier system to assign models to different roles based on cost/qualit
 | `fast`        | Quick/cheap tasks (MEANS, CLASSIFY, parsing)    | `google/gemini-2.5-flash-lite`   |
 | `standard`    | Balanced default for most operations            | `google/gemini-3-flash-preview`  |
 | `quality`     | Complex analysis (SUMMARIZE, deep reasoning)    | `anthropic/claude-sonnet-4`      |
+| `reasoning`   | Thinking models — chain-of-thought, math, code  | `openai/o3`                      |
 | `flagship`    | Best available model for critical decisions     | `anthropic/claude-opus-4`        |
 
 ### How Tiers Are Used
@@ -206,6 +208,7 @@ When LARS encounters `{{ models.fast }}` in a cascade:
 | `{{ models.fast }}`         | Fast tier model      |
 | `{{ models.standard }}`     | Standard tier model  |
 | `{{ models.quality }}`      | Quality tier model   |
+| `{{ models.reasoning }}`    | Reasoning tier model |
 | `{{ models.flagship }}`     | Flagship tier model  |
 
 > **TIP: Mixing Tiers and Literal Models**

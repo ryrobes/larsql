@@ -187,6 +187,7 @@
   <span class="key">fast</span>: google/gemini-2.5-flash-lite
   <span class="key">standard</span>: google/gemini-3-flash-preview
   <span class="key">quality</span>: anthropic/claude-sonnet-4
+  <span class="key">reasoning</span>: openai/o3
   <span class="key">flagship</span>: anthropic/claude-opus-4</pre>
   </div>
 </div>
@@ -227,6 +228,11 @@
       <td><code>quality</code></td>
       <td>Complex analysis (SUMMARIZE, deep reasoning)</td>
       <td><code>anthropic/claude-sonnet-4</code></td>
+    </tr>
+    <tr>
+      <td><code>reasoning</code></td>
+      <td>Thinking models — chain-of-thought, math, code</td>
+      <td><code>openai/o3</code></td>
     </tr>
     <tr>
       <td><code>flagship</code></td>
@@ -307,6 +313,10 @@
     <tr>
       <td><code>{{ models.quality }}</code></td>
       <td>Quality tier model</td>
+    </tr>
+    <tr>
+      <td><code>{{ models.reasoning }}</code></td>
+      <td>Reasoning tier model</td>
     </tr>
     <tr>
       <td><code>{{ models.flagship }}</code></td>
