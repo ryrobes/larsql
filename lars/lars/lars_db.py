@@ -710,7 +710,7 @@ SYSTEM_TABLES = {
             ("provider", "VARCHAR"),
         ],
         "partition_by": None,
-        "hive_partition_by": ["session_id"],  # Match unified_logs partitioning
+        "hive_partition_by": [],  # Disabled: flat files compact better
         "dedup": {
             "pk": "trace_id",
             "order_by": "timestamp"
@@ -1151,7 +1151,7 @@ SYSTEM_TABLES = {
             ("metadata_json", "VARCHAR"),
         ],
         "partition_by": None,
-        "hive_partition_by": ["session_id"],
+        "hive_partition_by": [],  # Disabled: flat files compact better
         "dedup": {
             "pk": "session_id",
             "order_by": "updated_at"
@@ -1516,7 +1516,7 @@ SYSTEM_TABLES = {
             ("data_columns", "INTEGER"),
         ],
         "partition_by": None,
-        "hive_partition_by": ["caller_id", "session_id"],  # Hive-style folder partitioning
+        "hive_partition_by": [],  # Disabled: flat files compact better
     },
 
     "watch_executions": {
