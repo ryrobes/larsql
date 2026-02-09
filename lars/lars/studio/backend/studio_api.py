@@ -1577,38 +1577,51 @@ def get_session_cascade(session_id):
             if not cascade_def or not cascade_def.get('cells'):
                 if cascade_id:
                     try:
-                        # Use the same find_cascade_file + load_config_file from app.py
-                        # (safe to import here since app.py is already loaded when blueprints execute)
-                        from lars.studio.backend.app import find_cascade_file as _find, load_config_file as _load
-                        _fp = _find(cascade_id)
-                        if _fp:
-                            cascade_def = _load(_fp)
-                            config_path = config_path or _fp
-                            print(f"[session-cascade] Loaded cascade '{cascade_id}' from filesystem: {_fp}")
-                        else:
-                            # Also try builtin directories
-                            import glob
-                            from lars.config import get_builtin_cascades_dir, get_builtin_skills_dir, get_builtin_cell_types_dir
-                            for _bdir in [get_builtin_cascades_dir(), get_builtin_skills_dir(), get_builtin_cell_types_dir()]:
-                                if not os.path.exists(_bdir):
-                                    continue
-                                for _ext in ['yaml', 'yml', 'json']:
-                                    for _bfp in glob.glob(f"{_bdir}/**/*.{_ext}", recursive=True):
-                                        try:
-                                            _cd = _load(_bfp)
-                                            if _cd.get('cascade_id') == cascade_id:
-                                                cascade_def = _cd
-                                                config_path = config_path or _bfp
-                                                print(f"[session-cascade] Loaded cascade '{cascade_id}' from builtins: {_bfp}")
-                                                break
-                                        except:
-                                            continue
-                                    if cascade_def and cascade_def.get('cells'):
-                                        break
-                                if cascade_def and cascade_def.get('cells'):
+                        import glob
+                        from lars.loaders import load_config_file as _load_cfg
+                        from lars.config import get_config, get_builtin_cascades_dir, get_builtin_skills_dir, get_builtin_cell_types_dir
+
+                        _cfg = get_config()
+                        _lars_root = getattr(_cfg, 'root_dir', os.environ.get('LARS_ROOT', '.'))
+
+                        # Search everywhere: user workspace + package builtins
+                        _search_dirs = [
+                            os.path.join(_lars_root, 'cascades'),
+                            os.path.join(_lars_root, 'cascades', 'examples'),
+                            os.path.join(_lars_root, 'examples'),
+                            os.path.join(_lars_root, 'skills'),
+                            get_builtin_cascades_dir(),
+                            get_builtin_skills_dir(),
+                            get_builtin_cell_types_dir(),
+                        ]
+
+                        _found = False
+                        for _sdir in _search_dirs:
+                            if not _sdir or not os.path.exists(_sdir):
+                                continue
+                            for _ext in ['yaml', 'yml', 'json']:
+                                for _fp in glob.glob(f"{_sdir}/**/*.{_ext}", recursive=True):
+                                    try:
+                                        _cd = _load_cfg(_fp)
+                                        if _cd.get('cascade_id') == cascade_id:
+                                            cascade_def = _cd
+                                            config_path = config_path or _fp
+                                            print(f"[session-cascade] Loaded cascade '{cascade_id}' from: {_fp}")
+                                            _found = True
+                                            break
+                                    except:
+                                        continue
+                                if _found:
                                     break
+                            if _found:
+                                break
+
+                        if not _found:
+                            print(f"[session-cascade] Could not find cascade '{cascade_id}' in any search path")
                     except Exception as e:
+                        import traceback
                         print(f"[session-cascade] Warning: Could not load cascade '{cascade_id}' from filesystem: {e}")
+                        traceback.print_exc()
 
             if cascade_def and cascade_def.get('cells'):
                 # Parse input data (always JSON)
