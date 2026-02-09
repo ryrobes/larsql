@@ -81,23 +81,23 @@ class Screen(Enum):
 # Model tier definitions
 MODEL_TIERS = {
     "embedding": {
-        "description": "Vector embeddings (RAG, semantic search)",
+        "description": "Converts text to vectors for semantic search & RAG",
         "icon": "🔢",
     },
     "fast": {
-        "description": "Quick/cheap (parsing, high-volume)",
+        "description": "Cheap & quick — SQL parsing, classification, high-volume ops",
         "icon": "⚡",
     },
     "standard": {
-        "description": "Balanced (default for most tasks)",
+        "description": "Everyday workhorse — most queries and tool calls use this",
         "icon": "⚖️",
     },
     "quality": {
-        "description": "Complex analysis (summaries, insights)",
+        "description": "Smarter reasoning — summaries, analysis, multi-step tasks",
         "icon": "🎯",
     },
     "flagship": {
-        "description": "Best available (critical decisions)",
+        "description": "Best available — complex decisions, research, critical output",
         "icon": "🚀",
     },
 }
@@ -920,10 +920,11 @@ class LarsBootstrapTUI(ReactiveGlassApp):
         screen = self.state.get("current_screen", Screen.WELCOME)
         
         hints = {
-            Screen.WELCOME: "Enter:continue  Tab:screens  q:quit",
-            Screen.PROVIDERS: "j/k:nav  Enter:edit  e:toggle  Tab:screens",
-            Screen.MODELS: "j/k:nav  Enter:select  Tab:screens",
-            Screen.SUMMARY: "Enter:run bootstrap  Tab:screens",
+            Screen.WELCOME: "Enter:continue  Tab/1-5:switch screens  q:quit",
+            Screen.PROVIDERS: "j/k:navigate  Enter:edit field  e:enable/disable provider  v:validate  Tab:next screen",
+            Screen.MODELS: "j/k:navigate tiers  Enter:pick model  type to search  Tab:next screen",
+            Screen.SQL: "j/k:navigate  ←/→:change DB type  Enter:edit/action  e:skip  Tab:next screen",
+            Screen.SUMMARY: "Enter:run bootstrap  p:change password  Tab:back to edit  q:quit",
         }
         
         # Position at bottom of terminal
@@ -951,23 +952,28 @@ class LarsBootstrapTUI(ReactiveGlassApp):
         x = 2 if visible else 9999
         
         content = [
-            f"[bold {colors['accent']}]Welcome to LARS Setup[/bold {colors['accent']}]",
+            f"[bold {colors['accent']}]Welcome to LARS Bootstrap[/bold {colors['accent']}]",
             "",
-            "This wizard will help you configure:",
+            "This wizard sets up your LARS installation —",
+            "creating config files, connecting to AI providers,",
+            "and optionally wiring up your SQL databases.",
             "",
-            f"  [bold]1.[/bold] 📁 [bold]Data Location[/bold]",
-            f"       Where LARS stores configurations and data",
+            f"  [bold]1.[/bold] 🔑 [bold]AI Providers[/bold]",
+            f"       Connect to OpenRouter, Ollama, Anthropic, etc.",
             "",
-            f"  [bold]2.[/bold] 🔑 [bold]API Providers[/bold]",
-            f"       OpenRouter, Anthropic, Gemini, Bedrock, Ollama",
+            f"  [bold]2.[/bold] 🎯 [bold]Model Assignments[/bold]",
+            f"       Pick which models handle each task tier",
             "",
-            f"  [bold]3.[/bold] 🎯 [bold]Model Assignments[/bold]",
-            f"       Which models to use for different tasks",
+            f"  [bold]3.[/bold] 🔌 [bold]SQL Connections[/bold]",
+            f"       Connect databases for semantic queries",
             "",
+            f"  [bold]4.[/bold] 📋 [bold]Review & Run[/bold]",
+            f"       Confirm settings and initialize LARS",
             "",
-            f"[dim]Current LARS_ROOT: {self.state.get('lars_root', '~/.lars')}[/dim]",
+            f"[dim]LARS_ROOT: {self.state.get('lars_root', '~/.lars')}[/dim]",
             "",
             f"[bold {colors['accent']}]Press Enter to continue →[/bold {colors['accent']}]",
+            f"[dim]Tab or 1-5 to jump between screens[/dim]",
         ]
         
         return [glass_panel("welcome_panel", content, x, 3, 60, 25, colors, "primary")]
@@ -997,10 +1003,15 @@ class LarsBootstrapTUI(ReactiveGlassApp):
         widgets.append(glass_panel("root_panel", root_content, x, 3, 50, 8, colors, "primary"))
         
         # OpenRouter
+        # Show env var detection for OpenRouter
+        or_env_hint = ""
+        if os.environ.get("OPENROUTER_API_KEY") and self.state.get("openrouter_key"):
+            or_env_hint = "[green]✓ Found key from OPENROUTER_API_KEY env[/green]"
+        
         or_content = [
-            f"[bold {colors['accent']}]🌐 OpenRouter[/bold {colors['accent']}]",
+            f"[bold {colors['accent']}]🌐 OpenRouter[/bold {colors['accent']}]  [dim]— 200+ models, one API key[/dim]",
             separator(40),
-            "",
+            or_env_hint,
         ]
         
         or_enabled = self.state.get("openrouter_enabled", False)
@@ -1034,7 +1045,7 @@ class LarsBootstrapTUI(ReactiveGlassApp):
         
         # Ollama
         ol_content = [
-            f"[bold {colors['accent']}]🦙 Ollama (Local)[/bold {colors['accent']}]",
+            f"[bold {colors['accent']}]🦙 Ollama[/bold {colors['accent']}]  [dim]— Run models locally[/dim]",
             separator(40),
             "",
         ]
@@ -1068,10 +1079,16 @@ class LarsBootstrapTUI(ReactiveGlassApp):
         widgets.append(glass_panel("ollama_panel", ol_content, x, 24, 50, 11, colors, "secondary"))
         
         # Gemini
+        # Show env var detection for Gemini
+        gm_env_hint = ""
+        if (os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_AI_API_KEY")) and self.state.get("gemini_key"):
+            env_name = "GEMINI_API_KEY" if os.environ.get("GEMINI_API_KEY") else "GOOGLE_AI_API_KEY"
+            gm_env_hint = f"[green]✓ Found key from {env_name} env[/green]"
+        
         gm_content = [
-            f"[bold {colors['accent']}]♊ Gemini[/bold {colors['accent']}]",
+            f"[bold {colors['accent']}]♊ Gemini[/bold {colors['accent']}]  [dim]— Google AI models[/dim]",
             separator(40),
-            "",
+            gm_env_hint,
         ]
         
         gm_enabled = self.state.get("gemini_enabled", False)
@@ -1116,7 +1133,7 @@ class LarsBootstrapTUI(ReactiveGlassApp):
         
         # Bedrock
         br_content = [
-            f"[bold {colors['accent']}]☁️ AWS Bedrock[/bold {colors['accent']}]",
+            f"[bold {colors['accent']}]☁️ AWS Bedrock[/bold {colors['accent']}]  [dim]— Claude & more via AWS[/dim]",
             separator(40),
             "",
         ]
@@ -1151,10 +1168,16 @@ class LarsBootstrapTUI(ReactiveGlassApp):
         widgets.append(glass_panel("bedrock_panel", br_content, x + 55, 14, 45, 11, colors, "secondary"))
         
         # Anthropic Direct
+        # Show env var detection for Anthropic
+        ad_env_hint = ""
+        if (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_OAUTH_TOKEN")) and self.state.get("anthropic_direct_key"):
+            env_name = "ANTHROPIC_OAUTH_TOKEN" if os.environ.get("ANTHROPIC_OAUTH_TOKEN") else "ANTHROPIC_API_KEY"
+            ad_env_hint = f"[green]✓ Found key from {env_name} env[/green]"
+        
         ad_content = [
-            f"[bold {colors['accent']}]🔮 Anthropic Direct[/bold {colors['accent']}]",
+            f"[bold {colors['accent']}]🔮 Anthropic Direct[/bold {colors['accent']}]  [dim]— Claude API[/dim]",
             separator(40),
-            "",
+            ad_env_hint,
         ]
         
         ad_enabled = self.state.get("anthropic_direct_enabled", False)
@@ -1192,7 +1215,7 @@ class LarsBootstrapTUI(ReactiveGlassApp):
         
         # LM Studio
         lm_content = [
-            f"[bold {colors['accent']}]🖥️ LM Studio[/bold {colors['accent']}]",
+            f"[bold {colors['accent']}]🖥️ LM Studio[/bold {colors['accent']}]  [dim]— Local models via GUI[/dim]",
             separator(40),
             "",
         ]
@@ -1227,17 +1250,22 @@ class LarsBootstrapTUI(ReactiveGlassApp):
         
         # Help panel
         help_content = [
-            f"[bold {colors['light']}]Keys & Setup[/bold {colors['light']}]",
+            f"[bold {colors['light']}]Getting API Keys[/bold {colors['light']}]",
             separator(30),
-            "OpenRouter: openrouter.ai/keys",
-            "Gemini: aistudio.google.com",
-            "Bedrock: AWS credentials file",
-            "Anthropic: console.anthropic.com",
-            "LM Studio: lmstudio.ai",
             "",
-            "[dim]j/k: navigate fields[/dim]",
-            "[dim]e: toggle provider[/dim]",
-            "[dim]Enter: edit value[/dim]",
+            "[bold]OpenRouter[/bold]: openrouter.ai/keys",
+            "  Best starting point — one key,",
+            "  access to GPT-4o, Claude, Gemini, etc.",
+            "",
+            "[bold]Anthropic[/bold]: console.anthropic.com",
+            "[bold]Gemini[/bold]: aistudio.google.com",
+            "[bold]Bedrock[/bold]: Uses ~/.aws/credentials",
+            "[bold]Ollama[/bold]: ollama.com (install locally)",
+            "[bold]LM Studio[/bold]: lmstudio.ai",
+            "",
+            "[dim]You need at least one provider.[/dim]",
+            "[dim]OpenRouter is recommended for[/dim]",
+            "[dim]getting started quickly.[/dim]",
         ]
         
         widgets.append(glass_panel("help_panel", help_content, x + 55, 38, 45, 12, colors, "accent"))
@@ -1254,6 +1282,7 @@ class LarsBootstrapTUI(ReactiveGlassApp):
         # Tier list
         tier_content = [
             f"[bold {colors['accent']}]🎯 Model Tiers[/bold {colors['accent']}]",
+            f"[dim]Assign a model to each task tier (defaults pre-filled)[/dim]",
             separator(45),
             "",
         ]
@@ -1342,10 +1371,11 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                 f"[bold {colors['light']}]Model Selection[/bold {colors['light']}]",
                 separator(30),
                 "",
-                "j/k: navigate tiers",
-                "Enter: select model",
+                "Each tier handles a different",
+                "class of work. Smart defaults",
+                "are pre-filled — adjust if needed.",
                 "",
-                f"[dim]Selected: {selected_tier}[/dim]",
+                f"[dim]Editing: {selected_tier}[/dim]",
                 "",
                 "[bold]Available Models:[/bold]",
                 f"  OpenRouter: {or_count}" if or_count else "  [dim]OpenRouter: ×[/dim]",
@@ -1389,6 +1419,7 @@ class LarsBootstrapTUI(ReactiveGlassApp):
         # Skip option panel
         skip_content = [
             f"[bold {colors['accent']}]🔌 SQL Connection[/bold {colors['accent']}]",
+            f"[dim]Connect a database so LARS can discover its schema[/dim]",
             separator(45),
             "",
         ]
@@ -1396,7 +1427,7 @@ class LarsBootstrapTUI(ReactiveGlassApp):
         skip_selected = field_idx == 0 and not self.state.get("sql_conn_name_editing") and not self.state.get("sql_field_editing")
         skip_prefix = f"[{colors['accent']}]▶[/{colors['accent']}]" if skip_selected else " "
         skip_icon = "[green]✓[/green]" if skip_mode else "○"
-        skip_content.append(f"{skip_prefix} {skip_icon} Skip (I'll add connections later)")
+        skip_content.append(f"{skip_prefix} {skip_icon} Skip — use sample database only")
         skip_content.append("")
         
         if saved_conns:
@@ -1493,18 +1524,18 @@ class LarsBootstrapTUI(ReactiveGlassApp):
             f"[bold {colors['light']}]SQL Connections[/bold {colors['light']}]",
             separator(30),
             "",
-            "Connect to databases for",
-            "schema discovery & querying.",
+            "LARS discovers your database",
+            "schemas and lets you write",
+            "semantic SQL queries like:",
             "",
-            "[bold]Controls:[/bold]",
-            "  j/k: navigate fields",
-            "  ←/→: change type",
-            "  Enter: edit/save",
-            "  e: toggle skip",
+            '[italic dim]SELECT * FROM tickets[/italic dim]',
+            '[italic dim]WHERE desc MEANS "slow"[/italic dim]',
             "",
-            "[dim]You can add more[/dim]",
-            "[dim]connections later via[/dim]",
-            "[dim]lars tui config[/dim]",
+            "Skip this if you just want",
+            "to explore with the sample DB.",
+            "",
+            "[dim]You can always add connections[/dim]",
+            "[dim]later: [bold]lars tui config[/bold][/dim]",
         ]
         
         help_x = x + 78 if visible else 9999
@@ -1620,10 +1651,14 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                 separator(35),
                 "",
                 "This will:",
-                "  • Create directories",
-                "  • Write configuration files",
-                "  • Sync cascade tools",
-                "  • Build RAG index",
+                "  • Create LARS_ROOT directories",
+                "  • Write .env, models.yaml, config",
+                "  • Create admin user account",
+                "  • Sync tools & refresh model catalog",
+                "  • Set up sample database",
+                "  • Discover SQL schemas (if added)",
+                "",
+                "[dim]Takes ~10-30 seconds[/dim]",
                 "",
                 f"[bold {colors['accent']}]Press Enter to start →[/bold {colors['accent']}]",
             ]
