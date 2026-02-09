@@ -1931,9 +1931,18 @@ class LarsDB:
                 parquet_glob = str(table_dir / "**" / "*.parquet")
                 read_opts = "union_by_name=true, filename=true, hive_partitioning=true"
             else:
-                # Flat glob for non-partitioned tables
-                parquet_glob = str(table_dir / "*.parquet")
-                read_opts = "union_by_name=true, filename=true"
+                # Flat mode: check if legacy hive subdirectories exist (backward compat)
+                has_hive_subdirs = any(
+                    d.is_dir() and '=' in d.name
+                    for d in table_dir.iterdir()
+                ) if table_dir.exists() else False
+                if has_hive_subdirs:
+                    # Legacy data in hive dirs — use recursive glob to read both flat + hive files
+                    parquet_glob = str(table_dir / "**" / "*.parquet")
+                    read_opts = "union_by_name=true, filename=true, hive_partitioning=true"
+                else:
+                    parquet_glob = str(table_dir / "*.parquet")
+                    read_opts = "union_by_name=true, filename=true"
             
             # Build column list for the view
             columns = ", ".join(f'"{col}"' for col, _ in schema["columns"])

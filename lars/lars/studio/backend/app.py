@@ -89,7 +89,20 @@ class NumpyJSONProvider(DefaultJSONProvider):
     def default(obj):
         if hasattr(obj, 'tolist'):
             return obj.tolist()
+        if isinstance(obj, float) and (math.isnan(obj) or math.isinf(obj)):
+            return None
         return DefaultJSONProvider.default(obj)
+
+    def dumps(self, obj, **kwargs):
+        """Override dumps to replace NaN/Infinity with null globally."""
+        result = super().dumps(obj, **kwargs)
+        # DuckDB can produce NaN values that slip past the default() hook
+        # (they're valid Python floats, just not valid JSON)
+        if 'NaN' in result or 'Infinity' in result:
+            import re
+            result = re.sub(r'\bNaN\b', 'null', result)
+            result = re.sub(r'\b-?Infinity\b', 'null', result)
+        return result
 
 app.json_provider_class = NumpyJSONProvider
 app.json = NumpyJSONProvider(app)
