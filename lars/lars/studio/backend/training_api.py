@@ -27,6 +27,18 @@ def _sanitize_for_json(data):
         return data
     return data
 
+def _safe_float(val, default=None):
+    """Convert value to float, returning default for None/NaN/Inf."""
+    if val is None:
+        return default
+    try:
+        f = float(val)
+        if math.isnan(f) or math.isinf(f):
+            return default
+        return f
+    except (ValueError, TypeError):
+        return default
+
 logger = logging.getLogger(__name__)
 training_bp = Blueprint('training', __name__)
 
@@ -648,12 +660,12 @@ def get_sql_calls():
                     'caller_id': str(row.get('caller_id', '')),
                     'operators': list(row.get('operators', [])) if row.get('operators') else [],
                     'udf_call_count': int(row.get('udf_call_count', 0)),
-                    'total_cost': float(row.get('total_cost', 0) or 0),
-                    'total_duration_ms': float(row.get('total_duration_ms', 0) or 0),
+                    'total_cost': _safe_float(row.get('total_cost'), 0),
+                    'total_duration_ms': _safe_float(row.get('total_duration_ms'), 0),
                     'started_at': row['started_at'].isoformat() if hasattr(row.get('started_at'), 'isoformat') else str(row.get('started_at', '')),
                     'models': list(row.get('models', [])) if row.get('models') else [],
                     'aggregate_rating': row.get('aggregate_rating'),
-                    'avg_confidence': float(row['avg_confidence']) if row.get('avg_confidence') is not None and not (isinstance(row.get('avg_confidence'), float) and math.isnan(row['avg_confidence'])) else None,
+                    'avg_confidence': _safe_float(row.get('avg_confidence')),
                     'rated_count': int(row.get('rated_count', 0)),
                     'positive_count': int(row.get('positive_count', 0)),
                     'negative_count': int(row.get('negative_count', 0)),
@@ -717,10 +729,10 @@ def get_sql_call_cells(caller_id):
                     'result': str(row.get('result', '')),
                     'cost': float(row.get('cost', 0) or 0),
                     'model': str(row.get('model', '')),
-                    'duration_ms': float(row.get('duration_ms', 0) or 0),
+                    'duration_ms': _safe_float(row.get('duration_ms')),
                     'cell_name': str(row.get('cell_name', '')),
                     'rating': row.get('rating') or None,
-                    'confidence': float(row['confidence']) if row.get('confidence') is not None and not (isinstance(row.get('confidence'), float) and math.isnan(row['confidence'])) else None,
+                    'confidence': _safe_float(row.get('confidence')),
                     'trainable': bool(row.get('trainable', False)),
                 })
             except Exception as e:
