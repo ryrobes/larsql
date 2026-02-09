@@ -5,15 +5,14 @@
 
 <h1 id="top">Quickstart Guide</h1>
 <p class="section-intro">
-  Get LARS running in minutes. This guide covers the essential setup — install, configure, and start querying.
+  Get LARS running in minutes. Two commands and you're up.
 </p>
 
 <div class="toc">
   <strong>On This Page</strong>
   <ul>
     <li><a href="#install">Install</a></li>
-    <li><a href="#configure">Configure</a></li>
-    <li><a href="#bootstrap">Bootstrap</a></li>
+    <li><a href="#first-run">First Run</a></li>
     <li><a href="#sql-server">Start SQL Server</a></li>
     <li><a href="#studio">Launch Studio (Optional)</a></li>
     <li><a href="#next-steps">Next Steps</a></li>
@@ -33,11 +32,16 @@
     <span class="code-block-lang bash">Bash</span>
   </div>
   <div class="code-block-content">
-    <pre>pip install larsql</pre>
+    <pre>pipx install larsql</pre>
   </div>
 </div>
 
-<p>Optional installation variants:</p>
+<div class="info-box tip">
+  <div class="info-box-title">Alternative</div>
+  <p>Or use <code>pip install larsql</code> in a virtual environment if you prefer.</p>
+</div>
+
+<p>Optional extras:</p>
 
 <div class="code-block">
   <div class="code-block-header">
@@ -45,51 +49,34 @@
   </div>
   <div class="code-block-content">
     <pre><span class="cmt"># With browser automation (Playwright)</span>
-pip install larsql[browser]
+pipx install larsql[browser]
 
 <span class="cmt"># With local models (HuggingFace)</span>
-pip install larsql[local-models]
+pipx install larsql[local-models]
 
 <span class="cmt"># Everything</span>
-pip install larsql[all]</pre>
+pipx install larsql[all]</pre>
   </div>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
-     CONFIGURE
+     FIRST RUN
      ═══════════════════════════════════════════════════════════════════════════ -->
 
-<h2 id="configure">Configure</h2>
+<h2 id="first-run">First Run</h2>
 
-<p>Set your LLM API key. <a href="https://openrouter.ai/keys" target="_blank">OpenRouter</a> is recommended (see <a href="#providers" data-link>AI Providers</a> for alternatives):</p>
+<p>Just run <code>lars</code>:</p>
 
 <div class="code-block">
   <div class="code-block-header">
     <span class="code-block-lang bash">Bash</span>
   </div>
   <div class="code-block-content">
-    <pre>export OPENROUTER_API_KEY=sk-or-v1-...</pre>
+    <pre>lars</pre>
   </div>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════════════════════════
-     BOOTSTRAP
-     ═══════════════════════════════════════════════════════════════════════════ -->
-
-<h2 id="bootstrap">Bootstrap</h2>
-
-<p>Run the bootstrap command to set up your LARS workspace in one step:</p>
-
-<div class="code-block">
-  <div class="code-block-header">
-    <span class="code-block-lang bash">Bash</span>
-  </div>
-  <div class="code-block-content">
-    <pre>lars bootstrap</pre>
-  </div>
-</div>
-
-<p>Bootstrap launches an <strong>interactive TUI wizard</strong> that walks you through the complete setup:</p>
+<p>On first run, LARS automatically launches an <strong>interactive TUI wizard</strong> that walks you through the complete setup:</p>
 
 <ul>
   <li><strong>Provider selection</strong> — Choose from OpenRouter, Ollama, Gemini, Anthropic Direct, LM Studio, etc.</li>
@@ -99,11 +86,11 @@ pip install larsql[all]</pre>
   <li><strong>Admin password</strong> — Sets the password for Studio and SQL server authentication</li>
 </ul>
 
-<p>The wizard generates <code>config.yaml</code> and <code>models.yaml</code> in your workspace root.</p>
+<p>No manual config files, no environment variables to export — the wizard handles everything. It generates <code>config.yaml</code> and <code>models.yaml</code> in your workspace root.</p>
 
 <div class="info-box tip">
-  <div class="info-box-title">Bootstrap Options</div>
-  <p>Skip specific steps if needed:</p>
+  <div class="info-box-title">Re-run Setup Anytime</div>
+  <p>You can re-run the setup wizard later with <code>lars bootstrap</code>. Skip specific steps if needed:</p>
   <div class="code-block">
     <div class="code-block-content">
       <pre>lars bootstrap --skip-workspace  <span class="cmt"># Skip directory creation</span>
@@ -428,13 +415,12 @@ echo "Elasticsearch is ready!"</pre>
 
 <div class="info-box warning">
   <div class="info-box-title">Error: API key not configured</div>
-  <p>Ensure your environment variable is set:</p>
+  <p>Re-run the setup wizard to configure your API key:</p>
   <div class="code-block">
     <div class="code-block-content">
-      <pre><span class="cmt"># Check if set</span>
-echo $OPENROUTER_API_KEY
+      <pre>lars bootstrap
 
-<span class="cmt"># Or add to .env file</span>
+<span class="cmt"># Or manually add to .env file</span>
 echo "OPENROUTER_API_KEY=sk-or-v1-your-key" >> ~/.lars/.env
 
 <span class="cmt"># Verify setup</span>

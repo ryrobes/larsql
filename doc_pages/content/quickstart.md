@@ -1,11 +1,10 @@
 # Quickstart Guide
 
 
-Get LARS running in minutes. This guide covers the essential setup — install, configure, and start querying.
+Get LARS running in minutes. Two commands and you're up.
 **On This Page**
 - [Install](#install)
-- [Configure](#configure)
-- [Bootstrap](#bootstrap)
+- [First Run](#first-run)
 - [Start SQL Server](#sql-server)
 - [Launch Studio (Optional)](#studio)
 - [Next Steps](#next-steps)
@@ -17,56 +16,49 @@ Get LARS running in minutes. This guide covers the essential setup — install, 
 
 
 ```bash
-pip install larsql
+pipx install larsql
 ```
 
+> **TIP:** Or use `pip install larsql` in a virtual environment if you prefer.
 
-Optional installation variants:
+Optional extras:
 
 ```bash
 # With browser automation (Playwright)
-pip install larsql[browser]
+pipx install larsql[browser]
 
 # With local models (HuggingFace)
-pip install larsql[local-models]
+pipx install larsql[local-models]
 
 # Everything
-pip install larsql[all]
+pipx install larsql[all]
 ```
 
-## Configure
+## First Run
 
 
-Set your LLM API key. [OpenRouter](https://openrouter.ai/keys) is recommended (see [AI Providers](#providers) for alternatives):
+Just run `lars`:
 
 ```bash
-export OPENROUTER_API_KEY=sk-or-v1-...
+lars
 ```
 
-## Bootstrap
-
-
-Run the bootstrap command to set up your LARS workspace:
-
-```bash
-lars bootstrap
-```
-
-
-Bootstrap launches an **interactive TUI wizard** that walks you through the complete setup:
+On first run, LARS automatically launches an **interactive TUI wizard** that walks you through the complete setup:
 - **Provider selection** — Choose from OpenRouter, Ollama, Gemini, Anthropic Direct, LM Studio, etc.
-- **API key validation** — Tests your credentials against the selected provider
+- **API key entry & validation** — Tests your credentials against the selected provider
 - **Model discovery** — Scans available models and assigns them to tiers (fast, standard, quality, etc.)
 - **SQL connections** — Optionally configure database connections
 - **Admin password** — Sets the password for Studio and SQL server authentication
 
+No manual config files, no environment variables to export — the wizard handles everything.
+
 The wizard generates `config.yaml` and `models.yaml` in your workspace root.
 
 
-> **TIP: Non-Interactive Mode**
+> **TIP: Re-run Setup Anytime**
 >
 > 
-> Skip specific steps if needed:
+> You can re-run the setup wizard later with `lars bootstrap`. Skip specific steps if needed:
 > 
 ```
 lars bootstrap --skip-workspace  # Skip directory creation
@@ -77,7 +69,7 @@ lars bootstrap --skip-sql-crawl  # Skip schema discovery
 ```
 
 
-After bootstrap completes, you'll have this structure:
+After setup completes, you'll have this structure:
 
 ```
 ~/.lars/                  # Default LARS_ROOT location
@@ -333,13 +325,12 @@ LARS_ELASTICSEARCH_HOST=http://localhost:9200
 > **WARNING: Error: API key not configured**
 >
 > 
-> Ensure your environment variable is set:
+> Re-run the setup wizard to configure your API key:
 > 
 ```
-# Check if set
-echo $OPENROUTER_API_KEY
+lars bootstrap
 
-# Or add to .env file
+# Or manually add to .env file
 echo "OPENROUTER_API_KEY=sk-or-v1-your-key" >> ~/.lars/.env
 
 # Verify setup
