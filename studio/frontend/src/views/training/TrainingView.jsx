@@ -64,6 +64,7 @@ const TrainingView = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedRows, setSelectedRows] = useState([]);
+  const [ratingFilter, setRatingFilter] = useState(null); // 'positive', 'negative', 'unrated', or null
   const [hotOrNotOpen, setHotOrNotOpen] = useState(false);
   const [assessmentInProgress, setAssessmentInProgress] = useState(false);
   const [assessmentCount, setAssessmentCount] = useState(0);
@@ -309,6 +310,17 @@ const TrainingView = () => {
   }, [cascadeFilter, cellFilter, showTrainableOnly, debouncedSearch, isSearching]);
 
   // Compute aggregate metrics
+  // Apply rating filter on top of API-filtered examples
+  const filteredExamples = React.useMemo(() => {
+    if (!ratingFilter) return examples;
+    return examples.filter(e => {
+      if (ratingFilter === 'positive') return e.rating === 'positive';
+      if (ratingFilter === 'negative') return e.rating === 'negative';
+      if (ratingFilter === 'unrated') return !e.rating;
+      return true;
+    });
+  }, [examples, ratingFilter]);
+
   const metrics = React.useMemo(() => {
     if (!stats || stats.length === 0) {
       return {
@@ -389,15 +401,39 @@ const TrainingView = () => {
           />
         </div>
 
-        <div className="training-filter-group">
+        <div className="training-filter-group training-rating-toggles">
           <label className="training-filter-checkbox">
             <input
               type="checkbox"
               checked={showTrainableOnly}
               onChange={(e) => handleShowTrainableOnlyChange(e.target.checked)}
             />
-            <span>Trainable Only</span>
+            <span>Rated Only</span>
           </label>
+          <button
+            className={`training-rating-filter-btn ${ratingFilter === 'positive' ? 'active-positive' : ''}`}
+            onClick={() => setRatingFilter(ratingFilter === 'positive' ? null : 'positive')}
+            title="Show only thumbs-up rated"
+          >
+            <Icon icon="mdi:thumb-up" width={13} />
+            <span>{examples.filter(e => e.rating === 'positive').length}</span>
+          </button>
+          <button
+            className={`training-rating-filter-btn ${ratingFilter === 'negative' ? 'active-negative' : ''}`}
+            onClick={() => setRatingFilter(ratingFilter === 'negative' ? null : 'negative')}
+            title="Show only thumbs-down rated"
+          >
+            <Icon icon="mdi:thumb-down" width={13} />
+            <span>{examples.filter(e => e.rating === 'negative').length}</span>
+          </button>
+          <button
+            className={`training-rating-filter-btn ${ratingFilter === 'unrated' ? 'active-unrated' : ''}`}
+            onClick={() => setRatingFilter(ratingFilter === 'unrated' ? null : 'unrated')}
+            title="Show only unrated"
+          >
+            <Icon icon="mdi:help-circle-outline" width={13} />
+            <span>{examples.filter(e => !e.rating).length}</span>
+          </button>
         </div>
 
         <div className="training-filter-spacer" />
@@ -479,7 +515,7 @@ const TrainingView = () => {
           disabled={examples.length === 0}
         >
           <Icon icon="mdi:fire" width={14} />
-          <span>Hot or Not</span>
+          <span>Hot or Not ({filteredExamples.length})</span>
         </button>
         <button
           className="training-action-btn training-action-btn--secondary"
@@ -497,7 +533,7 @@ const TrainingView = () => {
           <span>
             {assessmentInProgress
               ? `Assessing ${assessmentCount}...`
-              : 'Assess Confidence'}
+              : `Assess Confidence (${filteredExamples.length})`}
           </span>
         </button>
       </div>
@@ -524,7 +560,7 @@ const TrainingView = () => {
 
         {!loading && !error && (
           <TrainingGrid
-            examples={examples}
+            examples={filteredExamples}
           />
         )}
       </div>
@@ -532,7 +568,7 @@ const TrainingView = () => {
       {/* Hot or Not Modal */}
       <HotOrNotModal
         isOpen={hotOrNotOpen}
-        examples={examples}
+        examples={filteredExamples}
         onClose={() => setHotOrNotOpen(false)}
         onComplete={async (decisions) => {
           setHotOrNotOpen(false);

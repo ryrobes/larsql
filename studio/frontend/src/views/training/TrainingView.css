@@ -134,6 +134,49 @@
   cursor: pointer;
 }
 
+.training-rating-toggles {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.training-rating-filter-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border: 1px solid rgba(100, 116, 139, 0.2);
+  border-radius: 4px;
+  background: transparent;
+  color: #64748b;
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.training-rating-filter-btn:hover {
+  background: rgba(100, 116, 139, 0.1);
+}
+
+.training-rating-filter-btn.active-positive {
+  background: rgba(52, 211, 153, 0.12);
+  border-color: rgba(52, 211, 153, 0.4);
+  color: #34d399;
+}
+
+.training-rating-filter-btn.active-negative {
+  background: rgba(255, 0, 110, 0.12);
+  border-color: rgba(255, 0, 110, 0.4);
+  color: #ff006e;
+}
+
+.training-rating-filter-btn.active-unrated {
+  background: rgba(148, 163, 184, 0.12);
+  border-color: rgba(148, 163, 184, 0.4);
+  color: #94a3b8;
+}
+
 .training-filter-spacer {
   flex: 1;
 }
