@@ -5090,14 +5090,25 @@ Refinement directive: {reforge_config.honing_prompt}
 
                 db = get_db()
 
-                # Read original cascade file contents (preserve YAML/JSON as-is)
-                if isinstance(self.config_path, str):
-                    # It's a file path - read raw contents
-                    with open(self.config_path, 'r') as f:
-                        cascade_def_raw = f.read()
-                else:
-                    # It's an inline dict - dump to YAML (preserves all data)
+                # Serialize cascade definition to YAML for storage
+                # Use the parsed config (always available) rather than re-reading the file
+                # (file may be a temp file that's gone by the time this async task runs)
+                if isinstance(self.config_path, str) and os.path.exists(self.config_path):
+                    # File still exists - read raw contents to preserve original formatting
+                    try:
+                        with open(self.config_path, 'r') as f:
+                            cascade_def_raw = f.read()
+                    except Exception:
+                        # Fall back to dumping parsed config
+                        _cfg_dict = self.config.model_dump() if hasattr(self.config, 'model_dump') else self.config.dict()
+                        cascade_def_raw = yaml.dump(_cfg_dict, default_flow_style=False, sort_keys=False)
+                elif isinstance(self.config_path, dict):
+                    # Inline dict
                     cascade_def_raw = yaml.dump(self.config_path, default_flow_style=False, sort_keys=False)
+                else:
+                    # File path that no longer exists, or other type - dump parsed config
+                    _cfg_dict = self.config.model_dump() if hasattr(self.config, 'model_dump') else self.config.dict()
+                    cascade_def_raw = yaml.dump(_cfg_dict, default_flow_style=False, sort_keys=False)
 
                 # Serialize input data to JSON (small, simple data structure)
                 input_json = json.dumps(input_data if input_data else {}, indent=2)
