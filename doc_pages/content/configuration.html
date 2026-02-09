@@ -1,0 +1,376 @@
+<h1>Configuration Files</h1>
+<p class="lead">
+  LARS uses two YAML configuration files in your workspace root (<code>$LARS_ROOT/</code> or <code>~/.lars/</code>).
+  Both are created automatically by <code>lars bootstrap</code>.
+</p>
+
+<div class="toc">
+  <div class="toc-title">On This Page</div>
+  <ul>
+    <li><a href="#overview">Overview</a></li>
+    <li><a href="#config-yaml">config.yaml</a></li>
+    <li><a href="#models-yaml">models.yaml</a></li>
+    <li><a href="#model-tiers">Model Tiers</a></li>
+    <li><a href="#jinja-templates">Jinja Templates in Cascades</a></li>
+    <li><a href="#cli">CLI Commands</a></li>
+  </ul>
+</div>
+
+<h2 id="overview">Overview</h2>
+
+<table class="reference-table">
+  <thead>
+    <tr>
+      <th>File</th>
+      <th>Purpose</th>
+      <th>Created By</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>config.yaml</code></td>
+      <td>General LARS settings (features, learning, display)</td>
+      <td><code>lars bootstrap</code></td>
+    </tr>
+    <tr>
+      <td><code>models.yaml</code></td>
+      <td>AI provider configuration and model tier assignments</td>
+      <td><code>lars bootstrap</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="info-box note">
+  <div class="info-box-title">Environment Variables Override YAML</div>
+  <p>
+    Environment variables (e.g., <code>LARS_DEBUG=true</code>) always take precedence over values in config.yaml.
+    YAML files provide persistent defaults; env vars provide runtime overrides.
+  </p>
+</div>
+
+<hr>
+
+<h2 id="config-yaml">config.yaml</h2>
+
+<p>Controls general LARS behavior — features, learning, display, and server settings.</p>
+
+<h3>Location</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">Path</span>
+  </div>
+  <div class="code-block-content">
+    <pre>~/.lars/config.yaml</pre>
+  </div>
+</div>
+
+<h3>Structure</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">config.yaml</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># ─── General ─────────────────────────────</span>
+<span class="key">debug</span>: <span class="kw">false</span>                    <span class="cmt"># Enable verbose debug logging</span>
+<span class="key">no_splash</span>: <span class="kw">false</span>                <span class="cmt"># Disable startup splash art</span>
+<span class="key">session_id_style</span>: <span class="str">"woodland"</span>    <span class="cmt"># Session naming style: woodland, uuid, short</span>
+<span class="key">data_format</span>: <span class="str">"auto"</span>             <span class="cmt"># Output format: auto, table, json, csv</span>
+<span class="key">show_cli_images</span>: <span class="kw">true</span>           <span class="cmt"># Render images in CLI output</span>
+
+<span class="cmt"># ─── Server ──────────────────────────────</span>
+<span class="key">parallel_workers</span>: <span class="num">8</span>             <span class="cmt"># Parallel workers for semantic SQL operators</span>
+<span class="key">result_max_rows</span>: <span class="num">100000</span>         <span class="cmt"># Maximum rows returned per query</span>
+<span class="key">studio_pgwire_port</span>: <span class="num">5444</span>        <span class="cmt"># PostgreSQL wire-protocol port</span>
+
+<span class="cmt"># ─── Learning / Dreaming ─────────────────</span>
+<span class="key">learning</span>:
+  <span class="key">enabled</span>: <span class="kw">true</span>                 <span class="cmt"># Enable the self-optimization dream loop</span>
+  <span class="key">interval</span>: <span class="num">3600</span>                <span class="cmt"># Dream loop interval in seconds</span>
+  <span class="key">calibration_threshold</span>: <span class="num">5</span>      <span class="cmt"># Min data points before calibrating</span>
+  <span class="key">accuracy_floor</span>: <span class="num">0.90</span>          <span class="cmt"># Minimum accuracy before mutations</span>
+  <span class="key">mutation_threshold</span>: <span class="num">10</span>        <span class="cmt"># Min data points before mutating</span>
+  <span class="key">models</span>: []                    <span class="cmt"># Model list for dreaming (empty = use default)</span>
+
+<span class="cmt"># ─── Features ────────────────────────────</span>
+<span class="key">features</span>:
+  <span class="key">smart_search</span>: <span class="kw">true</span>            <span class="cmt"># LLM-powered post-filtering of search results</span>
+  <span class="key">research_mode</span>: <span class="kw">false</span>          <span class="cmt"># Enable research mode by default</span>
+  <span class="key">embeddings</span>: <span class="kw">false</span>             <span class="cmt"># Enable embedding worker</span>
+  <span class="key">context_cards</span>: <span class="kw">false</span>          <span class="cmt"># Enable context card generation</span>
+  <span class="key">ephemeral_rag</span>: <span class="kw">true</span>           <span class="cmt"># Auto-index large content for RAG</span>
+  <span class="key">mcp</span>: <span class="kw">true</span>                     <span class="cmt"># Enable Model Context Protocol servers</span>
+  <span class="key">file_watcher</span>: <span class="kw">true</span>            <span class="cmt"># Watch for file changes in artifacts</span>
+  <span class="key">relevance_analysis</span>: <span class="kw">true</span>      <span class="cmt"># Run relevance analysis on queries</span>
+  <span class="key">confidence_assessment</span>: <span class="kw">false</span>  <span class="cmt"># Enable confidence scoring</span>
+  <span class="key">shadow_assessment</span>: <span class="kw">false</span>      <span class="cmt"># Enable shadow quality assessment</span>
+  <span class="key">analytics</span>: <span class="kw">false</span>              <span class="cmt"># Set true to DISABLE analytics collection</span>
+  <span class="key">auto_save_research</span>: <span class="kw">true</span>      <span class="cmt"># Auto-save research sessions</span>
+  <span class="key">harbor</span>: <span class="kw">true</span>                  <span class="cmt"># Enable HuggingFace Spaces integration</span>
+
+<span class="cmt"># ─── Display / UI ────────────────────────</span>
+<span class="key">display</span>:
+  <span class="key">chart_theme</span>: <span class="str">"dark"</span>           <span class="cmt"># Chart color theme: dark, light</span>
+  <span class="key">toon_transport</span>: <span class="kw">true</span>          <span class="cmt"># Enable rich table transport</span>
+  <span class="key">toon_min_rows</span>: <span class="num">5</span>              <span class="cmt"># Minimum rows for table rendering</span>
+
+<span class="cmt"># ─── Context Management ──────────────────</span>
+<span class="key">context</span>:
+  <span class="key">keep_recent_images</span>: <span class="num">0</span>         <span class="cmt"># Max recent images (0=all)</span>
+  <span class="key">keep_recent_turns</span>: <span class="num">0</span>          <span class="cmt"># Max recent turns (0=all)</span>
+
+<span class="cmt"># ─── Sync / File Watcher ─────────────────</span>
+<span class="key">sync</span>:
+  <span class="key">sync_poll_interval</span>: <span class="num">30</span>        <span class="cmt"># DB poll interval for artifact sync (seconds)</span>
+  <span class="key">sync_write_files</span>: <span class="kw">true</span>        <span class="cmt"># Write synced artifacts to disk</span>
+  <span class="key">watch_debounce_delay</span>: <span class="num">1.0</span>     <span class="cmt"># File watcher debounce delay (seconds)</span></pre>
+  </div>
+</div>
+
+<hr>
+
+<h2 id="models-yaml">models.yaml</h2>
+
+<p>
+  Defines which AI providers are active and which models are assigned to each tier.
+  This is the primary source of truth for model configuration.
+</p>
+
+<h3>Location</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">Path</span>
+  </div>
+  <div class="code-block-content">
+    <pre>~/.lars/models.yaml</pre>
+  </div>
+</div>
+
+<h3>Structure</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">models.yaml</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">providers</span>:
+  <span class="key">openrouter</span>:
+    <span class="key">enabled</span>: <span class="kw">true</span>
+    <span class="key">api_key_env</span>: OPENROUTER_API_KEY
+
+  <span class="key">ollama</span>:
+    <span class="key">enabled</span>: <span class="kw">false</span>
+    <span class="key">hosts</span>:
+      <span class="key">default</span>: http://localhost:11434
+      <span class="cmt"># gpu1: http://10.0.0.1:11434</span>
+
+  <span class="key">lmstudio</span>:
+    <span class="key">enabled</span>: <span class="kw">false</span>
+    <span class="key">host</span>: http://localhost:1234
+
+  <span class="key">gemini</span>:
+    <span class="key">enabled</span>: <span class="kw">false</span>
+    <span class="key">api_key_env</span>: GEMINI_API_KEY
+
+  <span class="key">bedrock</span>:
+    <span class="key">enabled</span>: <span class="kw">false</span>
+    <span class="key">region</span>: us-east-1
+
+  <span class="key">anthropic_direct</span>:
+    <span class="key">enabled</span>: <span class="kw">false</span>
+    <span class="key">oauth_token_env</span>: ANTHROPIC_OAUTH_TOKEN
+
+<span class="key">models</span>:
+  <span class="key">embedding</span>: qwen/qwen3-embedding-8b
+  <span class="key">fast</span>: google/gemini-2.5-flash-lite
+  <span class="key">standard</span>: google/gemini-3-flash-preview
+  <span class="key">quality</span>: anthropic/claude-sonnet-4
+  <span class="key">flagship</span>: anthropic/claude-opus-4</pre>
+  </div>
+</div>
+
+<hr>
+
+<h2 id="model-tiers">Model Tiers</h2>
+
+<p>
+  LARS uses a tier system to assign models to different roles based on cost/quality trade-offs.
+</p>
+
+<table class="reference-table">
+  <thead>
+    <tr>
+      <th>Tier</th>
+      <th>Purpose</th>
+      <th>Default Model</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>embedding</code></td>
+      <td>Vector embeddings (RAG, <code>SIMILAR_TO</code>)</td>
+      <td><code>qwen/qwen3-embedding-8b</code></td>
+    </tr>
+    <tr>
+      <td><code>fast</code></td>
+      <td>Quick/cheap tasks (MEANS, CLASSIFY, parsing)</td>
+      <td><code>google/gemini-2.5-flash-lite</code></td>
+    </tr>
+    <tr>
+      <td><code>standard</code></td>
+      <td>Balanced default for most operations</td>
+      <td><code>google/gemini-3-flash-preview</code></td>
+    </tr>
+    <tr>
+      <td><code>quality</code></td>
+      <td>Complex analysis (SUMMARIZE, deep reasoning)</td>
+      <td><code>anthropic/claude-sonnet-4</code></td>
+    </tr>
+    <tr>
+      <td><code>flagship</code></td>
+      <td>Best available model for critical decisions</td>
+      <td><code>anthropic/claude-opus-4</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>How Tiers Are Used</h3>
+
+<p>
+  Built-in cascades and semantic SQL operators reference tiers instead of hardcoded model IDs.
+  This means changing a single line in <code>models.yaml</code> updates the model used across all operations
+  in that tier.
+</p>
+
+<hr>
+
+<h2 id="jinja-templates">Jinja Templates in Cascades</h2>
+
+<p>
+  Cascade YAML files reference model tiers using Jinja2 template syntax:
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Cascade YAML</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">cells</span>:
+  - <span class="key">name</span>: quick_classify
+    <span class="key">model</span>: <span class="str">"{{ models.fast }}"</span>
+    <span class="key">instructions</span>: <span class="str">"Classify the input"</span>
+
+  - <span class="key">name</span>: deep_analysis
+    <span class="key">model</span>: <span class="str">"{{ models.quality }}"</span>
+    <span class="key">instructions</span>: <span class="str">"Perform detailed analysis"</span>
+
+  - <span class="key">name</span>: default_task
+    <span class="key">model</span>: <span class="str">"{{ models.standard }}"</span>
+    <span class="key">instructions</span>: <span class="str">"Handle the request"</span></pre>
+  </div>
+</div>
+
+<h3>Resolution Order</h3>
+
+<p>When LARS encounters <code>{{ models.fast }}</code> in a cascade:</p>
+
+<ol>
+  <li><strong>Environment variable</strong> <code>LARS_MODEL_FAST</code> (if set, wins)</li>
+  <li><strong>models.yaml</strong> <code>models.fast</code> value</li>
+  <li><strong>Hardcoded default</strong> (<code>google/gemini-2.5-flash-lite</code>)</li>
+</ol>
+
+<h3>Available Template Variables</h3>
+
+<table class="reference-table">
+  <thead>
+    <tr>
+      <th>Template</th>
+      <th>Resolves To</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>{{ models.embedding }}</code></td>
+      <td>Embedding tier model</td>
+    </tr>
+    <tr>
+      <td><code>{{ models.fast }}</code></td>
+      <td>Fast tier model</td>
+    </tr>
+    <tr>
+      <td><code>{{ models.standard }}</code></td>
+      <td>Standard tier model</td>
+    </tr>
+    <tr>
+      <td><code>{{ models.quality }}</code></td>
+      <td>Quality tier model</td>
+    </tr>
+    <tr>
+      <td><code>{{ models.flagship }}</code></td>
+      <td>Flagship tier model</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="info-box tip">
+  <div class="info-box-title">Mixing Tiers and Literal Models</div>
+  <p>You can freely mix tier templates with literal model IDs in the same cascade:</p>
+  <div class="code-block">
+    <div class="code-block-content">
+      <pre><span class="key">cells</span>:
+  - <span class="key">name</span>: step1
+    <span class="key">model</span>: <span class="str">"{{ models.fast }}"</span>          <span class="cmt"># Uses tier</span>
+  - <span class="key">name</span>: step2
+    <span class="key">model</span>: ollama/llama3.3:70b          <span class="cmt"># Literal model ID</span></pre>
+    </div>
+  </div>
+</div>
+
+<hr>
+
+<h2 id="cli">CLI Commands</h2>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Model Management</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Discover available models from all configured providers</span>
+lars models refresh
+
+<span class="cmt"># Refresh with parallel verification (faster)</span>
+lars models refresh --workers <span class="num">20</span>
+
+<span class="cmt"># List available models</span>
+lars models list
+lars models list --provider ollama
+lars models list --type embedding
+
+<span class="cmt"># Show current tier assignments</span>
+lars models tiers
+
+<span class="cmt"># Verify a specific model</span>
+lars models verify --model-id anthropic/claude-sonnet-4</pre>
+  </div>
+</div>
+
+<h3>Bootstrap</h3>
+
+<p>The <code>lars bootstrap</code> command creates both configuration files interactively:</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Bootstrap</span>
+  </div>
+  <div class="code-block-content">
+    <pre>lars bootstrap</pre>
+  </div>
+</div>
+
+<p>
+  This walks you through provider selection, API key validation, model discovery,
+  and generates <code>config.yaml</code> and <code>models.yaml</code> with your choices.
+</p>

@@ -354,6 +354,256 @@
   </div>
 </div>
 
+<h2 id="enterprise-databases">Enterprise Databases</h2>
+
+<div class="callout callout-warning">
+  <div class="callout-title"><iconify-icon icon="mdi:alert-outline"></iconify-icon> Materialization</div>
+  <p>
+    Enterprise database connectors <strong>materialize</strong> (copy) data into DuckDB via Python drivers.
+    Use <code>sample_row_limit</code> to control how many rows are copied per table.
+  </p>
+</div>
+
+<div class="feature-grid">
+  <div class="feature-card">
+    <div class="feature-card-icon" style="color: var(--orange);"><iconify-icon icon="mdi:database"></iconify-icon></div>
+    <h4>Oracle</h4>
+    <p>Pure Python via <code>oracledb</code> thin mode (no Oracle Client needed).</p>
+    <p class="stat">Default port: 1521</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon magenta"><iconify-icon icon="mdi:microsoft"></iconify-icon></div>
+    <h4>Microsoft SQL Server</h4>
+    <p>Pure Python via <code>pymssql</code> (no ODBC drivers needed).</p>
+    <p class="stat">Default port: 1433</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon"><iconify-icon icon="mdi:server"></iconify-icon></div>
+    <h4>IBM DB2</h4>
+    <p>IBM's official <code>ibm-db</code> Python driver.</p>
+    <p class="stat">Default port: 50000</p>
+  </div>
+</div>
+
+<h3>Oracle</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Field</th>
+      <th>Required</th>
+      <th>Default</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>host</code></td>
+      <td>Yes</td>
+      <td>—</td>
+      <td>Oracle server hostname</td>
+    </tr>
+    <tr>
+      <td><code>port</code></td>
+      <td>No</td>
+      <td>1521</td>
+      <td>Oracle listener port</td>
+    </tr>
+    <tr>
+      <td><code>service_name</code></td>
+      <td>Yes*</td>
+      <td>—</td>
+      <td>Oracle service name (or use <code>database</code> for SID)</td>
+    </tr>
+    <tr>
+      <td><code>database</code></td>
+      <td>Yes*</td>
+      <td>—</td>
+      <td>Oracle SID (alternative to <code>service_name</code>)</td>
+    </tr>
+    <tr>
+      <td><code>user</code></td>
+      <td>Yes</td>
+      <td>—</td>
+      <td>Oracle username</td>
+    </tr>
+    <tr>
+      <td><code>password_env</code></td>
+      <td>Yes</td>
+      <td>—</td>
+      <td>Environment variable containing password</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">sql_connections/oracle_erp.yaml</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">connection_name</span>: oracle_erp
+<span class="key">type</span>: oracle
+<span class="key">host</span>: oracle.example.com
+<span class="key">port</span>: <span class="num">1521</span>
+<span class="key">service_name</span>: ORCL
+<span class="key">user</span>: readonly_user
+<span class="key">password_env</span>: ORACLE_PASSWORD
+<span class="key">enabled</span>: <span class="kw">true</span>
+<span class="key">sample_row_limit</span>: <span class="num">1000</span></pre>
+  </div>
+</div>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Dependency</span>
+  </div>
+  <div class="code-block-content">
+    <pre>pip install oracledb pandas</pre>
+  </div>
+</div>
+
+<h3>Microsoft SQL Server (MSSQL)</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Field</th>
+      <th>Required</th>
+      <th>Default</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>host</code></td>
+      <td>Yes</td>
+      <td>—</td>
+      <td>SQL Server hostname</td>
+    </tr>
+    <tr>
+      <td><code>port</code></td>
+      <td>No</td>
+      <td>1433</td>
+      <td>SQL Server port</td>
+    </tr>
+    <tr>
+      <td><code>database</code></td>
+      <td>Yes</td>
+      <td>—</td>
+      <td>Database name</td>
+    </tr>
+    <tr>
+      <td><code>user</code></td>
+      <td>Yes</td>
+      <td>—</td>
+      <td>SQL Server username</td>
+    </tr>
+    <tr>
+      <td><code>password_env</code></td>
+      <td>Yes</td>
+      <td>—</td>
+      <td>Environment variable containing password</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">sql_connections/mssql_warehouse.yaml</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">connection_name</span>: mssql_warehouse
+<span class="key">type</span>: mssql
+<span class="key">host</span>: sqlserver.example.com
+<span class="key">port</span>: <span class="num">1433</span>
+<span class="key">database</span>: analytics
+<span class="key">user</span>: reader
+<span class="key">password_env</span>: MSSQL_PASSWORD
+<span class="key">enabled</span>: <span class="kw">true</span>
+<span class="key">sample_row_limit</span>: <span class="num">1000</span></pre>
+  </div>
+</div>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Dependency</span>
+  </div>
+  <div class="code-block-content">
+    <pre>pip install pymssql pandas</pre>
+  </div>
+</div>
+
+<h3>IBM DB2</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Field</th>
+      <th>Required</th>
+      <th>Default</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>host</code></td>
+      <td>Yes</td>
+      <td>—</td>
+      <td>DB2 server hostname</td>
+    </tr>
+    <tr>
+      <td><code>port</code></td>
+      <td>No</td>
+      <td>50000</td>
+      <td>DB2 port</td>
+    </tr>
+    <tr>
+      <td><code>database</code></td>
+      <td>Yes</td>
+      <td>—</td>
+      <td>Database name</td>
+    </tr>
+    <tr>
+      <td><code>user</code></td>
+      <td>Yes</td>
+      <td>—</td>
+      <td>DB2 username</td>
+    </tr>
+    <tr>
+      <td><code>password_env</code></td>
+      <td>Yes</td>
+      <td>—</td>
+      <td>Environment variable containing password</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">sql_connections/db2_mainframe.yaml</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">connection_name</span>: db2_mainframe
+<span class="key">type</span>: db2
+<span class="key">host</span>: db2.example.com
+<span class="key">port</span>: <span class="num">50000</span>
+<span class="key">database</span>: PRODDB
+<span class="key">user</span>: db2reader
+<span class="key">password_env</span>: DB2_PASSWORD
+<span class="key">enabled</span>: <span class="kw">true</span>
+<span class="key">sample_row_limit</span>: <span class="num">1000</span></pre>
+  </div>
+</div>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Dependency</span>
+  </div>
+  <div class="code-block-content">
+    <pre>pip install ibm-db pandas</pre>
+  </div>
+</div>
+
 <h2 id="cloud-warehouses">Cloud Data Warehouses</h2>
 
 <div class="feature-grid">
@@ -1106,6 +1356,18 @@ export AWS_SECRET_ACCESS_KEY="..."</pre>
     <tr>
       <td><code>clickhouse</code></td>
       <td><code>pip install clickhouse-connect</code></td>
+    </tr>
+    <tr>
+      <td><code>oracle</code></td>
+      <td><code>pip install oracledb pandas</code></td>
+    </tr>
+    <tr>
+      <td><code>mssql</code></td>
+      <td><code>pip install pymssql pandas</code></td>
+    </tr>
+    <tr>
+      <td><code>db2</code></td>
+      <td><code>pip install ibm-db pandas</code></td>
     </tr>
     <tr>
       <td><code>excel</code></td>

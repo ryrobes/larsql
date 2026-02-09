@@ -81,6 +81,21 @@
       <td>OpenRouter API key for LLM inference (primary provider)</td>
     </tr>
     <tr>
+      <td><code>ANTHROPIC_API_KEY</code></td>
+      <td><em>Optional</em></td>
+      <td>Anthropic API key for direct Anthropic provider (<code>anthropic/</code> prefix)</td>
+    </tr>
+    <tr>
+      <td><code>ANTHROPIC_OAUTH_TOKEN</code></td>
+      <td><em>Optional</em></td>
+      <td>OAuth token for Claude Pro/Max subscriptions (alternative to API key)</td>
+    </tr>
+    <tr>
+      <td><code>GEMINI_API_KEY</code></td>
+      <td><em>Optional</em></td>
+      <td>Google AI Studio API key for Gemini provider (<code>gemini/</code> prefix)</td>
+    </tr>
+    <tr>
       <td><code>LARS_ROOT</code></td>
       <td>Current directory</td>
       <td>Root directory for all LARS data, cascades, skills, and artifacts</td>
@@ -413,6 +428,74 @@
 <span class="cmt"># model: ollama@gpu1/llama3.3:70b</span></pre>
   </div>
 </div>
+
+<hr>
+
+<h2>LM Studio</h2>
+
+<table class="reference-table">
+  <thead>
+    <tr>
+      <th>Variable</th>
+      <th>Default</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>LARS_LMSTUDIO_HOST</code></td>
+      <td><code>http://localhost:1234</code></td>
+      <td>LM Studio server URL</td>
+    </tr>
+  </tbody>
+</table>
+
+<hr>
+
+<h2>Anthropic Direct</h2>
+
+<table class="reference-table">
+  <thead>
+    <tr>
+      <th>Variable</th>
+      <th>Default</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>ANTHROPIC_API_KEY</code></td>
+      <td><em>none</em></td>
+      <td>Anthropic API key for direct access</td>
+    </tr>
+    <tr>
+      <td><code>ANTHROPIC_OAUTH_TOKEN</code></td>
+      <td><em>none</em></td>
+      <td>OAuth token for Claude Pro/Max subscriptions</td>
+    </tr>
+  </tbody>
+</table>
+
+<hr>
+
+<h2>Gemini (Google AI Studio)</h2>
+
+<table class="reference-table">
+  <thead>
+    <tr>
+      <th>Variable</th>
+      <th>Default</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>GEMINI_API_KEY</code></td>
+      <td><em>none</em></td>
+      <td>Google AI Studio API key for Gemini</td>
+    </tr>
+  </tbody>
+</table>
 
 <hr>
 
