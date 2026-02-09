@@ -2719,110 +2719,128 @@ class LarsDB:
         return result
     
     def _compact_directory(self, table_dir: Path, schema_def: dict, threshold: int, force: bool) -> dict:
-        """Compact parquet files in a single directory."""
+        """Compact parquet files in a single directory.
+        
+        Uses a filesystem lock (fcntl) for cross-process safety so multiple
+        gunicorn workers don't race on the same table's parquet files.
+        """
+        import fcntl
+        
         result = {"files_before": 0, "files_after": 0, 
                   "rows_before": 0, "rows_after": 0, "dedup_applied": False}
         
-        parquet_files = list(table_dir.glob("*.parquet"))
-        result["files_before"] = len(parquet_files)
-        
-        if len(parquet_files) < threshold and not force:
-            result["files_after"] = len(parquet_files)
+        # Use filesystem lock for cross-process safety (multiple gunicorn workers)
+        lock_path = table_dir / ".compact.lock"
+        lock_fd = None
+        try:
+            lock_fd = open(lock_path, 'w')
+            fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except (IOError, OSError):
+            # Another process is compacting this table — skip silently
+            if lock_fd:
+                lock_fd.close()
             return result
         
-        if len(parquet_files) == 0:
-            return result
-        
-        # Read all files
-        with self._write_lock:
-            try:
-                # Read via DuckDB for better dedup support
-                conn = duckdb.connect()
-                import os
-                duckdb_threads = int(os.environ.get("LARS_DUCKDB_THREADS", "2"))
-                conn.execute(f"SET threads TO {duckdb_threads}")
-                parquet_glob = str(table_dir / "*.parquet")
+        try:
+            # List files INSIDE the lock to avoid race conditions
+            parquet_files = list(table_dir.glob("*.parquet"))
+            result["files_before"] = len(parquet_files)
+            
+            if len(parquet_files) < threshold and not force:
+                result["files_after"] = len(parquet_files)
+                return result
+            
+            if len(parquet_files) == 0:
+                return result
+            
+            # Read via DuckDB for better dedup support
+            conn = duckdb.connect()
+            import os
+            duckdb_threads = int(os.environ.get("LARS_DUCKDB_THREADS", "2"))
+            conn.execute(f"SET threads TO {duckdb_threads}")
+            parquet_glob = str(table_dir / "*.parquet")
+            
+            # Count rows before
+            count_result = conn.execute(
+                f"SELECT COUNT(*) FROM read_parquet('{parquet_glob}')"
+            ).fetchone()
+            result["rows_before"] = count_result[0] if count_result else 0
+            
+            # Check if dedup is configured for this table
+            dedup_config = schema_def.get("dedup")
+            
+            if dedup_config:
+                # Apply dedup - keep latest per primary key
+                pk_col = dedup_config["pk"]
+                order_col = dedup_config.get("order_by", "updated_at")
                 
-                # Count rows before
-                count_result = conn.execute(
-                    f"SELECT COUNT(*) FROM read_parquet('{parquet_glob}')"
-                ).fetchone()
-                result["rows_before"] = count_result[0] if count_result else 0
-                
-                # Check if dedup is configured for this table
-                dedup_config = schema_def.get("dedup")
-                
-                if dedup_config:
-                    # Apply dedup - keep latest per primary key
-                    pk_col = dedup_config["pk"]
-                    order_col = dedup_config.get("order_by", "updated_at")
-                    
-                    if "," in order_col:
-                        # Multi-column ORDER BY - use as-is (already has DESC/ASC)
-                        order_clause = order_col
-                    elif order_col == "updated_at":
-                        # Cast to handle mixed types in older parquet files
-                        # Don't assume created_at exists - not all tables have it
-                        order_clause = "COALESCE(TRY_CAST(updated_at AS TIMESTAMP), '1970-01-01'::TIMESTAMP) DESC NULLS LAST"
-                    elif "DESC" in order_col.upper() or "ASC" in order_col.upper():
-                        # Already has direction specified
-                        order_clause = order_col
-                    else:
-                        order_clause = f"{order_col} DESC NULLS LAST"
-                    
-                    df = conn.execute(f"""
-                        SELECT * EXCLUDE (_rn) FROM (
-                            SELECT *, ROW_NUMBER() OVER (
-                                PARTITION BY {pk_col}
-                                ORDER BY {order_clause}
-                            ) as _rn
-                            FROM read_parquet('{parquet_glob}', union_by_name=true)
-                        ) WHERE _rn = 1
-                    """).fetchdf()
-                    result["dedup_applied"] = True
+                if "," in order_col:
+                    order_clause = order_col
+                elif order_col == "updated_at":
+                    order_clause = "COALESCE(TRY_CAST(updated_at AS TIMESTAMP), '1970-01-01'::TIMESTAMP) DESC NULLS LAST"
+                elif "DESC" in order_col.upper() or "ASC" in order_col.upper():
+                    order_clause = order_col
                 else:
-                    # No dedup, just concatenate
-                    df = conn.execute(
-                        f"SELECT * FROM read_parquet('{parquet_glob}', union_by_name=true)"
-                    ).fetchdf()
+                    order_clause = f"{order_col} DESC NULLS LAST"
                 
-                conn.close()
-                
-                result["rows_after"] = len(df)
-                
-                if len(df) == 0:
-                    # No data, just clean up empty files
-                    for f in parquet_files:
-                        f.unlink()
-                    result["files_after"] = 0
-                    return result
-                
-                # Write compacted file
-                timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-                unique_id = uuid.uuid4().hex[:8]
-                compacted_path = table_dir / f"compacted_{timestamp}_{unique_id}.parquet"
-                
-                # Use explicit schema to preserve column types (prevents NULL → wrong type inference)
-                arrow_schema = _schema_to_pyarrow(schema_def)
-                table_data = pa.Table.from_pandas(df, schema=arrow_schema, preserve_index=False)
-                pq.write_table(table_data, compacted_path, compression="snappy")
-                
-                # Remove original files (but not the one we just wrote)
+                df = conn.execute(f"""
+                    SELECT * EXCLUDE (_rn) FROM (
+                        SELECT *, ROW_NUMBER() OVER (
+                            PARTITION BY {pk_col}
+                            ORDER BY {order_clause}
+                        ) as _rn
+                        FROM read_parquet('{parquet_glob}', union_by_name=true)
+                    ) WHERE _rn = 1
+                """).fetchdf()
+                result["dedup_applied"] = True
+            else:
+                df = conn.execute(
+                    f"SELECT * FROM read_parquet('{parquet_glob}', union_by_name=true)"
+                ).fetchdf()
+            
+            conn.close()
+            
+            result["rows_after"] = len(df)
+            
+            if len(df) == 0:
                 for f in parquet_files:
-                    if f != compacted_path:
-                        f.unlink()
-                
-                result["files_after"] = 1
-                
-                # Invalidate ALL thread connections so they re-register views with new files
-                self.invalidate_all_connections()
-                
+                    f.unlink()
+                result["files_after"] = 0
                 return result
-                
-            except Exception as e:
-                print(f"[LarsDB] Compaction failed for {table_dir.name}: {e}")
-                result["error"] = str(e)
-                return result
+            
+            # Write compacted file
+            timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+            unique_id = uuid.uuid4().hex[:8]
+            compacted_path = table_dir / f"compacted_{timestamp}_{unique_id}.parquet"
+            
+            arrow_schema = _schema_to_pyarrow(schema_def)
+            table_data = pa.Table.from_pandas(df, schema=arrow_schema, preserve_index=False)
+            pq.write_table(table_data, compacted_path, compression="snappy")
+            
+            # Remove original files (but not the one we just wrote)
+            for f in parquet_files:
+                if f != compacted_path:
+                    f.unlink()
+            
+            result["files_after"] = 1
+            
+            # Invalidate ALL thread connections so they re-register views with new files
+            self.invalidate_all_connections()
+            
+            return result
+            
+        except Exception as e:
+            print(f"[LarsDB] Compaction failed for {table_dir.name}: {e}")
+            result["error"] = str(e)
+            return result
+        finally:
+            # Always release the filesystem lock
+            if lock_fd:
+                try:
+                    fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                    lock_fd.close()
+                except Exception:
+                    pass
     
     def compact_all(self, threshold: int = 2, force: bool = False) -> List[dict]:
         """
