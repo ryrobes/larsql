@@ -488,9 +488,9 @@ def _backfill_costs(results: List['BenchmarkResult']):
             SELECT model, COALESCE(SUM(cost), 0), COALESCE(SUM(tokens_in), 0),
                    COALESCE(SUM(tokens_out), 0), COUNT(*)
             FROM costs
-            WHERE timestamp >= ?
+            WHERE timestamp >= ? AND timestamp <= ?
             GROUP BY model
-        """, [t_min]).fetchall()
+        """, [t_min, t_max]).fetchall()
 
         if not all_costs:
             return
@@ -506,12 +506,26 @@ def _backfill_costs(results: List['BenchmarkResult']):
             costs = model_costs.get(model_id)
             if not costs:
                 # Fuzzy: benchmark uses "anthropic/claude-sonnet-4" but costs have "anthropic/claude-4-sonnet-20250522"
+                # Strategy: match on provider + all significant name parts
+                bench_parts = set(model_id.replace("/", "-").split("-"))
+                bench_parts.discard("")  # remove empties
+                best_match = None
+                best_score = 0
                 for cost_model, cost_data in model_costs.items():
-                    # Match if either contains the other, or share a common base
-                    if (model_id in cost_model or cost_model in model_id or
-                        model_id.split("/")[-1].split("-")[0] in cost_model):
-                        costs = cost_data
+                    # Exact substring match (either direction)
+                    if model_id in cost_model or cost_model in model_id:
+                        best_match = cost_data
                         break
+                    # Part overlap scoring — require at least 3 matching parts
+                    # to avoid "claude" matching everything
+                    cost_parts = set(cost_model.replace("/", "-").split("-"))
+                    cost_parts.discard("")
+                    overlap = len(bench_parts & cost_parts)
+                    if overlap >= 3 and overlap > best_score:
+                        best_score = overlap
+                        best_match = cost_data
+                if best_match:
+                    costs = best_match
 
             if not costs or (costs[0] == 0 and costs[1] == 0):
                 continue
