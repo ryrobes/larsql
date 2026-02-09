@@ -54,13 +54,22 @@ def _load_config_yaml() -> Dict[str, Any]:
         return {}
 
 
-def _yget(key: str, default=None, *, section: str = None):
+def _yget(key: str, default=None, *, section: str = None, env: str = None):
     """Get a value from config.yaml, returning default if not found.
     
     Checks env var first (env always wins), then YAML, then default.
+    
+    Args:
+        key: YAML key name
+        default: Fallback value
+        section: YAML nested section (e.g. "learning")
+        env: Explicit env var name (e.g. "LARS_LEARN_INTERVAL"). 
+             If not provided, auto-constructs from section + key.
     """
     # Build env var name
-    if section:
+    if env:
+        env_name = env
+    elif section:
         env_name = f"LARS_{section.upper()}_{key.upper()}"
     else:
         env_name = f"LARS_{key.upper()}"
@@ -508,7 +517,7 @@ class Config(BaseModel):
     anthropic_oauth_token: Optional[str] = Field(
         default_factory=lambda: os.getenv("ANTHROPIC_OAUTH_TOKEN") or os.getenv("ANTHROPIC_API_KEY", "")
     )
-    default_model: str = Field(default="x-ai/grok-4.1-fast")
+    default_model: str = Field(default_factory=lambda: str(_yget("default_model", "x-ai/grok-4.1-fast")))
     #default_model: str = Field(default="arcee-ai/trinity-large-preview:free")
 
     # Default embedding model (used by RAG and Agent.embed())
@@ -558,9 +567,7 @@ class Config(BaseModel):
     # When enabled, large inputs/outputs are automatically chunked, embedded,
     # and searchable via injected tools instead of being passed inline
     ephemeral_rag_enabled: bool = Field(
-        default_factory=lambda: os.getenv(
-            "LARS_EPHEMERAL_RAG_ENABLED", "true"
-        ).lower() == "true"
+        default_factory=lambda: str(_yget("ephemeral_rag", True, section="features")).lower() not in ("0", "false", "no")
     )
 
     # Character threshold above which content is indexed instead of inline
@@ -594,9 +601,7 @@ class Config(BaseModel):
     # filtering out false positives and providing reasoning for each result.
     # This reduces context bloat by returning fewer, higher-quality results.
     smart_search_enabled: bool = Field(
-        default_factory=lambda: os.getenv(
-            "LARS_SMART_SEARCH", "true"
-        ).lower() == "true"
+        default_factory=lambda: str(_yget("smart_search", True, section="features")).lower() not in ("0", "false", "no")
     )
 
     # Model to use for smart search filtering (should be fast and cheap)
@@ -706,7 +711,7 @@ class Config(BaseModel):
     # MCP (Model Context Protocol) Configuration
     # =========================================================================
     mcp_enabled: bool = Field(
-        default_factory=lambda: os.getenv("LARS_MCP_ENABLED", "true").lower() == "true"
+        default_factory=lambda: str(_yget("mcp", True, section="features")).lower() not in ("0", "false", "no")
     )
     # MCP servers loaded from config/mcp_servers.yaml or LARS_MCP_SERVERS_YAML env var
     mcp_servers: List[Any] = Field(
@@ -831,7 +836,7 @@ class Config(BaseModel):
     # Number of parallel workers for Arrow vectorized UDF execution
     # Used by semantic SQL operators (MEANS, ABOUT, etc.) for batch parallelism
     parallel_workers: int = Field(
-        default_factory=lambda: int(os.getenv("LARS_PARALLEL_WORKERS", "8"))
+        default_factory=lambda: int(_yget("parallel_workers", 8))
     )
 
     # =========================================================================

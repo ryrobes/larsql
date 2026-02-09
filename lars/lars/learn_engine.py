@@ -34,19 +34,21 @@ log = logging.getLogger(__name__)
 # ─── Configuration ───────────────────────────────────────────────────────────
 
 # How often the dream loop runs (seconds). Override with LARS_LEARN_INTERVAL.
-DEFAULT_DREAM_INTERVAL = int(os.environ.get("LARS_LEARN_INTERVAL", "3600"))  # 1 hour
+from .config import _yget as _cfg
+DEFAULT_DREAM_INTERVAL = int(_cfg("interval", 3600, section="learning", env="LARS_LEARN_INTERVAL"))
 
 # Minimum verified examples before calibration triggers for an operator
-CALIBRATION_THRESHOLD = int(os.environ.get("LARS_LEARN_CALIBRATION_THRESHOLD", "5"))
+CALIBRATION_THRESHOLD = int(_cfg("calibration_threshold", 5, section="learning", env="LARS_LEARN_CALIBRATION_THRESHOLD"))
 
 # Minimum verified examples before prompt mutation triggers
-MUTATION_THRESHOLD = int(os.environ.get("LARS_LEARN_MUTATION_THRESHOLD", "10"))
+MUTATION_THRESHOLD = int(_cfg("mutation_threshold", 10, section="learning", env="LARS_LEARN_MUTATION_THRESHOLD"))
 
 # Accuracy floor — no model swap unless candidate meets this
-ACCURACY_FLOOR = float(os.environ.get("LARS_LEARN_ACCURACY_FLOOR", "0.90"))
+ACCURACY_FLOOR = float(_cfg("accuracy_floor", 0.90, section="learning", env="LARS_LEARN_ACCURACY_FLOOR"))
 
 # Enable/disable dreaming entirely
-DREAMING_ENABLED = os.environ.get("LARS_LEARN_ENABLED", "1") == "1"
+_learn_val = _cfg("enabled", True, section="learning", env="LARS_LEARN_ENABLED")
+DREAMING_ENABLED = str(_learn_val).lower() not in ("0", "false", "no")
 
 # ─── Dream State ─────────────────────────────────────────────────────────────
 
