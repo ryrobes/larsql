@@ -226,6 +226,125 @@ def get_verified_test_cases(operator: str) -> List[Dict[str, Any]]:
         return []
 
 
+# ─── Calibration ─────────────────────────────────────────────────────────────
+
+def get_candidate_models() -> List[str]:
+    """Get models to benchmark during calibration."""
+    # Check env override first
+    env_models = os.environ.get("LARS_LEARN_MODELS", "")
+    if env_models:
+        return [m.strip() for m in env_models.split(",") if m.strip()]
+
+    # Default: use the configured model tiers
+    try:
+        from .models import get_model_for_tier
+        candidates = set()
+        for tier in ["fast", "standard", "flagship"]:
+            try:
+                model = get_model_for_tier(tier)
+                if model:
+                    candidates.add(model)
+            except Exception:
+                pass
+        if candidates:
+            return sorted(candidates)
+    except Exception:
+        pass
+
+    # Fallback defaults
+    return [
+        "google/gemini-2.5-flash-lite",
+        "anthropic/claude-haiku-4.5",
+        "anthropic/claude-sonnet-4.5",
+    ]
+
+
+def calibrate_operator(
+    operator: str,
+    models: Optional[List[str]] = None,
+    dream_session_id: str = "",
+) -> Optional[Dict[str, Any]]:
+    """
+    Run benchmark calibration for a single operator using verified examples.
+
+    Discovers test cases from:
+    1. Verified training examples (human feedback)
+    2. Cascade YAML test_cases (built-in)
+
+    Runs each test case against candidate models and stores results
+    in model_benchmarks for routing decisions.
+    """
+    start = time.time()
+    candidate_models = models or get_candidate_models()
+
+    if not candidate_models:
+        log.warning(f"[learn] No candidate models for calibration")
+        return None
+
+    # Discover test cases from cascade YAML first
+    from .benchmark import discover_test_cases, run_benchmark
+
+    yaml_cases = discover_test_cases(operators=[operator])
+    verified_cases = get_verified_test_cases(operator)
+
+    total_cases = len(yaml_cases) + len(verified_cases)
+    if total_cases == 0:
+        log.info(f"[learn] No test cases found for {operator}")
+        return None
+
+    log.info(f"[learn] Calibrating {operator}: {len(yaml_cases)} YAML cases, "
+             f"{len(verified_cases)} verified cases, {len(candidate_models)} models")
+
+    log_work(
+        activity_type="calibration_start",
+        description=f"Starting calibration for {operator}: "
+                    f"{len(yaml_cases)} YAML + {len(verified_cases)} verified cases "
+                    f"× {len(candidate_models)} models",
+        operator=operator,
+        details={
+            "yaml_cases": len(yaml_cases),
+            "verified_cases": len(verified_cases),
+            "models": candidate_models,
+        },
+        dream_session_id=dream_session_id,
+    )
+
+    # Run benchmark using YAML test cases (these have SQL + expected values)
+    run_id = None
+    if yaml_cases:
+        try:
+            run_id = run_benchmark(
+                operators=[operator],
+                models=candidate_models,
+                verbose=False,
+            )
+        except Exception as e:
+            log.warning(f"[learn] Benchmark failed for {operator}: {e}")
+
+    elapsed_ms = (time.time() - start) * 1000
+
+    result = {
+        "operator": operator,
+        "models_tested": candidate_models,
+        "yaml_cases": len(yaml_cases),
+        "verified_cases": len(verified_cases),
+        "run_id": run_id,
+        "elapsed_ms": elapsed_ms,
+    }
+
+    log_work(
+        activity_type="calibration_complete",
+        description=f"Calibration complete for {operator} in {elapsed_ms:.0f}ms "
+                    f"(run_id: {run_id})",
+        operator=operator,
+        duration_ms=elapsed_ms,
+        details=result,
+        dream_session_id=dream_session_id,
+    )
+
+    return result
+
+
 # ─── Routing Table ───────────────────────────────────────────────────────────
 
 def update_routing_table() -> Dict[str, str]:
@@ -420,8 +539,42 @@ def run_dream_cycle(triggered_by: str = "auto") -> Dict[str, Any]:
             "type": "calibration_needed",
             "operators": operators_to_calibrate,
         })
-        # Note: actual calibration requires running benchmarks which is expensive.
-        # For now, log the need. Phase 2 will wire this to benchmark.run_benchmark().
+
+        # ── Run calibration benchmarks for each operator ──
+        for operator in operators_to_calibrate:
+            try:
+                cal_result = calibrate_operator(operator, dream_session_id=dream_id)
+                if cal_result:
+                    summary["activities"].append({
+                        "type": "calibration_run",
+                        "operator": operator,
+                        **cal_result,
+                    })
+            except Exception as e:
+                log.warning(f"[learn] Calibration failed for {operator}: {e}")
+                log_work(
+                    activity_type="calibration_error",
+                    description=f"Calibration failed for {operator}: {e}",
+                    operator=operator,
+                    dream_session_id=dream_id,
+                )
+
+    # ── Step 3b: Re-update routing after calibration ──
+    if operators_to_calibrate:
+        t0 = time.time()
+        routing = update_routing_table()
+        if routing:
+            log_work(
+                activity_type="post_calibration_routing",
+                description=f"Post-calibration routing update: {', '.join(f'{op}→{m}' for op, m in routing.items())}",
+                duration_ms=(time.time() - t0) * 1000,
+                details=routing,
+                dream_session_id=dream_id,
+            )
+            summary["activities"].append({
+                "type": "post_calibration_routing",
+                "routing": routing,
+            })
 
     # ── Step 4: Check for prompt mutation opportunities ──
     operators_for_mutation = [
