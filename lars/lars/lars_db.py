@@ -2316,6 +2316,8 @@ class LarsDB:
             pass
         
         # training_udf_calls - each UDF invocation with its result from unified_logs
+        # Try with new columns first, fall back to legacy schema
+        _udf_view_created = False
         try:
             conn.execute("""
                 CREATE OR REPLACE VIEW training_udf_calls AS
@@ -2344,8 +2346,42 @@ class LarsDB:
                       AND cascade_id != 'analyze_context_relevance'
                 ) ul ON ce.session_id = ul.session_id AND ul.rn = 1
             """)
+            _udf_view_created = True
         except Exception:
             pass
+
+        # Fallback: legacy schema without inputs_json/sql_operator columns
+        if not _udf_view_created:
+            try:
+                conn.execute("""
+                    CREATE OR REPLACE VIEW training_udf_calls AS
+                    SELECT
+                        ce.caller_id,
+                        ce.cascade_id AS operator,
+                        UPPER(ce.cascade_id) AS sql_operator,
+                        ce.session_id,
+                        ce.inputs_summary,
+                        ce.inputs_summary AS inputs_json,
+                        ce.timestamp,
+                        ul.trace_id,
+                        ul.content_json AS result,
+                        ul.cost,
+                        ul.model,
+                        ul.duration_ms,
+                        ul.cell_name
+                    FROM sql_cascade_executions ce
+                    LEFT JOIN (
+                        SELECT session_id, trace_id, content_json, cost, model, duration_ms, cell_name,
+                               ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY timestamp DESC) AS rn
+                        FROM unified_logs
+                        WHERE role = 'assistant'
+                          AND cascade_id IS NOT NULL AND cascade_id != ''
+                          AND content_json IS NOT NULL AND content_json != ''
+                          AND cascade_id != 'analyze_context_relevance'
+                    ) ul ON ce.session_id = ul.session_id AND ul.rn = 1
+                """)
+            except Exception as e:
+                log.warning(f"[Views] Could not create training_udf_calls view: {e}")
 
         # training_sql_calls - roll-up by caller_id for the SQL Call view
         try:
