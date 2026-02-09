@@ -98,7 +98,7 @@ _CONFIG_YAML_SCHEMA = [
     # ─── General ─────────────────────────────
     ("_section", "General", None, None, None),
     ("debug", "LARS_DEBUG", False, "Enable verbose debug logging", None),
-    ("default_model", "LARS_DEFAULT_MODEL", "x-ai/grok-4.1-fast", "Default LLM model for queries", None),
+    # default_model is intentionally omitted — configure via models.yaml (standard tier)
     ("no_splash", "LARS_NO_SPLASH", False, "Disable startup splash art", None),
     ("session_id_style", "LARS_SESSION_ID_STYLE", "woodland", "Session naming style: woodland, uuid, short", None),
     ("data_format", "LARS_DATA_FORMAT", "auto", "Output format: auto, table, json, csv", None),
@@ -519,7 +519,8 @@ class Config(BaseModel):
     anthropic_oauth_token: Optional[str] = Field(
         default_factory=lambda: os.getenv("ANTHROPIC_OAUTH_TOKEN") or os.getenv("ANTHROPIC_API_KEY", "")
     )
-    default_model: str = Field(default_factory=lambda: str(_yget("default_model", "x-ai/grok-4.1-fast")))
+    # Default model — set via models.yaml (standard tier). Hardcoded fallback only if models.yaml missing.
+    default_model: str = Field(default="x-ai/grok-4.1-fast")
     #default_model: str = Field(default="arcee-ai/trinity-large-preview:free")
 
     # Default embedding model (used by RAG and Agent.embed())
