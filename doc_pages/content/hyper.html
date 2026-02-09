@@ -1,0 +1,411 @@
+<h1>Hyper SQL Client</h1>
+<p class="lead">
+  Hyper is LARS's built-in SQL client, integrated directly into Studio. While LARS exposes a standard
+  PostgreSQL wire protocol — letting you use any SQL client like DBeaver, DataGrip, or psql — Hyper
+  provides a zero-install, tightly integrated experience with features purpose-built for semantic SQL.
+</p>
+
+<div class="toc">
+  <div class="toc-title">On This Page</div>
+  <ul>
+    <li><a href="#overview">Overview</a></li>
+    <li><a href="#getting-started">Getting Started</a></li>
+    <li><a href="#sql-editor">SQL Editor</a></li>
+    <li><a href="#dashboard-panels">Dashboard Panels</a></li>
+    <li><a href="#interactive-parameters">Interactive Parameters</a></li>
+    <li><a href="#chart-visualization">Chart Visualization</a></li>
+    <li><a href="#explain-plans">Explain Plans & Cost Tracking</a></li>
+    <li><a href="#ai-dashboard-builder">AI Dashboard Builder</a></li>
+    <li><a href="#tabs-files">Tabs & File Management</a></li>
+    <li><a href="#capture-annotate">Capture & Annotate</a></li>
+    <li><a href="#panel-types">Panel Types Reference</a></li>
+    <li><a href="#keyboard-shortcuts">Keyboard Shortcuts</a></li>
+  </ul>
+</div>
+
+<h2 id="overview">Overview</h2>
+
+<p>
+  Hyper is not a replacement for your favorite SQL client — it's a complement. Use DBeaver or DataGrip
+  for schema browsing, migrations, and traditional database work. Use Hyper when you want to:
+</p>
+
+<div class="feature-grid">
+  <div class="feature-card">
+    <div class="feature-card-icon"><iconify-icon icon="mdi:view-dashboard"></iconify-icon></div>
+    <h4>Interactive Dashboards</h4>
+    <p>Build dashboards with pure SQL — no JavaScript, no React, no build step</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon magenta"><iconify-icon icon="mdi:file-tree"></iconify-icon></div>
+    <h4>Explain Plans</h4>
+    <p>Visualize explain plans with cost estimates before running queries</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon green"><iconify-icon icon="mdi:currency-usd"></iconify-icon></div>
+    <h4>Cost Tracking</h4>
+    <p>Track actual LLM costs per query in real time</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon purple"><iconify-icon icon="mdi:creation"></iconify-icon></div>
+    <h4>AI Dashboard Builder</h4>
+    <p>Generate dashboards from screenshots and voice descriptions</p>
+  </div>
+</div>
+
+<p>
+  Hyper runs inside Studio's sidebar as the <strong>ℓ</strong> view (accessible from the left navigation).
+</p>
+
+<h2 id="getting-started">Getting Started</h2>
+
+<ol>
+  <li>Launch Studio (<code>lars studio</code>)</li>
+  <li>Click the <strong>ℓ</strong> icon in the left sidebar</li>
+  <li>Start writing SQL in the Monaco-powered editor</li>
+  <li>Press <strong>Ctrl+Enter</strong> (or <strong>⌘+Enter</strong> on Mac) to execute</li>
+</ol>
+
+<p>
+  The editor comes pre-loaded with a sample interactive dashboard demonstrating panels, charts,
+  and parameter binding.
+</p>
+
+<h2 id="sql-editor">SQL Editor</h2>
+
+<p>
+  Hyper uses <a href="https://microsoft.github.io/monaco-editor/">Monaco Editor</a> — the same editor
+  that powers VS Code — with LARS-specific enhancements:
+</p>
+
+<ul>
+  <li><strong>Syntax highlighting</strong> for SQL with semantic operator awareness</li>
+  <li><strong>Auto-explain</strong> — as you type, Hyper estimates cost and shows explain plans inline</li>
+  <li><strong>Gutter icons</strong> — color-coded cost tier indicators appear next to each query block</li>
+  <li><strong>Ghost text</strong> — estimated and actual costs appear as inline decorations</li>
+  <li><strong>Multi-query support</strong> — write multiple queries separated by semicolons; each gets its own panel</li>
+  <li><strong>Database selector</strong> — switch between connected databases from the toolbar</li>
+</ul>
+
+<h2 id="dashboard-panels">Dashboard Panels</h2>
+
+<p>
+  Hyper's signature feature is <strong>SQL-native dashboards</strong>. Instead of writing JavaScript
+  to create charts, you embed layout and visualization metadata directly in your SQL using special
+  comment directives.
+</p>
+
+<h3>Panel Syntax</h3>
+
+<div class="code-block">
+  <div class="code-label">Panel Directive</div>
+  <pre><code>--- PANEL 'Panel Title' (col, row, colspan, rowspan) [OPTIONS]
+SELECT ... ;</code></pre>
+</div>
+
+<ul>
+  <li><strong>Title</strong> — displayed as the panel header</li>
+  <li><strong>Position</strong> — <code>(col, row)</code> places the panel on a grid; <code>(col, row, colspan, rowspan)</code> controls size</li>
+  <li><strong>Options</strong> — <code>HIDE_TITLE</code>, <code>HIDE_BORDER</code>, <code>ON_SELECT ...</code></li>
+</ul>
+
+<h3>Setup SQL with PASS INTO</h3>
+
+<p>
+  Use <code>THEN PASS INTO</code> to materialize intermediate results that multiple panels can reference:
+</p>
+
+<div class="code-block">
+  <div class="code-label">Shared Data with PASS INTO</div>
+  <pre><code>SELECT * FROM sales_data
+WHERE year = 2024
+ THEN PASS INTO shared_data;
+
+--- PANEL 'By Region' (1, 1, 1, 1)
+SELECT region, SUM(revenue) as total
+FROM into_shared_data GROUP BY region;
+
+--- PANEL 'By Month' (2, 1, 1, 1)
+SELECT month, SUM(revenue) as total
+FROM into_shared_data GROUP BY month;</code></pre>
+</div>
+
+<p>
+  The setup SQL runs once, then each panel query runs in parallel against the materialized result.
+</p>
+
+<h3>Dashboard Naming</h3>
+
+<div class="code-block">
+  <div class="code-label">HYPER Directive</div>
+  <pre><code>--- HYPER 'Sales Dashboard'
+-- Your queries here...</code></pre>
+</div>
+
+<p>This name appears as the tab title.</p>
+
+<h2 id="interactive-parameters">Interactive Parameters</h2>
+
+<p>
+  Panels can be interactive — clicking a chart element sets a parameter that filters other panels.
+</p>
+
+<h3>Single Select (ON_SELECT)</h3>
+
+<div class="code-block">
+  <div class="code-label">Interactive Filtering</div>
+  <pre><code>--- PANEL 'Categories' (1, 1) ON_SELECT @param_set('cat', category)
+SELECT category, COUNT(*) as count
+FROM products GROUP BY category;
+
+--- PANEL 'Filtered Products' (2, 1)
+SELECT name, price FROM products
+WHERE (CASE WHEN @param_get('cat') IS NULL
+  THEN true ELSE category = @param_get('cat') END);</code></pre>
+</div>
+
+<p>Click a row in "Categories" to filter "Filtered Products". Click again to deselect.</p>
+
+<h3>Multi Select (ON_SELECT[])</h3>
+
+<div class="code-block">
+  <div class="code-label">Multi-Select with Checkboxes</div>
+  <pre><code>--- PANEL 'Departments' (1, 1) ON_SELECT[] @params_set('depts', dept)
+SELECT dept, COUNT(*) FROM employees GROUP BY dept;</code></pre>
+</div>
+
+<p>The <code>[]</code> suffix enables checkbox-style multi-select.</p>
+
+<h3>Parameter Functions</h3>
+
+<table>
+  <thead>
+    <tr><th>Function</th><th>Description</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>@param_set('key', field)</code></td><td>Set a single-value parameter from the clicked row</td></tr>
+    <tr><td><code>@params_set('key', field)</code></td><td>Append/remove from a multi-value parameter</td></tr>
+    <tr><td><code>@param_get('key')</code></td><td>Retrieve the current parameter value in a query</td></tr>
+    <tr><td><code>@param_clear('key')</code></td><td>Clear a parameter value</td></tr>
+  </tbody>
+</table>
+
+<h2 id="chart-visualization">Chart Visualization</h2>
+
+<p>
+  Hyper supports multiple chart libraries through SQL-native configuration. Return <code>format</code> and
+  <code>config</code> columns to control visualization.
+</p>
+
+<h3>Vega-Lite Charts</h3>
+
+<div class="code-block">
+  <div class="code-label">Vega-Lite Example</div>
+  <pre><code>--- PANEL 'Revenue Trend' (1, 1)
+SELECT
+  'vega-lite' as format,
+  {mark: 'line', x: 'month', y: 'revenue', title: 'Monthly Revenue'} as config,
+  month, SUM(revenue) as revenue
+FROM sales GROUP BY month;</code></pre>
+</div>
+
+<h3>Plotly Charts</h3>
+
+<div class="code-block">
+  <div class="code-label">Plotly Example</div>
+  <pre><code>--- PANEL 'Market Share' (1, 1)
+SELECT
+  'plotly' as format,
+  {type: 'pie', values: 'total', labels: 'category'} as config,
+  category, SUM(revenue) as total
+FROM sales GROUP BY category;</code></pre>
+</div>
+
+<h3>Supported Format Types</h3>
+
+<table>
+  <thead>
+    <tr><th>Format</th><th>Description</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>vega-lite</code></td><td>Declarative charts (bar, line, area, scatter, etc.)</td></tr>
+    <tr><td><code>plotly</code></td><td>Interactive charts (pie, scatter, 3D, etc.)</td></tr>
+    <tr><td><code>metric</code></td><td>Single-value KPI display</td></tr>
+    <tr><td><code>sparkline</code></td><td>Inline mini-charts</td></tr>
+    <tr><td><code>markdown</code></td><td>Rendered Markdown content</td></tr>
+    <tr><td><code>mermaid</code></td><td>Mermaid diagram rendering</td></tr>
+    <tr><td><code>image</code></td><td>Image display from URLs</td></tr>
+    <tr><td><code>text</code></td><td>Plain text display</td></tr>
+  </tbody>
+</table>
+
+<p>If no <code>format</code> column is returned, the panel defaults to a <strong>data grid</strong> — a sortable, filterable table.</p>
+
+<h2 id="explain-plans">Explain Plans & Cost Tracking</h2>
+
+<p>
+  Hyper provides rich explain plan visualization that goes beyond traditional <code>EXPLAIN</code>.
+</p>
+
+<h3>Auto-Explain</h3>
+
+<p>
+  As you type, Hyper automatically runs an explain plan in the background (debounced at 300ms).
+  The results appear as:
+</p>
+
+<ul>
+  <li><strong>Gutter icons</strong> — color-coded by cost tier (green = cheap, red = expensive)</li>
+  <li><strong>Ghost text</strong> — estimated cost appears inline after each query</li>
+  <li><strong>Hover tooltips</strong> — hover gutter icons for detailed operation breakdown</li>
+</ul>
+
+<h3>Cost Tiers</h3>
+
+<table>
+  <thead>
+    <tr><th>Tier</th><th>Cost Range</th><th>Description</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Zero</td><td>$0</td><td>No LLM calls</td></tr>
+    <tr><td>Free</td><td>&lt; $0.001</td><td>Negligible cost</td></tr>
+    <tr><td>Low</td><td>&lt; $0.01</td><td>Basic operations</td></tr>
+    <tr><td>Moderate</td><td>&lt; $0.10</td><td>Multi-step pipelines</td></tr>
+    <tr><td>High</td><td>&lt; $1.00</td><td>Complex operations</td></tr>
+    <tr><td>Very High</td><td>&gt; $1.00</td><td>Use with caution</td></tr>
+  </tbody>
+</table>
+
+<h3>Actual Cost Tracking</h3>
+
+<p>
+  After execution, Hyper polls for actual costs from the unified log and updates the display.
+  The <strong>Cost Analysis Dashboard</strong> (available as a system tab) provides a detailed
+  breakdown across all executed queries.
+</p>
+
+<h3>Explain Preview Panel</h3>
+
+<p>Before execution, each panel shows a skeleton preview with:</p>
+
+<ul>
+  <li>Estimated cost and cost tier</li>
+  <li>Number of LLM calls required</li>
+  <li>Operation breakdown with row count estimates</li>
+  <li>Cache hit rates</li>
+  <li>Model information</li>
+</ul>
+
+<h2 id="ai-dashboard-builder">AI Dashboard Builder</h2>
+
+<p>
+  Hyper includes an AI-powered dashboard generator that creates SQL dashboards from natural language.
+</p>
+
+<h3>How It Works</h3>
+
+<ol>
+  <li><strong>Hold Spacebar</strong> to enter capture mode</li>
+  <li><strong>Speak</strong> your description (audio is transcribed)</li>
+  <li><strong>Draw</strong> annotations on screen to highlight areas of interest</li>
+  <li><strong>Release Spacebar</strong> — a screenshot with your annotations is captured</li>
+  <li><strong>Review</strong> the screenshot and transcript in the Intent Review modal</li>
+  <li><strong>Submit</strong> — LARS generates a complete SQL dashboard</li>
+</ol>
+
+<p>
+  The generated SQL uses Hyper's panel syntax with charts, parameters, and layout — ready to execute.
+</p>
+
+<h3>Intent Review Modal</h3>
+
+<p>Before generating, you can:</p>
+
+<ul>
+  <li>Edit the transcribed text</li>
+  <li>Add additional drawing annotations</li>
+  <li>Include current panel data for context</li>
+  <li>Review the full screenshot</li>
+</ul>
+
+<h2 id="tabs-files">Tabs & File Management</h2>
+
+<h3>Tabs</h3>
+
+<p>Hyper supports multiple concurrent workspaces via tabs:</p>
+
+<ul>
+  <li>Each tab maintains its own SQL, results, panel state, and database selection</li>
+  <li>Tab names are automatically derived from <code>--- HYPER 'Name'</code> directives</li>
+  <li>Create new tabs with the <strong>+</strong> button</li>
+  <li>Reorder tabs by dragging</li>
+</ul>
+
+<h3>Saving & Loading Files</h3>
+
+<p>The SQL File Manager lets you persist queries:</p>
+
+<ul>
+  <li><strong>Save</strong> — store the current SQL with a name and optional description</li>
+  <li><strong>Browse</strong> — search and load saved files</li>
+  <li><strong>Favorites</strong> — star frequently used queries</li>
+  <li><strong>Database context</strong> — files remember which database they target</li>
+</ul>
+
+<p>Files are stored in LARS's internal database and available across sessions.</p>
+
+<h2 id="capture-annotate">Capture & Annotate</h2>
+
+<p>The capture system lets you visually communicate with the AI dashboard builder:</p>
+
+<ul>
+  <li><strong>Spacebar hold</strong> — activates the full-screen drawing overlay</li>
+  <li><strong>Drawing tools</strong> — multiple brush colors (7 options) and sizes</li>
+  <li><strong>Audio recording</strong> — captures voice description while you draw</li>
+  <li><strong>Audio level visualization</strong> — real-time feedback during recording</li>
+  <li><strong>Screenshot</strong> — captures the entire view with your annotations overlaid</li>
+</ul>
+
+<p>
+  This multimodal input (voice + drawing + screenshot) gives the AI rich context for
+  generating relevant dashboards.
+</p>
+
+<h2 id="panel-types">Panel Types Reference</h2>
+
+<table>
+  <thead>
+    <tr><th>Panel Type</th><th>Trigger</th><th>Description</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>DataGrid</strong></td><td>Default (no format)</td><td>Sortable, filterable data table</td></tr>
+    <tr><td><strong>VegaLite</strong></td><td><code>format = 'vega-lite'</code></td><td>Declarative charting (bar, line, area, scatter, etc.)</td></tr>
+    <tr><td><strong>Plotly</strong></td><td><code>format = 'plotly'</code></td><td>Interactive charts (pie, 3D, animations)</td></tr>
+    <tr><td><strong>Metric</strong></td><td><code>format = 'metric'</code></td><td>Single-value KPI cards</td></tr>
+    <tr><td><strong>Sparkline</strong></td><td><code>format = 'sparkline'</code></td><td>Inline trend visualization</td></tr>
+    <tr><td><strong>Markdown</strong></td><td><code>format = 'markdown'</code></td><td>Rendered Markdown content</td></tr>
+    <tr><td><strong>Mermaid</strong></td><td><code>format = 'mermaid'</code></td><td>Mermaid diagrams (flowcharts, sequence, etc.)</td></tr>
+    <tr><td><strong>Image</strong></td><td><code>format = 'image'</code></td><td>Image display from URL</td></tr>
+    <tr><td><strong>Text</strong></td><td><code>format = 'text'</code></td><td>Plain text display</td></tr>
+    <tr><td><strong>Dropdown</strong></td><td>Panel parameter</td><td>Dropdown filter controls</td></tr>
+    <tr><td><strong>Slider</strong></td><td>Panel parameter</td><td>Range slider controls</td></tr>
+    <tr><td><strong>DateRange</strong></td><td>Panel parameter</td><td>Date range picker</td></tr>
+    <tr><td><strong>Toggle</strong></td><td>Panel parameter</td><td>Boolean toggle switch</td></tr>
+  </tbody>
+</table>
+
+<h2 id="keyboard-shortcuts">Keyboard Shortcuts</h2>
+
+<table>
+  <thead>
+    <tr><th>Shortcut</th><th>Action</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Ctrl+Enter</strong> / <strong>⌘+Enter</strong></td><td>Execute all queries</td></tr>
+    <tr><td><strong>Spacebar (hold)</strong></td><td>Enter capture mode (draw + voice)</td></tr>
+    <tr><td><strong>Ctrl+S</strong> / <strong>⌘+S</strong></td><td>Save current file</td></tr>
+    <tr><td><strong>Ctrl+N</strong> / <strong>⌘+N</strong></td><td>New tab</td></tr>
+    <tr><td><strong>Ctrl+W</strong> / <strong>⌘+W</strong></td><td>Close current tab</td></tr>
+    <tr><td><strong>Escape</strong></td><td>Exit capture mode / close modals</td></tr>
+  </tbody>
+</table>

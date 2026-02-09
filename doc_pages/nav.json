@@ -196,6 +196,24 @@
       "color": "green",
       "items": [
         {
+          "id": "hyper",
+          "title": "Hyper SQL Client",
+          "sections": [
+            { "anchor": "overview", "title": "Overview" },
+            { "anchor": "getting-started", "title": "Getting Started" },
+            { "anchor": "sql-editor", "title": "SQL Editor" },
+            { "anchor": "dashboard-panels", "title": "Dashboard Panels" },
+            { "anchor": "interactive-parameters", "title": "Interactive Parameters" },
+            { "anchor": "chart-visualization", "title": "Chart Visualization" },
+            { "anchor": "explain-plans", "title": "Explain Plans & Cost Tracking" },
+            { "anchor": "ai-dashboard-builder", "title": "AI Dashboard Builder" },
+            { "anchor": "tabs-files", "title": "Tabs & File Management" },
+            { "anchor": "capture-annotate", "title": "Capture & Annotate" },
+            { "anchor": "panel-types", "title": "Panel Types Reference" },
+            { "anchor": "keyboard-shortcuts", "title": "Keyboard Shortcuts" }
+          ]
+        },
+        {
           "id": "sql-connections",
           "title": "SQL Connections",
           "sections": [
