@@ -2214,11 +2214,7 @@ class LarsDB:
                     timestamp,
                     cascade_id,
                     cell_name,
-                    CASE 
-                        WHEN full_request_json IS NOT NULL AND full_request_json != '' 
-                        THEN substring(full_request_json, 1, 2000) 
-                        ELSE '' 
-                    END AS user_input,
+                    COALESCE(full_request_json, '') AS user_input,
                     COALESCE(content_json, '') AS assistant_output,
                     model,
                     cost,

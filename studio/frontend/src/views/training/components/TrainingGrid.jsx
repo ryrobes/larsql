@@ -61,6 +61,36 @@ const isJsonContent = (text) => {
 };
 
 /**
+ * Extract a short preview from user_input for the grid column.
+ * Tries to pull out the messages content from wrapper JSON.
+ */
+const extractInputPreview = (text) => {
+  if (!text) return '';
+  try {
+    const parsed = JSON.parse(text);
+    // If it has a messages array, show the last user message content
+    if (parsed.messages && Array.isArray(parsed.messages)) {
+      // Find last user message
+      for (let i = parsed.messages.length - 1; i >= 0; i--) {
+        const msg = parsed.messages[i];
+        if (msg.role === 'user' || msg.role === 'system') {
+          const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+          return content;
+        }
+      }
+    }
+    // If it has a prompt field
+    if (parsed.prompt) return parsed.prompt;
+    // If it has an input field
+    if (parsed.input) return typeof parsed.input === 'string' ? parsed.input : JSON.stringify(parsed.input);
+  } catch {
+    // Not JSON, return as-is
+  }
+  // Replace literal \n for display
+  return text.replace(/\\n/g, ' ').replace(/\\t/g, ' ');
+};
+
+/**
  * Extract semantic SQL params if present
  */
 const extractSemanticParams = (input) => {
@@ -355,7 +385,8 @@ const TrainingGrid = ({ examples = [], onSelectionChanged, onMarkTrainable }) =>
       filter: 'agTextColumnFilter',
       cellClass: 'training-text-cell',
       wrapText: false,
-      autoHeight: false
+      autoHeight: false,
+      valueFormatter: (params) => extractInputPreview(params.value)
     },
     {
       field: 'assistant_output',
