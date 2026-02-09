@@ -2274,10 +2274,14 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                     log(f"  ✓ {models_yaml_path}")
                     
                     # Reload config
-                    from lars.config import reload_config
+                    from lars.config import reload_config, write_config_yaml, get_config
                     reload_config()
+                    
+                    # Write config.yaml with sensible defaults
+                    config_yaml_path = write_config_yaml(get_config(), str(lars_root / 'config.yaml'))
+                    log(f"  ✓ {config_yaml_path}")
                 except Exception as e:
-                    log(f"  ⚠ models.yaml: {e}")
+                    log(f"  ⚠ models.yaml/config.yaml: {e}")
                 
                 # =========================================================
                 # Step 4: Write SQL connections
