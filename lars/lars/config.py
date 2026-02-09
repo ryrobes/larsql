@@ -40,9 +40,9 @@ _DEBUG = os.environ.get('LARS_DEBUG', '').lower() in ('1', 'true', 'yes')
 _yaml_config: Dict[str, Any] = {}
 
 
-def _load_config_yaml() -> Dict[str, Any]:
+def _load_config_yaml(root: str = None) -> Dict[str, Any]:
     """Load config.yaml from LARS_ROOT if it exists. Returns flat + nested dict."""
-    yaml_path = os.path.join(_LARS_ROOT, "config.yaml")
+    yaml_path = os.path.join(root or _LARS_ROOT, "config.yaml")
     if not os.path.exists(yaml_path):
         return {}
     try:
@@ -240,7 +240,9 @@ def _yaml_format(val) -> str:
 def write_config_yaml(config: "Config" = None, path: str = None) -> str:
     """Write config.yaml to disk. Returns the path written."""
     if path is None:
-        path = os.path.join(_LARS_ROOT, "config.yaml")
+        # Use config's root_dir (which respects LARS_ROOT env) over module-level default
+        root = config.root_dir if config and hasattr(config, 'root_dir') else _LARS_ROOT
+        path = os.path.join(root, "config.yaml")
     content = generate_config_yaml(config)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, 'w') as f:
@@ -250,7 +252,7 @@ def write_config_yaml(config: "Config" = None, path: str = None) -> str:
 
 def get_config_yaml_path() -> str:
     """Return the path to config.yaml."""
-    return os.path.join(_LARS_ROOT, "config.yaml")
+    return os.path.join(_global_config.root_dir if _global_config else _LARS_ROOT, "config.yaml")
 
 
 # Load YAML config at module init
