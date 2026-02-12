@@ -17,6 +17,8 @@ import os
 import sys
 import json
 import math
+from pathlib import Path
+from typing import Optional
 from datetime import datetime
 from flask import Blueprint, jsonify, request
 
@@ -59,6 +61,88 @@ def sanitize_for_json(obj):
     elif hasattr(obj, 'isoformat'):
         return obj.isoformat()
     return obj
+
+
+SQL_META_EXTS = ('.json', '.yaml', '.yml')
+
+
+def _is_sql_meta_file(path: Path) -> bool:
+    return path.suffix.lower() in SQL_META_EXTS
+
+
+def _load_sql_meta_file(path: Path):
+    import re
+
+    try:
+        content = path.read_text()
+    except Exception as e:
+        print(f"[Catalog] Error reading {path}: {e}")
+        return None
+
+    ext = path.suffix.lower()
+    if ext in ('.yaml', '.yml'):
+        try:
+            import yaml
+        except ImportError:
+            print("[Catalog] PyYAML is required to parse YAML SQL metadata files.")
+            return None
+        try:
+            data = yaml.safe_load(content)
+            return sanitize_for_json(data)
+        except Exception as e:
+            print(f"[Catalog] Error parsing {path}: {e}")
+            return None
+
+    # JSON path
+    content = re.sub(r'\bNaN\b', 'null', content)
+    content = re.sub(r'\bInfinity\b', 'null', content)
+    content = re.sub(r'\b-Infinity\b', 'null', content)
+    try:
+        data = json.loads(content)
+        return sanitize_for_json(data)
+    except json.JSONDecodeError as e:
+        print(f"[Catalog] Error parsing {path}: {e}")
+        return None
+
+
+def _find_named_meta_file(directory: str, stem: str) -> Optional[Path]:
+    for ext in SQL_META_EXTS:
+        candidate = Path(directory) / f"{stem}{ext}"
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _iter_meta_files(directory: str):
+    for path in Path(directory).iterdir():
+        if path.is_file() and _is_sql_meta_file(path):
+            yield path
+
+
+def _iter_sample_files(samples_dir: str):
+    for path in Path(samples_dir).rglob("*"):
+        if path.is_file() and _is_sql_meta_file(path):
+            yield path
+
+
+def _find_table_file(samples_dir: str, db_name: str, schema_name: Optional[str], table_name: str) -> Optional[Path]:
+    candidates = []
+    if schema_name:
+        base = Path(samples_dir) / db_name / schema_name / table_name
+        candidates.extend(Path(f"{base}{ext}") for ext in SQL_META_EXTS)
+
+    base = Path(samples_dir) / db_name / table_name
+    candidates.extend(Path(f"{base}{ext}") for ext in SQL_META_EXTS)
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+
+    for tf in Path(samples_dir).rglob(f"{table_name}.*"):
+        if _is_sql_meta_file(tf):
+            return tf
+
+    return None
 
 
 @catalog_bp.route('', methods=['GET'])
@@ -574,37 +658,30 @@ def get_catalog():
             category_counts['sessions'] = 0
 
         # ==================================
-        # 9. SQL CONNECTIONS from sql_connections/*.json
+        # 9. SQL CONNECTIONS from sql_connections/*.yaml|*.yml|*.json
         # ==================================
         try:
-            import yaml
-            from pathlib import Path
-
             sql_connections_count = 0
             sql_tables_count = 0
-            cfg = get_config() if get_config else {}
             root_dir = os.environ.get('LARS_ROOT', '.')
             sql_dir = os.path.join(root_dir, 'sql_connections')
 
             # Load discovery metadata for summary
             discovery_meta = None
-            discovery_meta_path = os.path.join(sql_dir, 'discovery_metadata.json')
-            if os.path.exists(discovery_meta_path):
-                try:
-                    with open(discovery_meta_path, 'r') as f:
-                        discovery_meta = json.load(f)
-                except Exception as e:
-                    print(f"[Catalog] Error reading discovery metadata: {e}")
+            discovery_meta_path = _find_named_meta_file(sql_dir, 'discovery_metadata')
+            if discovery_meta_path:
+                discovery_meta = _load_sql_meta_file(discovery_meta_path)
 
             # Load SQL connection configs
             if os.path.exists(sql_dir):
-                for file in Path(sql_dir).glob("*.json"):
-                    if file.name == "discovery_metadata.json":
+                for file in _iter_meta_files(sql_dir):
+                    if file.stem == "discovery_metadata":
                         continue
 
                     try:
-                        with open(file, 'r') as f:
-                            conn_config = json.load(f)
+                        conn_config = _load_sql_meta_file(file)
+                        if not conn_config:
+                            continue
 
                         conn_name = conn_config.get('connection_name', file.stem)
                         conn_type = conn_config.get('type', 'unknown')
@@ -614,7 +691,7 @@ def get_catalog():
                         table_count = 0
                         samples_dir = os.path.join(sql_dir, 'samples', conn_name)
                         if os.path.exists(samples_dir):
-                            table_count = len(list(Path(samples_dir).rglob("*.json")))
+                            table_count = sum(1 for _ in _iter_sample_files(samples_dir))
 
                         all_items.append({
                             'id': f"sql_connection:{conn_name}",
@@ -623,7 +700,7 @@ def get_catalog():
                             'type': conn_type,
                             'description': f"{conn_type.upper()} connection to {conn_config.get('database', conn_config.get('folder_path', 'unknown'))}",
                             'source': file.name,
-                            'updated_at': discovery_meta.get('last_discovery') if discovery_meta else None,
+                            'updated_at': discovery_meta.get('last_discovery') if isinstance(discovery_meta, dict) else None,
                             'metadata': {
                                 'host': conn_config.get('host'),
                                 'port': conn_config.get('port'),
@@ -641,16 +718,17 @@ def get_catalog():
             # Load discovered SQL tables from samples
             samples_dir = os.path.join(sql_dir, 'samples')
             if os.path.exists(samples_dir):
-                for table_file in Path(samples_dir).rglob("*.json"):
+                for table_file in _iter_sample_files(samples_dir):
                     try:
-                        with open(table_file, 'r') as f:
-                            table_meta = json.load(f)
+                        table_meta = _load_sql_meta_file(table_file)
+                        if not table_meta:
+                            continue
 
                         table_name = table_meta.get('table_name', table_file.stem)
                         schema_name = table_meta.get('schema', '')
                         db_name = table_meta.get('database', '')
                         row_count = table_meta.get('row_count', 0)
-                        columns = table_meta.get('columns', [])
+                        columns = table_meta.get('columns') or []
 
                         # Build qualified name
                         if schema_name and schema_name != db_name:
@@ -665,7 +743,7 @@ def get_catalog():
                             'type': 'table',
                             'description': f"{len(columns)} columns, {row_count:,} rows",
                             'source': db_name,
-                            'updated_at': discovery_meta.get('last_discovery') if discovery_meta else None,
+                            'updated_at': discovery_meta.get('last_discovery') if isinstance(discovery_meta, dict) else None,
                             'metadata': {
                                 'table_name': table_name,
                                 'schema': schema_name,
@@ -1046,48 +1124,38 @@ def get_catalog_item(item_id: str):
 
         elif category == 'sql_connection':
             # Get SQL connection config from file
-            from pathlib import Path
-
             root_dir = os.environ.get('LARS_ROOT', '.')
             sql_dir = os.path.join(root_dir, 'sql_connections')
 
             # Find the connection config file
-            conn_file = os.path.join(sql_dir, f"{raw_id}.json")
-            if not os.path.exists(conn_file):
-                # Try to find by connection_name in any json file
-                for file in Path(sql_dir).glob("*.json"):
-                    if file.name == "discovery_metadata.json":
+            conn_file = _find_named_meta_file(sql_dir, raw_id)
+            conn_config = _load_sql_meta_file(conn_file) if conn_file else None
+
+            if not conn_config:
+                # Try to find by connection_name in any config file
+                for file in _iter_meta_files(sql_dir):
+                    if file.stem == "discovery_metadata":
                         continue
-                    try:
-                        with open(file, 'r') as f:
-                            cfg = json.load(f)
-                        if cfg.get('connection_name') == raw_id:
-                            conn_file = str(file)
-                            break
-                    except:
-                        pass
+                    cfg = _load_sql_meta_file(file)
+                    if cfg and cfg.get('connection_name') == raw_id:
+                        conn_file = file
+                        conn_config = cfg
+                        break
 
-            if not os.path.exists(conn_file):
+            if not conn_config:
                 return jsonify({'error': 'SQL connection not found'}), 404
-
-            with open(conn_file, 'r') as f:
-                conn_config = json.load(f)
 
             # Count tables
             table_count = 0
             samples_dir = os.path.join(sql_dir, 'samples', raw_id)
             if os.path.exists(samples_dir):
-                table_count = len(list(Path(samples_dir).rglob("*.json")))
+                table_count = sum(1 for _ in _iter_sample_files(samples_dir))
 
             # Get discovery metadata
             discovery_meta = None
-            discovery_meta_path = os.path.join(sql_dir, 'discovery_metadata.json')
-            if os.path.exists(discovery_meta_path):
-                try:
-                    with open(discovery_meta_path, 'r') as f:
-                        discovery_meta = json.load(f)
-                except:
-                    pass
+            discovery_meta_path = _find_named_meta_file(sql_dir, 'discovery_metadata')
+            if discovery_meta_path:
+                discovery_meta = _load_sql_meta_file(discovery_meta_path)
 
             return jsonify(sanitize_for_json({
                 'id': item_id,
@@ -1098,15 +1166,13 @@ def get_catalog_item(item_id: str):
                 'config': conn_config,
                 'details': {
                     'table_count': table_count,
-                    'last_crawl': discovery_meta.get('last_discovery') if discovery_meta else None,
-                    'rag_id': discovery_meta.get('rag_id') if discovery_meta else None
+                    'last_crawl': discovery_meta.get('last_discovery') if isinstance(discovery_meta, dict) else None,
+                    'rag_id': discovery_meta.get('rag_id') if isinstance(discovery_meta, dict) else None
                 }
             }))
 
         elif category == 'sql_table':
             # Get SQL table metadata from samples
-            from pathlib import Path
-
             root_dir = os.environ.get('LARS_ROOT', '.')
             samples_dir = os.path.join(root_dir, 'sql_connections', 'samples')
 
@@ -1121,22 +1187,12 @@ def get_catalog_item(item_id: str):
                 return jsonify({'error': 'Invalid table name format'}), 400
 
             # Find the table file
-            table_file = None
-            if schema_name:
-                table_file = os.path.join(samples_dir, db_name, schema_name, f"{table_name}.json")
-            if not table_file or not os.path.exists(table_file):
-                table_file = os.path.join(samples_dir, db_name, f"{table_name}.json")
-            if not os.path.exists(table_file):
-                # Search for it
-                for tf in Path(samples_dir).rglob(f"{table_name}.json"):
-                    table_file = str(tf)
-                    break
-
-            if not table_file or not os.path.exists(table_file):
+            table_file = _find_table_file(samples_dir, db_name, schema_name, table_name)
+            if not table_file:
                 return jsonify({'error': 'SQL table not found'}), 404
-
-            with open(table_file, 'r') as f:
-                table_meta = json.load(f)
+            table_meta = _load_sql_meta_file(table_file)
+            if not table_meta:
+                return jsonify({'error': 'SQL table not found'}), 404
 
             return jsonify(sanitize_for_json({
                 'id': item_id,
@@ -1151,7 +1207,7 @@ def get_catalog_item(item_id: str):
                     'row_count': table_meta.get('row_count', 0)
                 },
                 'columns': table_meta.get('columns', []),
-                'sample_data': table_meta.get('sample_data', [])
+                'sample_data': table_meta.get('sample_data') or table_meta.get('sample_rows', [])
             }))
 
         else:

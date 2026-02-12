@@ -246,12 +246,12 @@ def sql_rag_search(
             "databases_available": meta.databases_indexed
         })
 
-    # Parse results - each chunk is from a table.json file
+    # Parse results - each chunk is from a table.yaml/.yml/.json file
     tables = []
     seen_tables = set()  # Deduplicate if multiple chunks from same table
 
     for result in results:
-        # result['source'] is like "csv_files/bigfoot_sightings.json"
+        # result['source'] is like "csv_files/bigfoot_sightings.yaml"
         full_path = os.path.join(samples_dir, result['source'])
 
         # Deduplicate by file path
@@ -261,7 +261,18 @@ def sql_rag_search(
 
         try:
             with open(full_path) as f:
-                table_meta = json.load(f)
+                ext = os.path.splitext(full_path)[1].lower()
+                if ext in (".yaml", ".yml"):
+                    try:
+                        import yaml  # PyYAML
+                    except ImportError as e:
+                        raise ImportError(
+                            "PyYAML is required to read YAML SQL samples. "
+                            "Install with: pip install pyyaml"
+                        ) from e
+                    table_meta = yaml.safe_load(f)
+                else:
+                    table_meta = json.load(f)
 
                 # Build qualified table name
                 if table_meta['schema'] and table_meta['schema'] != table_meta['database']:

@@ -55,12 +55,34 @@ def sanitize_for_json(obj):
     return obj
 
 
+SQL_SAMPLE_EXTS = ('.json', '.yaml', '.yml')
+
+
+def _is_sql_sample_file(filename: str) -> bool:
+    return filename.lower().endswith(SQL_SAMPLE_EXTS)
+
+
 def load_json_with_nan(file_path):
-    """Load a JSON file that may contain NaN/Infinity values."""
+    """Load a JSON or YAML file that may contain NaN/Infinity values."""
     import re
 
     with open(file_path, 'r') as f:
         content = f.read()
+
+    ext = os.path.splitext(file_path)[1].lower()
+    if ext in ('.yaml', '.yml'):
+        try:
+            import yaml
+        except ImportError:
+            print("Warning: PyYAML is required to parse YAML sample files.")
+            return None
+
+        try:
+            data = yaml.safe_load(content)
+            return sanitize_for_json(data)
+        except Exception as e:
+            print(f"Warning: Failed to parse {file_path}: {e}")
+            return None
 
     # Replace JavaScript-style NaN/Infinity with null before parsing
     # This handles cases where the JSON was written with these values
@@ -168,7 +190,7 @@ def list_connections():
                 # Count all .json files recursively (each is a table)
                 table_count = 0
                 for root, dirs, files in os.walk(conn_samples_dir):
-                    table_count += len([f for f in files if f.endswith('.json')])
+                    table_count += len([f for f in files if _is_sql_sample_file(f)])
                 conn_info["table_count"] = table_count
 
             # Add discovery metadata if available
@@ -246,14 +268,14 @@ def get_schema(connection):
             })
 
         # Build schema tree from samples directory structure
-        # Structure: samples/{connection}/{schema}/{table}.json
-        # OR: samples/{connection}/{table}.json (for csv_folder, etc.)
+        # Structure: samples/{connection}/{schema}/{table}.yaml
+        # OR: samples/{connection}/{table}.yaml (for csv_folder, etc.)
 
         schemas_dict = {}
 
         for root, dirs, files in os.walk(conn_samples_dir):
             for file in files:
-                if not file.endswith('.json'):
+                if not _is_sql_sample_file(file):
                     continue
 
                 file_path = os.path.join(root, file)
@@ -262,13 +284,13 @@ def get_schema(connection):
 
                 # Determine schema and table name
                 if len(parts) == 1:
-                    # Direct table: samples/csv_files/bigfoot.json
+                    # Direct table: samples/csv_files/bigfoot.yaml
                     schema_name = connection
-                    table_name = file.replace('.json', '')
+                    table_name = os.path.splitext(file)[0]
                 else:
-                    # Schema/table: samples/local_postgres/public/users.json
+                    # Schema/table: samples/local_postgres/public/users.yaml
                     schema_name = parts[0]
-                    table_name = file.replace('.json', '')
+                    table_name = os.path.splitext(file)[0]
 
                 # Initialize schema if not exists
                 if schema_name not in schemas_dict:
