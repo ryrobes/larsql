@@ -7083,6 +7083,75 @@ def cmd_kit_delete(args):
         sys.exit(1)
 
 
+def _kill_port_holder(port: int) -> bool:
+    """Kill any process currently listening on the given port.
+
+    Returns True if a process was found and killed, False if port was free.
+    """
+    import signal as _signal
+    import subprocess
+
+    try:
+        # lsof is available on macOS and most Linux distros
+        result = subprocess.run(
+            ['lsof', '-ti', f':{port}'],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode != 0 or not result.stdout.strip():
+            return False
+
+        pids = set(result.stdout.strip().split('\n'))
+        my_pid = str(os.getpid())
+        pids.discard(my_pid)  # Don't kill ourselves
+
+        if not pids:
+            return False
+
+        for pid in pids:
+            try:
+                pid_int = int(pid)
+                styled_print(f"{S.WARN} Killing orphaned process {pid_int} on port {port}")
+                os.kill(pid_int, _signal.SIGTERM)
+            except (ProcessLookupError, ValueError):
+                pass  # Already gone
+
+        # Brief wait for processes to exit
+        import time
+        time.sleep(0.5)
+
+        # Force kill any survivors
+        for pid in pids:
+            try:
+                pid_int = int(pid)
+                os.kill(pid_int, _signal.SIGKILL)
+            except (ProcessLookupError, ValueError):
+                pass
+
+        return True
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        # lsof not available or timed out — fall through
+        return False
+
+
+def _ensure_port_free(port: int):
+    """Ensure a port is free, killing any orphaned process holding it."""
+    import socket
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.bind(('', port))
+        sock.close()
+        return  # Port is free
+    except OSError:
+        sock.close()
+
+    if _kill_port_holder(port):
+        styled_print(f"{S.OK} Port {port} freed")
+    else:
+        styled_print(f"{S.ERR} Port {port} is in use and could not be freed")
+        print(f"   Check manually: lsof -i :{port}")
+        sys.exit(1)
+
+
 def _run_server_subprocess(cmd, cwd=None, env=None):
     """Run a server subprocess with graceful shutdown handling.
 
@@ -7202,6 +7271,9 @@ def cmd_serve_studio(args):
     # With DuckDB/Parquet backend, we don't have the CHDB file-locking constraints,
     # so we can run multiple workers and preload without issues.
     chdb_backend_active = False  # DuckDB mode - no special handling needed
+
+    # Kill any orphaned process on the Studio port
+    _ensure_port_free(args.port)
 
     styled_print(f"{S.CASCADE} LARS Studio")
     print(f"   Workspace: {workspace_root}")
@@ -7429,6 +7501,9 @@ def cmd_serve_sql(args):
     from lars.server import start_postgres_server
     from lars.db_adapter import ensure_housekeeping
     from lars.sql_trail import cleanup_orphaned_sql_queries
+
+    # Kill any orphaned process on the pgwire port
+    _ensure_port_free(args.port)
 
     styled_print(f"{S.RUN} Starting LARS PostgreSQL server...")
     print(f"   Host: {args.host}")
@@ -7753,7 +7828,10 @@ def cmd_sql_server(args):
     from lars.server import start_postgres_server
 
     workers = getattr(args, 'workers', 16)
-    
+
+    # Kill any orphaned process on the pgwire port
+    _ensure_port_free(args.port)
+
     styled_print(f"{S.RUN} Starting LARS PostgreSQL server...")
     print(f"   Host: {args.host}")
     print(f"   Port: {args.port}")
