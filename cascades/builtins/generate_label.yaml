@@ -1,0 +1,45 @@
+# Generate Label — Builtin utility cascade
+# Generates a short, human-readable label for any content.
+# Uses the fast tier model for minimal cost (~$0.0001 per call).
+
+cascade_id: generate_label
+description: |
+  Generate a short human-readable label for a cell, query, or artifact.
+  Used by RVBBIT and Studio to auto-name things without burdening users.
+
+inputs_schema:
+  content: "The content to label (SQL query, intent text, shell command, etc.)"
+  content_type: "Type hint: sql, intent, shell, markdown, code, unknown"
+  max_length: "Max label length in characters (default: 40)"
+  context: "Optional: surrounding context (colony name, related cells, etc.)"
+
+model: "{{ models.fast }}"
+
+cells:
+  - name: label
+    rules:
+      max_attempts: 2
+      max_tokens: 60
+    instructions: |
+      Generate a SHORT, human-readable label. Max {{ input.max_length | default('40') }} characters.
+
+      Content type: {{ input.content_type | default('unknown') }}
+      {% if input.context %}Context: {{ input.context }}{% endif %}
+
+      Content:
+      ```
+      {{ input.content }}
+      ```
+
+      Rules:
+      - Title Case, no quotes, no punctuation at end
+      - For SQL: use table name + what it does (e.g. "Orders By Region", "Top 10 Customers", "Monthly Revenue")
+      - For intents: distill to 2-5 words capturing the goal
+      - For shell commands: describe what it does (e.g. "Disk Usage Check")
+      - Strip schema prefixes, SQL keywords (SELECT/FROM/WHERE), technical noise
+      - Be specific over generic: "Sales By Quarter" beats "Data Query"
+      - If content has a GROUP BY, mention the grouping dimension
+      - If content has a LIMIT, mention "Top N"
+      - If content filters on a specific value, mention it
+
+      Return ONLY the label text. Nothing else. No quotes, no explanation.
