@@ -584,6 +584,10 @@ class ClickHouseResult:
         """Return as pandas DataFrame."""
         return pd.DataFrame(self._rows)
 
+    def df(self):
+        """Alias for fetchdf() — DuckDB native compatibility."""
+        return self.fetchdf()
+
     def __iter__(self):
         return iter(self._rows)
 
@@ -3816,14 +3820,73 @@ def run_cascade():
                     except Exception as cleanup_error:
                         print(f"[run-cascade] Failed to clean up temp file: {cleanup_error}")
 
-        thread = threading.Thread(target=run_in_background, daemon=True)
-        thread.start()
+        # Sync mode: block until cascade completes, return final output directly
+        sync_mode = data.get('sync', False)
 
-        return jsonify({
-            'success': True,
-            'session_id': session_id,
-            'message': 'Cascade started in background'
-        })
+        if sync_mode:
+            try:
+                os.environ['LARS_USE_CHECKPOINTS'] = 'true'
+                hooks = ResearchSessionAutoSaveHooks()
+                result = execute_cascade(cascade_path, inputs, session_id, hooks=hooks,
+                                        caller_id=caller_id, invocation_metadata=invocation_metadata)
+
+                # Clean up temp file
+                if temp_file and os.path.exists(temp_file):
+                    try:
+                        os.remove(temp_file)
+                    except:
+                        pass
+
+                # Extract final output from result
+                final_output = None
+                if result and result.get("lineage") and len(result["lineage"]) > 0:
+                    lineage_entry = result["lineage"][-1]
+                    if isinstance(lineage_entry, dict) and "output" in lineage_entry:
+                        final_output = lineage_entry["output"]
+
+                # Calculate cost
+                total_cost = 0
+                try:
+                    from lars.db_adapter import get_db
+                    db = get_db()
+                    cost_result = db.query(f"SELECT SUM(cost) as total FROM unified_logs WHERE startsWith(session_id, '{session_id}') AND cost > 0")
+                    if cost_result:
+                        total_cost = float(cost_result[0].get('total') or 0)
+                except:
+                    pass
+
+                return jsonify({
+                    'success': True,
+                    'session_id': session_id,
+                    'final_output': final_output,
+                    'has_errors': result.get('has_errors', False) if result else False,
+                    'total_cost': round(total_cost, 6),
+                })
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+
+                # Clean up temp file
+                if temp_file and os.path.exists(temp_file):
+                    try:
+                        os.remove(temp_file)
+                    except:
+                        pass
+
+                return jsonify({
+                    'success': False,
+                    'session_id': session_id,
+                    'error': str(e),
+                }), 500
+        else:
+            thread = threading.Thread(target=run_in_background, daemon=True)
+            thread.start()
+
+            return jsonify({
+                'success': True,
+                'session_id': session_id,
+                'message': 'Cascade started in background'
+            })
 
     except Exception as e:
         import traceback
@@ -4800,6 +4863,28 @@ def playground_session_stream(session_id):
                         'first_seen': row.get('timestamp_iso')
                     }
 
+        # Include final cascade output when session is complete
+        final_output = None
+        if session_complete and session_status == 'completed':
+            try:
+                output_query = f"""
+                    SELECT output
+                    FROM cascade_sessions
+                    WHERE session_id = '{session_id}'
+                    LIMIT 1
+                """
+                output_result = db.query(output_query)
+                if output_result and len(output_result) > 0:
+                    raw_output = output_result[0].get('output')
+                    if raw_output:
+                        # Try to parse as JSON for structured output
+                        try:
+                            final_output = json.loads(raw_output) if isinstance(raw_output, str) else raw_output
+                        except (json.JSONDecodeError, TypeError):
+                            final_output = raw_output
+            except Exception as e:
+                print(f"[session-stream] Could not fetch cascade output: {e}")
+
         return jsonify({
             'rows': rows_to_return,
             'has_more': has_more,
@@ -4813,6 +4898,7 @@ def playground_session_stream(session_id):
             'child_sessions': list(child_sessions.values()),  # List of spawned sub-cascades
             'cascade_analytics': cascade_analytics,  # Pre-computed session-level analytics
             'cell_analytics': cell_analytics,  # Pre-computed per-cell analytics
+            'final_output': final_output,  # Cascade's final output (only when complete)
         })
 
     except Exception as e:
@@ -4865,7 +4951,11 @@ def introspect_cascade_endpoint():
             filepath = data['cascade_file']
 
             # Security: only allow files from known directories
-            allowed_dirs = [EXAMPLES_DIR, SKILLS_DIR, CASCADES_DIR, PACKAGE_EXAMPLES_DIR, PLAYGROUND_SCRATCHPAD_DIR]
+            # Include builtin cascades directory (installed package)
+            builtin_cascades_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'builtin_cascades'))
+            builtin_skills_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'builtin_skills'))
+            allowed_dirs = [EXAMPLES_DIR, SKILLS_DIR, CASCADES_DIR, PACKAGE_EXAMPLES_DIR, PLAYGROUND_SCRATCHPAD_DIR,
+                           builtin_cascades_dir, builtin_skills_dir]
             filepath_abs = os.path.abspath(filepath)
 
             # Also allow relative paths from LARS_ROOT
