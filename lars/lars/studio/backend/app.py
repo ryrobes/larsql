@@ -3638,6 +3638,107 @@ def get_cascade_files():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/cascade/parse', methods=['POST'])
+def parse_cascade():
+    """Parse a cascade YAML/file and return structured data for RVBBIT import.
+
+    Request body:
+        cascade_yaml: YAML string (or)
+        cascade_file: path to cascade file (or)
+        cascade_id: cascade ID to look up from known locations
+
+    Returns:
+        {
+            "cascade_id": "...",
+            "description": "...",
+            "inputs_schema": {...},
+            "cells": [
+                {
+                    "name": "...",
+                    "sql": "...",         // if SQL cell
+                    "instructions": "...", // if LLM cell
+                    "tool": "...",
+                    "model": "...",
+                    "skills": [...],
+                    "handoffs": [{"target": "..."}],
+                    "context_from": ["..."],
+                    "validator": "...",
+                    "takes": {...}
+                }
+            ]
+        }
+    """
+    try:
+        data = request.json or {}
+        cascade = None
+
+        if 'cascade_yaml' in data:
+            cascade = yaml.safe_load(data['cascade_yaml'])
+        elif 'cascade_file' in data:
+            cascade = load_config_file(data['cascade_file'])
+        elif 'cascade_id' in data:
+            # Search known locations
+            cid = data['cascade_id']
+            builtin_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'builtin_cascades'))
+            for search_dir in [CASCADES_DIR, EXAMPLES_DIR, PACKAGE_EXAMPLES_DIR, builtin_dir]:
+                if not os.path.exists(search_dir):
+                    continue
+                for ext in CASCADE_EXTENSIONS:
+                    for fp in glob.glob(f"{search_dir}/**/*.{ext}", recursive=True):
+                        try:
+                            cfg = load_config_file(fp)
+                            if cfg.get('cascade_id') == cid:
+                                cascade = cfg
+                                break
+                        except:
+                            continue
+                    if cascade:
+                        break
+                if cascade:
+                    break
+            if not cascade:
+                return jsonify({'error': f'Cascade not found: {cid}'}), 404
+        else:
+            return jsonify({'error': 'Provide cascade_yaml, cascade_file, or cascade_id'}), 400
+
+        # Extract structured data
+        cells_out = []
+        for cell in cascade.get('cells', []):
+            cell_out = {
+                'name': cell.get('name', ''),
+                'sql': cell.get('sql'),
+                'instructions': cell.get('instructions'),
+                'tool': cell.get('tool'),
+                'model': cell.get('model'),
+                'skills': cell.get('skills', []),
+                'handoffs': cell.get('handoffs', []),
+                'context_from': [],
+                'validator': cell.get('validator'),
+                'takes': cell.get('takes'),
+            }
+            # Extract context.from dependencies
+            ctx = cell.get('context', {})
+            ctx_from = ctx.get('from', [])
+            for src in ctx_from:
+                if isinstance(src, str):
+                    cell_out['context_from'].append(src)
+                elif isinstance(src, dict):
+                    cell_out['context_from'].append(src.get('cell', ''))
+            cells_out.append(cell_out)
+
+        return jsonify({
+            'cascade_id': cascade.get('cascade_id', ''),
+            'description': cascade.get('description', ''),
+            'inputs_schema': cascade.get('inputs_schema', {}),
+            'cells': cells_out,
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/run-cascade', methods=['POST'])
 def run_cascade():
     """Run a cascade with given inputs.

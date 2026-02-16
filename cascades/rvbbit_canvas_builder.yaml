@@ -1,0 +1,129 @@
+# RVBBIT Canvas Builder Cascade
+# Takes a natural language intent and returns structured JSON 
+# describing cells, wires, and colonies to create on the RVBBIT canvas.
+
+cascade_id: rvbbit_canvas_builder
+description: |
+  Builds RVBBIT canvas elements from natural language intents.
+  Discovers schema, generates SQL queries, and returns structured
+  cell/wire definitions for the RVBBIT canvas to render.
+
+inputs_schema:
+  intent: "Natural language description of what the user wants to see"
+  schema_context: "Optional: pre-fetched schema info to avoid redundant discovery"
+  existing_colonies: "Optional: list of existing colony names to avoid duplicates"
+
+model: anthropic/claude-sonnet-4.5
+
+cells:
+  - name: build_canvas
+    skills:
+      - sql_search
+      - sql_data
+    rules:
+      max_attempts: 3
+      loop_until: valid_json
+      retry_instructions: |
+        Your output was not valid JSON. Return ONLY a JSON object matching the schema below.
+        No markdown, no explanation, just JSON. Attempt {{ attempt }}/{{ max_attempts }}
+    instructions: |
+      You are an RVBBIT canvas builder. Given a user's intent, you discover relevant data
+      and return a structured JSON definition of cells and wires to create on the canvas.
+
+      ## User Intent
+      {{ input.intent }}
+
+      {% if input.schema_context %}
+      ## Available Schema
+      {{ input.schema_context }}
+      {% endif %}
+
+      {% if input.existing_colonies %}
+      ## Existing Colonies (avoid duplicate names)
+      {{ input.existing_colonies }}
+      {% endif %}
+
+      ## Your Task
+
+      1. Use `sql_search` to discover relevant tables and columns
+      2. Use `sql_data` to test queries and verify they return data
+      3. Design a set of cells that answer the user's intent
+      4. Return a JSON object describing what to create
+
+      ## Output Schema
+
+      Return ONLY valid JSON (no markdown, no explanation):
+
+      ```json
+      {
+        "colony": {
+          "name": "Human-readable colony name",
+          "color": "#hex color"
+        },
+        "cells": [
+          {
+            "id": "unique_cell_id",
+            "name": "Human-readable cell name",
+            "renderType": "barChart|lineChart|areaChart|kpi|gauge|dataTable|pieChart",
+            "query": "SELECT ... (complete SQL query)",
+            "width": 300,
+            "height": 200
+          }
+        ],
+        "filters": [
+          {
+            "id": "unique_filter_id",
+            "name": "Filter Name",
+            "paramKey": "param_key_name",
+            "paramType": "scalar",
+            "query": "SELECT DISTINCT column_name as label, column_name as value FROM table",
+            "renderType": "dropdown"
+          }
+        ],
+        "wires": [
+          {
+            "source": "cell_or_filter_id",
+            "target": "cell_id",
+            "kind": "data|param"
+          }
+        ]
+      }
+      ```
+
+      ## Rules
+
+      - All queries must be valid DuckDB SQL
+      - Use `csv_files.` schema prefix for CSV-loaded tables
+      - For filtered cells, use `(@param_get('key') IS NULL OR column = @param_get('key'))` pattern
+      - Use `ask_data('question')` for complex analytical queries
+      - Use raw SQL for simple aggregations or when you know the exact schema
+      - renderType must be one of: barChart, lineChart, areaChart, kpi, gauge, dataTable, pieChart
+      - Include at least one KPI or summary cell for quick insights
+      - Design for visual storytelling — not just a list of charts
+      - Colony colors should be vibrant hex values
+      - Cell IDs should be descriptive (e.g., "sales_by_region", "total_revenue")
+      - Filter queries should return distinct values for the dropdown
+
+      ## Query Patterns
+
+      ### Simple aggregation (raw SQL)
+      ```sql
+      SELECT region, SUM(sales) as total_sales
+      FROM csv_files.superstore
+      GROUP BY region ORDER BY total_sales DESC
+      ```
+
+      ### Natural language (ask_data)
+      ```sql
+      SELECT * FROM ask_data('top 10 products by profit margin from superstore')
+      ```
+
+      ### With filter support
+      ```sql
+      SELECT category, SUM(sales) as total
+      FROM csv_files.superstore
+      WHERE (@param_get('region') IS NULL OR region = @param_get('region'))
+      GROUP BY category ORDER BY total DESC
+      ```
+
+      Return ONLY the JSON object. No markdown code blocks. No explanation text.

@@ -89,6 +89,7 @@ def _register_all_skills():
     from .skills.cascade_validator import validate_cascade_overrides
     from .skills.bi_tools import find_understanding, save_understanding
     from .skills.valid_json import valid_json, valid_json_array
+    from .skills.valid_rvbbit import valid_rvbbit
     from .skills.hyper_tools import verify_hyper, valid_hyper
     from .skills.calliope_tools import capture_kit_screenshot, validate_kit_visual
 

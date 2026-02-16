@@ -102,9 +102,20 @@ def _validate_json_structure(content: str, expected_keys: str = "subject,predica
                 error_msg = f"Invalid JSON syntax at position {error_pos}: {e.msg}. Context: ...{context}..."
                 return {"valid": False, "error": error_msg, "reason": error_msg}
 
-        # Must be an array
+        # Accept both arrays and objects
+        if isinstance(parsed, dict):
+            # Single object — validate keys if expected_keys provided
+            if expected_keys:
+                required_keys = set(k.strip() for k in expected_keys.split(","))
+                item_keys = set(parsed.keys())
+                missing = required_keys - item_keys
+                if missing:
+                    error_msg = f"Object missing required keys: {missing}. Expected: {required_keys}"
+                    return {"valid": False, "error": error_msg, "reason": error_msg}
+            return {"valid": True, "error": None, "reason": "Valid JSON object"}
+
         if not isinstance(parsed, list):
-            error_msg = f"Expected JSON array, got {type(parsed).__name__}"
+            error_msg = f"Expected JSON array or object, got {type(parsed).__name__}"
             return {"valid": False, "error": error_msg, "reason": error_msg}
 
         if len(parsed) == 0:
