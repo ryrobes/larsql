@@ -348,7 +348,7 @@ def sql_schema_search():
         score_threshold = data.get('score_threshold', 0.3)
 
         # Use the sql_search tool directly (it returns JSON string)
-        result_json = sql_search(query=query, k=k, score_threshold=score_threshold)
+        result_json = sql_search(query=query, k=k)
         result = json.loads(result_json)
 
         # Sanitize to remove NaN values
