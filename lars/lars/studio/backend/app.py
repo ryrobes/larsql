@@ -3707,7 +3707,14 @@ def run_cascade():
         elif cascade_path and not cascade_yaml:
             # FILE MODE: Just use the existing file
             print(f"[run-cascade] File mode: Using existing file {cascade_path}")
-            cascade_path = os.path.join(LARS_ROOT, cascade_path)
+            resolved = os.path.join(LARS_ROOT, cascade_path)
+            if not os.path.exists(resolved):
+                # Fallback: check builtin cascades (ship with package)
+                builtin = os.path.join(get_builtin_cascades_dir(), os.path.basename(cascade_path))
+                if os.path.exists(builtin):
+                    resolved = builtin
+                    print(f"[run-cascade] Resolved to builtin: {resolved}")
+            cascade_path = resolved
 
         import threading
         from lars.event_hooks import ResearchSessionAutoSaveHooks
