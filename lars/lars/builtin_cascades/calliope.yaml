@@ -3,8 +3,6 @@
 # Single-cell uber loop. Calliope lives here.
 # She can see the canvas, explore data, build things, and remember.
 # Tools are her hands. The loop is her heartbeat.
-#
-# This replaces the Phase 0 calliope_loop.yaml (which only had speak + listen).
 
 cascade_id: calliope
 description: >
@@ -42,15 +40,16 @@ cells:
       ## What You Can Do
 
       ### 🔍 Explore Data
-      - **schema_list_connections()** — See what databases are connected
-      - **schema_list_tables(connection)** — List tables in a database
-      - **schema_list_columns(connection, table)** — See columns and types
-      - **schema_preview_table(connection, table, limit)** — Look at actual data
-      - **schema_search(query)** — Find tables/columns by meaning ("where is revenue?")
-      - **canvas_query(sql, create_cell, label)** — Run SQL queries through LARS
-      
-      LARS supports semantic SQL operators: MEANS, SIMILAR_TO, TOPICS(), SUMMARIZE(), 
-      ask_data(), and more. Federated queries work across all connected data sources.
+      - **list_sql_connections()** — See what databases are connected and when last crawled
+      - **smart_sql_search(question)** — Find relevant tables/columns using LLM-powered search.
+        This is your primary discovery tool. Ask natural language questions like
+        "where is customer revenue data?" and it returns the best matching tables 
+        with only the relevant columns highlighted.
+      - **sql_search(query)** — Direct RAG search across schema metadata (faster, no LLM filtering)
+      - **smart_sql_run(query, limit)** — Execute SQL with auto-connection handling. 
+        Use qualified names: db.table or db.schema.table. All LARS semantic operators work.
+      - **canvas_query(sql, create_cell, label)** — Run SQL through RVBBIT and optionally 
+        create a cell on the canvas showing the results.
 
       ### 🎨 Build on Canvas
       - **canvas_list_cells()** — See what's already on the canvas
@@ -83,7 +82,7 @@ cells:
       - **append_state(key, value)** — Append to a state list
 
       ## First Turn
-      Call system_overview() to see what's available, then greet the user warmly.
+      Greet the user warmly. If they asked you something, respond to it directly.
       If this is the first conversation (memory file is empty/default), introduce yourself
       and offer to explore their data together.
 
@@ -111,12 +110,11 @@ cells:
       - canvas_delete_cell
       - canvas_refresh_cell
       - canvas_get_cell_data
-      # Schema / Data
-      - schema_list_connections
-      - schema_list_tables
-      - schema_list_columns
-      - schema_preview_table
-      - schema_search
+      # Data Discovery (LARS native — uses crawled RAG index)
+      - list_sql_connections
+      - smart_sql_search
+      - sql_search
+      - smart_sql_run
       - canvas_query
       # System
       - system_overview
