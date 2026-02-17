@@ -2816,6 +2816,10 @@ def register_dynamic_sql_functions(connection, existing: set | None = None):
 
                     if has_optional_args:
                         # Register Arrow UDF with internal name (all args, fixed arity)
+                        # MUST use null_handling='special' so DuckDB calls the UDF even
+                        # when optional args are NULL (default := NULL in the macro).
+                        # Without this, DuckDB short-circuits and returns NULL without
+                        # ever calling the Arrow UDF (standard SQL NULL propagation).
                         internal_name = f"_{name}_arrow"
                         if internal_name.lower() in existing_names:
                             skipped_count += 1
@@ -2825,7 +2829,8 @@ def register_dynamic_sql_functions(connection, existing: set | None = None):
                             internal_name,
                             udf_func,
                             return_type=return_type,
-                            type='arrow'
+                            type='arrow',
+                            null_handling='special'
                         )
                         existing_names.add(internal_name.lower())
 
@@ -2855,11 +2860,14 @@ def register_dynamic_sql_functions(connection, existing: set | None = None):
                         ''')
                     else:
                         # No optional args — register directly
+                        # Use null_handling='special' so UDF is called even when
+                        # data columns contain NULL values (e.g., nullable text columns)
                         connection.create_function(
                             name,
                             udf_func,
                             return_type=return_type,
-                            type='arrow'  # Arrow vectorized UDF for batch parallelism
+                            type='arrow',
+                            null_handling='special'
                         )
                 else:
                     # Use standard scalar wrapper for non-SCALAR functions
