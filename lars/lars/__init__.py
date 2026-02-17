@@ -107,6 +107,7 @@ def _register_all_skills():
         system_overview, system_topology, system_screenshot,
         system_viewport, system_health,
     )
+    from .skills.rvbbit_lars_cli import lars_crawl, lars_doctor, lars_command
     from .skills.hyper_tools import verify_hyper, valid_hyper
     from .skills.calliope_tools import capture_kit_screenshot, validate_kit_visual
 
