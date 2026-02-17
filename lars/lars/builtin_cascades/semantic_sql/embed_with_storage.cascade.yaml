@@ -56,4 +56,4 @@ cells:
       Could not store embedding: {e}\")\n\n# Step 3: Return embedding for SQL result\n\
       result = embedding\n"
   context:
-    enabled: false
+    enabled: true

@@ -92,4 +92,4 @@ cells:
       \       logger.error(f\"vector_search_elastic failed: {e}\")\n        result\
       \ = []\n\nresult = result\n"
   context:
-    enabled: false
+    enabled: true

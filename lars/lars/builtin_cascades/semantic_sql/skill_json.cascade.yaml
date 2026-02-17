@@ -1,0 +1,97 @@
+cascade_id: skill_json
+internal: true
+description: |
+  Call any registered skill and return JSON content directly.
+
+  Unlike skill() which returns a table via read_json_auto(),
+  skill_json() returns raw JSON as VARCHAR for use with
+  json_extract_string() in scalar extraction scenarios.
+
+  SQL Usage:
+    SELECT json_extract_string(skill_json('local_sentiment', '{"text": "I love it"}'), '$.label')
+    FROM messages;
+
+    SELECT json_extract_string(
+      skill_json('word_count', json_object('text', message)),
+      '$.count'
+    ) as word_count
+    FROM documents;
+
+inputs_schema:
+  skill_name: Name of the skill to call (e.g., 'local_sentiment', 'word_count')
+  args: JSON object of arguments to pass to the skill
+sql_function:
+  name: skill_json
+  description: Call a skill and return JSON content directly (for json_extract_string)
+  args:
+  - name: skill_name
+    type: VARCHAR
+    description: Name of skill to call
+  - name: args
+    type: VARCHAR
+    optional: true
+    description: JSON object of arguments
+  returns: VARCHAR
+  shape: SCALAR
+  cache: false
+  test_cases:
+  - sql: -- Requires skill registry
+    skip: true
+    description: Needs registered skills
+cells:
+- name: call_skill
+  tool: python_data
+  inputs:
+    code: |
+      import json
+      import logging
+
+      logger = logging.getLogger(__name__)
+
+      skill_name = input.get('skill_name', '')
+      args_raw = input.get('args', '{}')
+
+      # Parse args
+      try:
+          args = json.loads(args_raw) if args_raw else {}
+      except (json.JSONDecodeError, TypeError):
+          args = {}
+
+      # Call skill via executor
+      from lars.semantic_sql.registry import execute_sql_function_sync
+
+      try:
+          skill_result = execute_sql_function_sync(
+              "skill",
+              {"skill_name": skill_name, "args": json.dumps(args)}
+          )
+
+          # Normalize to list
+          if skill_result is None:
+              rows = [{"_skill": skill_name, "result": None}]
+          elif isinstance(skill_result, dict):
+              rows = [skill_result]
+          elif isinstance(skill_result, list):
+              rows = skill_result
+          elif isinstance(skill_result, str):
+              try:
+                  parsed = json.loads(skill_result)
+                  if isinstance(parsed, dict):
+                      rows = [parsed]
+                  elif isinstance(parsed, list):
+                      rows = parsed
+                  else:
+                      rows = [{"_skill": skill_name, "result": parsed}]
+              except json.JSONDecodeError:
+                  rows = [{"_skill": skill_name, "result": skill_result}]
+          else:
+              rows = [{"_skill": skill_name, "result": skill_result}]
+
+          # Return JSON string directly
+          result = json.dumps(rows)
+
+      except Exception as e:
+          logger.error(f"skill_json cascade failed: {e}")
+          result = json.dumps([{"_skill": skill_name, "error": str(e)}])
+  context:
+    enabled: false

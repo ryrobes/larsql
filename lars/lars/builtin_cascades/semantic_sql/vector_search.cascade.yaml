@@ -64,4 +64,4 @@ cells:
       \ round(row['similarity'], 4),\n        'distance': round(row['distance'], 4)\n\
       \    }\n    for row in results\n]\n"
   context:
-    enabled: false
+    enabled: true

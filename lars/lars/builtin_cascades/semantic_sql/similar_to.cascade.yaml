@@ -46,7 +46,7 @@ cells:
     text2: '{{ input.text2 }}'
   description: Compute cosine similarity via embeddings
   context:
-    enabled: false
+    enabled: true
 - name: format_output
   tool: python_data
   inputs:

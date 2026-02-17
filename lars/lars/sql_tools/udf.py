@@ -980,20 +980,20 @@ def register_embedding_udfs(connection: duckdb.DuckDBPyConnection, existing: set
     """
     Register embedding-based UDFs for Semantic SQL.
 
-    Registers:
+    DEPRECATED: These functions are now registered via their cascade YAMLs in
+    builtin_cascades/semantic_sql/ through register_dynamic_sql_functions().
+    This function is kept only as a fallback for any functions whose cascades
+    aren't yet enabled. Once all cascades are confirmed working, this can be removed.
+
+    Previously registered:
         - semantic_embed(text, model?) → DOUBLE[]
         - vector_search_json(query, table, limit?, threshold?) → VARCHAR (JSON)
         - similar_to(text1, text2) → DOUBLE
+        - vector_search_elastic(query, table?, limit?) → TABLE
+        - skill(name, args?) → TABLE
+        - skill_json(name, args?) → VARCHAR
 
-    Args:
-        connection: DuckDB connection to register with
-        existing: Pre-fetched set of existing function names (for batch efficiency)
-
-    Note:
-        These UDFs are backed by cascades in cascades/semantic_sql/:
-        - embed.cascade.yaml
-        - vector_search.cascade.yaml
-        - similar_to.cascade.yaml
+    All above are now cascade-backed via register_dynamic_sql_functions().
     """
     # Get existing functions if not provided
     if existing is None:
@@ -1003,6 +1003,41 @@ def register_embedding_udfs(connection: duckdb.DuckDBPyConnection, existing: set
 
     logger = logging.getLogger(__name__)
 
+    # Check if cascade equivalents are available — if so, skip hardcoded registration
+    # and let register_dynamic_sql_functions handle them (with vectorized wrappers,
+    # dedup, TABLE macros with optional arg defaults, etc.)
+    try:
+        from lars.semantic_sql.registry import initialize_registry, get_sql_function_registry
+        initialize_registry()
+        registry = get_sql_function_registry()
+        cascade_names = {n.lower() for n in registry.keys()}
+
+        # All the functions this method used to register
+        legacy_functions = {
+            'semantic_embed', 'semantic_embed_with_storage',
+            'similar_to', 'vector_search', 'vector_search_elastic',
+            'skill', 'skill_json'
+        }
+
+        # If all legacy functions have cascade equivalents, skip entirely
+        covered = legacy_functions & cascade_names
+        if covered == legacy_functions:
+            logger.info(
+                f"[EmbeddingUDFs] All {len(legacy_functions)} functions have cascade equivalents — "
+                f"skipping hardcoded registration (cascade system handles them)"
+            )
+            return
+
+        uncovered = legacy_functions - covered
+        if uncovered:
+            logger.info(
+                f"[EmbeddingUDFs] {len(covered)}/{len(legacy_functions)} functions covered by cascades. "
+                f"Registering hardcoded fallbacks for: {uncovered}"
+            )
+    except Exception as e:
+        logger.warning(f"[EmbeddingUDFs] Could not check cascade registry: {e} — registering all hardcoded UDFs")
+        uncovered = None  # Register everything as fallback
+
     # Import cascade execution
     try:
         from lars.semantic_sql.registry import execute_sql_function_sync
@@ -1011,7 +1046,8 @@ def register_embedding_udfs(connection: duckdb.DuckDBPyConnection, existing: set
         return
 
     # Import embedding tools to ensure they're registered
-    # This MUST happen before UDF registration so tools are available to cascades
+    # This MUST happen even when cascade equivalents handle registration,
+    # because the cascade cells import these tools at runtime
     try:
         import lars  # Force full initialization
         import lars.skills.embedding_storage  # noqa: F401
@@ -1023,15 +1059,25 @@ def register_embedding_udfs(connection: duckdb.DuckDBPyConnection, existing: set
             logger.debug(f"[OK] agent_embed tool found: {tool}")
         else:
             logger.warning("[WARN]  agent_embed tool not found in registry!")
-            return
+            # Don't return — cascade system may handle registration differently
 
         logger.debug("Loaded embedding_storage tools")
     except ImportError as e:
         logger.warning(f"Could not load embedding_storage tools: {e}")
-        return
     except Exception as e:
         logger.warning(f"Error verifying embedding tools: {e}")
+
+    # If all functions are covered by cascade equivalents, skip hardcoded registration
+    # The cascade versions go through register_dynamic_sql_functions() which provides:
+    # - Arrow vectorized UDFs with dedup (SCALAR shape)
+    # - TABLE macros with optional arg defaults (TABLE shape)
+    # - Unified cache, observability, and cost tracking
+    if uncovered is not None and len(uncovered) == 0:
         return
+
+    # =========================================================================
+    # LEGACY: Hardcoded UDF registrations (fallback when cascades not available)
+    # =========================================================================
 
     # =========================================================================
     # UDF 1: semantic_embed(text, model?) → DOUBLE[]
@@ -2244,6 +2290,20 @@ def make_vectorized_wrapper(
                         return 0
                     else:
                         return int(float(str(result).strip()))
+                elif return_type == "DOUBLE[]":
+                    # Embedding vectors — result should be list of floats
+                    if isinstance(result, list):
+                        return [float(x) for x in result]
+                    elif isinstance(result, dict) and 'embedding' in result:
+                        return [float(x) for x in result['embedding']]
+                    elif isinstance(result, str):
+                        import json as _json
+                        parsed = _json.loads(result)
+                        if isinstance(parsed, list):
+                            return [float(x) for x in parsed]
+                        elif isinstance(parsed, dict) and 'embedding' in parsed:
+                            return [float(x) for x in parsed['embedding']]
+                    return None
                 else:
                     return str(result) if result is not None else ""
             except Exception:
@@ -2252,6 +2312,8 @@ def make_vectorized_wrapper(
                     return False
                 elif return_type in ("DOUBLE", "INTEGER"):
                     return 0
+                elif return_type == "DOUBLE[]":
+                    return None
                 else:
                     return str(result) if result is not None else ""
 
@@ -2517,6 +2579,9 @@ def make_vectorized_wrapper(
             return pa.array(coerced_results, type=pa.float64())
         elif return_type == "INTEGER":
             return pa.array(coerced_results, type=pa.int64())
+        elif return_type == "DOUBLE[]":
+            # List of floats (embedding vectors) — return as list<float64> Arrow array
+            return pa.array(coerced_results, type=pa.list_(pa.float64()))
         else:
             return pa.array(coerced_results, type=pa.string())
 
@@ -2638,16 +2703,63 @@ def register_dynamic_sql_functions(connection, existing: set | None = None):
                     # Register as VARCHAR (returns JSON string)
                     return_type = 'VARCHAR'
 
-                # Special handling for sql_statement mode: register as TABLE function
-                # sql_statement functions return temp file paths, wrap with read_json_auto()
-                if entry.output_mode == 'sql_statement':
-                    # sql_statement uses scalar wrapper (returns file path)
-                    udf_func = make_wrapper(name, entry)
+                # TABLE function handling: sql_statement mode OR TABLE-returning cascades
+                # Both get an internal scalar UDF + TABLE macro with read_json_auto()
+                is_table_function = (
+                    entry.output_mode == 'sql_statement' or
+                    entry.returns.upper() == 'TABLE'
+                )
 
-                    # Register internal scalar function with _file suffix
-                    internal_name = f"_{name}_file"
+                if is_table_function:
+                    # For TABLE functions, create a wrapper that returns a temp file path
+                    # read_json_auto() needs a file path, not inline JSON
+                    def make_table_wrapper(fn_name, fn_entry):
+                        def wrapper(*args):
+                            import json as json_mod
+                            import tempfile
+                            arg_names = [a['name'] for a in fn_entry.args]
+                            inputs = {arg_names[i]: args[i] if i < len(args) else None
+                                     for i in range(len(arg_names))}
+                            inputs = {k: v for k, v in inputs.items() if v is not None}
 
-                    # Skip if internal function already exists
+                            try:
+                                result = execute_cascade_udf(fn_name, json_mod.dumps(inputs))
+
+                                # For sql_statement mode, result is already a file path
+                                if fn_entry.output_mode == 'sql_statement' and isinstance(result, str):
+                                    # Could be a file path already — check
+                                    if result.startswith('/') or result.startswith('C:'):
+                                        return result
+
+                                # Parse JSON result if needed
+                                if isinstance(result, str):
+                                    try:
+                                        rows = json_mod.loads(result)
+                                    except json_mod.JSONDecodeError:
+                                        rows = [{"result": result}]
+                                elif isinstance(result, list):
+                                    rows = result
+                                elif isinstance(result, dict):
+                                    rows = [result]
+                                else:
+                                    rows = [{"result": result}] if result is not None else []
+
+                                # Write to temp file for read_json_auto
+                                with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+                                    json_mod.dump(rows if rows else [], f)
+                                    return f.name
+
+                            except Exception as e:
+                                import logging
+                                logging.getLogger(__name__).error(f"Table UDF {fn_name} failed: {e}")
+                                with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+                                    f.write('[]')
+                                    return f.name
+                        return wrapper
+
+                    udf_func = make_table_wrapper(name, entry)
+                    internal_name = f"_{name}_internal"
+
                     if internal_name.lower() in existing_names:
                         skipped_count += 1
                         continue
@@ -2655,17 +2767,34 @@ def register_dynamic_sql_functions(connection, existing: set | None = None):
                     connection.create_function(
                         internal_name,
                         udf_func,
-                        return_type='VARCHAR'  # Returns file path
+                        return_type='VARCHAR'
                     )
                     existing_names.add(internal_name.lower())
 
-                    # Build arg list for macro (e.g., "question" for ask_data)
-                    arg_names = [a['name'] for a in entry.args]
-                    macro_args = ', '.join(arg_names)
-                    internal_call_args = ', '.join(arg_names)
+                    # Build macro args with defaults for optional parameters
+                    # DuckDB macros support: MACRO fn(a, b := 10, c := NULL)
+                    # Quote arg names to avoid conflicts with SQL reserved words (e.g., "limit")
+                    all_args = entry.args
+                    macro_parts = []
+                    for a in all_args:
+                        arg_name = f'"{a["name"]}"'
+                        if a.get('optional', False):
+                            default = a.get('default')
+                            if default is None:
+                                macro_parts.append(f"{arg_name} := NULL")
+                            elif isinstance(default, str):
+                                macro_parts.append(f"{arg_name} := '{default}'")
+                            else:
+                                macro_parts.append(f"{arg_name} := {default}")
+                        else:
+                            macro_parts.append(arg_name)
 
-                    # Create TABLE macro: SELECT * FROM ask_data('question')
-                    # Uses read_json_auto to parse the temp file and return proper table results
+                    macro_args = ', '.join(macro_parts)
+                    internal_call_args = ', '.join(f'"{a["name"]}"' for a in all_args)
+
+                    # For sql_statement mode, the cascade returns a file path
+                    # For TABLE cascades returning JSON, the cascade returns JSON string
+                    # read_json_auto() handles both (file paths and inline JSON)
                     connection.execute(f'''
                         CREATE OR REPLACE MACRO {name}({macro_args}) AS TABLE
                         SELECT * FROM read_json_auto({internal_name}({internal_call_args}))
@@ -2678,17 +2807,60 @@ def register_dynamic_sql_functions(connection, existing: set | None = None):
                 # SCALAR shape functions benefit from parallel batch execution
                 use_arrow = entry.shape.upper() == 'SCALAR'
 
+                # Check for optional args — need scalar macro wrapper for defaults
+                has_optional_args = any(a.get('optional', False) for a in entry.args)
+
                 if use_arrow:
                     # Create Arrow vectorized wrapper for parallel execution
                     udf_func = make_vectorized_wrapper(name, entry, execute_cascade_udf)
 
-                    # Register as Arrow UDF
-                    connection.create_function(
-                        name,
-                        udf_func,
-                        return_type=return_type,
-                        type='arrow'  # Arrow vectorized UDF for batch parallelism
-                    )
+                    if has_optional_args:
+                        # Register Arrow UDF with internal name (all args, fixed arity)
+                        internal_name = f"_{name}_arrow"
+                        if internal_name.lower() in existing_names:
+                            skipped_count += 1
+                            continue
+
+                        connection.create_function(
+                            internal_name,
+                            udf_func,
+                            return_type=return_type,
+                            type='arrow'
+                        )
+                        existing_names.add(internal_name.lower())
+
+                        # Create scalar macro with defaults for optional args
+                        # e.g., MACRO semantic_embed("text", "model" := NULL) AS _semantic_embed_arrow("text", "model")
+                        # Quote arg names to avoid conflicts with SQL reserved words
+                        all_args = entry.args
+                        macro_parts = []
+                        for a in all_args:
+                            arg_name = f'"{a["name"]}"'
+                            if a.get('optional', False):
+                                default = a.get('default')
+                                if default is None:
+                                    macro_parts.append(f"{arg_name} := NULL")
+                                elif isinstance(default, str):
+                                    macro_parts.append(f"{arg_name} := '{default}'")
+                                else:
+                                    macro_parts.append(f"{arg_name} := {default}")
+                            else:
+                                macro_parts.append(arg_name)
+
+                        macro_args = ', '.join(macro_parts)
+                        call_args = ', '.join(f'"{a["name"]}"' for a in all_args)
+
+                        connection.execute(f'''
+                            CREATE OR REPLACE MACRO {name}({macro_args}) AS {internal_name}({call_args})
+                        ''')
+                    else:
+                        # No optional args — register directly
+                        connection.create_function(
+                            name,
+                            udf_func,
+                            return_type=return_type,
+                            type='arrow'  # Arrow vectorized UDF for batch parallelism
+                        )
                 else:
                     # Use standard scalar wrapper for non-SCALAR functions
                     udf_func = make_wrapper(name, entry)
@@ -2750,21 +2922,46 @@ def register_dynamic_sql_functions(connection, existing: set | None = None):
                         import logging
                         logging.getLogger(__name__).debug(f"[DynamicUDF] Could not create _rows macro for {name}: {macro_err}")
 
+                # Helper to register an alias (handles both direct UDF and macro-wrapped cases)
+                def _register_alias(alias, main_name, fn_entry, udf_func, use_arrow, return_type, has_optional):
+                    """Register an alias — as macro if optional args, else direct UDF."""
+                    if alias.lower() in existing_names:
+                        return False
+                    try:
+                        if has_optional and use_arrow:
+                            # Alias as macro pointing to same internal Arrow UDF
+                            internal = f"_{main_name}_arrow"
+                            all_args = fn_entry.args
+                            parts = []
+                            for a in all_args:
+                                an = f'"{a["name"]}"'
+                                if a.get('optional', False):
+                                    d = a.get('default')
+                                    if d is None:
+                                        parts.append(f"{an} := NULL")
+                                    elif isinstance(d, str):
+                                        parts.append(f"{an} := '{d}'")
+                                    else:
+                                        parts.append(f"{an} := {d}")
+                                else:
+                                    parts.append(an)
+                            margs = ', '.join(parts)
+                            cargs = ', '.join(f'"{a["name"]}"' for a in all_args)
+                            connection.execute(f"CREATE OR REPLACE MACRO {alias}({margs}) AS {internal}({cargs})")
+                        elif use_arrow:
+                            connection.create_function(alias, udf_func, return_type=return_type, type='arrow')
+                        else:
+                            connection.create_function(alias, udf_func, return_type=return_type)
+                        existing_names.add(alias.lower())
+                        return True
+                    except Exception:
+                        return False
+
                 # ALSO register without "semantic_" prefix for SQL convenience
                 if name.startswith('semantic_'):
                     short_name = name.replace('semantic_', '')
-                    if short_name.lower() not in existing_names:
-                        try:
-                            if use_arrow:
-                                connection.create_function(
-                                    short_name, udf_func, return_type=return_type, type='arrow'
-                                )
-                            else:
-                                connection.create_function(short_name, udf_func, return_type=return_type)
-                            existing_names.add(short_name.lower())
-                            registered_count += 1
-                        except Exception:
-                            pass  # Might conflict with hardcoded functions, that's OK
+                    if _register_alias(short_name, name, entry, udf_func, use_arrow, return_type, has_optional_args):
+                        registered_count += 1
 
                 # ALSO register additional aliases from operator patterns
                 # Extract function names from patterns like "TLDR({{ text }})" or "CONDENSE(...)"
@@ -2790,18 +2987,8 @@ def register_dynamic_sql_functions(connection, existing: set | None = None):
                     if alias_name:
                         # Only register if different from main function name and short_name
                         if alias_name != name and (not name.startswith('semantic_') or alias_name != short_name):
-                            if alias_name not in existing_names:
-                                try:
-                                    if use_arrow:
-                                        connection.create_function(
-                                            alias_name, udf_func, return_type=return_type, type='arrow'
-                                        )
-                                    else:
-                                        connection.create_function(alias_name, udf_func, return_type=return_type)
-                                    existing_names.add(alias_name)
-                                    registered_count += 1
-                                except Exception:
-                                    pass  # Might conflict, that's OK
+                            if _register_alias(alias_name, name, entry, udf_func, use_arrow, return_type, has_optional_args):
+                                registered_count += 1
 
             except Exception as e:
                 # Only log unexpected errors (not "already exists")
