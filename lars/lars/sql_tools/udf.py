@@ -2296,21 +2296,34 @@ def make_vectorized_wrapper(
                     row_args[name] = val.as_py() if hasattr(val, 'as_py') else val
             rows.append(row_args)
 
-        # Compute cache keys for all rows
+        # Compute cache keys for all rows — deduplicate to avoid redundant lookups
         cache = get_cache()
         cache_keys = [SemanticCache.make_cache_key(func_name, args) for args in rows]
 
         # Benchmark mode: skip cache entirely so each model gets fresh LLM calls
         benchmark_no_cache = os.environ.get("LARS_BENCHMARK_NO_CACHE") == "1"
 
-        # Batch cache lookup
+        # Deduplicated batch cache lookup — only look up each unique key once
+        # For 80K rows with 30 unique values, this turns 80K lookups into 30
         if benchmark_no_cache:
             cached_results = {}
         else:
-            cached_results = cache.get_batch(func_name, rows, track_hit=True)
+            unique_keys = {}  # cache_key → first args that produced it
+            for args, cache_key in zip(rows, cache_keys):
+                if cache_key not in unique_keys:
+                    unique_keys[cache_key] = args
+
+            # Look up only unique keys
+            unique_results = {}
+            for cache_key, args in unique_keys.items():
+                found, result, result_type = cache.get(func_name, args, track_hit=True)
+                unique_results[cache_key] = (found, result, result_type)
+
+            cached_results = unique_results
 
         # Identify cache misses and coerce cache hits
         misses = []
+        seen_misses = set()  # Deduplicate misses too — only execute each unique input once
         results = [None] * n_rows
         return_type = fn_entry.returns
         cache_hit_count = 0
@@ -2321,7 +2334,10 @@ def make_vectorized_wrapper(
                 results[i] = coerce_result(result, return_type)
                 cache_hit_count += 1
             else:
-                misses.append((i, args, cache_key))
+                if cache_key not in seen_misses:
+                    misses.append((i, args, cache_key))
+                    seen_misses.add(cache_key)
+                # Mark as pending — will be filled when the unique miss completes
 
         # Track cache hits in SQL trail (execute_cascade_udf only handles misses)
         if cache_hit_count > 0 and caller_id:
@@ -2333,8 +2349,9 @@ def make_vectorized_wrapper(
                 log.debug(f"[VectorizedUDF] Failed to track cache hits: {e}")
 
         # Log cache stats for debugging
-        if cache_hit_count > 0 or len(misses) > 0:
-            log.debug(f"[VectorizedUDF] {func_name}: {cache_hit_count} cache hits, {len(misses)} to execute")
+        dedup_saved = n_rows - len(unique_keys) if not benchmark_no_cache else 0
+        if cache_hit_count > 0 or len(misses) > 0 or dedup_saved > 0:
+            log.info(f"[VectorizedUDF] {func_name}: {n_rows} rows → {len(unique_keys) if not benchmark_no_cache else n_rows} unique, {cache_hit_count} cache hits, {len(misses)} to execute (dedup saved {dedup_saved} lookups)")
 
         # Early termination support for LIMIT-friendly queries
         # For BOOLEAN functions (like semantic_matches), we track matches and can
@@ -2467,6 +2484,19 @@ def make_vectorized_wrapper(
         # Log early termination stats
         if skipped_due_to_early_term > 0:
             log.info(f"[VectorizedUDF] {func_name}: Early termination saved {skipped_due_to_early_term} LLM calls")
+
+        # Backfill duplicate rows: for rows that shared a cache key with a unique miss,
+        # copy the result from the executed miss to all duplicate positions
+        if seen_misses:
+            # Build a map of cache_key → result from the executed misses
+            miss_results = {}
+            for i, (args, cache_key) in enumerate(zip(rows, cache_keys)):
+                if results[i] is not None:
+                    miss_results[cache_key] = results[i]
+            # Fill any None positions that have a completed miss result
+            for i, cache_key in enumerate(cache_keys):
+                if results[i] is None and cache_key in miss_results:
+                    results[i] = miss_results[cache_key]
 
         # Batch store new results (skip in benchmark mode)
         if new_cache_items and not is_shutdown_requested() and not benchmark_no_cache:
