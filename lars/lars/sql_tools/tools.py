@@ -254,6 +254,10 @@ def sql_rag_search(
         # result['source'] is like "csv_files/bigfoot_sightings.yaml"
         full_path = os.path.join(samples_dir, result['source'])
 
+        # If this is a _fields.yaml file, redirect to the parent table file
+        if full_path.endswith("_fields.yaml"):
+            full_path = full_path.replace("_fields.yaml", ".yaml")
+
         # Deduplicate by file path
         if full_path in seen_tables:
             continue
@@ -274,11 +278,15 @@ def sql_rag_search(
                 else:
                     table_meta = json.load(f)
 
+                # Skip if this is a fields-only file that wasn't redirected
+                if 'fields' in table_meta and 'table_name' not in table_meta:
+                    continue
+
                 # Build qualified table name
-                if table_meta['schema'] and table_meta['schema'] != table_meta['database']:
+                if table_meta.get('schema') and table_meta['schema'] != table_meta.get('database', ''):
                     qualified_name = f"{table_meta['database']}.{table_meta['schema']}.{table_meta['table_name']}"
                 else:
-                    qualified_name = f"{table_meta['database']}.{table_meta['table_name']}"
+                    qualified_name = f"{table_meta.get('database', '')}.{table_meta['table_name']}"
 
                 tables.append({
                     "qualified_name": qualified_name,
