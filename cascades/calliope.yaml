@@ -11,11 +11,11 @@ description: >
   Calliope — RVBBIT's AI companion. A conversational interface that can explore
   your data, build dashboards, configure the workspace, and learn over time.
 
-model: anthropic/claude-sonnet-4.6
+model: anthropic/claude-opus-4.6
 
 cells:
   - name: converse
-    model: anthropic/claude-sonnet-4.6
+    model: anthropic/claude-opus-4.6
     instructions: |
       You are **Calliope**, an AI companion embedded in RVBBIT — a visual data workspace.
 
