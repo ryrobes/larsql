@@ -610,3 +610,168 @@ def list_memory_banks():
 
     except Exception as e:
         return jsonify({"error": f"Failed to list memory banks: {str(e)}"}), 500
+
+
+@search_bp.route('/resolve', methods=['POST'])
+def resolve_identifier():
+    """
+    Semantic identifier resolver for SQL autocomplete.
+
+    Takes a fuzzy text input and returns ranked candidate identifiers
+    (tables and/or fields) that match semantically or by name.
+
+    Designed for real-time use in editors — fast, compact results.
+
+    Request body:
+        {
+            "text": str,          # Fuzzy input (e.g. "cust", "email address", "revenue")
+            "k": int,             # Max results (default: 8)
+            "mode": str,          # "all" | "tables" | "fields" (default: "all")
+            "context_table": str  # Optional: if set, bias field results toward this table
+        }
+
+    Returns:
+        {
+            "candidates": [{
+                "kind": "table" | "field",
+                "qualified_name": str,      # e.g. "main.public.customers"
+                "display": str,             # short display name
+                "detail": str,              # type info or table context
+                "score": float,
+                "database": str,
+                "schema": str,
+                "table": str,
+                "field": str | null,        # field name if kind == "field"
+                "field_type": str | null    # data type if kind == "field"
+            }],
+            "query": str,
+            "total": int
+        }
+    """
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "Request body must be JSON"}), 400
+
+        text = data.get('text', '').strip()
+        if not text or len(text) < 1:
+            return jsonify({"candidates": [], "query": text, "total": 0})
+
+        k = data.get('k', 8)
+        mode = data.get('mode', 'all')
+        context_table = data.get('context_table')
+
+        # Try Elasticsearch first, fall back to RAG
+        try:
+            from lars.elastic import get_elastic_client, hybrid_search_sql_schemas
+            from lars.rag.indexer import embed_texts
+
+            es = get_elastic_client()
+            use_elastic = es.ping()
+        except Exception:
+            use_elastic = False
+
+        if use_elastic:
+            cfg = get_config()
+            embed_result = embed_texts(
+                texts=[text],
+                model=cfg.default_embed_model,
+                session_id="resolve",
+                trace_id=None,
+                parent_id=None,
+                cell_name="resolve",
+                cascade_id="resolve"
+            )
+            query_embedding = embed_result['embeddings'][0]
+
+            # Fetch more tables so we can extract field-level matches
+            tables = hybrid_search_sql_schemas(
+                query=text,
+                query_embedding=query_embedding,
+                k=k * 2
+            )
+        else:
+            # RAG fallback
+            result_json = sql_search(query=text, k=k * 2)
+            result = json.loads(result_json)
+            tables = result if isinstance(result, list) else result.get('tables', [])
+
+        candidates = []
+        text_lower = text.lower()
+
+        for tbl in tables:
+            table_name = tbl.get('table_name', '')
+            database = tbl.get('database', '')
+            schema = tbl.get('schema', '')
+            qualified = tbl.get('qualified_name', f"{database}.{schema}.{table_name}")
+            match_score = tbl.get('match_score', 0.5)
+            columns = tbl.get('columns', [])
+
+            # If columns is a JSON string, parse it
+            if isinstance(columns, str):
+                try:
+                    columns = json.loads(columns)
+                except Exception:
+                    columns = []
+
+            # Table-level candidate
+            if mode in ('all', 'tables'):
+                # Boost if table name contains the search text
+                name_boost = 0.3 if text_lower in table_name.lower() else 0
+                candidates.append({
+                    "kind": "table",
+                    "qualified_name": qualified,
+                    "display": table_name,
+                    "detail": f"{database}.{schema} ({tbl.get('row_count', '?')} rows)",
+                    "score": match_score + name_boost,
+                    "database": database,
+                    "schema": schema,
+                    "table": table_name,
+                    "field": None,
+                    "field_type": None,
+                })
+
+            # Field-level candidates
+            if mode in ('all', 'fields') and columns:
+                for col in columns:
+                    col_name = col.get('name', '') if isinstance(col, dict) else str(col)
+                    col_type = col.get('type', '') if isinstance(col, dict) else ''
+
+                    # Score fields: name match > semantic table match
+                    field_score = match_score * 0.6  # base from table relevance
+                    if text_lower in col_name.lower():
+                        field_score += 0.5  # strong name match boost
+                    elif any(word in col_name.lower() for word in text_lower.split()):
+                        field_score += 0.2  # partial word match
+
+                    # Boost fields from context_table
+                    if context_table and table_name.lower() == context_table.lower():
+                        field_score += 0.3
+
+                    # Only include fields with some relevance
+                    if field_score > match_score * 0.5:
+                        candidates.append({
+                            "kind": "field",
+                            "qualified_name": f"{qualified}.{col_name}",
+                            "display": col_name,
+                            "detail": f"{col_type} — {table_name}",
+                            "score": field_score,
+                            "database": database,
+                            "schema": schema,
+                            "table": table_name,
+                            "field": col_name,
+                            "field_type": col_type,
+                        })
+
+        # Sort by score descending, take top k
+        candidates.sort(key=lambda c: c['score'], reverse=True)
+        candidates = candidates[:k]
+
+        return jsonify(sanitize_for_json({
+            "candidates": candidates,
+            "query": text,
+            "total": len(candidates)
+        }))
+
+    except Exception as e:
+        return jsonify({"error": f"Resolve failed: {str(e)}"}), 500
