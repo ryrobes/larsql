@@ -59,6 +59,8 @@ def _register_all_skills():
     from .skills.sql import run_sql, smart_sql_run
     from .skills.extras import take_screenshot, linux_shell, curl_text, fetch_url_with_browser
     from .skills.human import ask_human, ask_human_custom, request_decision
+    from .skills.native_input import wait_for_input
+    from .skills.companion_speak import companion_speak
     from .skills.display import show_ui
     from .skills.artifacts import create_artifact, list_artifacts, get_artifact
     from .skills.cascade_caller import call_cascade_dynamic
@@ -90,6 +92,21 @@ def _register_all_skills():
     from .skills.bi_tools import find_understanding, save_understanding
     from .skills.valid_json import valid_json, valid_json_array
     from .skills.valid_rvbbit import valid_rvbbit
+    from .skills.rvbbit_canvas import (
+        canvas_list_cells, canvas_get_cell, canvas_search_cells,
+        canvas_create_cell, canvas_update_cell, canvas_move_cell,
+        canvas_delete_cell, canvas_refresh_cell, canvas_get_cell_data,
+    )
+    from .skills.rvbbit_schema import (
+        schema_list_connections, schema_list_tables, schema_list_columns,
+        schema_preview_table, schema_search,
+    )
+    from .skills.rvbbit_query import canvas_query
+    from .skills.rvbbit_memory import memory_read, memory_write, memory_append
+    from .skills.rvbbit_system import (
+        system_overview, system_topology, system_screenshot,
+        system_viewport, system_health,
+    )
     from .skills.hyper_tools import verify_hyper, valid_hyper
     from .skills.calliope_tools import capture_kit_screenshot, validate_kit_visual
 
