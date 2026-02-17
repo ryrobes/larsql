@@ -59,6 +59,81 @@ except ImportError:
 console = Console()
 
 
+def _write_field_index(db_dir: str, table_meta: dict):
+    """
+    Generate a field-level index file for granular RAG search.
+
+    Creates one text chunk per column, formatted for good embedding quality.
+    The RAG indexer picks this up automatically alongside the table YAML.
+    """
+    table_name = table_meta.get("table_name", "unknown")
+    database = table_meta.get("database", "")
+    schema = table_meta.get("schema", "")
+    columns = table_meta.get("columns", [])
+    row_count = table_meta.get("row_count", 0)
+
+    if not columns:
+        return
+
+    # Build qualified name
+    if schema and schema != database:
+        qualified = f"{database}.{schema}.{table_name}"
+    else:
+        qualified = f"{database}.{table_name}"
+
+    # Generate one entry per field with rich searchable text
+    field_entries = []
+    for col in columns:
+        col_name = col.get("name", "")
+        col_type = col.get("type", "")
+        nullable = col.get("nullable", True)
+        meta = col.get("metadata", {})
+        distinct = meta.get("distinct_count", "")
+
+        # Build a natural language description for better embedding
+        desc_parts = [
+            f"Field '{col_name}' in table {qualified}.",
+            f"Type: {col_type}.",
+        ]
+        if distinct:
+            desc_parts.append(f"Has {distinct} distinct values.")
+        if not nullable:
+            desc_parts.append("NOT NULL (required).")
+        if row_count:
+            desc_parts.append(f"Table has {row_count} rows.")
+
+        # Add sample values if available (from value_distribution)
+        dist = meta.get("value_distribution", [])
+        if dist and len(dist) > 0:
+            samples = [str(d.get("value", "")) for d in dist[:5] if d.get("value") is not None]
+            if samples:
+                desc_parts.append(f"Sample values: {', '.join(samples)}.")
+
+        # Add min/max if available
+        min_val = meta.get("min")
+        max_val = meta.get("max")
+        if min_val is not None and max_val is not None:
+            desc_parts.append(f"Range: {min_val} to {max_val}.")
+
+        field_entries.append({
+            "field": col_name,
+            "table": table_name,
+            "qualified_table": qualified,
+            "database": database,
+            "schema": schema,
+            "type": col_type,
+            "description": " ".join(desc_parts),
+        })
+
+    if field_entries:
+        fields_file = os.path.join(db_dir, f"{table_name}_fields.yaml")
+        with open(fields_file, "w") as f:
+            yaml.safe_dump(
+                {"fields": field_entries, "source_table": qualified},
+                f, default_flow_style=False, sort_keys=False, allow_unicode=True
+            )
+
+
 def discover_all_schemas(session_id: str | None = None):
     """
     Chart all SQL schemas:
@@ -162,6 +237,9 @@ def discover_all_schemas(session_id: str | None = None):
 
                     with open(table_file, "w") as f:
                         yaml.safe_dump(_sanitize_for_yaml(table_meta), f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+
+                    # Generate field-level index file for granular RAG search
+                    _write_field_index(db_dir, table_meta)
 
                     total_tables += 1
                     total_columns += len(table_meta["columns"])

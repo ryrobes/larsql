@@ -1800,6 +1800,10 @@ def _migrate_legacy_terminology(data: Dict) -> Dict:
     if "phases" in data and "cells" not in data:
         data["cells"] = data.pop("phases")
 
+    # Guard against None cells
+    if data.get("cells") is None:
+        data["cells"] = []
+
     # tackle → skills (within each cell)
     if "cells" in data:
         migrated_cells = []
