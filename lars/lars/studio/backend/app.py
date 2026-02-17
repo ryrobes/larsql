@@ -7357,6 +7357,33 @@ def _find_frontend_build():
 FRONTEND_BUILD_DIR = _find_frontend_build()
 SERVE_STATIC = os.path.exists(os.path.join(FRONTEND_BUILD_DIR, 'index.html'))
 
+# ── Companion Native Input (for RVBBIT) ──
+
+@app.route('/api/companion/pending', methods=['GET'])
+def companion_pending():
+    """Poll for a pending input question from a cascade's wait_for_input() call."""
+    from lars.skills.native_input import get_native_input_manager
+    manager = get_native_input_manager()
+    pending = manager.get_pending()
+    if pending:
+        return jsonify({"ok": True, "pending": pending})
+    return jsonify({"ok": True, "pending": None})
+
+
+@app.route('/api/companion/respond', methods=['POST'])
+def companion_respond():
+    """Send user's text response to unblock a cascade's wait_for_input() call."""
+    from lars.skills.native_input import get_native_input_manager
+    data = request.get_json() or {}
+    request_id = data.get("id", "")
+    text = data.get("text", "")
+    if not request_id or not text:
+        return jsonify({"ok": False, "error": "Missing 'id' or 'text'"}), 400
+    manager = get_native_input_manager()
+    success = manager.respond(request_id, text)
+    return jsonify({"ok": success})
+
+
 # Debug: always log frontend build status on import
 print(f"[Studio] Frontend build dir: {FRONTEND_BUILD_DIR}")
 print(f"[Studio] Serving static files: {SERVE_STATIC}")
