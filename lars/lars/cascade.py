@@ -1818,6 +1818,8 @@ def _migrate_legacy_terminology(data: Dict) -> Dict:
     return data
 
 
+_cascade_config_cache: Dict[str, "CascadeConfig"] = {}
+
 def load_cascade_config(path_or_dict: Union[str, Dict, "CascadeConfig"]) -> CascadeConfig:
     # If already a CascadeConfig, return as-is
     if isinstance(path_or_dict, CascadeConfig):
@@ -1825,6 +1827,10 @@ def load_cascade_config(path_or_dict: Union[str, Dict, "CascadeConfig"]) -> Casc
 
     # If string, could be cascade_id OR file path
     if isinstance(path_or_dict, str):
+        # Check in-memory cache first (avoids repeated file I/O for same cascade)
+        if path_or_dict in _cascade_config_cache:
+            return _cascade_config_cache[path_or_dict]
+
         # Try registry first (fast path - supports both ID and path)
         try:
             from .artifact_registry import get_artifact_registry
@@ -1834,6 +1840,7 @@ def load_cascade_config(path_or_dict: Union[str, Dict, "CascadeConfig"]) -> Casc
             # Works for: 'semantic_matches', 'my_app', etc.
             cached = registry.get_cascade(path_or_dict)
             if cached:
+                _cascade_config_cache[path_or_dict] = cached
                 return cached
 
             # Strategy 2: Extract cascade_id from path and try again
@@ -1842,6 +1849,7 @@ def load_cascade_config(path_or_dict: Union[str, Dict, "CascadeConfig"]) -> Casc
             if cascade_id and cascade_id != path_or_dict:
                 cached = registry.get_cascade(cascade_id)
                 if cached:
+                    _cascade_config_cache[path_or_dict] = cached
                     return cached
         except Exception:
             # Registry not available (e.g., DB not initialized), fall back to file
@@ -1856,7 +1864,21 @@ def load_cascade_config(path_or_dict: Union[str, Dict, "CascadeConfig"]) -> Casc
     # Apply legacy terminology migration
     data = _migrate_legacy_terminology(data)
 
-    return CascadeConfig(**data)
+    config = CascadeConfig(**data)
+
+    # Cache string-keyed configs (file paths / cascade IDs)
+    if isinstance(path_or_dict, str):
+        _cascade_config_cache[path_or_dict] = config
+
+    return config
+
+
+def invalidate_cascade_config_cache(path: Optional[str] = None):
+    """Invalidate cascade config cache. Call when cascades are edited/reloaded."""
+    if path:
+        _cascade_config_cache.pop(path, None)
+    else:
+        _cascade_config_cache.clear()
 
 
 def _extract_cascade_id_from_path(path: str) -> Optional[str]:

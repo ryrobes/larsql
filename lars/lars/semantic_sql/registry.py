@@ -455,7 +455,7 @@ def _make_fingerprint_cache_key(
     task = "|".join(task_parts)
 
     cache_key = make_fingerprint_cache_key(cache_name, fingerprint, task)
-    print(f"[fingerprint] fn={cache_name} fp_arg={fp_arg_name!r} value={fp_value!r} → fingerprint={fingerprint!r} task={task[:50]!r} → key={cache_key[:12]}")
+    log.debug(f"[fingerprint] fn={cache_name} fp_arg={fp_arg_name!r} value={fp_value!r} → fingerprint={fingerprint!r} task={task[:50]!r} → key={cache_key[:12]}")
     return cache_key
 
 
@@ -599,8 +599,7 @@ async def execute_sql_function(
     # For fingerprint strategy, use fingerprint-based cache key
     use_fingerprint_cache = cache_strategy == "fingerprint" and fn.fingerprint_args
 
-    # Debug: log cache strategy
-    print(f"[sql_fn] {name}: cache_strategy={cache_strategy!r} fingerprint_args={fn.fingerprint_args!r} use_fingerprint={use_fingerprint_cache}")
+    log.debug(f"[sql_fn] {name}: cache_strategy={cache_strategy!r} fingerprint_args={fn.fingerprint_args!r} use_fingerprint={use_fingerprint_cache}")
 
     # Use cache_name to allow cache sharing (e.g., ask_data + ask_data_sql)
     cache_name = fn.cache_name
@@ -625,7 +624,7 @@ async def execute_sql_function(
         # For fingerprint strategy, check cache using fingerprint-based key
         if use_fingerprint_cache:
             found, cached, _ = cache.get(cache_name, {"__fingerprint_key__": cache_key})
-            print(f"[sql_fn] Fingerprint cache lookup: key={cache_key[:12]} found={found}")
+            log.debug(f"[sql_fn] Fingerprint cache lookup: key={cache_key[:12]} found={found}")
             if found:
                 log.debug(f"[sql_fn] Cache hit (fingerprint key) for {name} (cache_name={cache_name})")
         # For structure strategy, check cache using structure-based key
@@ -740,8 +739,8 @@ async def execute_sql_function(
         # Inject takes into cascade config (in-memory, not modifying file)
         cascade_config = _inject_takes_into_cascade(fn.cascade_path, takes_config)
         log.info(f"[sql_fn] Running {name} with takes: factor={takes_config.get('factor', 'N/A')}")
-        print(f"[sql_fn] [RUN] Running {name} WITH TAKES: {takes_config}")
-        print(f"[sql_fn] [RUN] Injected cascade config has takes: {cascade_config.get('takes', 'NONE')}")
+        log.debug(f"[sql_fn] [RUN] Running {name} WITH TAKES: {takes_config}")
+        log.debug(f"[sql_fn] [RUN] Injected cascade config has takes: {cascade_config.get('takes', 'NONE')}")
 
         # Create runner with modified config
         runner = LARSRunner(
@@ -751,7 +750,7 @@ async def execute_sql_function(
         )
     else:
         # Create runner with session_id AND caller_id for proper tracking
-        print(f"[sql_fn] [EXEC] Running {name} (mode={output_mode})")
+        log.debug(f"[sql_fn] [EXEC] Running {name} (mode={output_mode})")
         runner = LARSRunner(
             fn.cascade_path,
             session_id=session_id,
@@ -974,7 +973,7 @@ def execute_sql_function_sync(
         # We're in an async context, need to run in a thread
         # CRITICAL: Run in copied context to preserve caller_id!
         import concurrent.futures
-        with concurrent.futures.ThreadPoolExecutor() as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
             future = executor.submit(
                 lambda: ctx.run(lambda: asyncio.run(execute_sql_function(name, args, session_id)))
             )

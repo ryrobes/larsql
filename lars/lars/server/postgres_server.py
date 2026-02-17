@@ -291,7 +291,7 @@ class ClientConnection:
             if not self._is_pooled_connection:
                 with self.db_lock:
                     # Configure DuckDB
-                    self.duckdb_conn.execute("SET threads TO 4")
+                    self.duckdb_conn.execute("SET threads TO 2")
 
                     # Install and load community extensions for graph queries
                     # Use timeout to prevent blocking on network issues
@@ -7115,7 +7115,7 @@ class ClientConnection:
 
                 # Open fresh in-memory DuckDB connection (no DuckDB persistence).
                 bg_conn = duckdb.connect()
-                bg_conn.execute("SET threads TO 4")
+                bg_conn.execute("SET threads TO 2")
 
                 # Register UDFs on this connection
                 from ..sql_tools.udf import register_lars_udf, register_dynamic_sql_functions
