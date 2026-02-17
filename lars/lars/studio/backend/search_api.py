@@ -661,40 +661,10 @@ def resolve_identifier():
         mode = data.get('mode', 'all')
         context_table = data.get('context_table')
 
-        # Try Elasticsearch first, fall back to RAG
-        try:
-            from lars.elastic import get_elastic_client, hybrid_search_sql_schemas
-            from lars.rag.indexer import embed_texts
-
-            es = get_elastic_client()
-            use_elastic = es.ping()
-        except Exception:
-            use_elastic = False
-
-        if use_elastic:
-            cfg = get_config()
-            embed_result = embed_texts(
-                texts=[text],
-                model=cfg.default_embed_model,
-                session_id="resolve",
-                trace_id=None,
-                parent_id=None,
-                cell_name="resolve",
-                cascade_id="resolve"
-            )
-            query_embedding = embed_result['embeddings'][0]
-
-            # Fetch more tables so we can extract field-level matches
-            tables = hybrid_search_sql_schemas(
-                query=text,
-                query_embedding=query_embedding,
-                k=k * 2
-            )
-        else:
-            # RAG fallback
-            result_json = sql_search(query=text, k=k * 2)
-            result = json.loads(result_json)
-            tables = result if isinstance(result, list) else result.get('tables', [])
+        # Use sql_search which handles ES→DuckDB RAG fallback automatically
+        result_json = sql_search(query=text, k=k * 2)
+        result = json.loads(result_json)
+        tables = result if isinstance(result, list) else result.get('tables', [])
 
         candidates = []
         text_lower = text.lower()
@@ -705,9 +675,16 @@ def resolve_identifier():
             schema = tbl.get('schema', '')
             qualified = tbl.get('qualified_name', f"{database}.{schema}.{table_name}")
             match_score = tbl.get('match_score', 0.5)
+            # columns may be in 'columns' (list) or 'columns_json' (string)
             columns = tbl.get('columns', [])
+            if not columns:
+                columns_json = tbl.get('columns_json', '')
+                if isinstance(columns_json, str) and columns_json:
+                    try:
+                        columns = json.loads(columns_json)
+                    except Exception:
+                        columns = []
 
-            # If columns is a JSON string, parse it
             if isinstance(columns, str):
                 try:
                     columns = json.loads(columns)
