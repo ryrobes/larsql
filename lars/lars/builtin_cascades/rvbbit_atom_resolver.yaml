@@ -42,7 +42,7 @@ cells:
       ## User Intent
       {{ input.intent }}
 
-      ## Scope: {{ input.scope | default: "atom" }}
+      ## Scope: {{ input.scope | default("atom") }}
       {% if input.scope == "grid" %}
       You are planning an ENTIRE GRID of atoms. Create 4-8 atoms that together
       tell a cohesive story about the user's intent. Include:
