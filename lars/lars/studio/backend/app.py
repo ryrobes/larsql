@@ -1895,7 +1895,13 @@ def get_cascade_instances(cascade_id):
                                 elif 'result' in content_obj:
                                     full_output = str(content_obj['result'])
                                 else:
-                                    full_output = str(content_obj)
+                                    # Preserve JSON structure (e.g. sql_data {rows, columns, row_count})
+                                    full_output = json.dumps(content_obj)
+                                output_snippet = full_output[:200]
+                                cell_output = full_output
+                            elif isinstance(content_obj, list):
+                                # Direct array output (e.g. raw rows)
+                                full_output = json.dumps(content_obj)
                                 output_snippet = full_output[:200]
                                 cell_output = full_output
                         except:
