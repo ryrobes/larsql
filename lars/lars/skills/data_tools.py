@@ -301,8 +301,10 @@ def sql_data(
                     "error": "No connection specified and no session DuckDB available"
                 }
 
-            # Lazy-attach any referenced connections (csv_files, postgres, etc.)
-            # so qualified names like csv_files.bigfoot_sightings "just work"
+            # Run the same pipeline as the pgwire server:
+            # 1. Lazy-attach referenced connections (csv_files, postgres, etc.)
+            # 2. Rewrite LARS semantic SQL (MEANS, SIMILAR_TO, etc.) into executable DuckDB
+            # 3. Register UDFs so rewritten calls resolve
             try:
                 from ..sql_tools.lazy_attach import LazyAttachManager
                 from ..sql_tools.config import load_sql_connections
@@ -311,6 +313,14 @@ def sql_data(
             except Exception as e:
                 import logging
                 logging.getLogger(__name__).debug(f"Lazy attach failed (non-fatal): {e}")
+
+            # Rewrite LARS syntax (semantic operators, MAP/RUN, dimension functions)
+            try:
+                from ..sql_rewriter import rewrite_lars_syntax
+                query = rewrite_lars_syntax(query, duckdb_conn=session_db)
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).debug(f"LARS rewrite failed (non-fatal): {e}")
 
             df = session_db.execute(query).fetchdf()
             if limit:
