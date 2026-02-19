@@ -300,6 +300,18 @@ def sql_data(
                     "_route": "error",
                     "error": "No connection specified and no session DuckDB available"
                 }
+
+            # Lazy-attach any referenced connections (csv_files, postgres, etc.)
+            # so qualified names like csv_files.bigfoot_sightings "just work"
+            try:
+                from ..sql_tools.lazy_attach import LazyAttachManager
+                from ..sql_tools.config import load_sql_connections
+                lazy = LazyAttachManager(session_db, load_sql_connections())
+                lazy.ensure_for_query(query, aggressive=False)
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).debug(f"Lazy attach failed (non-fatal): {e}")
+
             df = session_db.execute(query).fetchdf()
             if limit:
                 df = df.head(limit)
