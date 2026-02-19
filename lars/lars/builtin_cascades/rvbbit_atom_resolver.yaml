@@ -15,19 +15,44 @@ inputs_schema:
   sibling_context: "Optional: JSON array of existing sibling atoms (intent + displayType + title)"
   grid_name: "Optional: name of the grid this atom belongs to"
 
-model: anthropic/claude-sonnet-4-20250514
+model: anthropic/claude-opus-4.6
 
 cells:
   - name: resolve
+    model: anthropic/claude-opus-4.6
     skills:
       - sql_search
       - sql_data
     rules:
       max_attempts: 3
-      loop_until: valid_json
+      loop_until:
+        python: |
+          import json
+          try:
+              # Strip markdown fences if present
+              text = content.strip()
+              if text.startswith('```'):
+                  text = '\n'.join(text.split('\n')[1:])
+              if text.endswith('```'):
+                  text = text.rsplit('```', 1)[0]
+              text = text.strip()
+              obj = json.loads(text)
+              if isinstance(obj, dict) and 'atoms' in obj:
+                  atoms = obj['atoms']
+                  if isinstance(atoms, list) and len(atoms) > 0 and 'sql' in atoms[0]:
+                      result = {"valid": True, "reason": f"Valid atom spec with {len(atoms)} atoms"}
+                  else:
+                      result = {"valid": False, "reason": "Missing 'atoms' array or atoms missing 'sql' field"}
+              elif isinstance(obj, list) and len(obj) > 0 and 'sql' in obj[0]:
+                  # Bare array without wrapper — still usable
+                  result = {"valid": True, "reason": f"Valid atom array with {len(obj)} atoms"}
+              else:
+                  result = {"valid": False, "reason": "Expected JSON with 'atoms' array containing atom specs with 'sql' fields"}
+          except json.JSONDecodeError as e:
+              result = {"valid": False, "reason": f"Invalid JSON: {e}"}
       retry_instructions: |
-        Your output was not valid JSON. Return ONLY a JSON object matching the schema below.
-        No markdown, no explanation, just JSON. Attempt {{ attempt }}/{{ max_attempts }}
+        Your output was not valid JSON. Return ONLY a JSON object like: {"atoms": [{"intent": "...", "title": "...", "sql": "SELECT ...", "displayType": "barChart", ...}]}
+        No markdown, no explanation, just the JSON object. Attempt {{ attempt }}/{{ max_attempts }}
     instructions: |
       You are an RVBBIT atom resolver. Given a user's intent, you discover relevant data
       and return structured atom specification(s) for the RVBBIT semantic grid.
