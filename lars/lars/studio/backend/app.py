@@ -3829,8 +3829,9 @@ def run_cascade():
         from lars.caller_context import build_ui_metadata
 
         # Generate caller tracking for UI invocations
-        caller_id = f"ui-{generate_woodland_id()}"
-        component = data.get('source', 'unknown')  # playground, notebook, sessions, etc.
+        # Allow client to supply a caller_id (e.g. atom UUID) for lineage tracking
+        caller_id = data.get('caller_id') or f"ui-{generate_woodland_id()}"
+        component = data.get('source', 'unknown')  # playground, notebook, sessions, rvbbit, etc.
         action = data.get('action', 'run')
         cascade_source = 'scratch' if cascade_yaml else 'file'
 
@@ -3839,6 +3840,11 @@ def run_cascade():
             action=action,
             source=cascade_source
         )
+
+        # Merge any client-supplied metadata (RVBBIT atom tracking, etc.)
+        client_metadata = data.get('metadata')
+        if client_metadata and isinstance(client_metadata, dict):
+            invocation_metadata.update(client_metadata)
 
         def run_in_background():
             try:

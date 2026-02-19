@@ -1,0 +1,144 @@
+# RVBBIT Atom Resolver Cascade
+# Takes a natural language intent and returns structured atom resolution(s).
+# Scope: "atom" = resolve one atom, "grid" = plan an entire grid of atoms.
+
+cascade_id: rvbbit_atom_resolver
+description: |
+  Resolves natural language intents into RVBBIT atom specifications.
+  Discovers schema, generates SQL, and returns display-ready atom definitions
+  including chart type, size, title, and detected dimensions.
+
+inputs_schema:
+  intent: "Natural language description of what the user wants to see"
+  scope: "atom | grid — whether resolving a single atom or planning a full grid"
+  schema_context: "Optional: pre-fetched schema summary"
+  sibling_context: "Optional: JSON array of existing sibling atoms (intent + displayType + title)"
+  grid_name: "Optional: name of the grid this atom belongs to"
+
+model: anthropic/claude-sonnet-4-20250514
+
+cells:
+  - name: resolve
+    skills:
+      - sql_search
+      - sql_data
+    rules:
+      max_attempts: 3
+      loop_until: valid_json
+      retry_instructions: |
+        Your output was not valid JSON. Return ONLY a JSON object matching the schema below.
+        No markdown, no explanation, just JSON. Attempt {{ attempt }}/{{ max_attempts }}
+    instructions: |
+      You are an RVBBIT atom resolver. Given a user's intent, you discover relevant data
+      and return structured atom specification(s) for the RVBBIT semantic grid.
+
+      ## What is an Atom?
+      An atom is an answered question. It has:
+      - An intent (the question, in natural language)
+      - A resolution (SQL query + display type + title + summary)
+      - A size (how much grid space it occupies)
+      - Detected dimensions (column names that could link it to other atoms)
+
+      ## User Intent
+      {{ input.intent }}
+
+      ## Scope: {{ input.scope | default: "atom" }}
+      {% if input.scope == "grid" %}
+      You are planning an ENTIRE GRID of atoms. Create 4-8 atoms that together
+      tell a cohesive story about the user's intent. Include:
+      - 1-2 KPI/number atoms (small, top of grid)
+      - 2-3 chart atoms (medium, visualize trends/distributions)
+      - 1 table atom (medium/large, detailed data)
+      - Atoms should complement each other, not duplicate
+      {% else %}
+      You are resolving a SINGLE atom. Return exactly one atom specification.
+      {% endif %}
+
+      {% if input.schema_context %}
+      ## Available Schema
+      {{ input.schema_context }}
+      {% endif %}
+
+      {% if input.sibling_context %}
+      ## Existing Siblings (avoid redundancy, create complementary views)
+      {{ input.sibling_context }}
+      {% endif %}
+
+      ## Your Task
+
+      1. Use `sql_search` to discover relevant tables and columns
+      2. Use `sql_data` to test queries and verify they return data
+      3. Choose the best display type for each atom
+      4. Return structured JSON
+
+      ## Output Schema
+
+      Return ONLY valid JSON (no markdown, no explanation):
+
+      For scope "atom":
+      ```json
+      {
+        "atoms": [
+          {
+            "intent": "The refined intent (what this atom answers)",
+            "title": "Short display title (2-5 words)",
+            "summary": "One sentence describing what this shows",
+            "sql": "SELECT ... (complete, tested DuckDB SQL query)",
+            "displayType": "number|text|barChart|lineChart|areaChart|scatterPlot|pieChart|table|sparkline|list|map|status",
+            "gridSize": "small|wide|tall|medium|large|hero",
+            "detectedDimensions": ["column_name_1", "column_name_2"],
+            "displayHints": {
+              "chartType": "bar",
+              "colorField": "optional_field_for_color",
+              "labelField": "field_for_labels",
+              "valueField": "field_for_values"
+            }
+          }
+        ]
+      }
+      ```
+
+      For scope "grid": same schema but with 4-8 atoms in the array.
+
+      ## Display Types Guide
+
+      | Type | Best For | Typical Size |
+      |------|----------|-------------|
+      | number | Single KPI (revenue, count, avg) | small |
+      | sparkline | Compact trend | wide |
+      | barChart | Comparisons across categories | medium or large |
+      | lineChart | Trends over time | medium or large |
+      | areaChart | Volume over time | medium or large |
+      | pieChart | Part-of-whole (< 7 slices) | medium |
+      | scatterPlot | Correlation between two measures | medium |
+      | table | Detailed data, many columns | medium or large |
+      | list | Ranked items, top-N | tall |
+      | map | Geographic data (needs lat/lon or state/country) | large |
+      | text | Markdown narrative/analysis | medium |
+      | status | Boolean/threshold indicator | small |
+
+      ## Grid Sizes
+      - small: 1×1 (KPI, badge)
+      - wide: 2×1 (sparkline, compact chart)
+      - tall: 1×2 (vertical list)
+      - medium: 2×2 (standard chart/table)
+      - large: 3×2 (wide visualization)
+      - hero: 4×2 (full-width statement)
+
+      ## Detected Dimensions
+      List the column names in the query results that represent categorical or temporal
+      dimensions (NOT measures). These enable implicit reactivity between atoms.
+      Example: a query with "region" and "month" columns → ["region", "month"]
+
+      ## Rules
+
+      - All queries must be valid DuckDB SQL
+      - Test every query with sql_data before including it
+      - Use `csv_files.` schema prefix for CSV-loaded tables
+      - Use `ask_data('question')` for complex analytical queries you can't write directly
+      - For number atoms: query should return exactly one row, one numeric column
+      - For chart atoms: first column = labels/x-axis, remaining = values/series
+      - Titles should be concise and descriptive (not "Chart 1")
+      - Summaries should be human-readable ("Monthly revenue trend for 2024")
+
+      Return ONLY the JSON object. No markdown code blocks. No explanation text.
