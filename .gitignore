@@ -17,6 +17,7 @@ playground_scratchpad
 research_dbs
 rabbitize-runs
 session_dbs
+auth
 sql_connections/samples
 samples
 ./sql_connections

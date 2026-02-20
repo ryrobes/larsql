@@ -135,7 +135,7 @@ lance-namespace-urllib3-client==0.0.21
 -e git+https://github.com/ryrobes/larsql.git@aae6a041055ad9a13363c9c3eb73033c8340aa4b#egg=larsql&subdirectory=lars
 libvirt-python==11.9.0
 linkify-it-py==2.0.3
-litellm==1.80.11
+litellm==1.81.13
 litellm-enterprise==0.1.20
 litellm-proxy-extras==0.4.3
 llm==0.27.1

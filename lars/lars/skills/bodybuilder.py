@@ -147,6 +147,8 @@ def _execute_single_body(
         "messages": messages,
         "base_url": cfg.provider_base_url,
         "api_key": cfg.provider_api_key,
+        # Keep metadata non-null for LiteLLM provider error handling consistency.
+        "metadata": body.get("metadata") or {},
     }
 
     # Provider-specific routing
@@ -401,6 +403,8 @@ Output: {"model": "anthropic/claude-haiku-4.5", "messages": [{"role": "user", "c
         "messages": messages,
         "base_url": cfg.provider_base_url,
         "api_key": cfg.provider_api_key,
+        # Keep metadata non-null for LiteLLM provider error handling consistency.
+        "metadata": {},
         "temperature": 0.0,  # Deterministic for planning
     }
 

@@ -191,6 +191,9 @@ class Agent:
             "messages": messages,
             "base_url": self.base_url,
             "api_key": self.api_key,
+            # LiteLLM chatgpt provider currently mishandles metadata=None in
+            # exception wrapping paths; always pass a dict to avoid masked errors.
+            "metadata": {},
             # Default max_tokens to avoid truncation on large outputs
             # Most models support at least 16k output tokens; this prevents
             # unexpected truncation while staying within common limits
@@ -366,8 +369,17 @@ class Agent:
             # Let LiteLLM chatgpt provider own endpoint + auth token flow
             args.pop("base_url", None)
             args.pop("api_key", None)
+            # ChatGPT responses API can be sensitive to explicit output caps.
+            # Leave token limits unset unless callers intentionally provide their own.
+            args.pop("max_tokens", None)
+            args.pop("max_completion_tokens", None)
             args["model"] = raw_model
             args["custom_llm_provider"] = "chatgpt"
+
+            # LiteLLM injects a very large Codex default instruction block by default.
+            # Keep this lean for LARS workloads to avoid hidden token bloat.
+            if not os.environ.get("CHATGPT_DEFAULT_INSTRUCTIONS"):
+                os.environ["CHATGPT_DEFAULT_INSTRUCTIONS"] = "You are a helpful assistant."
 
             # Keep ChatGPT OAuth cache under LARS_ROOT by default
             chatgpt_token_dir = os.environ.get("CHATGPT_TOKEN_DIR") or os.path.join(
@@ -459,7 +471,10 @@ class Agent:
         toon_transport_metrics = None
         try:
             from .toon_transport import transform_messages_for_transport, is_toon_transport_enabled
-            if is_toon_transport_enabled():
+            if (
+                is_toon_transport_enabled()
+                and args.get("custom_llm_provider") != "chatgpt"
+            ):
                 args["messages"], toon_transport_metrics = transform_messages_for_transport(
                     args["messages"]
                 )
@@ -826,6 +841,24 @@ class Agent:
                 return msg_dict
                 
             except Exception as e:
+                # ChatGPT provider occasionally throws opaque parse errors for transformed /
+                # high-parameter payloads. Retry with the most conservative request shape.
+                chatgpt_none_iter_error = (
+                    args.get("custom_llm_provider") == "chatgpt"
+                    and "NoneType' is not a container or iterable" in str(e)
+                )
+                if chatgpt_none_iter_error and attempt < retries:
+                    args["messages"] = messages  # Use plain sanitized messages (no TOON)
+                    args.pop("max_tokens", None)
+                    args.pop("max_completion_tokens", None)
+                    args.pop("extra_body", None)
+                    args["metadata"] = {}
+                    if not os.environ.get("CHATGPT_DEFAULT_INSTRUCTIONS"):
+                        os.environ["CHATGPT_DEFAULT_INSTRUCTIONS"] = "You are a helpful assistant."
+                    import time
+                    time.sleep(1 * (attempt + 1))
+                    continue
+
                 if "RateLimit" in str(e) and attempt < retries:
                     import time
                     time.sleep(2 * (attempt + 1))

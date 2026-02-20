@@ -121,6 +121,7 @@ Generate the extended image now."""
             messages=messages,
             api_base=base_url,
             api_key=api_key,
+            metadata={},
             max_tokens=4096,
         )
 
@@ -285,6 +286,7 @@ def llm_generate(
             messages=messages,
             api_base=base_url,
             api_key=api_key,
+            metadata={},
             max_tokens=4096,
         )
 
