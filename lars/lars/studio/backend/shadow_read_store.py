@@ -629,10 +629,30 @@ class ShadowReadStore:
             try:
                 conn.execute(drop_stmt)
             except Exception as err:
-                msg = str(err).lower()
-                if "trying to drop type" in msg and "is of type" in msg:
+                if self._is_relation_type_mismatch_error(err):
                     continue
                 raise
+
+    def _is_relation_type_mismatch_error(self, err: Exception) -> bool:
+        """
+        DuckDB wording for relation type mismatches varies across versions.
+        Treat all known variants as benign so we can try dropping the other type.
+        """
+        msg = str(err).lower()
+
+        # Older/newer variants:
+        # - "... is of type Table, trying to drop type View"
+        # - "... existing object ... is a table, not a view"
+        # - "... existing object ... trying to replace with type View"
+        mismatch_patterns = (
+            ("is of type", "trying to drop type"),
+            ("is of type", "trying to replace with type"),
+            ("existing object", "not a view"),
+            ("existing object", "not a table"),
+            ("is a table", "not a view"),
+            ("is a view", "not a table"),
+        )
+        return any(all(part in msg for part in pattern) for pattern in mismatch_patterns)
 
     def _shadow_view_missing(self, conn: duckdb.DuckDBPyConnection, view_name: str) -> bool:
         try:

@@ -17,11 +17,18 @@ inputs_schema:
 
 model: "{{ models.quality }}"
 
+auto_context:
+  intra_cell:
+    enabled: true
+    window: 8
+    compress_loops: false
+    mask_observations_after: 3
+
 cells:
   - name: resolve
     model: "{{ models.quality }}"
     skills:
-      - sql_search
+      - smart_sql_search
       - sql_data
     rules:
       max_attempts: 5
@@ -171,7 +178,8 @@ cells:
       ## Rules
 
       - All queries must be valid **DuckDB** SQL (not Postgres, not MySQL)
-      - DuckDB gotchas: no `initcap()` (use `upper(left(col,1)) || lower(col[2:])`), 
+      - You need to TEST the query by running it to ensure that it is valid.
+      - DuckDB gotchas: no `initcap()` (use `upper(left(col,1)) || lower(col[2:])`),
         no `to_char()` (use `strftime`), no `generate_series` for dates (use `range`)
       - **You MUST execute every query with sql_data and confirm it returns rows**
       - If sql_data returns an error, fix the SQL and try again
