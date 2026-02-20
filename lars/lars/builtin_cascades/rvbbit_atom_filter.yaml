@@ -1,0 +1,117 @@
+# RVBBIT Atom Filter Cascade
+# Lightweight: takes existing SQL + intent + filter context → returns mutated SQL.
+# No schema discovery needed — the base SQL is already verified.
+# Cost: ~$0.01-0.02 per atom (vs $0.14 for full resolver)
+
+cascade_id: rvbbit_atom_filter
+description: |
+  Applies dimension filters to existing RVBBIT atoms by mutating their SQL.
+  Much lighter than the full resolver — no tool calls needed for simple filters.
+
+inputs_schema:
+  original_sql: "The currently working SQL query"
+  original_intent: "The atom's natural language intent"
+  filter_context: "What to filter on, e.g. 'state = Florida'"
+  display_type: "Current display type (number, barChart, table, etc.)"
+  title: "Current atom title"
+
+model: "{{ models.fast }}"
+
+cells:
+  - name: filter
+    model: "{{ models.fast }}"
+    skills:
+      - sql_data
+    rules:
+      max_attempts: 3
+      loop_until:
+        python: |
+          import json
+          try:
+              text = content.strip()
+              if text.startswith('```'):
+                  text = '\n'.join(text.split('\n')[1:])
+              if text.endswith('```'):
+                  text = text.rsplit('```', 1)[0]
+              text = text.strip()
+              obj = json.loads(text)
+              if 'sql' not in obj:
+                  result = {"valid": False, "reason": "Missing 'sql' field"}
+              elif not obj.get('applied'):
+                  result = {"valid": False, "reason": "You must set 'applied': true if the filter was applied, or 'applied': false with a 'reason' if the filter cannot apply to this query. If you can apply it, also verify with sql_data first."}
+              elif obj.get('verified') or obj.get('applied') == False:
+                  result = {"valid": True, "reason": "Filter result accepted"}
+              else:
+                  result = {"valid": False, "reason": "If applied=true, you must call sql_data to verify the mutated SQL works, then set verified=true"}
+          except json.JSONDecodeError as e:
+              result = {"valid": False, "reason": f"Invalid JSON: {e}"}
+      retry_instructions: |
+        {{ validation_reason }}
+        Return ONLY a JSON object. Attempt {{ attempt }}/{{ max_attempts }}
+    instructions: |
+      You are a SQL filter specialist for the RVBBIT semantic grid.
+      
+      ## Task
+      Apply a filter to an existing SQL query. The filter may or may not be directly
+      applicable — use your judgment.
+
+      ## Current Atom
+      - **Intent:** {{ input.original_intent }}
+      - **Title:** {{ input.title | default("Untitled") }}
+      - **Display Type:** {{ input.display_type | default("table") }}
+      - **Current SQL:**
+      ```sql
+      {{ input.original_sql }}
+      ```
+
+      ## Requested Filter
+      {{ input.filter_context }}
+
+      ## Rules
+
+      1. **IF POSSIBLE:** Modify the SQL to apply the filter. This might mean:
+         - Adding a WHERE clause (or AND to existing WHERE)
+         - The filter dimension might exist in the table but not in the SELECT
+         - For aggregations (COUNT, SUM), add the filter to WHERE, not HAVING
+         - For number/KPI atoms, filter the underlying data, not the aggregation
+      
+      2. **IF NOT POSSIBLE:** If the filter truly cannot apply (e.g. the table has
+         no related column at all), return the original SQL unchanged with
+         `"applied": false` and explain why.
+
+      3. **BE CREATIVE:** The filter says "state = Florida" but the column might be
+         called "state_name", "us_state", "location_state", or the value might need
+         matching (e.g., "FL" vs "Florida"). Use sql_data to check if needed.
+
+      4. **VERIFY:** If you modified the SQL, call `sql_data` to confirm it works.
+         Only set `"verified": true` after sql_data returns successfully.
+
+      5. **TITLE:** If the filter significantly changes what the atom shows, suggest
+         an updated title. Otherwise keep the original.
+
+      ## DuckDB Notes
+      - No `initcap()` — use `upper(left(col,1)) || lower(col[2:])`
+      - No `to_char()` — use `strftime`
+      - String comparisons are case-sensitive by default — use `lower()` or `ILIKE`
+
+      ## Output (JSON only, no markdown fences, no explanation)
+      ```json
+      {
+        "sql": "SELECT ... (the mutated SQL, or original if not applicable)",
+        "applied": true,
+        "verified": true,
+        "title": "Updated title or null to keep original",
+        "reason": "Brief explanation of what was changed"
+      }
+      ```
+
+      If the filter cannot apply:
+      ```json
+      {
+        "sql": "SELECT ... (original SQL unchanged)",
+        "applied": false,
+        "verified": false,
+        "title": null,
+        "reason": "Why the filter doesn't apply to this atom"
+      }
+      ```

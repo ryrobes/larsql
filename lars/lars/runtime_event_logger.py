@@ -20,7 +20,7 @@ class RuntimeEventLogger:
     This is intended for high-volume operational logs (e.g., pgwire chatter) that
     would otherwise spam stdout. It writes to the `runtime_event_log` table.
 
-    Enabled by default; set `LARS_RUNTIME_EVENT_LOG_ENABLED=0` to disable.
+    Disabled by default; set `LARS_RUNTIME_EVENT_LOG_ENABLED=1` to enable.
     """
 
     _instance: Optional["RuntimeEventLogger"] = None
@@ -38,7 +38,7 @@ class RuntimeEventLogger:
         if getattr(self, "_initialized", False):
             return
 
-        self._config_enabled = os.environ.get("LARS_RUNTIME_EVENT_LOG_ENABLED", "1").strip().lower() not in (
+        self._config_enabled = os.environ.get("LARS_RUNTIME_EVENT_LOG_ENABLED", "0").strip().lower() not in (
             "0",
             "false",
             "no",

@@ -8,6 +8,7 @@ Checkpoint caching (live_store.py) is used only for HITL workflows.
 """
 import os
 import sys
+import copy
 import json
 import glob
 import math
@@ -150,6 +151,7 @@ from tests_api import tests_bp
 from runtime_logs_api import runtime_logs_bp
 from auth_api import auth_api
 from calliope_api import calliope_bp
+from shadow_read_store import get_shadow_read_store, start_shadow_read_store
 
 app.register_blueprint(message_flow_bp)
 app.register_blueprint(checkpoint_bp)
@@ -218,6 +220,13 @@ def _run_startup_tasks():
 
 # Run startup tasks at module load (works for both dev and production)
 _run_startup_tasks()
+
+# Start shadow read-store refresher.
+# One backend process becomes leader and keeps the mirror DB fresh.
+try:
+    start_shadow_read_store()
+except Exception as e:
+    print(f"[Studio] Shadow read store startup warning: {e}")
 
 
 # Set query context for each request (tracks which endpoint/page made the query)
@@ -629,6 +638,69 @@ _cascade_definitions_cache = {
     'timestamp': 0,
     'ttl': 60  # Cache for 60 seconds
 }
+
+
+# Session-stream micro-cache for expensive subqueries.
+# Keeps hot polling endpoints from re-running identical aggregate reads.
+_session_stream_cache_lock = threading.Lock()
+_session_stream_cache: dict[tuple[str, str], dict] = {}
+_SESSION_STREAM_CACHE_MAX_ENTRIES = 4096
+_SESSION_STREAM_CACHE_TTL_SECONDS = {
+    'status': 0.75,
+    'cost_total': 1.0,
+    'cascade_analytics': 3.0,
+    'cell_analytics': 3.0,
+    'final_output': 30.0,
+}
+
+
+def _session_stream_cache_get(session_id: str, cache_key: str, default=None):
+    ttl = _SESSION_STREAM_CACHE_TTL_SECONDS.get(cache_key, 0.0)
+    if ttl <= 0:
+        return default
+
+    now = time.time()
+    key = (session_id, cache_key)
+    with _session_stream_cache_lock:
+        entry = _session_stream_cache.get(key)
+        if not entry:
+            return default
+
+        if now - entry['timestamp'] > ttl:
+            _session_stream_cache.pop(key, None)
+            return default
+
+        return copy.deepcopy(entry['value'])
+
+
+def _session_stream_cache_set(session_id: str, cache_key: str, value):
+    ttl = _SESSION_STREAM_CACHE_TTL_SECONDS.get(cache_key, 0.0)
+    if ttl <= 0:
+        return
+
+    key = (session_id, cache_key)
+    with _session_stream_cache_lock:
+        _session_stream_cache[key] = {
+            'timestamp': time.time(),
+            'value': copy.deepcopy(value),
+        }
+
+        if len(_session_stream_cache) <= _SESSION_STREAM_CACHE_MAX_ENTRIES:
+            return
+
+        now = time.time()
+        # Drop expired entries first.
+        expired = [
+            k for k, v in _session_stream_cache.items()
+            if now - v['timestamp'] > _SESSION_STREAM_CACHE_TTL_SECONDS.get(k[1], 0.0)
+        ]
+        for k in expired:
+            _session_stream_cache.pop(k, None)
+
+        # If still large, evict oldest entries.
+        while len(_session_stream_cache) > _SESSION_STREAM_CACHE_MAX_ENTRIES:
+            oldest_key = min(_session_stream_cache, key=lambda k: _session_stream_cache[k]['timestamp'])
+            _session_stream_cache.pop(oldest_key, None)
 
 @app.route('/api/cascade-definitions', methods=['GET'])
 def get_cascade_definitions():
@@ -4684,7 +4756,8 @@ def playground_session_stream(session_id):
         return int(f)
     
     try:
-        conn = get_db_connection()
+        db = get_db()
+        shadow_store = get_shadow_read_store()
 
         # Parse query params
         after_ms = request.args.get('after_ms')  # Epoch milliseconds (new format)
@@ -4713,6 +4786,21 @@ def playground_session_stream(session_id):
             except Exception as e:
                 print(f"[session-stream DEBUG] Timestamp parse error: {e} for '{after}'")
                 after_ms = '0'
+
+        try:
+            after_ms_int = int(float(after_ms))
+        except (TypeError, ValueError):
+            after_ms_int = 0
+        after_ms = str(after_ms_int)
+        safe_session_id = session_id.replace("'", "''")
+
+        def query_rows(sql: str):
+            shadow_rows = None
+            if shadow_store and shadow_store.enabled:
+                shadow_rows = shadow_store.query(sql, output_format='dict')
+            if shadow_rows is not None:
+                return shadow_rows
+            return db.query(sql)
 
         # Query for relevant execution events INCLUDING child sub-cascades
         # We include:
@@ -4752,15 +4840,14 @@ def playground_session_stream(session_id):
                 context_hashes,
                 estimated_tokens
             FROM unified_logs
-            WHERE (startsWith(session_id, '{session_id}') OR CAST(parent_session_id AS VARCHAR) = '{session_id}')
-              AND epoch_ms(timestamp) > {after_ms}
+            WHERE (prefix(session_id, '{safe_session_id}') OR CAST(parent_session_id AS VARCHAR) = '{safe_session_id}')
+              AND epoch_ms(timestamp) > {after_ms_int}
             ORDER BY timestamp ASC
             LIMIT {limit + 1}
         """
 
-        # Use db.query() for proper dict results with all columns
-        db = get_db()
-        rows = db.query(query)
+        # Shadow first, then primary DB fallback.
+        rows = query_rows(query)
 
         # Check if there are more rows
         has_more = len(rows) > limit
@@ -4809,23 +4896,29 @@ def playground_session_stream(session_id):
         # before logging cascade_complete/cascade_error events
         session_status = None
         session_error = None
+        _cache_miss = object()
         try:
-            # Fetch status AND heartbeat info for zombie detection
-            status_query = f"""
-                SELECT status, error_message, heartbeat_at, heartbeat_lease_seconds
-                FROM session_state FINAL
-                WHERE session_id = '{session_id}'
-                LIMIT 1
-            """
-            status_result = db.query(status_query)
-            if status_result and len(status_result) > 0:
-                session_status = status_result[0].get('status')
-                session_error = status_result[0].get('error_message')
+            status_row = _session_stream_cache_get(session_id, 'status', default=_cache_miss)
+            if status_row is _cache_miss:
+                # Fetch status AND heartbeat info for zombie detection
+                status_query = f"""
+                    SELECT status, error_message, heartbeat_at, heartbeat_lease_seconds
+                    FROM session_state
+                    WHERE session_id = '{safe_session_id}'
+                    LIMIT 1
+                """
+                status_result = query_rows(status_query)
+                status_row = status_result[0] if status_result and len(status_result) > 0 else {}
+                _session_stream_cache_set(session_id, 'status', status_row)
+
+            if status_row:
+                session_status = status_row.get('status')
+                session_error = status_row.get('error_message')
 
                 # ZOMBIE DETECTION: If session is active but heartbeat expired, mark as orphaned
                 if session_status in ('running', 'blocked', 'starting'):
-                    heartbeat_at = status_result[0].get('heartbeat_at')
-                    lease_seconds = status_result[0].get('heartbeat_lease_seconds', 60)
+                    heartbeat_at = status_row.get('heartbeat_at')
+                    lease_seconds = status_row.get('heartbeat_lease_seconds', 60)
 
                     if heartbeat_at:
                         from datetime import datetime, timezone
@@ -4851,6 +4944,15 @@ def playground_session_stream(session_id):
                                 )
                                 session_status = 'orphaned'
                                 session_error = f"Process died (no heartbeat for {elapsed:.0f}s)"
+                                _session_stream_cache_set(
+                                    session_id,
+                                    'status',
+                                    {
+                                        **status_row,
+                                        'status': session_status,
+                                        'error_message': session_error,
+                                    },
+                                )
                             except Exception as mark_err:
                                 print(f"[session-stream] Failed to mark zombie as orphaned: {mark_err}")
 
@@ -4869,98 +4971,109 @@ def playground_session_stream(session_id):
         cost_query = f"""
             SELECT SUM(cost) as total
             FROM unified_logs
-            WHERE startsWith(session_id, '{session_id}')
+            WHERE prefix(session_id, '{safe_session_id}')
               AND cost > 0
         """
-        cost_result = db.query(cost_query)
-        total_cost = safe_float(cost_result[0].get('total')) if cost_result else 0
+        cached_total_cost = _session_stream_cache_get(session_id, 'cost_total', default=_cache_miss)
+        if cached_total_cost is _cache_miss:
+            cost_result = query_rows(cost_query)
+            total_cost = safe_float(cost_result[0].get('total')) if cost_result else 0
+            _session_stream_cache_set(session_id, 'cost_total', total_cost)
+        else:
+            total_cost = safe_float(cached_total_cost)
 
         # Fetch cascade_analytics data (pre-computed offline)
         # This provides context-aware comparisons (vs cluster avg, outlier status, etc.)
-        cascade_analytics = None
-        try:
-            ca_query = f"""
-                SELECT
-                    input_category,
-                    cost_z_score,
-                    duration_z_score,
-                    is_cost_outlier,
-                    is_duration_outlier,
-                    cluster_avg_cost,
-                    cluster_avg_duration,
-                    cluster_run_count,
-                    context_cost_pct,
-                    total_context_cost_estimated,
-                    cost_per_message,
-                    tokens_per_message
-                FROM cascade_analytics
-                WHERE session_id = '{session_id}'
-                LIMIT 1
-            """
-            ca_result = db.query(ca_query)
-            if ca_result and len(ca_result) > 0:
-                row = ca_result[0]
-                cascade_analytics = {
-                    'input_category': row.get('input_category'),
-                    'cost_z_score': safe_float(row.get('cost_z_score')),
-                    'duration_z_score': safe_float(row.get('duration_z_score')),
-                    'is_cost_outlier': bool(row.get('is_cost_outlier', False)),
-                    'is_duration_outlier': bool(row.get('is_duration_outlier', False)),
-                    'cluster_avg_cost': safe_float(row.get('cluster_avg_cost')),
-                    'cluster_avg_duration': safe_float(row.get('cluster_avg_duration')),
-                    'cluster_run_count': safe_int(row.get('cluster_run_count')),
-                    'context_cost_pct': safe_float(row.get('context_cost_pct')),
-                    'total_context_cost_estimated': safe_float(row.get('total_context_cost_estimated')),
-                    'cost_per_message': safe_float(row.get('cost_per_message')),
-                    'tokens_per_message': safe_float(row.get('tokens_per_message')),
-                }
-        except Exception as e:
-            print(f"[session-stream] Could not fetch cascade_analytics: {e}")
-
-        # Fetch cell_analytics data (per-cell metrics)
-        # This provides cell-level bottleneck detection and comparison
-        cell_analytics = {}
-        try:
-            cells_query = f"""
-                SELECT
-                    cell_name,
-                    cell_cost,
-                    cell_duration_ms,
-                    cost_z_score,
-                    duration_z_score,
-                    is_cost_outlier,
-                    is_duration_outlier,
-                    species_avg_cost,
-                    species_avg_duration,
-                    species_run_count,
-                    cell_cost_pct,
-                    cell_duration_pct,
-                    cost_per_turn,
-                    tokens_per_turn
-                FROM cell_analytics
-                WHERE session_id = '{session_id}'
-            """
-            cells_result = db.query(cells_query)
-            for row in cells_result:
-                cell_name = row.get('cell_name')
-                if cell_name:
-                    cell_analytics[cell_name] = {
-                        'cell_cost': safe_float(row.get('cell_cost')),
-                        'cell_duration_ms': safe_float(row.get('cell_duration_ms')),
+        cascade_analytics = _session_stream_cache_get(session_id, 'cascade_analytics', default=_cache_miss)
+        if cascade_analytics is _cache_miss:
+            cascade_analytics = None
+            try:
+                ca_query = f"""
+                    SELECT
+                        input_category,
+                        cost_z_score,
+                        duration_z_score,
+                        is_cost_outlier,
+                        is_duration_outlier,
+                        cluster_avg_cost,
+                        cluster_avg_duration,
+                        cluster_run_count,
+                        context_cost_pct,
+                        total_context_cost_estimated,
+                        cost_per_message,
+                        tokens_per_message
+                    FROM cascade_analytics
+                    WHERE session_id = '{safe_session_id}'
+                    LIMIT 1
+                """
+                ca_result = query_rows(ca_query)
+                if ca_result and len(ca_result) > 0:
+                    row = ca_result[0]
+                    cascade_analytics = {
+                        'input_category': row.get('input_category'),
                         'cost_z_score': safe_float(row.get('cost_z_score')),
                         'duration_z_score': safe_float(row.get('duration_z_score')),
                         'is_cost_outlier': bool(row.get('is_cost_outlier', False)),
                         'is_duration_outlier': bool(row.get('is_duration_outlier', False)),
-                        'species_avg_cost': safe_float(row.get('species_avg_cost')),
-                        'species_avg_duration': safe_float(row.get('species_avg_duration')),
-                        'species_run_count': safe_int(row.get('species_run_count')),
-                        'cell_cost_pct': safe_float(row.get('cell_cost_pct')),
-                        'cell_duration_pct': safe_float(row.get('cell_duration_pct')),
-                        'cost_per_turn': safe_float(row.get('cost_per_turn')),
-                        'tokens_per_turn': safe_float(row.get('tokens_per_turn')),
+                        'cluster_avg_cost': safe_float(row.get('cluster_avg_cost')),
+                        'cluster_avg_duration': safe_float(row.get('cluster_avg_duration')),
+                        'cluster_run_count': safe_int(row.get('cluster_run_count')),
+                        'context_cost_pct': safe_float(row.get('context_cost_pct')),
+                        'total_context_cost_estimated': safe_float(row.get('total_context_cost_estimated')),
+                        'cost_per_message': safe_float(row.get('cost_per_message')),
+                        'tokens_per_message': safe_float(row.get('tokens_per_message')),
                     }
-        except Exception as e:
-            print(f"[session-stream] Could not fetch cell_analytics: {e}")
+                _session_stream_cache_set(session_id, 'cascade_analytics', cascade_analytics)
+            except Exception as e:
+                print(f"[session-stream] Could not fetch cascade_analytics: {e}")
+
+        # Fetch cell_analytics data (per-cell metrics)
+        # This provides cell-level bottleneck detection and comparison
+        cell_analytics = _session_stream_cache_get(session_id, 'cell_analytics', default=_cache_miss)
+        if cell_analytics is _cache_miss:
+            cell_analytics = {}
+            try:
+                cells_query = f"""
+                    SELECT
+                        cell_name,
+                        cell_cost,
+                        cell_duration_ms,
+                        cost_z_score,
+                        duration_z_score,
+                        is_cost_outlier,
+                        is_duration_outlier,
+                        species_avg_cost,
+                        species_avg_duration,
+                        species_run_count,
+                        cell_cost_pct,
+                        cell_duration_pct,
+                        cost_per_turn,
+                        tokens_per_turn
+                    FROM cell_analytics
+                    WHERE session_id = '{safe_session_id}'
+                """
+                cells_result = query_rows(cells_query)
+                for row in cells_result:
+                    cell_name = row.get('cell_name')
+                    if cell_name:
+                        cell_analytics[cell_name] = {
+                            'cell_cost': safe_float(row.get('cell_cost')),
+                            'cell_duration_ms': safe_float(row.get('cell_duration_ms')),
+                            'cost_z_score': safe_float(row.get('cost_z_score')),
+                            'duration_z_score': safe_float(row.get('duration_z_score')),
+                            'is_cost_outlier': bool(row.get('is_cost_outlier', False)),
+                            'is_duration_outlier': bool(row.get('is_duration_outlier', False)),
+                            'species_avg_cost': safe_float(row.get('species_avg_cost')),
+                            'species_avg_duration': safe_float(row.get('species_avg_duration')),
+                            'species_run_count': safe_int(row.get('species_run_count')),
+                            'cell_cost_pct': safe_float(row.get('cell_cost_pct')),
+                            'cell_duration_pct': safe_float(row.get('cell_duration_pct')),
+                            'cost_per_turn': safe_float(row.get('cost_per_turn')),
+                            'tokens_per_turn': safe_float(row.get('tokens_per_turn')),
+                        }
+                _session_stream_cache_set(session_id, 'cell_analytics', cell_analytics)
+            except Exception as e:
+                print(f"[session-stream] Could not fetch cell_analytics: {e}")
 
         # Extract cascade_id from the first row that has it
         cascade_id = None
@@ -4986,24 +5099,29 @@ def playground_session_stream(session_id):
         # Include final cascade output when session is complete
         final_output = None
         if session_complete and session_status == 'completed':
-            try:
-                output_query = f"""
-                    SELECT output
-                    FROM cascade_sessions
-                    WHERE session_id = '{session_id}'
-                    LIMIT 1
-                """
-                output_result = db.query(output_query)
-                if output_result and len(output_result) > 0:
-                    raw_output = output_result[0].get('output')
-                    if raw_output:
-                        # Try to parse as JSON for structured output
-                        try:
-                            final_output = json.loads(raw_output) if isinstance(raw_output, str) else raw_output
-                        except (json.JSONDecodeError, TypeError):
-                            final_output = raw_output
-            except Exception as e:
-                print(f"[session-stream] Could not fetch cascade output: {e}")
+            cached_output = _session_stream_cache_get(session_id, 'final_output', default=_cache_miss)
+            if cached_output is _cache_miss:
+                try:
+                    output_query = f"""
+                        SELECT output
+                        FROM cascade_sessions
+                        WHERE session_id = '{safe_session_id}'
+                        LIMIT 1
+                    """
+                    output_result = query_rows(output_query)
+                    if output_result and len(output_result) > 0:
+                        raw_output = output_result[0].get('output')
+                        if raw_output:
+                            # Try to parse as JSON for structured output
+                            try:
+                                final_output = json.loads(raw_output) if isinstance(raw_output, str) else raw_output
+                            except (json.JSONDecodeError, TypeError):
+                                final_output = raw_output
+                    _session_stream_cache_set(session_id, 'final_output', final_output)
+                except Exception as e:
+                    print(f"[session-stream] Could not fetch cascade output: {e}")
+            else:
+                final_output = cached_output
 
         return jsonify({
             'rows': rows_to_return,

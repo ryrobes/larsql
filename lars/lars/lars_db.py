@@ -49,6 +49,7 @@ import os
 import json
 import threading
 import uuid
+import time
 
 log = logging.getLogger(__name__)
 from datetime import datetime, timezone
@@ -1771,6 +1772,23 @@ class LarsDB:
     _instance = None
     _lock = threading.Lock()
     _thread_local = threading.local()  # Per-thread connection cache
+
+    # Python-level write buffering (no env flags) for high-churn tables.
+    # Goal: read-your-writes in this process + eventual visibility cross-process.
+    _BUFFER_CONFIG = {
+        "unified_logs_base": {"max_rows": 100, "max_seconds": 0.5},
+        "session_state": {"max_rows": 20, "max_seconds": 0.2},
+    }
+    _BUFFER_FLUSH_INTERVAL_SECONDS = 0.1
+    _HIGH_FREQ_TABLES = {'unified_logs', 'unified_logs_base', 'session_state', 'session_heartbeats'}
+    _BUFFER_READ_ALIASES = {
+        "unified_logs_base",
+        "unified_logs",
+        "lars_system.logs",
+        "lars_system.logs_raw",
+        "session_state",
+        "lars_system.sessions",
+    }
     
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
@@ -1793,12 +1811,23 @@ class LarsDB:
         self.root = Path(root_path) if root_path else _get_data_root()
         self._ensure_directories()
         self._write_lock = threading.Lock()  # Serialize writes to same table
+        self._buffer_lock = threading.Lock()
+        self._write_buffers: Dict[str, List[Dict[str, Any]]] = {}
+        self._write_buffer_first_ts: Dict[str, float] = {}
+        self._buffer_flush_stop = threading.Event()
+        self._buffer_flush_thread = threading.Thread(
+            target=self._buffer_flush_loop,
+            daemon=True,
+            name="lars-buffered-write-flush",
+        )
+        self._buffer_flush_thread.start()
+        atexit.register(self.shutdown_buffered_writes)
         self._auto_compact_thread = None
         self._auto_compact_stop = threading.Event()
         self._initialized = True
 
-        # Start auto-compaction if enabled (default: on)
-        auto_compact = os.environ.get("LARS_AUTO_COMPACT", "1").lower()
+        # Start auto-compaction if enabled (default: off)
+        auto_compact = os.environ.get("LARS_AUTO_COMPACT", "0").lower()
         if auto_compact in ("1", "true", "yes", "on"):
             interval = int(os.environ.get("LARS_AUTO_COMPACT_INTERVAL", "300"))
             threshold = int(os.environ.get("LARS_AUTO_COMPACT_THRESHOLD", "10"))
@@ -2548,6 +2577,162 @@ class LarsDB:
         temp_filepath.rename(filepath)  # Atomic on POSIX
         
         return str(filepath)
+
+    def _should_buffer_table(self, table: str, schema_def: dict, partition_key: Optional[str]) -> bool:
+        """Return True when table writes should use in-process buffering."""
+        if partition_key is not None:
+            return False
+        if table not in LarsDB._BUFFER_CONFIG:
+            return False
+        # Keep buffering simple: skip Hive-partitioned table layouts.
+        if schema_def.get("hive_partition_by"):
+            return False
+        return True
+
+    def _buffer_limits_for_table(self, table: str) -> tuple[int, float]:
+        """Get (max_rows, max_seconds) limits for a buffered table."""
+        table_cfg = LarsDB._BUFFER_CONFIG.get(table, {})
+        max_rows = int(table_cfg.get("max_rows", 100))
+        max_seconds = float(table_cfg.get("max_seconds", 0.5))
+        return max_rows, max_seconds
+
+    def _write_rows_immediate(self, table: str, rows: List[Dict[str, Any]], partition_key: Optional[str]) -> str:
+        """Internal non-buffered parquet append implementation."""
+        if not rows:
+            return ""
+
+        schema_def = SYSTEM_TABLES.get(table, {})
+        hive_partition_cols = schema_def.get("hive_partition_by", [])
+
+        if table in SYSTEM_TABLES:
+            base_table_dir = self.root / "system" / table
+        else:
+            parts = table.split(".", 1)
+            if len(parts) == 2:
+                db_name, tbl_name = parts
+            else:
+                db_name, tbl_name = "default", table
+            base_table_dir = self.root / "user" / db_name / tbl_name
+
+        if hive_partition_cols:
+            from collections import defaultdict
+            partitioned_rows = defaultdict(list)
+
+            for row in rows:
+                partition_parts = []
+                for col in hive_partition_cols:
+                    val = row.get(col)
+                    if val is None or val == "":
+                        val = "__HIVE_DEFAULT_PARTITION__"
+                    val_str = str(val).replace("/", "_").replace("\\", "_").replace(":", "_")
+                    partition_parts.append(f"{col}={val_str}")
+
+                partition_path = "/".join(partition_parts)
+                partitioned_rows[partition_path].append(row)
+
+            written_paths = []
+            for partition_path, partition_rows in partitioned_rows.items():
+                table_dir = base_table_dir / partition_path
+                table_dir.mkdir(parents=True, exist_ok=True)
+                timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+                unique_id = uuid.uuid4().hex[:8]
+                filename = f"{timestamp}_{unique_id}.parquet"
+                filepath = table_dir / filename
+                self._write_rows_to_file(filepath, partition_rows, schema_def)
+                written_paths.append(str(filepath))
+
+            return ",".join(written_paths)
+
+        table_dir = base_table_dir
+        table_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        unique_id = uuid.uuid4().hex[:8]
+        partition_suffix = f"_{partition_key}" if partition_key else ""
+        filename = f"{timestamp}_{unique_id}{partition_suffix}.parquet"
+        filepath = table_dir / filename
+        result = self._write_rows_to_file(filepath, rows, schema_def)
+
+        if table not in LarsDB._HIGH_FREQ_TABLES:
+            self.invalidate_all_connections()
+        return result
+
+    def _buffer_flush_loop(self):
+        """Background flusher for buffered writes."""
+        while not self._buffer_flush_stop.wait(LarsDB._BUFFER_FLUSH_INTERVAL_SECONDS):
+            try:
+                self.flush_buffered_writes(force=False)
+            except Exception:
+                # Never break runtime due to background flush issues.
+                pass
+
+    def _pop_flushable_buffers(self, force: bool) -> List[tuple[str, List[Dict[str, Any]]]]:
+        """Collect table buffers that should be flushed now."""
+        now = time.time()
+        to_flush: List[tuple[str, List[Dict[str, Any]]]] = []
+
+        with self._buffer_lock:
+            for table, buffered_rows in list(self._write_buffers.items()):
+                if not buffered_rows:
+                    continue
+                max_rows, max_seconds = self._buffer_limits_for_table(table)
+                first_ts = self._write_buffer_first_ts.get(table, now)
+                row_count = len(buffered_rows)
+                age_seconds = now - first_ts
+                should_flush = (
+                    force
+                    or row_count >= max_rows
+                    or age_seconds >= max_seconds
+                )
+                if should_flush:
+                    to_flush.append((table, buffered_rows))
+                    self._write_buffers.pop(table, None)
+                    self._write_buffer_first_ts.pop(table, None)
+
+        return to_flush
+
+    def flush_buffered_writes(self, force: bool = True) -> int:
+        """
+        Flush pending in-process buffered writes to parquet.
+
+        Args:
+            force: If True, flush everything pending. If False, only flush
+                buffers above row/age thresholds.
+
+        Returns:
+            Number of rows flushed.
+        """
+        to_flush = self._pop_flushable_buffers(force=force)
+        if not to_flush:
+            return 0
+
+        flushed_rows = 0
+        for table, rows in to_flush:
+            if not rows:
+                continue
+            self._write_rows_immediate(table=table, rows=rows, partition_key=None)
+            flushed_rows += len(rows)
+
+        return flushed_rows
+
+    def _has_pending_buffered_writes(self) -> bool:
+        """Fast check for pending buffered rows in this process."""
+        with self._buffer_lock:
+            return any(bool(rows) for rows in self._write_buffers.values())
+
+    def _query_references_buffered_tables(self, sql: str) -> bool:
+        """Return True if SQL text appears to read buffered table/view data."""
+        sql_lower = sql.lower()
+        return any(alias in sql_lower for alias in LarsDB._BUFFER_READ_ALIASES)
+
+    def shutdown_buffered_writes(self):
+        """Stop background buffered-write flushing and force a final flush."""
+        self._buffer_flush_stop.set()
+        if self._buffer_flush_thread and self._buffer_flush_thread.is_alive():
+            self._buffer_flush_thread.join(timeout=2)
+        try:
+            self.flush_buffered_writes(force=True)
+        except Exception:
+            pass
     
     def write(
         self, 
@@ -2571,86 +2756,24 @@ class LarsDB:
         """
         if not rows:
             return ""
-        
-        # Get schema if known
+
         schema_def = SYSTEM_TABLES.get(table, {})
-        
-        # Check for Hive-style partitioning
-        hive_partition_cols = schema_def.get("hive_partition_by", [])
-        
-        # Determine base output directory
-        if table in SYSTEM_TABLES:
-            base_table_dir = self.root / "system" / table
-        else:
-            # User table - expect format "dbname.tablename"
-            parts = table.split(".", 1)
-            if len(parts) == 2:
-                db_name, tbl_name = parts
-            else:
-                db_name, tbl_name = "default", table
-            base_table_dir = self.root / "user" / db_name / tbl_name
-        
-        # If Hive partitioning is enabled, group rows by partition values
-        if hive_partition_cols:
-            from collections import defaultdict
-            partitioned_rows = defaultdict(list)
-            
-            for row in rows:
-                # Build partition path from column values
-                partition_parts = []
-                for col in hive_partition_cols:
-                    val = row.get(col)
-                    # Handle None/NULL values with Hive default partition name
-                    if val is None or val == "":
-                        val = "__HIVE_DEFAULT_PARTITION__"
-                    # Sanitize value for filesystem (replace / and other problematic chars)
-                    val_str = str(val).replace("/", "_").replace("\\", "_").replace(":", "_")
-                    partition_parts.append(f"{col}={val_str}")
-                
-                partition_path = "/".join(partition_parts)
-                partitioned_rows[partition_path].append(row)
-            
-            # Write each partition separately
-            written_paths = []
-            for partition_path, partition_rows in partitioned_rows.items():
-                table_dir = base_table_dir / partition_path
-                table_dir.mkdir(parents=True, exist_ok=True)
-                
-                # Generate unique filename
-                timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-                unique_id = uuid.uuid4().hex[:8]
-                filename = f"{timestamp}_{unique_id}.parquet"
-                filepath = table_dir / filename
-                
-                # Write this partition's rows (reuse the logic below via recursion-safe flag)
-                self._write_rows_to_file(filepath, partition_rows, schema_def)
-                written_paths.append(str(filepath))
-            
-            return ",".join(written_paths)  # Return all written paths
-        
-        # Non-partitioned write
-        table_dir = base_table_dir
-        table_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Generate unique filename
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        unique_id = uuid.uuid4().hex[:8]
-        partition_suffix = f"_{partition_key}" if partition_key else ""
-        filename = f"{timestamp}_{unique_id}{partition_suffix}.parquet"
-        filepath = table_dir / filename
-        
-        result = self._write_rows_to_file(filepath, rows, schema_def)
-        
-        # Invalidate cached connections so subsequent reads see the new parquet file.
-        # DuckDB caches the glob file list for read_parquet views, so new files are
-        # invisible to existing connections until views are re-registered.
-        # Skip for high-frequency append-only tables (unified_logs, session_state)
-        # where slight staleness is acceptable and churn would be expensive.
-        _HIGH_FREQ_TABLES = {'unified_logs', 'unified_logs_base', 'session_state', 'session_heartbeats'}
-        if table not in _HIGH_FREQ_TABLES:
-            self.invalidate_all_connections()
-        
-        return result
+
+        if self._should_buffer_table(table, schema_def, partition_key):
+            needs_immediate_flush = False
+            with self._buffer_lock:
+                if table not in self._write_buffers:
+                    self._write_buffers[table] = []
+                    self._write_buffer_first_ts[table] = time.time()
+                self._write_buffers[table].extend(rows)
+                max_rows, _max_seconds = self._buffer_limits_for_table(table)
+                needs_immediate_flush = len(self._write_buffers[table]) >= max_rows
+            if needs_immediate_flush:
+                self.flush_buffered_writes(force=False)
+            # Fast path return. Data becomes visible cross-process on periodic flush.
+            return "buffered"
+
+        return self._write_rows_immediate(table=table, rows=rows, partition_key=partition_key)
     
     def compact(self, table: str, threshold: int = 2, force: bool = False) -> dict:
         """
@@ -2713,8 +2836,15 @@ class LarsDB:
             result["partitions_compacted"] = len(partition_dirs)
             return result
         
-        # Non-partitioned table - compact the flat directory
-        dir_result = self._compact_directory(table_dir, schema_def, threshold, force)
+        # Non-partitioned table.
+        # If legacy nested parquet files exist, compact recursively so old
+        # hive-style layouts collapse into a single compacted file.
+        all_parquet_files = list(table_dir.glob("**/*.parquet"))
+        has_nested = any(f.parent != table_dir for f in all_parquet_files)
+        if has_nested:
+            dir_result = self._compact_recursive_directory(table_dir, schema_def, threshold, force)
+        else:
+            dir_result = self._compact_directory(table_dir, schema_def, threshold, force)
         result.update(dir_result)
         return result
     
@@ -2813,8 +2943,11 @@ class LarsDB:
             unique_id = uuid.uuid4().hex[:8]
             compacted_path = table_dir / f"compacted_{timestamp}_{unique_id}.parquet"
             
-            arrow_schema = _schema_to_pyarrow(schema_def)
-            table_data = pa.Table.from_pandas(df, schema=arrow_schema, preserve_index=False)
+            if schema_def and schema_def.get("columns"):
+                arrow_schema = _schema_to_pyarrow(schema_def)
+                table_data = pa.Table.from_pandas(df, schema=arrow_schema, preserve_index=False)
+            else:
+                table_data = pa.Table.from_pandas(df, preserve_index=False)
             pq.write_table(table_data, compacted_path, compression="snappy")
             
             # Remove original files (but not the one we just wrote)
@@ -2835,6 +2968,126 @@ class LarsDB:
             return result
         finally:
             # Always release the filesystem lock
+            if lock_fd:
+                try:
+                    fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                    lock_fd.close()
+                except Exception:
+                    pass
+
+    def _compact_recursive_directory(self, table_dir: Path, schema_def: dict, threshold: int, force: bool) -> dict:
+        """Compact parquet files recursively within a table directory.
+
+        Used for legacy non-hive layouts that still contain nested parquet paths.
+        """
+        import fcntl
+
+        result = {"files_before": 0, "files_after": 0,
+                  "rows_before": 0, "rows_after": 0, "dedup_applied": False}
+
+        lock_path = table_dir / ".compact.lock"
+        lock_fd = None
+        try:
+            lock_fd = open(lock_path, 'w')
+            fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except (IOError, OSError):
+            if lock_fd:
+                lock_fd.close()
+            return result
+
+        try:
+            parquet_files = list(table_dir.glob("**/*.parquet"))
+            result["files_before"] = len(parquet_files)
+
+            if len(parquet_files) < threshold and not force:
+                result["files_after"] = len(parquet_files)
+                return result
+
+            if len(parquet_files) == 0:
+                return result
+
+            conn = duckdb.connect()
+            duckdb_threads = int(os.environ.get("LARS_DUCKDB_THREADS", "2"))
+            conn.execute(f"SET threads TO {duckdb_threads}")
+            parquet_glob = str(table_dir / "**" / "*.parquet")
+            read_opts = "union_by_name=true, hive_partitioning=true"
+
+            count_result = conn.execute(
+                f"SELECT COUNT(*) FROM read_parquet('{parquet_glob}', {read_opts})"
+            ).fetchone()
+            result["rows_before"] = count_result[0] if count_result else 0
+
+            dedup_config = schema_def.get("dedup")
+            if dedup_config:
+                pk_col = dedup_config["pk"]
+                order_col = dedup_config.get("order_by", "updated_at")
+
+                if "," in order_col:
+                    order_clause = order_col
+                elif order_col == "updated_at":
+                    order_clause = "COALESCE(TRY_CAST(updated_at AS TIMESTAMP), '1970-01-01'::TIMESTAMP) DESC NULLS LAST"
+                elif "DESC" in order_col.upper() or "ASC" in order_col.upper():
+                    order_clause = order_col
+                else:
+                    order_clause = f"{order_col} DESC NULLS LAST"
+
+                df = conn.execute(f"""
+                    SELECT * EXCLUDE (_rn) FROM (
+                        SELECT *, ROW_NUMBER() OVER (
+                            PARTITION BY {pk_col}
+                            ORDER BY {order_clause}
+                        ) as _rn
+                        FROM read_parquet('{parquet_glob}', {read_opts})
+                    ) WHERE _rn = 1
+                """).fetchdf()
+                result["dedup_applied"] = True
+            else:
+                df = conn.execute(
+                    f"SELECT * FROM read_parquet('{parquet_glob}', {read_opts})"
+                ).fetchdf()
+
+            conn.close()
+
+            result["rows_after"] = len(df)
+
+            if len(df) == 0:
+                for f in parquet_files:
+                    f.unlink()
+                result["files_after"] = 0
+                return result
+
+            timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+            unique_id = uuid.uuid4().hex[:8]
+            compacted_path = table_dir / f"compacted_{timestamp}_{unique_id}.parquet"
+
+            if schema_def and schema_def.get("columns"):
+                arrow_schema = _schema_to_pyarrow(schema_def)
+                table_data = pa.Table.from_pandas(df, schema=arrow_schema, preserve_index=False)
+            else:
+                table_data = pa.Table.from_pandas(df, preserve_index=False)
+            pq.write_table(table_data, compacted_path, compression="snappy")
+
+            for f in parquet_files:
+                if f != compacted_path:
+                    f.unlink()
+
+            # Cleanup empty legacy subdirectories after flattening.
+            for d in sorted(table_dir.glob("**/*"), reverse=True):
+                if d.is_dir() and d != table_dir:
+                    try:
+                        d.rmdir()
+                    except Exception:
+                        pass
+
+            result["files_after"] = 1
+            self.invalidate_all_connections()
+            return result
+
+        except Exception as e:
+            print(f"[LarsDB] Recursive compaction failed for {table_dir.name}: {e}")
+            result["error"] = str(e)
+            return result
+        finally:
             if lock_fd:
                 try:
                     fcntl.flock(lock_fd, fcntl.LOCK_UN)
@@ -2909,8 +3162,8 @@ class LarsDB:
                                 for d in part_dirs
                             )
                         else:
-                            # Flat table
-                            file_count = len(list(table_dir.glob("*.parquet")))
+                            # Non-hive table (including legacy nested layouts)
+                            file_count = len(list(table_dir.glob("**/*.parquet")))
                             needs_compact = file_count >= file_threshold
 
                         if needs_compact:
@@ -2970,6 +3223,15 @@ class LarsDB:
         import time
         start_time = time.time()
         rows = 0
+
+        # Read barrier for this process: flush only for queries that touch
+        # buffered table data (prevents unrelated Studio reads from paying cost).
+        if self._has_pending_buffered_writes() and self._query_references_buffered_tables(sql):
+            flushed_rows = self.flush_buffered_writes(force=True)
+            if flushed_rows > 0:
+                # Keep barrier local: refresh this thread's connection so the
+                # next query sees just-flushed parquet files immediately.
+                self.clear_cached_connection()
         
         # Use cached connection to avoid view re-registration overhead
         # Retry once with fresh connection if stale (e.g., after compaction deleted files)

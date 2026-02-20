@@ -18,6 +18,7 @@ import time
 import contextvars
 import atexit
 import uuid
+import copy
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Union
 
@@ -160,11 +161,24 @@ def _log_query_debug(query_type: str, sql: str, duration_ms: float, rows: int = 
         pass  # Don't let logging errors affect queries
 
 
+def _env_enabled(name: str, default: str = "0") -> bool:
+    """Parse common true/false env strings."""
+    return os.environ.get(name, default).strip().lower() not in (
+        "0",
+        "false",
+        "no",
+        "off",
+        "",
+    )
+
+
 class QueryLogger:
     """
     Async fire-and-forget query logger that writes to ui_sql_log table.
     
     Uses a background thread to batch writes for efficiency.
+
+    Disabled by default; set LARS_UI_QUERY_LOG_ENABLED=1 to enable.
     """
     
     _instance = None
@@ -191,12 +205,14 @@ class QueryLogger:
         
         self._queue = Queue()
         self._shutdown = False
-        self._enabled = True
+        self._enabled = _env_enabled("LARS_UI_QUERY_LOG_ENABLED", "0")
         self._db = None
-        
-        self._flush_thread = threading.Thread(target=self._flush_loop, daemon=True)
-        self._flush_thread.start()
-        atexit.register(self._shutdown_handler)
+
+        self._flush_thread = None
+        if self._enabled:
+            self._flush_thread = threading.Thread(target=self._flush_loop, daemon=True)
+            self._flush_thread.start()
+            atexit.register(self._shutdown_handler)
         
         self._initialized = True
 
@@ -283,7 +299,7 @@ class QueryLogger:
 
     def _shutdown_handler(self):
         self._shutdown = True
-        if self._flush_thread.is_alive():
+        if self._flush_thread is not None and self._flush_thread.is_alive():
             self._flush_thread.join(timeout=1.0)
 
 
@@ -292,6 +308,8 @@ _query_logger: Optional[QueryLogger] = None
 
 def get_query_logger() -> Optional[QueryLogger]:
     global _query_logger
+    if not _env_enabled("LARS_UI_QUERY_LOG_ENABLED", "0"):
+        return None
     if _query_logger is None:
         _query_logger = QueryLogger()
     return _query_logger
@@ -487,6 +505,32 @@ class DuckDBAdapter:
     _lock = threading.Lock()
     _initialized = False
     _housekeeping_done = False
+    _READ_CACHE_CONFIG = {
+        "enabled": True,
+        "ttl_seconds": 0.75,
+        "max_entries": 512,
+        "max_rows": 2000,
+    }
+    _READ_CACHE_TABLE_ALIASES = {
+        "unified_logs",
+        "unified_logs_base",
+        "session_state",
+        "lars_system.logs",
+        "lars_system.logs_raw",
+        "lars_system.sessions",
+        "cascade_analytics",
+        "cell_analytics",
+        "cascade_sessions",
+    }
+    _READ_CACHE_NONDETERMINISTIC_TOKENS = (
+        " now(",
+        "current_timestamp",
+        "current_time",
+        "current_date",
+        "random(",
+        "uuid(",
+        "now64(",
+    )
 
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
@@ -502,6 +546,12 @@ class DuckDBAdapter:
                 return
             
             self._db = get_lars_db()
+            self._read_cache_enabled = bool(DuckDBAdapter._READ_CACHE_CONFIG.get("enabled", True))
+            self._read_cache_ttl_s = float(DuckDBAdapter._READ_CACHE_CONFIG.get("ttl_seconds", 0.75))
+            self._read_cache_max_entries = int(DuckDBAdapter._READ_CACHE_CONFIG.get("max_entries", 512))
+            self._read_cache_max_rows = int(DuckDBAdapter._READ_CACHE_CONFIG.get("max_rows", 2000))
+            self._read_cache_lock = threading.Lock()
+            self._read_cache: Dict[str, tuple[float, Any]] = {}
             DuckDBAdapter._initialized = True
 
     def run_housekeeping(self):
@@ -531,6 +581,59 @@ class DuckDBAdapter:
     # Query Operations
     # =========================================================================
 
+    def _invalidate_read_cache(self):
+        """Invalidate short-lived in-process SELECT result cache."""
+        with self._read_cache_lock:
+            self._read_cache.clear()
+
+    def _can_use_read_cache(self, sql: str, output_format: str) -> bool:
+        """Return True if this SELECT is eligible for short TTL caching."""
+        if not self._read_cache_enabled:
+            return False
+        if output_format not in ("dict", "raw"):
+            return False
+
+        sql_lower = sql.strip().lower()
+        if not (sql_lower.startswith("select") or sql_lower.startswith("with")):
+            return False
+
+        if any(token in sql_lower for token in DuckDBAdapter._READ_CACHE_NONDETERMINISTIC_TOKENS):
+            return False
+
+        return any(alias in sql_lower for alias in DuckDBAdapter._READ_CACHE_TABLE_ALIASES)
+
+    def _read_cache_get(self, cache_key: str) -> Any | None:
+        """Fetch a cached query result if still fresh."""
+        now = time.time()
+        with self._read_cache_lock:
+            entry = self._read_cache.get(cache_key)
+            if not entry:
+                return None
+
+            cached_at, value = entry
+            if now - cached_at > self._read_cache_ttl_s:
+                self._read_cache.pop(cache_key, None)
+                return None
+
+            # Refresh recency for FIFO/LRU-like eviction.
+            self._read_cache.pop(cache_key, None)
+            self._read_cache[cache_key] = (cached_at, value)
+            return copy.deepcopy(value)
+
+    def _read_cache_set(self, cache_key: str, result: Any):
+        """Store a query result for short-lived cache reuse."""
+        if isinstance(result, list) and len(result) > self._read_cache_max_rows:
+            return
+
+        with self._read_cache_lock:
+            self._read_cache[cache_key] = (time.time(), copy.deepcopy(result))
+
+            while len(self._read_cache) > self._read_cache_max_entries:
+                oldest_key = next(iter(self._read_cache), None)
+                if oldest_key is None:
+                    break
+                self._read_cache.pop(oldest_key, None)
+
     def query(self, sql: str, params: Dict | None = None, output_format: str = "dict", log_query: bool = True) -> Any:
         """
         Execute a SELECT query and return results.
@@ -548,6 +651,7 @@ class DuckDBAdapter:
         rows_returned = 0
         success = True
         error_msg = None
+        cache_key = None
 
         try:
             # Substitute params into SQL (DuckDB uses $1 style, but we support %(name)s for compat)
@@ -556,8 +660,23 @@ class DuckDBAdapter:
             
             # Translate DuckDB-specific SQL to DuckDB
             sql = self._translate_clickhouse_sql(sql)
-            
+
+            if self._can_use_read_cache(sql, output_format):
+                cache_key = f"{output_format}:{sql}"
+                cached_result = self._read_cache_get(cache_key)
+                if cached_result is not None:
+                    if output_format == "dataframe":
+                        rows_returned = len(cached_result) if cached_result is not None else 0
+                    elif output_format == "dict":
+                        rows_returned = len(cached_result)
+                    else:
+                        rows_returned = len(cached_result) if isinstance(cached_result, (list, tuple)) else 0
+                    return cached_result
+
             result = self._db.query(sql, output_format=output_format)
+
+            if cache_key is not None:
+                self._read_cache_set(cache_key, result)
             
             if output_format == "dataframe":
                 rows_returned = len(result) if result is not None else 0
@@ -613,6 +732,7 @@ class DuckDBAdapter:
             sql = self._translate_clickhouse_sql(sql)
             
             self._db.execute(sql)
+            self._invalidate_read_cache()
         except Exception as e:
             success = False
             error_msg = str(e)
@@ -1065,6 +1185,7 @@ class DuckDBAdapter:
                 rows = [{k: r.get(k) for k in columns} for r in rows]
             
             self._db.write(table, rows)
+            self._invalidate_read_cache()
             
         except Exception as e:
             success = False
@@ -1182,6 +1303,7 @@ class DuckDBAdapter:
         
         if cost_rows:
             self._db.write('costs', cost_rows)
+            self._invalidate_read_cache()
 
     def mark_take_winner(
         self,
@@ -1207,6 +1329,7 @@ class DuckDBAdapter:
         
         # Write to take_winners table (creates table if needed)
         self._db.write('take_winners', [winner_record])
+        self._invalidate_read_cache()
 
     # =========================================================================
     # Vector Search (delegates to DuckDB VSS)
@@ -1239,6 +1362,7 @@ class DuckDBAdapter:
         if not rows:
             return
         self._db.write('context_cards', rows)
+        self._invalidate_read_cache()
 
     def get_context_cards(
         self,
