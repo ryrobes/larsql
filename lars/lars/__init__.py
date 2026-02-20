@@ -110,6 +110,8 @@ def _register_all_skills():
     from .skills.rvbbit_lars_cli import lars_crawl, lars_doctor, lars_command
     from .skills.hyper_tools import verify_hyper, valid_hyper
     from .skills.calliope_tools import capture_kit_screenshot, validate_kit_visual
+    # Grid tools (atom grid planner for Calliope)
+    import lars.skills.rvbbit_grid  # noqa: F401 — registers grid_* skills
 
     # Core tools
     register_skill("smart_sql_run", smart_sql_run)
