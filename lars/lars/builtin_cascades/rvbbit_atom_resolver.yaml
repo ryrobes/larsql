@@ -15,13 +15,11 @@ inputs_schema:
   sibling_context: "Optional: JSON array of existing sibling atoms (intent + displayType + title)"
   grid_name: "Optional: name of the grid this atom belongs to"
 
-#model: anthropic/claude-sonnet-4.6
-model: google/gemini-3.1-pro-preview
+model: "{{ models.quality }}"
 
 cells:
   - name: resolve
-    #model: anthropic/claude-sonnet-4.6
-    model: google/gemini-3.1-pro-preview
+    model: "{{ models.quality }}"
     skills:
       - sql_search
       - sql_data
