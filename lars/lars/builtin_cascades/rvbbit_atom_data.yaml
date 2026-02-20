@@ -7,15 +7,175 @@
 # Inputs:
 #   query: The SQL query to execute
 #
-# This is intentionally simple — one tool call, no LLM. But having it as
-# a YAML means we can iterate on it (add retry logic, validation, error
-# recovery) without touching Swift code.
+# Fast path remains deterministic (single sql_data call). On SQL errors we
+# route to an LLM repair agent that can execute sql_data itself, then retry.
 
 cascade_id: rvbbit_atom_data
 description: "Execute a SQL query and return clean JSON data for atom rendering"
 
+auto_context:
+  intra_cell:
+    enabled: true
+    window: 4
+    compress_loops: true
+    mask_observations_after: 3
+
 cells:
   - name: query
     tool: sql_data
+    handoffs:
+      - repair_query
+      - final_output
+    routing:
+      success: final_output
+      error: repair_query
     inputs:
       query: "{{ input.query }}"
+
+  - name: repair_query
+    model: "{{ models.fast }}"
+    skills:
+      - sql_data
+      - smart_sql_search
+    rules:
+      max_attempts: 4
+      loop_until:
+        python: |
+          import ast
+          import json
+          import re
+
+          def _strip_fence(text):
+              s = text.strip()
+              if s.startswith("```"):
+                  lines = s.splitlines()
+                  if len(lines) >= 2:
+                      s = "\n".join(lines[1:])
+              if s.endswith("```"):
+                  s = s.rsplit("```", 1)[0]
+              return s.strip()
+
+          def _parse_json_like(text):
+              s = _strip_fence(text)
+
+              # Direct JSON first
+              try:
+                  return json.loads(s)
+              except Exception:
+                  pass
+
+              # Python dict/list repr fallback (single quotes, etc.)
+              try:
+                  return ast.literal_eval(s)
+              except Exception:
+                  pass
+
+              # Extract JSON object/array from surrounding text
+              for pattern in (r"(\{[\s\S]*\})", r"(\[[\s\S]*\])"):
+                  match = re.search(pattern, s)
+                  if not match:
+                      continue
+                  candidate = match.group(1).strip()
+                  try:
+                      return json.loads(candidate)
+                  except Exception:
+                      try:
+                          return ast.literal_eval(candidate)
+                      except Exception:
+                          continue
+              return None
+
+          text = (content or "").strip()
+
+          # The validator receives either:
+          # 1) raw assistant JSON
+          # 2) "Agent Response: ... Tool Execution Results: [tool]: ..."
+          if "Tool Execution Results:" in text:
+              agent_part, tool_part = text.split("Tool Execution Results:", 1)
+          else:
+              agent_part, tool_part = text, ""
+
+          if "Agent Response:" in agent_part:
+              agent_part = agent_part.split("Agent Response:", 1)[1]
+
+          obj = _parse_json_like(agent_part)
+          if not isinstance(obj, dict):
+              result = {"valid": False, "reason": "Return a JSON object with sql/verified/reason"}
+          elif "sql" not in obj or not str(obj.get("sql", "")).strip():
+              result = {"valid": False, "reason": "Missing required field: sql"}
+          elif obj.get("verified") is not True:
+              result = {"valid": False, "reason": "Set verified=true only after running sql_data successfully"}
+          else:
+              # Require at least one sql_data tool result and require it succeeded.
+              blocks = re.findall(r"\[([^\]]+)\]:\s*([\s\S]*?)(?=\n\[[^\]]+\]:|\Z)", tool_part)
+              sql_blocks = [payload for tool_name, payload in blocks if tool_name.strip() in ("sql_data", "smart_sql_data")]
+
+              if not sql_blocks:
+                  result = {"valid": False, "reason": "You must call sql_data and include successful tool output before verified=true"}
+              else:
+                  last_sql_output = _parse_json_like(sql_blocks[-1])
+                  if not isinstance(last_sql_output, dict):
+                      result = {"valid": False, "reason": "Could not parse sql_data tool output"}
+                  else:
+                      route = last_sql_output.get("_route") or last_sql_output.get("status")
+                      if route != "success":
+                          err = last_sql_output.get("error", "unknown error")
+                          result = {"valid": False, "reason": f"sql_data did not succeed: {err}"}
+                      elif int(last_sql_output.get("row_count", 0) or 0) <= 0:
+                          result = {"valid": False, "reason": "sql_data succeeded but returned 0 rows; repair query and re-check"}
+                      else:
+                          result = {"valid": True, "reason": "Verified SQL with successful sql_data output"}
+      retry_instructions: |
+        {{ validation_reason }}
+        Return ONLY raw JSON. Attempt {{ attempt }}/{{ max_attempts }}.
+    handoffs:
+      - parse_repair_query
+    instructions: |
+      You are fixing a DuckDB SQL query that failed.
+
+      Original query:
+      ```sql
+      {{ input.query }}
+      ```
+
+      Error from sql_data:
+      {{ state.output_query.error }}
+
+      Task:
+      1. Repair the SQL.
+      2. Use `sql_data` to execute and verify it.
+      3. If execution fails, keep fixing and re-running `sql_data`.
+      4. Optionally use `smart_sql_search` if schema/table details are needed.
+
+      Rules:
+      - This is DuckDB SQL.
+      - Do not return markdown.
+      - For verification calls, use `sql_data` with `limit: 10` to avoid huge outputs.
+      - Do NOT set a `connection` unless absolutely necessary.
+      - Only set `"verified": true` after a successful `sql_data` run.
+
+      Return JSON only:
+      {
+        "sql": "SELECT ...",
+        "verified": true,
+        "reason": "Brief note about what was fixed"
+      }
+
+  - name: parse_repair_query
+    tool: python:lars.demo_tools.parse_json
+    handoffs:
+      - query_repaired
+    inputs:
+      text: "{{ state.output_repair_query }}"
+
+  - name: query_repaired
+    tool: sql_data
+    handoffs:
+      - final_output
+    inputs:
+      query: "{{ state.output_parse_repair_query.data.sql | default(input.query) }}"
+
+  - name: final_output
+    tool: get_state
+    inputs:
+      key: "{{ 'output_query_repaired' if state.get('output_query_repaired') else 'output_query' }}"
