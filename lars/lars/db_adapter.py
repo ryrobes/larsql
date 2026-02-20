@@ -505,6 +505,9 @@ class DuckDBAdapter:
     _lock = threading.Lock()
     _initialized = False
     _housekeeping_done = False
+    _SHADOW_UI_READS_ENABLED = True
+    _SHADOW_UI_QUERY_SOURCE = "ui_backend"
+    _SHADOW_UI_MAX_STALE_SECONDS = 5.0
     _READ_CACHE_CONFIG = {
         "enabled": True,
         "ttl_seconds": 0.75,
@@ -546,6 +549,11 @@ class DuckDBAdapter:
                 return
             
             self._db = get_lars_db()
+            self._shadow_ui_reads_enabled = bool(DuckDBAdapter._SHADOW_UI_READS_ENABLED)
+            self._shadow_ui_query_source = DuckDBAdapter._SHADOW_UI_QUERY_SOURCE
+            self._shadow_ui_max_stale_seconds = float(DuckDBAdapter._SHADOW_UI_MAX_STALE_SECONDS)
+            self._shadow_store = None
+            self._shadow_store_init_attempted = False
             self._read_cache_enabled = bool(DuckDBAdapter._READ_CACHE_CONFIG.get("enabled", True))
             self._read_cache_ttl_s = float(DuckDBAdapter._READ_CACHE_CONFIG.get("ttl_seconds", 0.75))
             self._read_cache_max_entries = int(DuckDBAdapter._READ_CACHE_CONFIG.get("max_entries", 512))
@@ -580,6 +588,52 @@ class DuckDBAdapter:
     # =========================================================================
     # Query Operations
     # =========================================================================
+
+    def _get_shadow_store(self):
+        """Lazy-load shadow read store integration (Studio backend only)."""
+        if self._shadow_store is not None:
+            return self._shadow_store
+        if self._shadow_store_init_attempted:
+            return None
+
+        self._shadow_store_init_attempted = True
+        try:
+            from lars.studio.backend.shadow_read_store import get_shadow_read_store
+
+            self._shadow_store = get_shadow_read_store()
+            return self._shadow_store
+        except Exception:
+            self._shadow_store = None
+            return None
+
+    def _should_try_shadow_query(self, sql: str) -> bool:
+        """Return True when this query should try Studio shadow store first."""
+        if not self._shadow_ui_reads_enabled:
+            return False
+
+        source = query_source_context.get()
+        if source != self._shadow_ui_query_source:
+            return False
+
+        sql_lower = sql.lstrip().lower()
+        return (
+            sql_lower.startswith("select")
+            or sql_lower.startswith("with")
+            or sql_lower.startswith("describe")
+            or sql_lower.startswith("show")
+        )
+
+    def _query_shadow_store(self, sql: str, output_format: str):
+        """Query shadow store, returning None when unavailable or stale."""
+        store = self._get_shadow_store()
+        if store is None or not getattr(store, "enabled", False):
+            return None
+
+        return store.query(
+            sql,
+            output_format=output_format,
+            max_stale_seconds=self._shadow_ui_max_stale_seconds,
+        )
 
     def _invalidate_read_cache(self):
         """Invalidate short-lived in-process SELECT result cache."""
@@ -660,6 +714,17 @@ class DuckDBAdapter:
             
             # Translate DuckDB-specific SQL to DuckDB
             sql = self._translate_clickhouse_sql(sql)
+
+            if self._should_try_shadow_query(sql):
+                shadow_result = self._query_shadow_store(sql, output_format)
+                if shadow_result is not None:
+                    if output_format == "dataframe":
+                        rows_returned = len(shadow_result) if shadow_result is not None else 0
+                    elif output_format == "dict":
+                        rows_returned = len(shadow_result)
+                    else:
+                        rows_returned = len(shadow_result) if isinstance(shadow_result, (list, tuple)) else 0
+                    return shadow_result
 
             if self._can_use_read_cache(sql, output_format):
                 cache_key = f"{output_format}:{sql}"

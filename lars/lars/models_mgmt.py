@@ -1,5 +1,5 @@
 """
-Model management for OpenRouter, Ollama, and Vertex AI models.
+Model management for OpenRouter, Ollama, Vertex AI, and subscription providers.
 
 Handles fetching, verification, and querying of models in DuckDB.
 """
@@ -1279,6 +1279,54 @@ def fetch_models_from_anthropic_direct() -> List[Dict]:
         return []
 
 
+def fetch_models_from_chatgpt() -> List[Dict]:
+    """
+    Fetch available models from ChatGPT subscription provider.
+    Returns models in the standard format with chatgpt/ prefix.
+    """
+    enabled = False
+    token_dir_env = "CHATGPT_TOKEN_DIR"
+    try:
+        from .models import load_models_config
+
+        mc = load_models_config()
+        enabled = bool(getattr(mc.providers, "chatgpt_enabled", False))
+        token_dir_env = getattr(mc.providers, "chatgpt_token_dir_env", "CHATGPT_TOKEN_DIR")
+    except Exception:
+        enabled = False
+
+    if not enabled:
+        console.print("[dim]   ChatGPT           disabled (skipping)[/dim]")
+        return []
+
+    console.print("[cyan]   ChatGPT           loading known subscription models...[/cyan]")
+    console.print(f"[dim]                     auth dir env: {token_dir_env}[/dim]")
+
+    try:
+        from .bootstrap_providers import fetch_chatgpt_subscription_models
+
+        discovered = fetch_chatgpt_subscription_models()
+        models = []
+        for m in discovered:
+            models.append({
+                "id": m.id,  # Already has chatgpt/ prefix
+                "name": m.name,
+                "description": f"ChatGPT subscription: {m.name}",
+                "context_length": m.context_length or 200000,
+                "pricing": {"prompt": "0", "completion": "0"},  # Flat subscription
+                "architecture": {
+                    "input_modalities": ["text"],
+                    "output_modalities": ["text"],
+                },
+            })
+
+        console.print(f"[green]   ✓ ChatGPT: {len(models)} models[/green]")
+        return models
+    except Exception as e:
+        console.print(f"[yellow]   ⚠ ChatGPT model load failed: {e}[/yellow]")
+        return []
+
+
 def fetch_models_from_lmstudio() -> List[Dict]:
     """Fetch models from LM Studio instance."""
     cfg = get_config()
@@ -1356,16 +1404,19 @@ def refresh_models(skip_verification: bool = False, workers: int = 10):
     console.print("[bold cyan]╚════════════════════════════════════════════════════════════════╝[/bold cyan]\n")
 
     # Check which providers are enabled via models.yaml
+    chatgpt_enabled = False
     try:
         from .models import load_models_config
         models_config = load_models_config()
         openrouter_enabled = models_config.providers.openrouter_enabled
+        chatgpt_enabled = bool(getattr(models_config.providers, "chatgpt_enabled", False))
         # Also check if API key is actually present
         if openrouter_enabled and not models_config.providers.openrouter_api_key:
             openrouter_enabled = False
     except Exception:
         # Fall back to checking env var directly
         openrouter_enabled = bool(config.provider_api_key)
+        chatgpt_enabled = bool(False)
     
     # Step 1a: Fetch models from OpenRouter (if enabled)
     openrouter_models = []
@@ -1392,15 +1443,29 @@ def refresh_models(skip_verification: bool = False, workers: int = 10):
     # Step 1f: Fetch models from Anthropic Direct (non-fatal if not configured)
     anthropic_direct_models = fetch_models_from_anthropic_direct()
 
-    # Step 1g: Fetch models from LM Studio (non-fatal if not running)
+    # Step 1g: Fetch models from ChatGPT subscription (non-fatal if not configured)
+    chatgpt_models = fetch_models_from_chatgpt() if chatgpt_enabled else []
+    if not chatgpt_enabled:
+        console.print("[dim]   ChatGPT           disabled (skipping)[/dim]")
+
+    # Step 1h: Fetch models from LM Studio (non-fatal if not running)
     lmstudio_models = fetch_models_from_lmstudio()
 
     # Combine all models (Azure returns empty - discovery requires Azure AD)
-    raw_models = openrouter_models + ollama_models + vertex_models + bedrock_models + anthropic_direct_models + lmstudio_models
+    raw_models = (
+        openrouter_models
+        + ollama_models
+        + vertex_models
+        + bedrock_models
+        + anthropic_direct_models
+        + chatgpt_models
+        + lmstudio_models
+    )
     console.print(f"\n[green][OK][/green] Total models: {len(raw_models)} "
                  f"(OpenRouter: {len(openrouter_models)}, Ollama: {len(ollama_models)}, "
                  f"Vertex AI: {len(vertex_models)}, Bedrock: {len(bedrock_models)}, "
                  f"Anthropic Direct: {len(anthropic_direct_models)}, "
+                 f"ChatGPT: {len(chatgpt_models)}, "
                  f"LM Studio: {len(lmstudio_models)})\n")
 
     # Step 2: Verify OpenRouter models only (Ollama models are always active)
@@ -1434,6 +1499,8 @@ def refresh_models(skip_verification: bool = False, workers: int = 10):
         # Anthropic Direct models
         'anthropic-direct/claude-sonnet-4-20250514', 'anthropic-direct/claude-opus-4-20250514',
         'anthropic-direct/claude-haiku-4-20250414', 'anthropic-direct/claude-haiku-3-5-20241022',
+        # ChatGPT subscription models
+        'chatgpt/gpt-5.2-codex', 'chatgpt/gpt-5.2',
     }
 
     rows = []

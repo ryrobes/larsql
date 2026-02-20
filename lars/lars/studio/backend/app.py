@@ -233,6 +233,9 @@ except Exception as e:
 @app.before_request
 def set_request_context():
     """Set query context variables based on the current request."""
+    # Ensure query_source context is set per-request (contextvars are request/thread local).
+    set_query_source('ui_backend')
+
     # Set authentication context from Bearer token (if auth enabled)
     try:
         from lars.auth.middleware import set_auth_context

@@ -112,6 +112,8 @@ def _extract_provider(model_id: str) -> str:
         return "lmstudio"
     if model_id.startswith("anthropic-direct/"):
         return "anthropic-direct"
+    if model_id.startswith("chatgpt/"):
+        return "chatgpt"
     if model_id.startswith("vertex_ai/"):
         return "vertex_ai"
     if model_id.startswith("bedrock/"):
@@ -732,7 +734,12 @@ def run_benchmark(
         _time.sleep(3)
         _backfill_costs(results)
         # Retry once more after additional wait for stragglers
-        unfilled = sum(1 for r in results if r.cost == 0.0 and r.provider not in ("ollama", "lmstudio"))
+        unfilled = sum(
+            1
+            for r in results
+            if r.cost == 0.0
+            and r.provider not in ("ollama", "lmstudio", "anthropic-direct", "chatgpt")
+        )
         if unfilled > 0:
             _time.sleep(5)
             _backfill_costs(results)

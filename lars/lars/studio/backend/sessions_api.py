@@ -13,6 +13,9 @@ provides cross-process visibility and durable state tracking.
 
 import os
 import sys
+import time
+import copy
+import threading
 from datetime import datetime, timezone
 from flask import Blueprint, jsonify, request
 
@@ -33,6 +36,46 @@ from lars.session_state import (
 from lars.db_adapter import get_db
 
 sessions_bp = Blueprint('sessions', __name__)
+
+_ENDPOINT_CACHE_TTL_SECONDS = 1.5
+_ENDPOINT_CACHE_MAX_ENTRIES = 64
+_endpoint_cache_lock = threading.Lock()
+_endpoint_cache: dict[str, tuple[float, dict]] = {}
+
+
+def _endpoint_cache_get(cache_key: str) -> dict | None:
+    now = time.time()
+    with _endpoint_cache_lock:
+        entry = _endpoint_cache.get(cache_key)
+        if entry is None:
+            return None
+        cached_at, payload = entry
+        if now - cached_at > _ENDPOINT_CACHE_TTL_SECONDS:
+            _endpoint_cache.pop(cache_key, None)
+            return None
+        _endpoint_cache.pop(cache_key, None)
+        _endpoint_cache[cache_key] = (cached_at, payload)
+        return copy.deepcopy(payload)
+
+
+def _endpoint_cache_set(cache_key: str, payload: dict):
+    with _endpoint_cache_lock:
+        _endpoint_cache[cache_key] = (time.time(), copy.deepcopy(payload))
+        while len(_endpoint_cache) > _ENDPOINT_CACHE_MAX_ENTRIES:
+            oldest_key = next(iter(_endpoint_cache), None)
+            if oldest_key is None:
+                break
+            _endpoint_cache.pop(oldest_key, None)
+
+
+def _endpoint_cache_invalidate(prefix: str | None = None):
+    with _endpoint_cache_lock:
+        if prefix is None:
+            _endpoint_cache.clear()
+            return
+        keys_to_delete = [k for k in _endpoint_cache.keys() if k.startswith(prefix)]
+        for key in keys_to_delete:
+            _endpoint_cache.pop(key, None)
 
 
 def sanitize_for_json(obj):
@@ -580,6 +623,10 @@ def list_all_sessions():
         cascade_id = request.args.get('cascade_id')
         limit = int(request.args.get('limit', 100))
         active_only = request.args.get('active_only', '').lower() == 'true'
+        cache_key = f"sessions:{status_filter or ''}:{cascade_id or ''}:{limit}:{int(active_only)}"
+        cached_payload = _endpoint_cache_get(cache_key)
+        if cached_payload is not None:
+            return jsonify(cached_payload)
 
         # Convert status string to enum if provided
         status_enum = None
@@ -615,10 +662,12 @@ def list_all_sessions():
         # Sanitize result to handle bytes (images) and other non-JSON-serializable types
         sanitized_result = [sanitize_for_json(session) for session in result]
 
-        return jsonify({
+        response_payload = {
             'sessions': sanitized_result,
             'total': len(sanitized_result)
-        })
+        }
+        _endpoint_cache_set(cache_key, response_payload)
+        return jsonify(response_payload)
 
     except Exception as e:
         import traceback
@@ -720,6 +769,8 @@ def cancel_session(session_id: str):
 
         # Fetch updated state (fresh from DB)
         updated_session = _get_fresh_session(session_id)
+        _endpoint_cache_invalidate("sessions:")
+        _endpoint_cache_invalidate("console:kpis")
 
         return jsonify({
             'message': message,
@@ -754,6 +805,8 @@ def cleanup_zombies():
         grace_period = int(data.get('grace_period_seconds', 30))
 
         count = cleanup_zombie_sessions(grace_period)
+        _endpoint_cache_invalidate("sessions:")
+        _endpoint_cache_invalidate("console:kpis")
 
         return jsonify({
             'message': f'Cleaned up {count} zombie session(s)',
@@ -826,6 +879,11 @@ def get_console_kpis():
         24h cost + trend, active outliers, avg context%, top bottleneck cell
     """
     try:
+        cache_key = "console:kpis"
+        cached_payload = _endpoint_cache_get(cache_key)
+        if cached_payload is not None:
+            return jsonify(cached_payload)
+
         db = get_db()
 
         # 24h cost + trend
@@ -919,7 +977,7 @@ def get_console_kpis():
             except (TypeError, ValueError):
                 return default
         
-        return jsonify({
+        response_payload = {
             'total_cost_24h': safe_float(cost_24h.get('total')),
             'cost_trend': f"{'↑' if cost_trend_pct > 0 else '↓'} {abs(safe_float(cost_trend_pct)):.1f}%",
             'outlier_count': outlier_count,
@@ -927,7 +985,9 @@ def get_console_kpis():
             'context_trend': f"{'↑' if context_trend_pct > 0 else '↓'} {abs(safe_float(context_trend_pct)):.1f}pp",  # pp = percentage points
             'top_bottleneck_cell': bottleneck_result[0]['cell_name'] if len(bottleneck_result) > 0 else 'N/A',
             'top_bottleneck_pct': safe_float(bottleneck_result[0].get('avg_pct')) if len(bottleneck_result) > 0 else 0.0
-        })
+        }
+        _endpoint_cache_set(cache_key, response_payload)
+        return jsonify(response_payload)
 
     except Exception as e:
         import traceback

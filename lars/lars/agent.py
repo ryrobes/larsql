@@ -174,7 +174,7 @@ class Agent:
         # and model doesn't have a special provider prefix
         if self.base_url is None:
             # Check if model has a special provider prefix that doesn't need OpenRouter
-            special_prefixes = ("ollama/", "ollama@", "vertex_ai/", "azure/", "bedrock/", "anthropic-direct/", "lmstudio/")
+            special_prefixes = ("ollama/", "ollama@", "vertex_ai/", "azure/", "bedrock/", "anthropic-direct/", "lmstudio/", "chatgpt/")
             if not self.model or not any(self.model.startswith(p) for p in special_prefixes):
                 # Default to OpenRouter for standard models
                 cfg = get_config()
@@ -315,6 +315,26 @@ class Agent:
                     "anthropic-direct/ models require an Anthropic API key or OAuth token. "
                     "Set ANTHROPIC_API_KEY or ANTHROPIC_OAUTH_TOKEN environment variable."
                 )
+
+        # ChatGPT subscription provider (OAuth/device auth managed by LiteLLM)
+        # Format: chatgpt/<model-name> (e.g., chatgpt/gpt-5.2-codex)
+        elif self.model and self.model.startswith("chatgpt/"):
+            cfg = get_config()
+            raw_model = args["model"].replace("chatgpt/", "", 1)
+
+            # Let LiteLLM chatgpt provider own endpoint + auth token flow
+            args.pop("base_url", None)
+            args.pop("api_key", None)
+            args["model"] = raw_model
+            args["custom_llm_provider"] = "chatgpt"
+
+            # Keep ChatGPT OAuth cache under LARS_ROOT by default
+            chatgpt_token_dir = os.environ.get("CHATGPT_TOKEN_DIR") or os.path.join(
+                cfg.root_dir, "auth", "chatgpt"
+            )
+            chatgpt_token_dir = os.path.expanduser(chatgpt_token_dir)
+            os.environ["CHATGPT_TOKEN_DIR"] = chatgpt_token_dir
+            os.makedirs(chatgpt_token_dir, exist_ok=True)
 
         if self.tools:
             args["tools"] = self.tools
@@ -654,7 +674,7 @@ class Agent:
                 # - Azure AI: cost calculated immediately from token counts
                 # - OpenRouter: cost=None (will be fetched by unified logger)
                 cost = None
-                if provider in ("ollama", "lmstudio", "anthropic-direct"):
+                if provider in ("ollama", "lmstudio", "anthropic-direct", "chatgpt"):
                     cost = 0.0  # Local/flat-rate models are free from LARS perspective
                 elif provider == "vertex_ai":
                     # Calculate Vertex AI cost immediately (no per-request cost API)
@@ -1686,4 +1706,3 @@ class Agent:
                        metadata={"tool": "generate_image", "error": type(e).__name__, "duration_ms": duration_ms})
 
             raise RuntimeError(f"Image generation failed: {type(e).__name__}: {e}") from e
-

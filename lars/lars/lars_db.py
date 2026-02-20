@@ -1871,9 +1871,9 @@ class LarsDB:
             DuckDB connection ready for queries
         """
         conn = duckdb.connect()  # In-memory, stateless
-        # Limit CPU usage - default 2 threads per connection to prevent parallel query explosion
+        # Limit CPU usage - default 1 thread per connection for stability under high concurrency
         # Override with LARS_DUCKDB_THREADS env var
-        duckdb_threads = int(os.environ.get("LARS_DUCKDB_THREADS", "2"))
+        duckdb_threads = int(os.environ.get("LARS_DUCKDB_THREADS", "1"))
         conn.execute(f"SET threads TO {duckdb_threads}")
         self._load_extensions(conn)
         self._register_system_views(conn)
@@ -1952,26 +1952,25 @@ class LarsDB:
         
         for table_name, schema in SYSTEM_TABLES.items():
             table_dir = system_dir / table_name
-            
-            # Check if table uses Hive-style partitioning
             hive_partition_cols = schema.get("hive_partition_by", [])
-            if hive_partition_cols:
-                # Recursive glob for partitioned tables
-                parquet_glob = str(table_dir / "**" / "*.parquet")
-                read_opts = "union_by_name=true, filename=true, hive_partitioning=true"
-            else:
-                # Flat mode: check if legacy hive subdirectories exist (backward compat)
-                has_hive_subdirs = any(
-                    d.is_dir() and '=' in d.name
-                    for d in table_dir.iterdir()
-                ) if table_dir.exists() else False
-                if has_hive_subdirs:
-                    # Legacy data in hive dirs — use recursive glob to read both flat + hive files
-                    parquet_glob = str(table_dir / "**" / "*.parquet")
-                    read_opts = "union_by_name=true, filename=true, hive_partitioning=true"
-                else:
-                    parquet_glob = str(table_dir / "*.parquet")
-                    read_opts = "union_by_name=true, filename=true"
+            has_hive_subdirs = any(
+                d.is_dir() and '=' in d.name
+                for d in table_dir.iterdir()
+            ) if table_dir.exists() else False
+            has_root_parquet_files = any(
+                f.is_file() and f.suffix == ".parquet"
+                for f in table_dir.glob("*.parquet")
+            ) if table_dir.exists() else False
+
+            use_recursive_glob = bool(hive_partition_cols) or has_hive_subdirs
+            use_hive_partitioning = (bool(hive_partition_cols) or has_hive_subdirs) and not (
+                has_hive_subdirs and has_root_parquet_files
+            )
+
+            parquet_glob = str(table_dir / "**" / "*.parquet") if use_recursive_glob else str(table_dir / "*.parquet")
+            read_opts = "union_by_name=true, filename=true"
+            if use_hive_partitioning:
+                read_opts += ", hive_partitioning=true"
             
             # Build column list for the view
             columns = ", ".join(f'"{col}"' for col, _ in schema["columns"])
@@ -2886,7 +2885,7 @@ class LarsDB:
             # Read via DuckDB for better dedup support
             conn = duckdb.connect()
             import os
-            duckdb_threads = int(os.environ.get("LARS_DUCKDB_THREADS", "2"))
+            duckdb_threads = int(os.environ.get("LARS_DUCKDB_THREADS", "1"))
             conn.execute(f"SET threads TO {duckdb_threads}")
             parquet_glob = str(table_dir / "*.parquet")
             
@@ -3007,7 +3006,7 @@ class LarsDB:
                 return result
 
             conn = duckdb.connect()
-            duckdb_threads = int(os.environ.get("LARS_DUCKDB_THREADS", "2"))
+            duckdb_threads = int(os.environ.get("LARS_DUCKDB_THREADS", "1"))
             conn.execute(f"SET threads TO {duckdb_threads}")
             parquet_glob = str(table_dir / "**" / "*.parquet")
             read_opts = "union_by_name=true, hive_partitioning=true"
@@ -3343,49 +3342,56 @@ def attach_system_views(conn, data_root: Optional[Path] = None) -> int:
     # Schema definitions match SYSTEM_TABLES in LarsDB
     system_tables = {
         "unified_logs_base": {
-            "glob": str(system_dir / "unified_logs_base" / "**" / "*.parquet"),
             "hive": True,
             "dedup": {"pk": "trace_id", "order_by": "timestamp DESC"},
         },
         "costs": {
-            "glob": str(system_dir / "costs" / "**" / "*.parquet"),
             "hive": True,
             "dedup": {"pk": "trace_id", "order_by": "timestamp DESC"},
         },
         "session_state": {
-            "glob": str(system_dir / "session_state" / "**" / "*.parquet"),
             "hive": True,
             "dedup": {"pk": "session_id", "order_by": "updated_at DESC"},
         },
         "checkpoints": {
-            "glob": str(system_dir / "checkpoints" / "*.parquet"),
             "dedup": {"pk": "id", "order_by": "created_at DESC"},
         },
         "cascade_sessions": {
-            "glob": str(system_dir / "cascade_sessions" / "*.parquet"),
             "dedup": {"pk": "session_id", "order_by": "created_at DESC"},
         },
         "ui_sql_log": {
-            "glob": str(system_dir / "ui_sql_log" / "*.parquet"),
         },
         "test_runs": {
-            "glob": str(system_dir / "test_runs" / "*.parquet"),
             "dedup": {"pk": "run_id", "order_by": "started_at DESC"},
         },
         "test_results": {
-            "glob": str(system_dir / "test_results" / "*.parquet"),
         },
     }
     
     for table_name, config in system_tables.items():
-        glob_pattern = config["glob"]
+        table_dir = system_dir / table_name
+        has_hive_subdirs = any(
+            d.is_dir() and '=' in d.name
+            for d in table_dir.iterdir()
+        ) if table_dir.exists() else False
+        has_root_parquet_files = any(
+            f.is_file() and f.suffix == ".parquet"
+            for f in table_dir.glob("*.parquet")
+        ) if table_dir.exists() else False
+
+        use_recursive_glob = bool(config.get("hive")) or has_hive_subdirs
+        use_hive_partitioning = bool(config.get("hive") or has_hive_subdirs) and not (
+            has_hive_subdirs and has_root_parquet_files
+        )
+
+        glob_pattern = str(table_dir / "**" / "*.parquet") if use_recursive_glob else str(table_dir / "*.parquet")
         
         # Check if any parquet files exist
         import glob as glob_module
         files = glob_module.glob(glob_pattern, recursive=True)
         
         try:
-            hive_opt = ", hive_partitioning=true" if config.get("hive") else ""
+            hive_opt = ", hive_partitioning=true" if use_hive_partitioning else ""
             raw_view = f"_{table_name}_raw"
             
             if not files:

@@ -32,14 +32,8 @@ _LEADER_RETRY_SECONDS = 1.0
 _STALE_AFTER_SECONDS = 5.0
 _SHADOW_MAX_STALE_SECONDS = 15.0
 
-_TRACKED_TABLES = (
-    "unified_logs_base",
-    "costs",
-    "session_state",
-    "cascade_analytics",
-    "cell_analytics",
-    "cascade_sessions",
-)
+# Mirror all system tables for consistent Studio snapshots.
+_TRACKED_TABLES = tuple(sorted(SYSTEM_TABLES.keys()))
 
 
 def _resolve_data_root() -> Path:
@@ -238,7 +232,7 @@ class ShadowReadStore:
 
         self._system_dir.mkdir(parents=True, exist_ok=True)
         self._writer_conn = duckdb.connect(str(self._db_path))
-        duckdb_threads = int(os.environ.get("LARS_DUCKDB_THREADS", "2"))
+        duckdb_threads = int(os.environ.get("LARS_DUCKDB_THREADS", "1"))
         self._writer_conn.execute(f"SET threads TO {duckdb_threads}")
         return self._writer_conn
 
@@ -258,8 +252,14 @@ class ShadowReadStore:
             return None
 
         try:
-            conn = duckdb.connect(str(self._db_path), read_only=True)
-            duckdb_threads = int(os.environ.get("LARS_DUCKDB_THREADS", "2"))
+            try:
+                conn = duckdb.connect(str(self._db_path), read_only=True)
+            except Exception as ro_err:
+                if "different configuration" in str(ro_err).lower():
+                    conn = duckdb.connect(str(self._db_path))
+                else:
+                    raise
+            duckdb_threads = int(os.environ.get("LARS_DUCKDB_THREADS", "1"))
             conn.execute(f"SET threads TO {duckdb_threads}")
             self._thread_local.read_conn = conn
             return conn
@@ -290,11 +290,29 @@ class ShadowReadStore:
         conn.execute("BEGIN")
         try:
             for table_name in _TRACKED_TABLES:
-                if self._refresh_one_table(conn, table_name):
-                    changed_tables.add(table_name)
+                try:
+                    if self._refresh_one_table(conn, table_name):
+                        changed_tables.add(table_name)
+                except Exception as table_err:
+                    log.warning(f"[ShadowReadStore] table refresh failed ({table_name}): {table_err}")
 
-            if changed_tables or self._shadow_view_missing(conn, "unified_logs"):
-                self._rebuild_unified_logs_view(conn)
+            try:
+                if changed_tables or self._shadow_view_missing(conn, "unified_logs"):
+                    self._rebuild_unified_logs_view(conn)
+            except Exception as view_err:
+                log.warning(f"[ShadowReadStore] unified_logs view refresh failed: {view_err}")
+
+            try:
+                if changed_tables or self._shadow_view_missing(conn, "artifact_registry_current"):
+                    self._rebuild_artifact_registry_current_view(conn)
+            except Exception as view_err:
+                log.warning(f"[ShadowReadStore] artifact_registry_current view refresh failed: {view_err}")
+
+            try:
+                if changed_tables:
+                    self._rebuild_lars_system_views(conn)
+            except Exception as view_err:
+                log.warning(f"[ShadowReadStore] lars_system views refresh failed: {view_err}")
 
             conn.execute("COMMIT")
         except Exception:
@@ -376,13 +394,27 @@ class ShadowReadStore:
             return
 
         parquet_glob = str((self._system_dir / table_name / "**" / "*.parquet")).replace("'", "''")
-        conn.execute(
-            f"""
-            CREATE TABLE {raw_table} AS
-            SELECT *
-            FROM read_parquet('{parquet_glob}', union_by_name=true, hive_partitioning=true)
-            """
-        )
+        use_hive_partitioning = self._should_use_hive_partitioning(table_name, list(source_files.keys()))
+
+        try:
+            conn.execute(
+                f"""
+                CREATE TABLE {raw_table} AS
+                SELECT *
+                FROM read_parquet('{parquet_glob}', {self._read_parquet_options(use_hive_partitioning)})
+                """
+            )
+        except Exception as err:
+            if use_hive_partitioning and self._is_hive_partition_mismatch(err):
+                conn.execute(
+                    f"""
+                    CREATE TABLE {raw_table} AS
+                    SELECT *
+                    FROM read_parquet('{parquet_glob}', {self._read_parquet_options(False)})
+                    """
+                )
+            else:
+                raise
 
     def _append_files_to_raw_table(
         self,
@@ -395,13 +427,23 @@ class ShadowReadStore:
 
         raw_table = self._raw_table_name(table_name)
         escaped_paths = ", ".join("'" + p.replace("'", "''") + "'" for p in added_paths)
+        use_hive_partitioning = self._should_use_hive_partitioning(table_name, added_paths)
         append_sql = (
-            f"SELECT * FROM read_parquet([{escaped_paths}], union_by_name=true, hive_partitioning=true)"
+            f"SELECT * FROM read_parquet([{escaped_paths}], {self._read_parquet_options(use_hive_partitioning)})"
         )
 
         try:
             conn.execute(f"INSERT INTO {raw_table} BY NAME {append_sql}")
-        except Exception:
+        except Exception as err:
+            if use_hive_partitioning and self._is_hive_partition_mismatch(err):
+                fallback_sql = (
+                    f"SELECT * FROM read_parquet([{escaped_paths}], {self._read_parquet_options(False)})"
+                )
+                try:
+                    conn.execute(f"INSERT INTO {raw_table} BY NAME {fallback_sql}")
+                except Exception:
+                    conn.execute(f"INSERT INTO {raw_table} {fallback_sql}")
+                return
             conn.execute(f"INSERT INTO {raw_table} {append_sql}")
 
     def _rebuild_materialized_table(self, conn: duckdb.DuckDBPyConnection, table_name: str):
@@ -452,11 +494,116 @@ class ShadowReadStore:
         except Exception:
             conn.execute("CREATE VIEW unified_logs AS SELECT * FROM unified_logs_base")
 
+    def _rebuild_artifact_registry_current_view(self, conn: duckdb.DuckDBPyConnection):
+        self._drop_relation(conn, "artifact_registry_current")
+        try:
+            conn.execute(
+                """
+                CREATE VIEW artifact_registry_current AS
+                SELECT
+                    artifact_id,
+                    artifact_type,
+                    version,
+                    content_yaml,
+                    content_parsed,
+                    content_hash,
+                    python_module,
+                    python_function,
+                    python_source,
+                    source_file,
+                    file_mtime,
+                    folder_path,
+                    tags,
+                    created_at,
+                    created_by,
+                    source_instance,
+                    is_active,
+                    is_deleted,
+                    change_type,
+                    change_comment
+                FROM artifact_registry
+                WHERE COALESCE(is_active, true) = true
+                  AND COALESCE(is_deleted, false) = false
+                """
+            )
+        except Exception:
+            # Fall back to base relation when columns differ.
+            try:
+                conn.execute("CREATE VIEW artifact_registry_current AS SELECT * FROM artifact_registry")
+            except Exception:
+                self._create_empty_shadow_table(conn, "artifact_registry_current", "artifact_registry")
+
+    def _rebuild_lars_system_views(self, conn: duckdb.DuckDBPyConnection):
+        try:
+            conn.execute("CREATE SCHEMA IF NOT EXISTS lars_system")
+        except Exception:
+            return
+
+        aliases = [
+            ("logs", "unified_logs"),
+            ("logs_raw", "unified_logs_base"),
+            ("sessions", "session_state"),
+            ("costs", "costs"),
+            ("checkpoints", "checkpoints"),
+            ("cascades", "cascade_sessions"),
+            ("sql_log", "ui_sql_log"),
+            ("test_runs", "test_runs"),
+            ("test_results", "test_results"),
+            ("artifact_registry_current", "artifact_registry_current"),
+        ]
+
+        for alias, source in aliases:
+            try:
+                conn.execute(f"CREATE OR REPLACE VIEW lars_system.{alias} AS SELECT * FROM {source}")
+            except Exception:
+                continue
+
     def _raw_table_name(self, table_name: str) -> str:
         dedup = SYSTEM_TABLES.get(table_name, {}).get("dedup")
         if dedup:
             return f"_shadow_raw_{table_name}"
         return table_name
+
+    def _read_parquet_options(self, use_hive_partitioning: bool) -> str:
+        opts = "union_by_name=true"
+        if use_hive_partitioning:
+            opts += ", hive_partitioning=true"
+        return opts
+
+    def _should_use_hive_partitioning(self, table_name: str, paths: Optional[list[str]] = None) -> bool:
+        """
+        Enable hive partition parsing only when layout is consistently partitioned.
+
+        Mixed layouts (both table root files and partition subdirs) can trigger
+        DuckDB "Hive partition mismatch" errors.
+        """
+        table_dir = (self._system_dir / table_name).resolve()
+        path_iter = paths or []
+
+        if not path_iter:
+            path_iter = [str(p.resolve()) for p in (self._system_dir / table_name).glob("**/*.parquet")]
+
+        has_hive_paths = False
+        has_root_files = False
+        for path_str in path_iter:
+            try:
+                rel = Path(path_str).resolve().relative_to(table_dir)
+                parts = rel.parts
+            except Exception:
+                parts = Path(path_str).parts
+
+            if len(parts) <= 1:
+                has_root_files = True
+            if any("=" in part for part in parts[:-1]):
+                has_hive_paths = True
+
+            if has_hive_paths and has_root_files:
+                return False
+
+        return has_hive_paths
+
+    def _is_hive_partition_mismatch(self, err: Exception) -> bool:
+        return "hive partition mismatch" in str(err).lower()
 
     def _dedup_order_clause(self, order_col: str) -> str:
         if "," in order_col:

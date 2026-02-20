@@ -8788,12 +8788,15 @@ def bootstrap_wizard():
         validate_gemini_key,
         validate_bedrock_credentials,
         validate_anthropic_oauth_token,
+        validate_chatgpt_subscription,
+        authenticate_chatgpt_subscription,
         validate_lmstudio_host,
         fetch_openrouter_models,
         fetch_ollama_models,
         fetch_gemini_models,
         fetch_bedrock_models,
         fetch_anthropic_direct_models,
+        fetch_chatgpt_subscription_models,
         fetch_lmstudio_models,
         get_recommended_defaults,
         get_openrouter_embedding_models,
@@ -8992,6 +8995,61 @@ def bootstrap_wizard():
             else:
                 console.print(f" [red]✗ {message}[/red]")
                 anthropic_oauth_token = None
+
+    # --- ChatGPT Subscription (OpenAI subscription via OAuth/device login) ---
+    chatgpt_enabled = False
+    chatgpt_token_dir = os.environ.get('CHATGPT_TOKEN_DIR', '')
+    add_chatgpt = Confirm.ask(
+        "\n[bold]Add ChatGPT subscription?[/bold] [dim](OpenAI subscription auth via LiteLLM device login)[/dim]",
+        default=False
+    )
+
+    if add_chatgpt:
+        if chatgpt_token_dir:
+            console.print(f"  [dim]Current token dir: {chatgpt_token_dir}[/dim]")
+            next_dir = Prompt.ask("  Token dir (Enter to keep current, blank for LiteLLM default)", default=chatgpt_token_dir)
+            chatgpt_token_dir = next_dir
+        else:
+            console.print("  [dim]No existing token dir set. LiteLLM default will be used unless you set one.[/dim]")
+            chatgpt_token_dir = Prompt.ask("  Token dir (optional, blank for default)", default="")
+
+        if chatgpt_token_dir:
+            chatgpt_token_dir = os.path.expanduser(chatgpt_token_dir)
+            os.environ['CHATGPT_TOKEN_DIR'] = chatgpt_token_dir
+
+        console.print("  Validating...", end="")
+        is_valid, message = validate_chatgpt_subscription(chatgpt_token_dir or None)
+        if is_valid:
+            console.print(f" [green]✓ {message}[/green]")
+            chatgpt_enabled = True
+
+            do_auth_now = Confirm.ask(
+                "  Complete ChatGPT OAuth device login now? [dim](recommended for non-interactive runs)[/dim]",
+                default=True
+            )
+            if do_auth_now:
+                console.print("  Starting OAuth flow...")
+
+                def _chatgpt_progress(line: str):
+                    console.print(f"    [dim]{line}[/dim]")
+
+                auth_ok, auth_msg = authenticate_chatgpt_subscription(
+                    token_dir=chatgpt_token_dir or None,
+                    progress=_chatgpt_progress,
+                )
+                if auth_ok:
+                    console.print(f"  [green]✓ {auth_msg}[/green]")
+                else:
+                    console.print(f"  [yellow]⚠ {auth_msg}[/yellow]")
+                    console.print("  [yellow]You can authenticate later on an interactive machine if needed.[/yellow]")
+
+            console.print("  Fetching models...", end="")
+            chatgpt_models = fetch_chatgpt_subscription_models()
+            console.print(f" [green]✓ {len(chatgpt_models)} models[/green]")
+            all_models.extend(chatgpt_models)
+            console.print("  [dim]chatgpt/* calls will use this OAuth session (or prompt if not yet completed).[/dim]")
+        else:
+            console.print(f" [red]✗ {message}[/red]")
     
     # --- LM Studio ---
     lmstudio_enabled = False
@@ -9018,7 +9076,7 @@ def bootstrap_wizard():
             console.print(f" [red]✗ {message}[/red]")
     
     # Check that we have at least one provider
-    if not openrouter_enabled and not ollama_enabled and not gemini_enabled and not bedrock_enabled and not anthropic_direct_enabled and not lmstudio_enabled:
+    if not openrouter_enabled and not ollama_enabled and not gemini_enabled and not bedrock_enabled and not anthropic_direct_enabled and not chatgpt_enabled and not lmstudio_enabled:
         console.print("\n[yellow]⚠ No providers configured. You'll need to edit models.yaml manually.[/yellow]")
     
     # ==========================================================================
@@ -9036,6 +9094,8 @@ def bootstrap_wizard():
         enabled_providers.add("bedrock")
     if anthropic_direct_enabled:
         enabled_providers.add("anthropic-direct")
+    if chatgpt_enabled:
+        enabled_providers.add("chatgpt")
     if lmstudio_enabled:
         enabled_providers.add("lmstudio")
     
@@ -9227,6 +9287,8 @@ def bootstrap_wizard():
             "ANTHROPIC_OAUTH_TOKEN" if anthropic_oauth_token and anthropic_oauth_token.startswith("sk-ant-oat")
             else "ANTHROPIC_API_KEY"
         ),
+        "chatgpt_enabled": chatgpt_enabled,
+        "chatgpt_token_dir": chatgpt_token_dir,
         "lmstudio_enabled": lmstudio_enabled,
         "lmstudio_host": lmstudio_host,
         "model_tiers": model_tiers,
@@ -9309,6 +9371,8 @@ def cmd_bootstrap(args):
                 _ant_token = wizard_config['anthropic_oauth_token']
                 _ant_env_var = 'ANTHROPIC_OAUTH_TOKEN' if _ant_token.startswith('sk-ant-oat') else 'ANTHROPIC_API_KEY'
                 os.environ[_ant_env_var] = _ant_token
+            if wizard_config.get('chatgpt_token_dir'):
+                os.environ['CHATGPT_TOKEN_DIR'] = wizard_config['chatgpt_token_dir']
 
             # Write .env file (minimal - just secrets, not model config)
             # Model configuration lives in models.yaml
@@ -9322,6 +9386,8 @@ def cmd_bootstrap(args):
                 _ant_token = wizard_config['anthropic_oauth_token']
                 _ant_env_var = 'ANTHROPIC_OAUTH_TOKEN' if _ant_token.startswith('sk-ant-oat') else 'ANTHROPIC_API_KEY'
                 env_lines.append(f"{_ant_env_var}={_ant_token}")
+            if wizard_config.get('chatgpt_token_dir'):
+                env_lines.append(f"CHATGPT_TOKEN_DIR={wizard_config['chatgpt_token_dir']}")
             
             # Add any collected passwords (SQL connections, etc.)
             for env_var, value in wizard_config.get('passwords_for_env', {}).items():
@@ -9344,6 +9410,8 @@ def cmd_bootstrap(args):
                     bedrock_region=wizard_config.get('bedrock_region', 'us-east-1'),
                     anthropic_direct_enabled=wizard_config.get('anthropic_direct_enabled', False),
                     anthropic_oauth_token_env=wizard_config.get('anthropic_auth_env_var', 'ANTHROPIC_API_KEY'),
+                    chatgpt_enabled=wizard_config.get('chatgpt_enabled', False),
+                    chatgpt_token_dir_env="CHATGPT_TOKEN_DIR",
                     lmstudio_enabled=wizard_config.get('lmstudio_enabled', False),
                     lmstudio_host=wizard_config.get('lmstudio_host', 'http://localhost:1234'),
                 ),

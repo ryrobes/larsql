@@ -17,16 +17,15 @@ Parquet remains the source of truth for writes.
 
 ## Source tables mirrored
 
-- `unified_logs_base`
-- `costs` (deduped by `trace_id`, latest `timestamp`)
-- `session_state` (deduped by `session_id`, latest `updated_at`)
-- `cascade_analytics`
-- `cell_analytics`
-- `cascade_sessions` (deduped by `session_id`, latest `created_at`)
+- **All `SYSTEM_TABLES`** are mirrored into shadow for consistent Studio snapshots.
+- Dedup-configured tables keep "latest row wins" semantics in shadow.
+- Non-dedup tables are mirrored append-only.
 
-Derived view:
+Derived views:
 
 - `unified_logs` = `unified_logs_base` LEFT JOIN deduped `costs`
+- `artifact_registry_current`
+- `lars_system.*` aliases for common Studio-facing tables
 
 ## Refresh strategy
 

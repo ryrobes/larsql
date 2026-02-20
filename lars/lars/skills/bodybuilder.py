@@ -40,6 +40,7 @@ Usage in cascades:
 """
 
 import json
+import os
 import time
 from typing import Dict, Any, List, Optional, Union
 
@@ -119,8 +120,22 @@ def _execute_single_body(
         "api_key": cfg.provider_api_key,
     }
 
-    # Explicitly set provider for OpenRouter
-    if cfg.provider_base_url and "openrouter" in cfg.provider_base_url:
+    # Provider-specific routing
+    if model.startswith("chatgpt/"):
+        raw_model = model.replace("chatgpt/", "", 1)
+        args["model"] = raw_model
+        args.pop("base_url", None)
+        args.pop("api_key", None)
+        args["custom_llm_provider"] = "chatgpt"
+
+        chatgpt_token_dir = os.environ.get("CHATGPT_TOKEN_DIR") or os.path.join(
+            cfg.root_dir, "auth", "chatgpt"
+        )
+        chatgpt_token_dir = os.path.expanduser(chatgpt_token_dir)
+        os.environ["CHATGPT_TOKEN_DIR"] = chatgpt_token_dir
+        os.makedirs(chatgpt_token_dir, exist_ok=True)
+    elif cfg.provider_base_url and "openrouter" in cfg.provider_base_url:
+        # Explicitly set provider for OpenRouter
         args["custom_llm_provider"] = "openai"
 
     # Add optional params if provided
@@ -180,7 +195,7 @@ def _execute_single_body(
 
         # Extract provider and determine cost handling
         provider = extract_provider_from_model(model)
-        cost = 0.0 if provider in ("ollama", "lmstudio") else None  # OpenRouter fetches async
+        cost = 0.0 if provider in ("ollama", "lmstudio", "anthropic-direct", "chatgpt") else None  # OpenRouter fetches async
 
         # Build full request/response for logging
         full_request = {

@@ -4,7 +4,7 @@ Provider discovery and model enumeration for bootstrap wizard.
 
 import os
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 import httpx
 
 
@@ -35,7 +35,7 @@ class DiscoveredModel:
             return f"${self.pricing_input:.2f}/1M"
         if self.provider == "ollama":
             return "free (local)"
-        if self.provider == "anthropic-direct":
+        if self.provider in ("anthropic-direct", "chatgpt"):
             return "subscription"
         return ""
     
@@ -50,6 +50,8 @@ class DiscoveredModel:
             return "AWS Bedrock"
         elif self.provider == "anthropic-direct":
             return "Anthropic"
+        elif self.provider == "chatgpt":
+            return "ChatGPT"
         return "OpenRouter"
 
 
@@ -633,6 +635,159 @@ def fetch_anthropic_direct_models(token: str) -> List[DiscoveredModel]:
             pricing_output=0.0,
         ))
     
+    return models
+
+
+# ============================================================================
+# ChatGPT Provider (OpenAI subscription via LiteLLM chatgpt provider)
+# ============================================================================
+
+def validate_chatgpt_subscription(token_dir: Optional[str] = None) -> Tuple[bool, str]:
+    """
+    Validate ChatGPT subscription configuration.
+
+    ChatGPT auth is device/OAuth based and can be completed lazily by LiteLLM on
+    first request, so this check is intentionally permissive.
+    """
+    resolved_dir = token_dir or os.environ.get("CHATGPT_TOKEN_DIR", "")
+    if resolved_dir:
+        auth_file = os.path.join(os.path.expanduser(resolved_dir), "auth.json")
+    else:
+        auth_file = os.path.expanduser("~/.config/litellm/chatgpt/auth.json")
+
+    if os.path.exists(auth_file):
+        return True, f"Found existing auth cache ({auth_file})"
+    return True, "Enabled. First chatgpt/* call will prompt ChatGPT device login."
+
+
+def authenticate_chatgpt_subscription(
+    token_dir: Optional[str] = None,
+    progress: Optional[Callable[[str], None]] = None,
+) -> Tuple[bool, str]:
+    """
+    Ensure ChatGPT OAuth is completed now (during bootstrap), not on first call.
+
+    Uses LiteLLM's ChatGPT authenticator. We intentionally use its internal device
+    flow methods so bootstrap can display the device code in a controlled way.
+    """
+    progress = progress or (lambda _msg: None)
+
+    resolved_dir = (token_dir or os.environ.get("CHATGPT_TOKEN_DIR", "")).strip()
+    if resolved_dir:
+        resolved_dir = os.path.expanduser(resolved_dir)
+        os.environ["CHATGPT_TOKEN_DIR"] = resolved_dir
+    else:
+        resolved_dir = os.path.expanduser("~/.config/litellm/chatgpt")
+
+    os.makedirs(resolved_dir, exist_ok=True)
+
+    try:
+        from litellm.llms.chatgpt.authenticator import Authenticator
+    except Exception as e:
+        return False, f"LiteLLM ChatGPT authenticator unavailable: {e}"
+
+    try:
+        auth = Authenticator()
+
+        # 1) Reuse valid cached token if present.
+        auth_data = auth._read_auth_file()
+        if auth_data:
+            access_token = auth_data.get("access_token")
+            if access_token and not auth._is_token_expired(auth_data, access_token):
+                account_id = auth.get_account_id()
+                suffix = f" (account: {account_id})" if account_id else ""
+                return True, f"Already authenticated{suffix}"
+
+            # 2) Try refresh token first.
+            refresh_token = auth_data.get("refresh_token")
+            if refresh_token:
+                try:
+                    auth._refresh_tokens(refresh_token)
+                    account_id = auth.get_account_id()
+                    suffix = f" (account: {account_id})" if account_id else ""
+                    return True, f"Refreshed existing ChatGPT auth{suffix}"
+                except Exception:
+                    pass
+
+            # 3) If a device flow is already in-progress, wait for completion.
+            cooldown_remaining = auth._get_device_code_cooldown_remaining(auth_data)
+            if cooldown_remaining > 0:
+                progress(f"Waiting for active device auth ({int(cooldown_remaining)}s max)...")
+                token = auth._wait_for_access_token(cooldown_remaining)
+                if token:
+                    account_id = auth.get_account_id()
+                    suffix = f" (account: {account_id})" if account_id else ""
+                    return True, f"Authenticated via active device flow{suffix}"
+
+        # 4) Start a new device flow and surface the code to the caller.
+        device_code = auth._request_device_code()
+        auth._record_device_code_request()
+        user_code = device_code.get("user_code", "")
+        progress("ChatGPT OAuth required.")
+        progress("Open https://auth.openai.com/codex/device")
+        progress(f"Enter code: {user_code}")
+        progress("Waiting for approval (up to 15 minutes)...")
+        auth_code = auth._poll_for_authorization_code(device_code)
+        tokens = auth._exchange_code_for_tokens(auth_code)
+        auth_record = auth._build_auth_record(tokens)
+        auth._write_auth_file(auth_record)
+
+        account_id = auth.get_account_id()
+        suffix = f" (account: {account_id})" if account_id else ""
+        return True, f"ChatGPT OAuth login complete{suffix}"
+    except Exception as e:
+        return False, f"ChatGPT OAuth login failed: {e}"
+
+
+def fetch_chatgpt_subscription_models() -> List[DiscoveredModel]:
+    """
+    Fetch available ChatGPT subscription models.
+
+    Uses LiteLLM's built-in model set when available, with a small fallback list.
+    Returns model IDs with chatgpt/ prefix.
+    """
+    model_ids: set[str] = set()
+
+    try:
+        import litellm  # Local dependency already required by LARS
+
+        for model_id in getattr(litellm, "chatgpt_models", set()) or set():
+            if not isinstance(model_id, str):
+                continue
+            clean = model_id.strip()
+            if not clean:
+                continue
+            if clean.startswith("chatgpt/"):
+                clean = clean.split("/", 1)[1]
+            model_ids.add(clean)
+    except Exception:
+        pass
+
+    if not model_ids:
+        model_ids = {
+            "gpt-5.2-codex",
+            "gpt-5.2",
+            "gpt-5.1-codex-max",
+            "gpt-5.1-codex-mini",
+        }
+
+    models = []
+    for model_id in sorted(model_ids):
+        lower_id = model_id.lower()
+        supports_reasoning = "codex" in lower_id or lower_id.startswith("o")
+        models.append(DiscoveredModel(
+            id=f"chatgpt/{model_id}",
+            name=model_id,
+            provider="chatgpt",
+            is_chat=True,
+            is_embedding=False,
+            supports_vision=False,
+            supports_reasoning=supports_reasoning,
+            context_length=200000,
+            pricing_input=0.0,
+            pricing_output=0.0,
+        ))
+
     return models
 
 

@@ -47,7 +47,7 @@ def _get_tracking_executor() -> ThreadPoolExecutor:
         with _executor_lock:
             if _tracking_executor is None:
                 _tracking_executor = ThreadPoolExecutor(
-                    max_workers=4,
+                    max_workers=1,
                     thread_name_prefix="lars_tracking"
                 )
                 # Ensure clean shutdown on process exit

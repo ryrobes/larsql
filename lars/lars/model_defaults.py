@@ -12,6 +12,7 @@ from typing import Dict, List, Optional, Tuple
 MODEL_PREFERENCES: Dict[str, List[Tuple[str, str]]] = {
     "fast": [
         ("anthropic-direct", "anthropic-direct/claude-haiku-4-5-20251001"),
+        ("chatgpt", "chatgpt/gpt-5.2-codex"),
         ("openrouter", "anthropic/claude-haiku-4.5"),  # "google/gemini-2.5-flash"),
         ("gemini", "gemini/gemini-2.5-flash"),
         ("ollama", "ollama/llama3"),
@@ -20,6 +21,7 @@ MODEL_PREFERENCES: Dict[str, List[Tuple[str, str]]] = {
     ],
     "standard": [
         ("anthropic-direct", "anthropic-direct/claude-sonnet-4-5-2025092"),
+        ("chatgpt", "chatgpt/gpt-5.2"),
         ("openrouter", "anthropic/claude-sonnet-4.5"),
         # ("openrouter", "openrouter/pony-alpha"),
         ("gemini", "gemini/gemini-2.5-pro"),
@@ -29,6 +31,7 @@ MODEL_PREFERENCES: Dict[str, List[Tuple[str, str]]] = {
     ],
     "quality": [
         ("anthropic-direct", "anthropic-direct/claude-sonnet-4-5-20250929"),
+        ("chatgpt", "chatgpt/gpt-5.2"),
         # ("openrouter", "anthropic/claude-sonnet-4"),
         # ("openrouter", "openrouter/pony-alpha"),
         ("openrouter", "anthropic/claude-sonnet-4.5::high"),
@@ -37,6 +40,7 @@ MODEL_PREFERENCES: Dict[str, List[Tuple[str, str]]] = {
     ],
     "flagship": [
         ("anthropic-direct", "anthropic-direct/claude-opus-4-6"),
+        ("chatgpt", "chatgpt/gpt-5.2"),
         # ("openrouter", "anthropic/claude-opus-4"),
         ("openrouter", "anthropic/claude-opus-4.6"),
         ("gemini", "gemini/gemini-2.5-pro"),

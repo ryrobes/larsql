@@ -74,6 +74,9 @@ class ProvidersConfig:
     
     anthropic_direct_enabled: bool = False
     anthropic_oauth_token_env: str = "ANTHROPIC_OAUTH_TOKEN"
+
+    chatgpt_enabled: bool = False
+    chatgpt_token_dir_env: str = "CHATGPT_TOKEN_DIR"
     
     @property
     def anthropic_oauth_token(self) -> Optional[str]:
@@ -89,6 +92,11 @@ class ProvidersConfig:
     def gemini_api_key(self) -> Optional[str]:
         """Get the Gemini API key from environment."""
         return os.environ.get(self.gemini_api_key_env)
+
+    @property
+    def chatgpt_token_dir(self) -> Optional[str]:
+        """Get ChatGPT OAuth token dir from environment."""
+        return os.environ.get(self.chatgpt_token_dir_env)
     
     @property
     def has_any_provider(self) -> bool:
@@ -105,6 +113,8 @@ class ProvidersConfig:
             return True  # Bedrock uses AWS credentials, not env var key
         if self.anthropic_direct_enabled and self.anthropic_oauth_token:
             return True
+        if self.chatgpt_enabled:
+            return True  # ChatGPT auth can be completed lazily on first call
         return False
 
 
@@ -167,6 +177,7 @@ def _load_from_yaml(path: Path) -> ModelsConfig:
     # Parse providers
     providers_data = data.get("providers", {})
     ad_data = providers_data.get("anthropic_direct", {})
+    chatgpt_data = providers_data.get("chatgpt", {})
     gemini_data = providers_data.get("gemini", {})
     bedrock_data = providers_data.get("bedrock", {})
     providers = ProvidersConfig(
@@ -182,6 +193,8 @@ def _load_from_yaml(path: Path) -> ModelsConfig:
         bedrock_region=bedrock_data.get("region", "us-east-1"),
         anthropic_direct_enabled=ad_data.get("enabled", False),
         anthropic_oauth_token_env=ad_data.get("oauth_token_env", "ANTHROPIC_OAUTH_TOKEN"),
+        chatgpt_enabled=chatgpt_data.get("enabled", False),
+        chatgpt_token_dir_env=chatgpt_data.get("token_dir_env", "CHATGPT_TOKEN_DIR"),
     )
     
     # Parse models
@@ -248,6 +261,7 @@ def _load_from_legacy_env() -> Optional[ModelsConfig]:
     # Determine provider status from what's configured
     has_openrouter = bool(os.environ.get("OPENROUTER_API_KEY"))
     has_ollama = bool(ollama_hosts) or bool(os.environ.get("LARS_OLLAMA_BASE_URL"))
+    has_chatgpt = bool(os.environ.get("CHATGPT_TOKEN_DIR"))
     
     lmstudio_host = os.environ.get("LARS_LMSTUDIO_HOST", "")
     has_lmstudio = bool(lmstudio_host)
@@ -258,6 +272,7 @@ def _load_from_legacy_env() -> Optional[ModelsConfig]:
         ollama_hosts=ollama_hosts or {"default": os.environ.get("LARS_OLLAMA_BASE_URL", "http://localhost:11434")},
         lmstudio_enabled=has_lmstudio,
         lmstudio_host=lmstudio_host or "http://localhost:1234",
+        chatgpt_enabled=has_chatgpt,
     )
     
     return ModelsConfig(
@@ -275,6 +290,7 @@ def _load_defaults() -> ModelsConfig:
     return ModelsConfig(
         providers=ProvidersConfig(
             openrouter_enabled=has_openrouter,
+            chatgpt_enabled=bool(os.environ.get("CHATGPT_TOKEN_DIR")),
         ),
         models=dict(DEFAULT_MODELS),
         _source="defaults",
@@ -452,6 +468,11 @@ def write_models_yaml(
         f.write("  anthropic_direct:\n")
         f.write(f"    enabled: {str(config.providers.anthropic_direct_enabled).lower()}\n")
         f.write(f"    oauth_token_env: {config.providers.anthropic_oauth_token_env}\n")
+        f.write("\n")
+
+        f.write("  chatgpt:\n")
+        f.write(f"    enabled: {str(config.providers.chatgpt_enabled).lower()}\n")
+        f.write(f"    token_dir_env: {config.providers.chatgpt_token_dir_env}\n")
         f.write("\n")
         
         # Write models section

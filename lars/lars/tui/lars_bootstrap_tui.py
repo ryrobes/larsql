@@ -24,7 +24,7 @@ import random
 import sys
 import threading
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Callable, Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass
 from enum import Enum
 
@@ -57,6 +57,9 @@ from ..bootstrap_providers import (
     fetch_bedrock_models as _fetch_bedrock_models,
     validate_anthropic_oauth_token as _validate_anthropic_token,
     fetch_anthropic_direct_models as _fetch_anthropic_direct_models,
+    validate_chatgpt_subscription as _validate_chatgpt_subscription,
+    authenticate_chatgpt_subscription as _authenticate_chatgpt_subscription,
+    fetch_chatgpt_subscription_models as _fetch_chatgpt_subscription_models,
     validate_lmstudio_host as _validate_lmstudio_host,
     fetch_lmstudio_models as _fetch_lmstudio_models,
     get_recommended_defaults,
@@ -182,6 +185,24 @@ def validate_anthropic_token(token: str) -> Tuple[bool, str]:
 def fetch_anthropic_direct_models(token: str) -> List[DiscoveredModel]:
     """Fetch models from Anthropic Direct."""
     return _fetch_anthropic_direct_models(token)
+
+
+def validate_chatgpt_subscription(token_dir: Optional[str] = None) -> Tuple[bool, str]:
+    """Validate ChatGPT subscription setup."""
+    return _validate_chatgpt_subscription(token_dir)
+
+
+def authenticate_chatgpt_subscription(
+    token_dir: Optional[str] = None,
+    progress: Optional[Callable[[str], None]] = None,
+) -> Tuple[bool, str]:
+    """Run ChatGPT device OAuth login during bootstrap."""
+    return _authenticate_chatgpt_subscription(token_dir=token_dir, progress=progress)
+
+
+def fetch_chatgpt_models() -> List[DiscoveredModel]:
+    """Fetch known ChatGPT subscription models."""
+    return _fetch_chatgpt_subscription_models()
 
 
 def get_default_lars_root() -> str:
@@ -329,6 +350,14 @@ class LarsBootstrapTUI(ReactiveGlassApp):
             "anthropic_direct_status": "none",
             "anthropic_direct_message": "",
             "anthropic_direct_models": [],
+
+            "chatgpt_enabled": False,
+            "chatgpt_token_dir": os.environ.get("CHATGPT_TOKEN_DIR", ""),
+            "chatgpt_token_dir_editing": False,
+            "chatgpt_token_dir_buffer": "",
+            "chatgpt_status": "none",
+            "chatgpt_message": "",
+            "chatgpt_models": [],
             
             # Admin password
             "admin_password": "admin",
@@ -395,6 +424,8 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                     enabled.add("bedrock")
                 if new_state.get("anthropic_direct_enabled"):
                     enabled.add("anthropic-direct")
+                if new_state.get("chatgpt_enabled"):
+                    enabled.add("chatgpt")
                 smart_defaults = resolve_defaults_for_providers(enabled)
                 # Only update tiers that haven't been manually changed from defaults
                 current_tiers = new_state.get("model_tiers", {})
@@ -633,7 +664,42 @@ class LarsBootstrapTUI(ReactiveGlassApp):
         
         elif action.type == "SET_ANTHROPIC_MODELS":
             new_state["anthropic_direct_models"] = action.payload
-        
+
+        # === CHATGPT SUBSCRIPTION ===
+        elif action.type == "TOGGLE_CHATGPT":
+            new_state["chatgpt_enabled"] = not new_state["chatgpt_enabled"]
+            if not new_state["chatgpt_enabled"]:
+                new_state["chatgpt_status"] = "none"
+                new_state["chatgpt_message"] = ""
+
+        elif action.type == "START_EDIT_CHATGPT_DIR":
+            new_state["chatgpt_token_dir_editing"] = True
+            new_state["chatgpt_token_dir_buffer"] = new_state["chatgpt_token_dir"]
+
+        elif action.type == "FINISH_EDIT_CHATGPT_DIR":
+            new_state["chatgpt_token_dir"] = new_state["chatgpt_token_dir_buffer"]
+            new_state["chatgpt_token_dir_editing"] = False
+            new_state["chatgpt_status"] = "pending"
+            new_state["chatgpt_message"] = "Validating..."
+
+        elif action.type == "CANCEL_EDIT_CHATGPT_DIR":
+            new_state["chatgpt_token_dir_editing"] = False
+
+        elif action.type == "EDIT_CHATGPT_DIR_CHAR":
+            new_state["chatgpt_token_dir_buffer"] += action.payload
+
+        elif action.type == "EDIT_CHATGPT_DIR_BACKSPACE":
+            new_state["chatgpt_token_dir_buffer"] = new_state["chatgpt_token_dir_buffer"][:-1]
+
+        elif action.type == "VALIDATE_CHATGPT_RESULT":
+            new_state["chatgpt_status"] = "ok" if action.payload["valid"] else "error"
+            new_state["chatgpt_message"] = action.payload["message"]
+            if action.payload["valid"]:
+                new_state["chatgpt_enabled"] = True
+
+        elif action.type == "SET_CHATGPT_MODELS":
+            new_state["chatgpt_models"] = action.payload
+
         # === ADMIN PASSWORD ===
         elif action.type == "START_EDIT_ADMIN_PW":
             new_state["admin_password_editing"] = True
@@ -687,6 +753,7 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                 new_state.get("gemini_models", []) +
                 new_state.get("bedrock_models", []) +
                 new_state.get("anthropic_direct_models", []) +
+                new_state.get("chatgpt_models", []) +
                 new_state.get("lmstudio_models", [])
             )
             # Filter for this tier
@@ -709,6 +776,7 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                 new_state.get("gemini_models", []) +
                 new_state.get("bedrock_models", []) +
                 new_state.get("anthropic_direct_models", []) +
+                new_state.get("chatgpt_models", []) +
                 new_state.get("lmstudio_models", [])
             )
             # Filter for tier first
@@ -737,7 +805,8 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                     new_state.get("gemini_models", []) +
                     new_state.get("bedrock_models", []) +
                     new_state.get("anthropic_direct_models", []) +
-                new_state.get("lmstudio_models", [])
+                    new_state.get("chatgpt_models", []) +
+                    new_state.get("lmstudio_models", [])
                 )
                 filtered = filter_models_for_tier(all_models, tier)
                 if query:
@@ -1251,28 +1320,39 @@ class LarsBootstrapTUI(ReactiveGlassApp):
             lm_content.append(f"  [green]✓ {lm_model_count} models available[/green]")
         
         widgets.append(glass_panel("lmstudio_panel", lm_content, x + 55, 26, 45, 11, colors, "secondary"))
-        
-        # Help panel
-        help_content = [
-            f"[bold {colors['light']}]Getting API Keys[/bold {colors['light']}]",
-            separator(30),
+
+        # ChatGPT Subscription
+        cg_content = [
+            f"[bold {colors['accent']}]💬 ChatGPT Subscription[/bold {colors['accent']}]  [dim]— OpenAI subscription OAuth[/dim]",
+            separator(40),
             "",
-            "[bold]OpenRouter[/bold]: openrouter.ai/keys",
-            "  Best starting point — one key,",
-            "  access to GPT-4o, Claude, Gemini, etc.",
-            "",
-            "[bold]Anthropic[/bold]: console.anthropic.com",
-            "[bold]Gemini[/bold]: aistudio.google.com",
-            "[bold]Bedrock[/bold]: Uses ~/.aws/credentials",
-            "[bold]Ollama[/bold]: ollama.com (install locally)",
-            "[bold]LM Studio[/bold]: lmstudio.ai",
-            "",
-            "[dim]You need at least one provider.[/dim]",
-            "[dim]OpenRouter is recommended for[/dim]",
-            "[dim]getting started quickly.[/dim]",
         ]
-        
-        widgets.append(glass_panel("help_panel", help_content, x + 55, 38, 45, 12, colors, "accent"))
+
+        cg_enabled = self.state.get("chatgpt_enabled", False)
+        cg_status = self.state.get("chatgpt_status", "none")
+        cg_msg = self.state.get("chatgpt_message", "")
+
+        is_focused = self.state.get("focused_field") == 13
+        prefix = f"[{colors['accent']}]▶[/{colors['accent']}]" if is_focused else " "
+        enabled_txt = "[green]Enabled[/green]" if cg_enabled else "[dim]Disabled[/dim]"
+        cg_content.append(f"{prefix} Status: {enabled_txt}  [dim](e to toggle)[/dim]")
+
+        is_focused = self.state.get("focused_field") == 14
+        prefix = f"[{colors['accent']}]▶[/{colors['accent']}]" if is_focused else " "
+        if self.state.get("chatgpt_token_dir_editing"):
+            dir_display = f"[on {colors['primary']}]{self.state.get('chatgpt_token_dir_buffer', '')}█[/on {colors['primary']}]"
+        else:
+            dir_display = self.state.get("chatgpt_token_dir", "") or "[dim](LiteLLM default)[/dim]"
+
+        cg_content.append(f"{prefix} Token dir: {dir_display}")
+        cg_content.append(f"  {status_icon(cg_status)} {cg_msg}" if cg_msg else "")
+        cg_content.append("  [dim]First chatgpt/* call may prompt device login[/dim]")
+
+        cg_model_count = len(self.state.get("chatgpt_models", []))
+        if cg_model_count > 0:
+            cg_content.append(f"  [green]✓ {cg_model_count} models available[/green]")
+
+        widgets.append(glass_panel("chatgpt_panel", cg_content, x + 55, 38, 45, 12, colors, "accent"))
         
         return widgets
     
@@ -1369,6 +1449,7 @@ class LarsBootstrapTUI(ReactiveGlassApp):
             gm_count = len(self.state.get("gemini_models", []))
             br_count = len(self.state.get("bedrock_models", []))
             ad_count = len(self.state.get("anthropic_direct_models", []))
+            cg_count = len(self.state.get("chatgpt_models", []))
             lm_count = len(self.state.get("lmstudio_models", []))
             
             help_content = [
@@ -1387,6 +1468,7 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                 f"  Gemini: {gm_count}" if gm_count else "  [dim]Gemini: ×[/dim]",
                 f"  Bedrock: {br_count}" if br_count else "  [dim]Bedrock: ×[/dim]",
                 f"  Anthropic: {ad_count}" if ad_count else "  [dim]Anthropic: ×[/dim]",
+                f"  ChatGPT: {cg_count}" if cg_count else "  [dim]ChatGPT: ×[/dim]",
                 f"  LM Studio: {lm_count}" if lm_count else "  [dim]LM Studio: ×[/dim]",
                 "",
                 "[bold]Defaults:[/bold]",
@@ -1588,6 +1670,15 @@ class LarsBootstrapTUI(ReactiveGlassApp):
             summary_content.append(f"  [green]✓[/green] Anthropic Direct ({key_type})")
         else:
             summary_content.append(f"  [dim]○[/dim] Anthropic Direct (disabled)")
+
+        if self.state.get("chatgpt_enabled"):
+            token_dir = self.state.get("chatgpt_token_dir", "")
+            if token_dir:
+                summary_content.append(f"  [green]✓[/green] ChatGPT Subscription ({token_dir})")
+            else:
+                summary_content.append("  [green]✓[/green] ChatGPT Subscription (LiteLLM default token dir)")
+        else:
+            summary_content.append(f"  [dim]○[/dim] ChatGPT Subscription (disabled)")
         
         summary_content.append("")
         summary_content.append("[bold]Model Tiers:[/bold]")
@@ -1769,6 +1860,18 @@ class LarsBootstrapTUI(ReactiveGlassApp):
             elif char and char.isprintable():
                 self.dispatch(Action("EDIT_LMSTUDIO_HOST_CHAR", char))
             return
+
+        if self.state.get("chatgpt_token_dir_editing"):
+            if key == "escape":
+                self.dispatch(Action("CANCEL_EDIT_CHATGPT_DIR"))
+            elif key == "enter":
+                self.dispatch(Action("FINISH_EDIT_CHATGPT_DIR"))
+                self._validate_chatgpt_subscription()
+            elif key == "backspace":
+                self.dispatch(Action("EDIT_CHATGPT_DIR_BACKSPACE"))
+            elif char and char.isprintable():
+                self.dispatch(Action("EDIT_CHATGPT_DIR_CHAR", char))
+            return
         
         if self.state.get("sql_conn_name_editing"):
             if key == "escape":
@@ -1850,6 +1953,10 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                     self.dispatch(Action("TOGGLE_LMSTUDIO"))
                     if self.state.get("lmstudio_enabled"):
                         self._validate_lmstudio_host()
+                elif field == 13:
+                    self.dispatch(Action("TOGGLE_CHATGPT"))
+                    if self.state.get("chatgpt_enabled"):
+                        self._validate_chatgpt_subscription()
             elif key == "enter":
                 field = self.state.get("focused_field", 0)
                 if field == 0:
@@ -1866,6 +1973,8 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                     self.dispatch(Action("START_EDIT_ANTHROPIC_KEY"))
                 elif field == 12:
                     self.dispatch(Action("START_EDIT_LMSTUDIO_HOST"))
+                elif field == 14:
+                    self.dispatch(Action("START_EDIT_CHATGPT_DIR"))
             elif key == "v":
                 # Manual validation trigger
                 field = self.state.get("focused_field", 0)
@@ -1881,6 +1990,8 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                     self._validate_anthropic_key()
                 elif field in (11, 12):
                     self._validate_lmstudio_host()
+                elif field in (13, 14):
+                    self._validate_chatgpt_subscription()
         
         elif screen == Screen.MODELS:
             if self.state.get("model_selector_open"):
@@ -1979,6 +2090,10 @@ class LarsBootstrapTUI(ReactiveGlassApp):
             for char in text:
                 if char.isprintable():
                     self.dispatch(Action("EDIT_LMSTUDIO_HOST_CHAR", char))
+        elif self.state.get("chatgpt_token_dir_editing"):
+            for char in text:
+                if char.isprintable():
+                    self.dispatch(Action("EDIT_CHATGPT_DIR_CHAR", char))
         elif self.state.get("sql_conn_name_editing"):
             for char in text:
                 if char.isprintable():
@@ -2138,6 +2253,35 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                 self.call_later(lambda: self.dispatch(Action("SET_STATUS", f"Loaded {len(models)} LM Studio models")))
         
         threading.Thread(target=do_validate, daemon=True).start()
+
+    def _validate_chatgpt_subscription(self):
+        """Validate ChatGPT subscription config and load known models in background."""
+        def do_validate():
+            token_dir = (self.state.get("chatgpt_token_dir", "") or "").strip()
+
+            if token_dir:
+                expanded_token_dir = os.path.expanduser(token_dir)
+                os.environ["CHATGPT_TOKEN_DIR"] = expanded_token_dir
+                os.makedirs(expanded_token_dir, exist_ok=True)
+            else:
+                # Use LiteLLM/provider default location when not explicitly set.
+                os.environ.pop("CHATGPT_TOKEN_DIR", None)
+
+            valid, message = validate_chatgpt_subscription(
+                os.environ.get("CHATGPT_TOKEN_DIR") or None
+            )
+            self.call_later(lambda: self.dispatch(Action("VALIDATE_CHATGPT_RESULT", {
+                "valid": valid,
+                "message": message,
+            })))
+
+            if valid:
+                self.call_later(lambda: self.dispatch(Action("SET_STATUS", "Loading ChatGPT models...")))
+                models = fetch_chatgpt_models()
+                self.call_later(lambda: self.dispatch(Action("SET_CHATGPT_MODELS", models)))
+                self.call_later(lambda: self.dispatch(Action("SET_STATUS", f"Loaded {len(models)} ChatGPT models")))
+
+        threading.Thread(target=do_validate, daemon=True).start()
     
     def _test_sql_connection(self):
         """Test SQL connection in background."""
@@ -2260,10 +2404,36 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                     ant_env = 'ANTHROPIC_OAUTH_TOKEN' if ant_key.startswith('sk-ant-oat') else 'ANTHROPIC_API_KEY'
                     env_lines.append(f"{ant_env}={ant_key}")
                     os.environ[ant_env] = ant_key
+                if self.state.get("chatgpt_enabled"):
+                    chatgpt_token_dir = (self.state.get("chatgpt_token_dir", "") or "").strip()
+                    if chatgpt_token_dir:
+                        expanded_token_dir = os.path.expanduser(chatgpt_token_dir)
+                        env_lines.append(f"CHATGPT_TOKEN_DIR={expanded_token_dir}")
+                        os.environ["CHATGPT_TOKEN_DIR"] = expanded_token_dir
+                        os.makedirs(expanded_token_dir, exist_ok=True)
                 
                 env_path = lars_root / '.env'
                 env_path.write_text('\n'.join(env_lines) + '\n')
                 log(f"  ✓ {env_path}")
+
+                # =========================================================
+                # Step 2b: Authenticate ChatGPT subscription (device login)
+                # =========================================================
+                if self.state.get("chatgpt_enabled"):
+                    log("Authenticating ChatGPT subscription...")
+
+                    def _chatgpt_progress(line: str):
+                        log(f"  {line}")
+
+                    auth_ok, auth_message = authenticate_chatgpt_subscription(
+                        token_dir=self.state.get("chatgpt_token_dir", "") or None,
+                        progress=_chatgpt_progress,
+                    )
+                    if auth_ok:
+                        log(f"  ✓ {auth_message}")
+                    else:
+                        log(f"  ⚠ {auth_message}")
+                        log("  ⚠ Non-interactive chatgpt/* calls may fail until OAuth is completed.")
                 
                 # =========================================================
                 # Step 3: Write models.yaml
@@ -2287,6 +2457,8 @@ class LarsBootstrapTUI(ReactiveGlassApp):
                                 "ANTHROPIC_OAUTH_TOKEN" if self.state.get('anthropic_direct_key', '').startswith('sk-ant-oat')
                                 else "ANTHROPIC_API_KEY"
                             ),
+                            chatgpt_enabled=self.state.get('chatgpt_enabled', False),
+                            chatgpt_token_dir_env="CHATGPT_TOKEN_DIR",
                             lmstudio_enabled=self.state.get('lmstudio_enabled', False),
                             lmstudio_host=self.state.get('lmstudio_host', 'http://localhost:1234'),
                         ),

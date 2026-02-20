@@ -191,6 +191,8 @@ def extract_provider_from_model(model: str) -> str:
         return "ollama"
     if model.startswith("lmstudio/"):
         return "lmstudio"
+    if model.startswith("chatgpt/"):
+        return "chatgpt"
 
     # Generic provider extraction from "provider/model" format
     if "/" in model:
