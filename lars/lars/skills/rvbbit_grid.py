@@ -280,6 +280,50 @@ def grid_drill_up() -> str:
     return json.dumps(result, indent=2)
 
 
+@simple_eddy
+def grid_atom_screenshot(atom_id: str, save_path: Optional[str] = None) -> str:
+    """
+    Get a screenshot of a rendered atom.
+
+    Returns the path to the saved PNG file. If the atom hasn't been rendered
+    yet or the grid isn't loaded, returns an error.
+
+    Use this to visually verify what an atom looks like after resolution.
+
+    Args:
+        atom_id: UUID of the atom to screenshot
+        save_path: Optional path to save the PNG. If not given, returns the
+                   default path at ~/.rvbbit/atom-thumbnails/{atom_id}.png
+    """
+    import os
+
+    # Check if screenshot already exists on disk (captured by the UI)
+    default_path = os.path.expanduser(f"~/.rvbbit/atom-thumbnails/{atom_id}.png")
+    if os.path.exists(default_path):
+        if save_path:
+            import shutil
+            shutil.copy2(default_path, save_path)
+            return json.dumps({"path": save_path, "source": "disk"})
+        return json.dumps({"path": default_path, "source": "disk"})
+
+    # Try fetching from the API (triggers capture if grid is loaded)
+    try:
+        url = _rvbbit_url(f"grid/atoms/{atom_id}/screenshot")
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            if resp.headers.get("Content-Type", "").startswith("image/"):
+                png_data = resp.read()
+                out_path = save_path or default_path
+                os.makedirs(os.path.dirname(out_path), exist_ok=True)
+                with open(out_path, "wb") as f:
+                    f.write(png_data)
+                return json.dumps({"path": out_path, "source": "api", "size": len(png_data)})
+            else:
+                return json.dumps({"error": "No screenshot available", "response": resp.read().decode()[:200]})
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
 # ── Registration ─────────────────────────────────────────────
 
 register_skill("grid_current", grid_current)
@@ -291,3 +335,4 @@ register_skill("grid_remove_atom", grid_remove_atom)
 register_skill("grid_execute", grid_execute)
 register_skill("grid_create_subgrid", grid_create_subgrid)
 register_skill("grid_drill_up", grid_drill_up)
+register_skill("grid_atom_screenshot", grid_atom_screenshot)

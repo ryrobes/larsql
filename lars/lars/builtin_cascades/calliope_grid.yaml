@@ -163,6 +163,7 @@ cells:
       - grid_execute
       - grid_create_subgrid
       - grid_drill_up
+      - grid_atom_screenshot
       # Data Discovery
       - list_sql_connections
       - smart_sql_search
