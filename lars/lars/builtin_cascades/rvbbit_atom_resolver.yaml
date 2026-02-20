@@ -15,16 +15,18 @@ inputs_schema:
   sibling_context: "Optional: JSON array of existing sibling atoms (intent + displayType + title)"
   grid_name: "Optional: name of the grid this atom belongs to"
 
-model: anthropic/claude-opus-4.6
+#model: anthropic/claude-sonnet-4.6
+model: google/gemini-3.1-pro-preview
 
 cells:
   - name: resolve
-    model: anthropic/claude-opus-4.6
+    #model: anthropic/claude-sonnet-4.6
+    model: google/gemini-3.1-pro-preview
     skills:
       - sql_search
       - sql_data
     rules:
-      max_attempts: 3
+      max_attempts: 5
       loop_until:
         python: |
           import json
@@ -37,22 +39,28 @@ cells:
                   text = text.rsplit('```', 1)[0]
               text = text.strip()
               obj = json.loads(text)
+
+              atoms = None
               if isinstance(obj, dict) and 'atoms' in obj:
                   atoms = obj['atoms']
-                  if isinstance(atoms, list) and len(atoms) > 0 and 'sql' in atoms[0]:
-                      result = {"valid": True, "reason": f"Valid atom spec with {len(atoms)} atoms"}
-                  else:
-                      result = {"valid": False, "reason": "Missing 'atoms' array or atoms missing 'sql' field"}
-              elif isinstance(obj, list) and len(obj) > 0 and 'sql' in obj[0]:
-                  # Bare array without wrapper — still usable
-                  result = {"valid": True, "reason": f"Valid atom array with {len(obj)} atoms"}
+              elif isinstance(obj, list) and len(obj) > 0:
+                  atoms = obj
+
+              if not atoms or not isinstance(atoms, list) or len(atoms) == 0:
+                  result = {"valid": False, "reason": "Expected JSON with 'atoms' array"}
+              elif 'sql' not in atoms[0]:
+                  result = {"valid": False, "reason": "Atoms missing 'sql' field"}
+              elif not atoms[0].get('verified'):
+                  result = {"valid": False, "reason": "SQL not verified. You MUST call sql_data to execute the query and confirm it returns rows BEFORE outputting the JSON. Set 'verified': true after confirming."}
               else:
-                  result = {"valid": False, "reason": "Expected JSON with 'atoms' array containing atom specs with 'sql' fields"}
+                  result = {"valid": True, "reason": f"Valid verified atom spec with {len(atoms)} atoms"}
           except json.JSONDecodeError as e:
               result = {"valid": False, "reason": f"Invalid JSON: {e}"}
       retry_instructions: |
-        Your output was not valid JSON. Return ONLY a JSON object like: {"atoms": [{"intent": "...", "title": "...", "sql": "SELECT ...", "displayType": "barChart", ...}]}
-        No markdown, no explanation, just the JSON object. Attempt {{ attempt }}/{{ max_attempts }}
+        {{ validation_reason }}
+        Return ONLY a JSON object like: {"atoms": [{"intent": "...", "title": "...", "sql": "SELECT ...", "displayType": "barChart", "verified": true, ...}]}
+        Remember: you MUST call sql_data with the exact SQL query and confirm it returns data before setting "verified": true.
+        If the SQL had errors, fix them and re-run sql_data. Attempt {{ attempt }}/{{ max_attempts }}
     instructions: |
       You are an RVBBIT atom resolver. Given a user's intent, you discover relevant data
       and return structured atom specification(s) for the RVBBIT semantic grid.
@@ -89,12 +97,18 @@ cells:
       {{ input.sibling_context }}
       {% endif %}
 
-      ## Your Task
+      ## Your Task (FOLLOW THIS EXACTLY)
 
       1. Use `sql_search` to discover relevant tables and columns
-      2. Use `sql_data` to test queries and verify they return data
-      3. Choose the best display type for each atom
-      4. Return structured JSON
+      2. Write a DuckDB SQL query for the intent
+      3. **EXECUTE the query with `sql_data`** — this is MANDATORY
+      4. If `sql_data` returns an error: FIX the SQL and re-run `sql_data`
+      5. Only after `sql_data` returns actual rows: choose display type
+      6. Return structured JSON with `"verified": true`
+
+      **CRITICAL:** Do NOT output JSON until you have called `sql_data` and confirmed
+      the query works. If you skip this step, validation will reject your output.
+      This is DuckDB SQL — avoid non-DuckDB functions (e.g. use `upper()` not `initcap()`).
 
       ## Output Schema
 
@@ -112,6 +126,7 @@ cells:
             "displayType": "number|text|barChart|lineChart|areaChart|scatterPlot|pieChart|table|sparkline|list|map|status",
             "gridSize": "small|wide|tall|medium|large|hero",
             "detectedDimensions": ["column_name_1", "column_name_2"],
+            "verified": true,
             "displayHints": {
               "chartType": "bar",
               "colorField": "optional_field_for_color",
@@ -157,10 +172,13 @@ cells:
 
       ## Rules
 
-      - All queries must be valid DuckDB SQL
-      - Test every query with sql_data before including it
+      - All queries must be valid **DuckDB** SQL (not Postgres, not MySQL)
+      - DuckDB gotchas: no `initcap()` (use `upper(left(col,1)) || lower(col[2:])`), 
+        no `to_char()` (use `strftime`), no `generate_series` for dates (use `range`)
+      - **You MUST execute every query with sql_data and confirm it returns rows**
+      - If sql_data returns an error, fix the SQL and try again
+      - Set `"verified": true` only after sql_data succeeds with actual data
       - Use `csv_files.` schema prefix for CSV-loaded tables
-      - Use `ask_data('question')` for complex analytical queries you can't write directly
       - For number atoms: query should return exactly one row, one numeric column
       - For chart atoms: first column = labels/x-axis, remaining = values/series
       - Titles should be concise and descriptive (not "Chart 1")
