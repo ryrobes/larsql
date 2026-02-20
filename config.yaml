@@ -1,0 +1,56 @@
+# LARS Configuration
+# Environment variables (LARS_*) always override values in this file.
+
+# ─── General ─────────────────────────────────
+debug: false  # Enable verbose debug logging
+no_splash: false  # Disable startup splash art
+session_id_style: "woodland"  # Session naming style: woodland, uuid, short
+data_format: "auto"  # Output format: auto, table, json, csv
+show_cli_images: true  # Render images in CLI output
+
+# ─── Server ──────────────────────────────────
+parallel_workers: 3  # Parallel workers for semantic SQL operators
+result_max_rows: 100000  # Maximum rows returned per query
+studio_pgwire_port: 5444  # PostgreSQL wire-protocol port
+
+# ─── Learning / Dreaming ─────────────────────
+learning:
+  enabled: true  # Enable the self-optimization dream loop
+  interval: 3600  # Dream loop interval in seconds
+  calibration_threshold: 5  # Min data points before calibrating
+  accuracy_floor: 0.9  # Minimum accuracy before mutations
+  mutation_threshold: 10  # Min data points before mutating
+  models: []  # Model list for dreaming (empty = use default)
+
+# ─── Features ────────────────────────────────
+features:
+  smart_search: true  # LLM-powered post-filtering of search results
+  research_mode: false  # Enable research mode by default
+  embeddings: false  # Enable embedding worker
+  context_cards: false  # Enable context card generation
+  ephemeral_rag: true  # Auto-index large content for RAG
+  mcp: true  # Enable Model Context Protocol servers
+  file_watcher: true  # Watch for file changes in artifacts
+  relevance_analysis: true  # Run relevance analysis on queries
+  confidence_assessment: false  # Enable confidence scoring
+  shadow_assessment: false  # Enable shadow quality assessment
+  analytics: false  # Disable analytics collection (set true to disable)
+  auto_save_research: true  # Auto-save research sessions
+  harbor: true  # Enable HuggingFace Spaces integration
+
+# ─── Display / UI ────────────────────────────
+display:
+  chart_theme: "dark"  # Chart color theme: dark, light
+  toon_transport: true  # Enable rich table transport
+  toon_min_rows: 5  # Minimum rows for table rendering
+
+# ─── Context Management ──────────────────────
+context:
+  keep_recent_images: 0  # Max recent images to keep in context (0=all)
+  keep_recent_turns: 0  # Max recent turns to keep in context (0=all)
+
+# ─── Sync / File Watcher ─────────────────────
+sync:
+  sync_poll_interval: 30  # DB poll interval for artifact sync (seconds)
+  sync_write_files: true  # Write synced artifacts to disk
+  watch_debounce_delay: 1.0  # File watcher debounce delay (seconds)

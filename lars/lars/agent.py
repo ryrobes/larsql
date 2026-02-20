@@ -14,6 +14,33 @@ logger = logging.getLogger(__name__)
 _DEBUG = os.environ.get('LARS_DEBUG', '').lower() in ('1', 'true', 'yes')
 
 
+def _get_supported_chatgpt_models() -> set[str]:
+    """Return ChatGPT model IDs (without `chatgpt/` prefix) known by LiteLLM."""
+    supported: set[str] = set()
+    try:
+        for model_id in getattr(litellm, "chatgpt_models", set()) or set():
+            if not isinstance(model_id, str):
+                continue
+            clean = model_id.strip()
+            if not clean:
+                continue
+            if clean.startswith("chatgpt/"):
+                clean = clean.split("/", 1)[1]
+            supported.add(clean)
+    except Exception:
+        return set()
+    return supported
+
+
+def _allow_unlisted_chatgpt_models() -> bool:
+    """Allow trying ChatGPT models not in LiteLLM's current model map."""
+    return os.environ.get("LARS_ALLOW_UNLISTED_CHATGPT_MODELS", "").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
+
 def _parse_llm_response_content(content: Any) -> Any:
     """
     Parse LLM response content - try TOON, then JSON, then return as-is.
@@ -321,6 +348,20 @@ class Agent:
         elif self.model and self.model.startswith("chatgpt/"):
             cfg = get_config()
             raw_model = args["model"].replace("chatgpt/", "", 1)
+
+            supported_models = _get_supported_chatgpt_models()
+            if (
+                supported_models
+                and raw_model not in supported_models
+                and not _allow_unlisted_chatgpt_models()
+            ):
+                supported_str = ", ".join(sorted(supported_models))
+                raise ValueError(
+                    f"Unsupported ChatGPT model '{self.model}' for installed LiteLLM. "
+                    f"Supported chatgpt/* models: {supported_str}. "
+                    f"Choose one of these, upgrade LiteLLM, or set "
+                    f"LARS_ALLOW_UNLISTED_CHATGPT_MODELS=1 to force-try unlisted models."
+                )
 
             # Let LiteLLM chatgpt provider own endpoint + auth token flow
             args.pop("base_url", None)

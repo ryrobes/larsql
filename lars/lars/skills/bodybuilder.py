@@ -50,6 +50,35 @@ from ..unified_logs import log_unified
 from ..blocking_cost import extract_provider_from_model
 
 
+def _get_supported_chatgpt_models() -> set[str]:
+    """Return ChatGPT model IDs (without `chatgpt/` prefix) known by LiteLLM."""
+    try:
+        import litellm
+    except Exception:
+        return set()
+
+    supported: set[str] = set()
+    for model_id in getattr(litellm, "chatgpt_models", set()) or set():
+        if not isinstance(model_id, str):
+            continue
+        clean = model_id.strip()
+        if not clean:
+            continue
+        if clean.startswith("chatgpt/"):
+            clean = clean.split("/", 1)[1]
+        supported.add(clean)
+    return supported
+
+
+def _allow_unlisted_chatgpt_models() -> bool:
+    """Allow trying ChatGPT models not in LiteLLM's current model map."""
+    return os.environ.get("LARS_ALLOW_UNLISTED_CHATGPT_MODELS", "").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
+
 # Default model for bodybuilder planning (converts natural language to API body)
 # Uses a fast, cheap model for the planning step
 try:
@@ -123,6 +152,22 @@ def _execute_single_body(
     # Provider-specific routing
     if model.startswith("chatgpt/"):
         raw_model = model.replace("chatgpt/", "", 1)
+        supported_models = _get_supported_chatgpt_models()
+        if (
+            supported_models
+            and raw_model not in supported_models
+            and not _allow_unlisted_chatgpt_models()
+        ):
+            supported_str = ", ".join(sorted(supported_models))
+            return {
+                "_route": "error",
+                "error": (
+                    f"Unsupported ChatGPT model '{model}' for installed LiteLLM. "
+                    f"Supported chatgpt/* models: {supported_str}. "
+                    f"Choose one of these, upgrade LiteLLM, or set "
+                    f"LARS_ALLOW_UNLISTED_CHATGPT_MODELS=1 to force-try unlisted models."
+                ),
+            }
         args["model"] = raw_model
         args.pop("base_url", None)
         args.pop("api_key", None)

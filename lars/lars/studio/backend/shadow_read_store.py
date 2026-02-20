@@ -622,8 +622,17 @@ class ShadowReadStore:
         return f"{order_col} DESC NULLS LAST"
 
     def _drop_relation(self, conn: duckdb.DuckDBPyConnection, relation: str):
-        conn.execute(f"DROP VIEW IF EXISTS {relation}")
-        conn.execute(f"DROP TABLE IF EXISTS {relation}")
+        for drop_stmt in (
+            f"DROP VIEW IF EXISTS {relation}",
+            f"DROP TABLE IF EXISTS {relation}",
+        ):
+            try:
+                conn.execute(drop_stmt)
+            except Exception as err:
+                msg = str(err).lower()
+                if "trying to drop type" in msg and "is of type" in msg:
+                    continue
+                raise
 
     def _shadow_view_missing(self, conn: duckdb.DuckDBPyConnection, view_name: str) -> bool:
         try:
