@@ -5073,7 +5073,9 @@ Refinement directive: {reforge_config.honing_prompt}
                     metadata={
                         "config_path": str(self.config_path) if isinstance(self.config_path, str) else "inline",
                         "execution_source": execution_source
-                    }
+                    },
+                    caller_id=self.caller_id,
+                    invocation_metadata=self.invocation_metadata
                 )
         except Exception as e:
             # Don't fail cascade if session state creation fails (backward compat)

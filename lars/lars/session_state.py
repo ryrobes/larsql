@@ -834,11 +834,20 @@ def create_session(
     cascade_id: str,
     parent_session_id: Optional[str] = None,
     depth: int = 0,
-    metadata: Optional[Dict[str, Any]] = None
+    metadata: Optional[Dict[str, Any]] = None,
+    caller_id: Optional[str] = None,
+    invocation_metadata: Optional[Dict[str, Any]] = None
 ) -> SessionState:
     """Create a new session in STARTING status."""
     manager = get_session_state_manager()
-    return manager.create_session(session_id, cascade_id, parent_session_id, depth, metadata)
+    state = manager.create_session(session_id, cascade_id, parent_session_id, depth, metadata)
+    # Explicitly set caller_id if provided (Echo lookup in create_session can miss due to timing)
+    if caller_id and not state.caller_id:
+        state.caller_id = caller_id
+        if invocation_metadata:
+            state.invocation_metadata_json = json.dumps(invocation_metadata)
+        manager._save_state(state)
+    return state
 
 
 def update_session_status(
