@@ -21,7 +21,7 @@ auto_context:
   intra_cell:
     enabled: true
     window: 8
-    compress_loops: false
+    compress_loops: true
     mask_observations_after: 3
 
 cells:

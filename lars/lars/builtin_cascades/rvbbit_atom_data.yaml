@@ -1,0 +1,21 @@
+# rvbbit_atom_data — Atom Data Fetch
+#
+# Lightweight deterministic cascade that executes a SQL query and returns
+# clean JSON data. Used by RVBBIT's AtomExecutor for both initial data
+# fetches and filtered re-fetches.
+#
+# Inputs:
+#   query: The SQL query to execute
+#
+# This is intentionally simple — one tool call, no LLM. But having it as
+# a YAML means we can iterate on it (add retry logic, validation, error
+# recovery) without touching Swift code.
+
+cascade_id: rvbbit_atom_data
+description: "Execute a SQL query and return clean JSON data for atom rendering"
+
+cells:
+  - name: query
+    tool: sql_data
+    inputs:
+      query: "{{ input.query }}"
