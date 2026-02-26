@@ -158,18 +158,32 @@ def file_exists(path: str) -> Dict[str, Any]:
     }
 
 
-def parse_json(text: str) -> Dict[str, Any]:
+def parse_json(text: Any) -> Dict[str, Any]:
     """
-    Parse JSON from text.
+    Parse JSON from text or pass through already-parsed JSON values.
 
     Args:
-        text: Text containing JSON
+        text: Text containing JSON, or an already-parsed JSON object
 
     Returns:
         Dict with parsed data or error
     """
     import json
     import re
+
+    if isinstance(text, (dict, list)):
+        return {
+            "_route": "success",
+            "data": text,
+            "type": type(text).__name__
+        }
+
+    if isinstance(text, bytes):
+        text = text.decode("utf-8", errors="replace")
+    elif text is None:
+        text = ""
+    else:
+        text = str(text)
 
     # Try to extract JSON from code blocks if present
     json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', text)

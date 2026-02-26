@@ -539,19 +539,22 @@ def python_data(
         # Note: Visualization libraries (matplotlib, plotly, PIL) are NOT pre-imported.
         # Each cell should import what it needs, just like in Jupyter.
         # Only data access (data.*), pandas (pd), numpy (np), and json are pre-loaded.
-        exec_locals = {}
+        #
+        # Use a shared namespace for globals+locals so helper functions/classes defined
+        # in the snippet can reference each other (important for inline validators).
+        exec_namespace = dict(exec_globals)
 
         # Execute the code
-        exec(code, exec_globals, exec_locals)
+        exec(code, exec_namespace, exec_namespace)
 
         # Extract result
-        if 'result' not in exec_locals:
+        if 'result' not in exec_namespace:
             return {
                 "_route": "error",
                 "error": "Code must set a 'result' variable. Example: result = df"
             }
 
-        result = exec_locals['result']
+        result = exec_namespace['result']
 
         # Determine result type and format response
 

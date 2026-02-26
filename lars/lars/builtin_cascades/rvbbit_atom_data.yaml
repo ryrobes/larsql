@@ -86,19 +86,12 @@ cells:
               return None
 
           text = (content or "").strip()
+          raw_tool_outputs = locals().get("tool_outputs", [])
 
-          # The validator receives either:
-          # 1) raw assistant JSON
-          # 2) "Agent Response: ... Tool Execution Results: [tool]: ..."
-          if "Tool Execution Results:" in text:
-              agent_part, tool_part = text.split("Tool Execution Results:", 1)
-          else:
-              agent_part, tool_part = text, ""
+          obj = _parse_json_like(text)
+          if isinstance(obj, str):
+              obj = _parse_json_like(obj)
 
-          if "Agent Response:" in agent_part:
-              agent_part = agent_part.split("Agent Response:", 1)[1]
-
-          obj = _parse_json_like(agent_part)
           if not isinstance(obj, dict):
               result = {"valid": False, "reason": "Return a JSON object with sql/verified/reason"}
           elif "sql" not in obj or not str(obj.get("sql", "")).strip():
@@ -106,9 +99,16 @@ cells:
           elif obj.get("verified") is not True:
               result = {"valid": False, "reason": "Set verified=true only after running sql_data successfully"}
           else:
-              # Require at least one sql_data tool result and require it succeeded.
-              blocks = re.findall(r"\[([^\]]+)\]:\s*([\s\S]*?)(?=\n\[[^\]]+\]:|\Z)", tool_part)
-              sql_blocks = [payload for tool_name, payload in blocks if tool_name.strip() in ("sql_data", "smart_sql_data")]
+              # Require at least one SQL execution tool result and require it succeeded.
+              sql_blocks = []
+
+              if isinstance(raw_tool_outputs, list):
+                  for item in raw_tool_outputs:
+                      if not isinstance(item, dict):
+                          continue
+                      tool_name = str(item.get("tool") or item.get("tool_name") or "").strip()
+                      if tool_name in ("sql_data", "smart_sql_data", "safe_sql_data", "safe_sql_run"):
+                          sql_blocks.append(str(item.get("result", "")))
 
               if not sql_blocks:
                   result = {"valid": False, "reason": "You must call sql_data and include successful tool output before verified=true"}
@@ -122,12 +122,23 @@ cells:
                           err = last_sql_output.get("error", "unknown error")
                           result = {"valid": False, "reason": f"sql_data did not succeed: {err}"}
                       elif int(last_sql_output.get("row_count", 0) or 0) <= 0:
-                          result = {"valid": False, "reason": "sql_data succeeded but returned 0 rows; repair query and re-check"}
+                          result = {
+                              "valid": False,
+                              "reason": (
+                                  "sql_data succeeded but returned 0 rows; inspect real categorical values "
+                                  "(codes vs names, casing, whitespace) and adjust filters, then re-run sql_data."
+                              )
+                          }
                       else:
                           result = {"valid": True, "reason": "Verified SQL with successful sql_data output"}
       retry_instructions: |
         {{ validation_reason }}
-        Return ONLY raw JSON. Attempt {{ attempt }}/{{ max_attempts }}.
+        Tool calls are allowed before the final JSON.
+        Before final JSON, run sql_data(query=<repaired_sql>, limit=10).
+        Set verified=true only when sql_data succeeds and row_count > 0.
+        If row_count == 0, inspect/filter categorical values using sql_data and repair predicates (e.g. use lower(...) with IN including codes and names).
+        Return ONLY raw JSON object: {"sql":"...","verified":true,"reason":"..."}.
+        Attempt {{ attempt }}/{{ max_attempts }}.
     handoffs:
       - parse_repair_query
     instructions: |
@@ -149,10 +160,13 @@ cells:
 
       Rules:
       - This is DuckDB SQL.
+      - Tool calls are allowed before the final JSON output.
       - Do not return markdown.
       - For verification calls, use `sql_data` with `limit: 10` to avoid huge outputs.
       - Do NOT set a `connection` unless absolutely necessary.
       - Only set `"verified": true` after a successful `sql_data` run.
+      - If your query returns 0 rows, treat it as not verified and fix filter values.
+      - For text filters (country/state/category), inspect distinct real values first with sql_data and use robust matching (lower/trim/IN aliases).
 
       Return JSON only:
       {

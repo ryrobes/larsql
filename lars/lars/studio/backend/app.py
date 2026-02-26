@@ -38,7 +38,14 @@ else:
 
 # Add lars package to path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..', 'lars')))
-from lars.db_adapter import get_db, set_query_source, set_query_caller, set_query_request_path, set_query_page_ref
+from lars.db_adapter import (
+    get_db,
+    set_query_source,
+    set_query_caller,
+    set_query_request_path,
+    set_query_page_ref,
+    query_source_context,
+)
 from lars.config import get_clickhouse_url, get_builtin_cascades_dir, get_builtin_skills_dir, get_builtin_cell_types_dir
 from lars.loaders import load_config_file
 from urllib.parse import urlparse
@@ -151,7 +158,7 @@ from tests_api import tests_bp
 from runtime_logs_api import runtime_logs_bp
 from auth_api import auth_api
 from calliope_api import calliope_bp
-from shadow_read_store import get_shadow_read_store, start_shadow_read_store
+from shadow_read_store import start_shadow_read_store
 
 app.register_blueprint(message_flow_bp)
 app.register_blueprint(checkpoint_bp)
@@ -221,12 +228,31 @@ def _run_startup_tasks():
 # Run startup tasks at module load (works for both dev and production)
 _run_startup_tasks()
 
-# Start shadow read-store refresher.
-# One backend process becomes leader and keeps the mirror DB fresh.
-try:
-    start_shadow_read_store()
-except Exception as e:
-    print(f"[Studio] Shadow read store startup warning: {e}")
+def _env_enabled(name: str, default: str = "0") -> bool:
+    raw = os.environ.get(name, default)
+    return str(raw).strip().lower() not in ("0", "false", "no", "off", "")
+
+
+def _strict_ch_read_mode_enabled() -> bool:
+    return _env_enabled("LARS_CH_READ_ENABLED", "0") and not _env_enabled(
+        "LARS_CH_READ_FALLBACK_TO_DUCK", "1"
+    )
+
+
+# Start shadow read-store refresher only when shadow UI reads are enabled
+# and we're not in strict ClickHouse read mode.
+_shadow_ui_reads_enabled = _env_enabled("LARS_SHADOW_UI_READS_ENABLED", "1")
+_strict_ch_read_mode = _strict_ch_read_mode_enabled()
+if _shadow_ui_reads_enabled and not _strict_ch_read_mode:
+    try:
+        start_shadow_read_store()
+    except Exception as e:
+        print(f"[Studio] Shadow read store startup warning: {e}")
+else:
+    if not _shadow_ui_reads_enabled:
+        print("[Studio] Shadow read store disabled (LARS_SHADOW_UI_READS_ENABLED=0)")
+    else:
+        print("[Studio] Shadow read store disabled for strict CH mode")
 
 
 # Set query context for each request (tracks which endpoint/page made the query)
@@ -823,6 +849,7 @@ def get_cascade_definitions():
                                     'triggers': config.get('triggers'),
                                     'cascade_takes': config.get('takes'),  # Cascade-level takes
                                     'explorer': config.get('explorer', False),  # Explorer mode flag
+                                    'sql_function': config.get('sql_function'),  # Semantic SQL operator metadata
                                     'metrics': {
                                         'run_count': 0,
                                         'total_cost': 0.0,
@@ -2518,19 +2545,21 @@ def enable_cascade(cascade_id):
 def get_session_detail(session_id):
     """Get detailed data for a specific session from DuckDB."""
     try:
-        conn = get_db_connection()
-
-        query = "SELECT * FROM unified_logs WHERE session_id = ? ORDER BY timestamp"
-        result = conn.execute(query, [session_id]).fetchall()
-
-        # Get column names
-        columns = conn.execute("DESCRIBE unified_logs").fetchall()
-        column_names = [col[0] for col in columns]
+        db = get_db()
+        escaped_session_id = session_id.replace("'", "''")
+        query = (
+            "SELECT * FROM unified_logs "
+            f"WHERE session_id = '{escaped_session_id}' "
+            "ORDER BY timestamp"
+        )
+        # IMPORTANT: Keep dict rows from adapter directly. Converting to tuples
+        # and zipping against DESCRIBE order can scramble fields in CH mode.
+        result = db.query(query)
 
         # Convert to list of dicts
         entries = []
         for row in result:
-            entry = dict(zip(column_names, row))
+            entry = dict(row)
 
             # Parse JSON fields AND rename to match frontend expectations
             # Frontend expects: content, tool_calls, metadata (not content_json, etc.)
@@ -2559,8 +2588,6 @@ def get_session_detail(session_id):
                     # del entry[json_field]  # Uncomment to remove _json fields
 
             entries.append(entry)
-
-        conn.close()
 
         return jsonify({
             'session_id': session_id,
@@ -2943,25 +2970,23 @@ def dump_session(session_id):
     Reads from the database and saves to logs/session_dumps/{session_id}.json
     """
     try:
-        conn = get_db_connection()
-
-        query = "SELECT * FROM unified_logs WHERE session_id = ? ORDER BY timestamp"
-        result = conn.execute(query, [session_id]).fetchall()
+        db = get_db()
+        escaped_session_id = session_id.replace("'", "''")
+        query = (
+            "SELECT * FROM unified_logs "
+            f"WHERE session_id = '{escaped_session_id}' "
+            "ORDER BY timestamp"
+        )
+        result = db.query(query)
 
         if not result:
             return jsonify({'error': 'Session not found'}), 404
 
-        # Get column names
-        columns = conn.execute("DESCRIBE unified_logs").fetchall()
-        column_names = [col[0] for col in columns]
-
         # Convert to list of dicts
         entries = []
         for row in result:
-            entry = dict(zip(column_names, row))
+            entry = dict(row)
             entries.append(entry)
-
-        conn.close()
 
         # Create dump directory
         dump_dir = os.path.join(LOG_DIR, "session_dumps")
@@ -3818,6 +3843,758 @@ def parse_cascade():
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
+
+
+def _json_loads_safe(raw_value, default):
+    """Parse JSON payloads safely with fallback."""
+    if raw_value is None:
+        return default
+    if isinstance(raw_value, (dict, list)):
+        return raw_value
+    if isinstance(raw_value, str):
+        text = raw_value.strip()
+        if not text:
+            return default
+        try:
+            return json.loads(text)
+        except Exception:
+            return default
+    return default
+
+
+def _get_cascade_session_row(session_id: str):
+    """Load one cascade_sessions row for a session_id."""
+    safe_session = (session_id or "").replace("'", "''")
+    if not safe_session:
+        return None
+    try:
+        db = get_db()
+        token = query_source_context.set("revive_reply")
+        try:
+            rows = db.query(
+                f"""
+                SELECT
+                    session_id,
+                    cascade_id,
+                    input_data,
+                    output,
+                    config_path,
+                    cascade_definition,
+                    parent_session_id,
+                    caller_id,
+                    invocation_metadata_json,
+                    created_at
+                FROM cascade_sessions
+                WHERE session_id = '{safe_session}'
+                ORDER BY created_at DESC
+                LIMIT 50
+                """,
+                output_format="dict",
+            )
+        finally:
+            query_source_context.reset(token)
+        if not rows:
+            return None
+
+        def _is_meaningful(value):
+            if value is None:
+                return False
+            if isinstance(value, str):
+                return bool(value.strip())
+            return True
+
+        merged = {}
+        for row in rows:
+            for key in (
+                "session_id",
+                "cascade_id",
+                "input_data",
+                "output",
+                "config_path",
+                "cascade_definition",
+                "parent_session_id",
+                "caller_id",
+                "invocation_metadata_json",
+                "created_at",
+            ):
+                if key not in merged or not _is_meaningful(merged.get(key)):
+                    value = row.get(key)
+                    if _is_meaningful(value):
+                        merged[key] = value
+
+        # Keep fallback timestamp even if sparse rows have no meaningful fields.
+        if "created_at" not in merged:
+            merged["created_at"] = rows[0].get("created_at")
+
+        return merged if merged else None
+    except Exception:
+        return None
+
+
+def _collect_session_chain(leaf_session_id: str, max_hops: int = 256):
+    """
+    Walk parent_session_id pointers backwards from a leaf session.
+
+    Returns rows in chronological order (root -> leaf).
+    """
+    chain = []
+    seen = set()
+    current = (leaf_session_id or "").strip()
+
+    while current and current not in seen and len(chain) < max_hops:
+        row = _get_cascade_session_row(current)
+        if not row:
+            break
+        chain.append(row)
+        seen.add(current)
+        parent = (row.get("parent_session_id") or "").strip()
+        current = parent if parent else ""
+
+    chain.reverse()
+    return chain
+
+
+def _collect_thread_rows(thread_id: str, limit: int = 400):
+    """
+    Collect merged cascade_sessions rows for a thread in chronological order.
+
+    Uses session_id-level de-duplication from _list_thread_session_ids and then
+    merges sparse rows per session via _get_cascade_session_row.
+    """
+    rows = []
+    session_ids_desc = _list_thread_session_ids(thread_id, limit=limit)
+    if not session_ids_desc:
+        return rows
+    for sid in reversed(session_ids_desc):
+        row = _get_cascade_session_row(sid)
+        if row:
+            rows.append(row)
+    return rows
+
+
+def _extract_user_message_from_input(input_payload: dict) -> str:
+    """Heuristic extraction of the user message from stored cascade input."""
+    if not isinstance(input_payload, dict):
+        return ""
+    candidate_keys = (
+        "message",
+        "user_message",
+        "reply_message",
+        "text",
+        "initial_prompt",
+        "prompt",
+    )
+    for key in candidate_keys:
+        value = input_payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
+def _extract_assistant_message_from_output(raw_output) -> str:
+    """Heuristic extraction of an assistant response from stored output."""
+    payload = raw_output
+    if isinstance(payload, str):
+        stripped = payload.strip()
+        maybe_json = _json_loads_safe(stripped, None)
+        payload = maybe_json if maybe_json is not None else stripped
+
+    # Deterministic tool wrappers commonly return {"_route": "...", "result": ...}
+    if isinstance(payload, dict) and "_route" in payload and "result" in payload:
+        payload = payload.get("result")
+
+    if isinstance(payload, dict):
+        candidate_keys = (
+            "assistant_reply",
+            "reply",
+            "message",
+            "text",
+            "response",
+            "final_output",
+        )
+        for key in candidate_keys:
+            value = payload.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        try:
+            return json.dumps(payload, ensure_ascii=False)
+        except Exception:
+            return str(payload)
+
+    if isinstance(payload, list):
+        try:
+            return json.dumps(payload, ensure_ascii=False)
+        except Exception:
+            return str(payload)
+
+    if isinstance(payload, str):
+        return payload.strip()
+
+    return str(payload) if payload is not None else ""
+
+
+def _extract_turn_from_cascade_session_row(row: dict) -> dict:
+    """Map a cascade_sessions row to a compact conversational turn."""
+    input_payload = _json_loads_safe(row.get("input_data"), {})
+    user_message = _extract_user_message_from_input(input_payload)
+    assistant_message = _extract_assistant_message_from_output(row.get("output"))
+    return {
+        "session_id": row.get("session_id"),
+        "user": user_message,
+        "assistant": assistant_message,
+    }
+
+
+def _format_turn_history_text(turns: list[dict]) -> str:
+    """Render compact history text for prompt injection."""
+    if not turns:
+        return ""
+    lines = []
+    for idx, turn in enumerate(turns, start=1):
+        user_msg = (turn.get("user") or "").strip() or "[none]"
+        assistant_msg = (turn.get("assistant") or "").strip() or "[none]"
+        lines.append(f"Turn {idx}")
+        lines.append(f"User: {user_msg}")
+        lines.append(f"Assistant: {assistant_msg}")
+    return "\n".join(lines)
+
+
+def _extract_final_output(result: dict):
+    """Extract final cascade output similarly to /api/run-cascade."""
+    if not isinstance(result, dict):
+        return None
+
+    lineage = result.get("lineage") or []
+    if lineage:
+        last_entry = lineage[-1]
+        if isinstance(last_entry, dict) and "output" in last_entry:
+            output = last_entry["output"]
+            if isinstance(output, dict) and "_route" in output and "result" in output:
+                return output.get("result")
+            return output
+
+    history = result.get("history") or []
+    for message in reversed(history):
+        if not isinstance(message, dict):
+            continue
+        msg_role = message.get("role", "")
+        if msg_role in ("system", "cell_complete", "structure"):
+            continue
+        if message.get("content_json") is not None:
+            output = message.get("content_json")
+            if isinstance(output, dict) and "_route" in output and "result" in output:
+                return output.get("result")
+            return output
+        content = message.get("content")
+        if isinstance(content, str) and content.strip():
+            if content.startswith("Cell:") or content.startswith("Cascade:"):
+                continue
+            return content
+        if content is not None:
+            return content
+
+    return None
+
+
+def _persist_revive_snapshot(
+    *,
+    session_id: str,
+    cascade_id: str,
+    cascade_definition: str,
+    input_payload: dict,
+    config_path: str,
+    parent_session_id: str | None,
+    caller_id: str | None,
+    invocation_metadata: dict | None,
+    output_payload=None,
+):
+    """
+    Persist a deterministic cascade_sessions snapshot for revive flows.
+
+    Runner also writes cascade_sessions asynchronously. This write ensures
+    immediate visibility for next-turn revive requests.
+    """
+    try:
+        db = get_db()
+        row = {
+            "session_id": session_id,
+            "cascade_id": cascade_id or "",
+            "cascade_definition": cascade_definition or "",
+            "input_data": json.dumps(input_payload or {}, ensure_ascii=False, indent=2),
+            "config_path": config_path or "",
+            "created_at": datetime.now(),
+            "parent_session_id": parent_session_id or "",
+            "depth": 0,
+            "caller_id": caller_id or "",
+            "invocation_metadata_json": json.dumps(invocation_metadata or {}, ensure_ascii=False),
+            "output": None,
+        }
+        if output_payload is not None:
+            if isinstance(output_payload, str):
+                row["output"] = output_payload
+            elif isinstance(output_payload, (dict, list)):
+                row["output"] = json.dumps(output_payload, ensure_ascii=False)
+            else:
+                row["output"] = str(output_payload)
+
+        db.insert_rows(
+            "cascade_sessions",
+            [row],
+            columns=[
+                "session_id",
+                "cascade_id",
+                "cascade_definition",
+                "input_data",
+                "config_path",
+                "created_at",
+                "parent_session_id",
+                "depth",
+                "caller_id",
+                "invocation_metadata_json",
+                "output",
+            ],
+        )
+    except Exception as persist_err:
+        print(f"[revive-reply] Warning: could not persist revive snapshot: {persist_err}")
+
+
+def _list_thread_session_ids(thread_id: str, limit: int = 400):
+    """
+    Return session IDs for a revive thread, newest first.
+
+    Matches on both invocation metadata and stored input payload for robustness.
+    """
+    tid = (thread_id or "").strip()
+    if not tid:
+        return []
+    try:
+        db = get_db()
+        safe_tid = tid.replace("'", "''")
+        rows = db.query(
+            f"""
+            SELECT
+              session_id,
+              MAX(created_at) AS latest_created_at
+            FROM cascade_sessions
+            WHERE (
+              invocation_metadata_json LIKE '%"thread_id": "{safe_tid}"%'
+              OR invocation_metadata_json LIKE '%"thread_id":"{safe_tid}"%'
+              OR input_data LIKE '%"thread_id": "{safe_tid}"%'
+              OR input_data LIKE '%"thread_id":"{safe_tid}"%'
+            )
+            GROUP BY session_id
+            ORDER BY latest_created_at DESC
+            LIMIT {max(1, min(int(limit or 400), 2000))}
+            """,
+            output_format="dict",
+        ) or []
+        return [
+            r.get("session_id")
+            for r in rows
+            if isinstance(r, dict) and isinstance(r.get("session_id"), str) and r.get("session_id").strip()
+        ]
+    except Exception:
+        return []
+
+
+@app.route('/api/cascade/thread-state', methods=['GET', 'POST'])
+def cascade_thread_state():
+    """
+    Fetch revive-thread state from cascade_sessions.
+
+    Response includes:
+    - latest_session_id (for base_session_id chaining)
+    - compact conversational turns (user/assistant pairs)
+    """
+    try:
+        if request.method == 'GET':
+            data = request.args or {}
+            getv = lambda k, d=None: data.get(k, d)
+        else:
+            data = request.json or {}
+            getv = lambda k, d=None: data.get(k, d)
+
+        thread_id = (getv("thread_id") or "").strip()
+        if not thread_id:
+            return jsonify({"error": "thread_id required"}), 400
+
+        try:
+            history_limit = int(getv("history_limit", 120))
+        except Exception:
+            history_limit = 120
+        history_limit = max(0, min(history_limit, 1000))
+
+        try:
+            session_limit = int(getv("session_limit", 400))
+        except Exception:
+            session_limit = 400
+        session_limit = max(1, min(session_limit, 2000))
+
+        session_ids_desc = _list_thread_session_ids(thread_id, limit=session_limit)
+        if not session_ids_desc:
+            return jsonify({
+                "success": True,
+                "thread_id": thread_id,
+                "latest_session_id": None,
+                "turn_count": 0,
+                "turns": [],
+            })
+
+        # Build chronological rows (oldest -> newest) and merge sparse append rows.
+        rows_chrono = []
+        for sid in reversed(session_ids_desc):
+            row = _get_cascade_session_row(sid)
+            if row:
+                rows_chrono.append(row)
+
+        turns = []
+        for row in rows_chrono:
+            turn = _extract_turn_from_cascade_session_row(row)
+            user_msg = (turn.get("user") or "").strip()
+            assistant_msg = (turn.get("assistant") or "").strip()
+            if not user_msg and not assistant_msg:
+                continue
+
+            created_at = row.get("created_at")
+            if isinstance(created_at, datetime):
+                created_at = created_at.isoformat()
+            elif created_at is not None:
+                created_at = str(created_at)
+
+            turns.append({
+                "session_id": row.get("session_id"),
+                "parent_session_id": row.get("parent_session_id"),
+                "created_at": created_at,
+                "user": user_msg,
+                "assistant": assistant_msg,
+            })
+
+        if history_limit and len(turns) > history_limit:
+            turns = turns[-history_limit:]
+
+        latest_session_id = None
+        if rows_chrono:
+            latest_session_id = rows_chrono[-1].get("session_id")
+
+        return jsonify({
+            "success": True,
+            "thread_id": thread_id,
+            "latest_session_id": latest_session_id,
+            "turn_count": len(turns),
+            "turns": turns,
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/cascade/revive-reply', methods=['POST'])
+def revive_reply():
+    """
+    Run a fresh cascade turn linked to a previous completed session.
+
+    This is a non-blocking-style conversational primitive:
+    - each user message creates a NEW session
+    - parent_session_id links lineage to the prior session
+    - prior turns are synthesized from cascade_sessions and injected via inputs
+    """
+    try:
+        data = request.json or {}
+        message = (data.get("message") or data.get("text") or "").strip()
+        if not message:
+            return jsonify({"error": "message required"}), 400
+
+        base_session_id = (data.get("base_session_id") or "").strip() or None
+        explicit_cascade_path = (data.get("cascade_path") or "").strip() or None
+        explicit_cascade_yaml = data.get("cascade_yaml")
+        sync_mode = bool(data.get("sync", True))
+        context_mode = (data.get("context_mode") or "full").strip().lower()
+        inherit_base_inputs = bool(data.get("inherit_base_inputs", True))
+
+        history_limit_raw = data.get("history_limit", 0)
+        try:
+            history_limit = int(history_limit_raw)
+        except Exception:
+            history_limit = 0
+        history_limit = max(0, min(history_limit, 2000))
+
+        extra_inputs = data.get("inputs") or {}
+        if not isinstance(extra_inputs, dict):
+            return jsonify({"error": "inputs must be an object"}), 400
+
+        # Import execution stack lazily (matches /api/run-cascade behavior)
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../lars'))
+        from lars import run_cascade as execute_cascade
+        from lars.event_hooks import ResearchSessionAutoSaveHooks
+        from lars.session_naming import generate_woodland_id
+        from lars.caller_context import build_ui_metadata
+
+        # Build history chain from base session if provided
+        base_chain = _collect_session_chain(base_session_id) if base_session_id else []
+        base_row = base_chain[-1] if base_chain else None
+        base_input_payload = _json_loads_safe(base_row.get("input_data"), {}) if base_row else {}
+
+        # Resolve cascade source:
+        # 1) explicit payload
+        # 2) infer from base session snapshot
+        cascade_path = explicit_cascade_path
+        cascade_yaml = explicit_cascade_yaml
+        if not cascade_path and not cascade_yaml and base_row:
+            inferred_def = base_row.get("cascade_definition")
+            inferred_path = (base_row.get("config_path") or "").strip()
+            if inferred_def:
+                cascade_yaml = inferred_def
+            elif inferred_path:
+                cascade_path = inferred_path
+
+        # Defer hard error until after thread-based base lookup below.
+
+        requested_session_id = (data.get("session_id") or "").strip()
+        if not requested_session_id:
+            requested_session_id = f"exp_{generate_woodland_id()}"
+
+        caller_id = data.get("caller_id") or f"ui-{generate_woodland_id()}"
+        component = data.get("source", "revive_reply")
+        action = data.get("action", "revive")
+
+        # Derive thread identity
+        provided_thread_id = (data.get("thread_id") or "").strip()
+        input_thread_id = (extra_inputs.get("thread_id") or "").strip() if isinstance(extra_inputs.get("thread_id"), str) else ""
+        base_thread_id = (base_input_payload.get("thread_id") or "").strip() if isinstance(base_input_payload.get("thread_id"), str) else ""
+        thread_id = provided_thread_id or input_thread_id or base_thread_id
+        if not thread_id:
+            thread_id = f"thread_{base_session_id or requested_session_id}"
+
+        # If caller omitted base_session_id, anchor to latest session in thread.
+        # This keeps lineage and context continuity across process restarts.
+        if not base_session_id:
+            thread_session_ids = _list_thread_session_ids(thread_id, limit=2000)
+            if thread_session_ids:
+                base_session_id = thread_session_ids[0]
+                base_chain = _collect_session_chain(base_session_id) if base_session_id else []
+                base_row = base_chain[-1] if base_chain else None
+                base_input_payload = _json_loads_safe(base_row.get("input_data"), {}) if base_row else {}
+
+        # Second-pass cascade inference after thread-based base lookup.
+        if not cascade_path and not cascade_yaml and base_row:
+            inferred_def = base_row.get("cascade_definition")
+            inferred_path = (base_row.get("config_path") or "").strip()
+            if inferred_def:
+                cascade_yaml = inferred_def
+            elif inferred_path:
+                cascade_path = inferred_path
+        if not cascade_path and not cascade_yaml:
+            return jsonify({"error": "cascade_path or cascade_yaml required (or base_session_id/thread_id with stored cascade)"}), 400
+
+        # Build compact turn history from all sessions in the thread.
+        session_scan_limit = 2000 if history_limit == 0 else max(200, min(history_limit * 8, 2000))
+        thread_rows = _collect_thread_rows(thread_id, limit=session_scan_limit)
+        history_rows = thread_rows if thread_rows else base_chain
+        turns = []
+        for row in history_rows:
+            turn = _extract_turn_from_cascade_session_row(row)
+            if turn.get("user") or turn.get("assistant"):
+                turns.append(turn)
+        if history_limit and len(turns) > history_limit:
+            turns = turns[-history_limit:]
+
+        if context_mode in ("none", "off", "disabled"):
+            injected_turns = []
+        else:
+            injected_turns = turns
+        history_text = _format_turn_history_text(injected_turns)
+
+        # Compose revived input payload
+        revived_inputs = {}
+        if inherit_base_inputs and isinstance(base_input_payload, dict):
+            revived_inputs.update(base_input_payload)
+        revived_inputs.update(extra_inputs)
+        revived_inputs["message"] = message
+        revived_inputs["user_message"] = message
+        revived_inputs["reply_message"] = message
+        revived_inputs["thread_id"] = thread_id
+        revived_inputs["revive_history"] = injected_turns
+        revived_inputs["revive_history_text"] = history_text
+        revived_inputs["revive_context_mode"] = context_mode
+        if base_session_id:
+            revived_inputs["base_session_id"] = base_session_id
+
+        invocation_metadata = build_ui_metadata(
+            component=component,
+            action=action,
+            source="revive",
+        )
+        client_metadata = data.get("metadata")
+        if isinstance(client_metadata, dict):
+            invocation_metadata.update(client_metadata)
+        invocation_metadata.update({
+            "thread_id": thread_id,
+            "base_session_id": base_session_id or "",
+            "revive_context_mode": context_mode,
+            "revive_history_turns": len(injected_turns),
+        })
+
+        # Resolve cascade materialization (copying /api/run-cascade behavior)
+        temp_file = None
+        lars_root = os.environ.get("LARS_ROOT", "")
+        cascade_definition_for_store = ""
+        config_path_for_store = ""
+
+        if cascade_path and cascade_yaml:
+            full_original_path = cascade_path
+            if not os.path.isabs(full_original_path):
+                full_original_path = os.path.join(lars_root, full_original_path)
+            original_dir = os.path.dirname(full_original_path)
+            temp_file = os.path.join(original_dir, f".tmp_{requested_session_id}_revive.yaml")
+            with open(temp_file, "w") as f:
+                f.write(cascade_yaml)
+            cascade_path = temp_file
+            cascade_definition_for_store = str(cascade_yaml)
+            config_path_for_store = full_original_path
+        elif cascade_yaml and not cascade_path:
+            temp_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'playground_scratchpad')
+            os.makedirs(temp_dir, exist_ok=True)
+            temp_file = os.path.join(temp_dir, f"{requested_session_id}_revive.yaml")
+            with open(temp_file, "w") as f:
+                f.write(cascade_yaml)
+            cascade_path = temp_file
+            cascade_definition_for_store = str(cascade_yaml)
+            config_path_for_store = ""
+        elif cascade_path and not cascade_yaml:
+            resolved = cascade_path
+            if not os.path.isabs(resolved):
+                resolved = os.path.join(lars_root, resolved)
+            if not os.path.exists(resolved):
+                builtin = os.path.join(get_builtin_cascades_dir(), os.path.basename(cascade_path))
+                if os.path.exists(builtin):
+                    resolved = builtin
+            if not os.path.exists(resolved):
+                return jsonify({"error": f"Cascade not found: {cascade_path}"}), 404
+            cascade_path = resolved
+            config_path_for_store = resolved
+            try:
+                with open(resolved, "r") as f:
+                    cascade_definition_for_store = f.read()
+            except Exception:
+                cascade_definition_for_store = ""
+
+        # If inferred from base row and no config path, still keep stored definition
+        if not cascade_definition_for_store and isinstance(cascade_yaml, str):
+            cascade_definition_for_store = cascade_yaml
+
+        def _run_once_and_extract():
+            os.environ['LARS_USE_CHECKPOINTS'] = 'true'
+            hooks = ResearchSessionAutoSaveHooks()
+            result = execute_cascade(
+                cascade_path,
+                revived_inputs,
+                requested_session_id,
+                hooks=hooks,
+                parent_session_id=base_session_id,
+                caller_id=caller_id,
+                invocation_metadata=invocation_metadata,
+            )
+            final_output = _extract_final_output(result)
+
+            # Ensure immediate cascade_sessions visibility for next revive turn.
+            cascade_id_for_store = ""
+            if isinstance(result, dict):
+                cascade_id_for_store = (
+                    result.get("cascade_id")
+                    or result.get("config", {}).get("cascade_id")
+                    or ""
+                )
+            if not cascade_id_for_store and base_row:
+                cascade_id_for_store = base_row.get("cascade_id") or ""
+
+            _persist_revive_snapshot(
+                session_id=requested_session_id,
+                cascade_id=cascade_id_for_store,
+                cascade_definition=cascade_definition_for_store,
+                input_payload=revived_inputs,
+                config_path=config_path_for_store,
+                parent_session_id=base_session_id,
+                caller_id=caller_id,
+                invocation_metadata=invocation_metadata,
+                output_payload=final_output,
+            )
+
+            # Compute total cost for this session subtree
+            total_cost = 0.0
+            try:
+                db = get_db()
+                safe_sid = requested_session_id.replace("'", "''")
+                cost_rows = db.query(
+                    f"""
+                    SELECT SUM(cost) AS total
+                    FROM unified_logs
+                    WHERE startsWith(session_id, '{safe_sid}') AND cost > 0
+                    """,
+                    output_format="dict",
+                )
+                if cost_rows:
+                    total_cost = float(cost_rows[0].get("total") or 0)
+            except Exception:
+                pass
+            if not math.isfinite(total_cost):
+                total_cost = 0.0
+
+            return result, final_output, total_cost
+
+        if sync_mode:
+            try:
+                result, final_output, total_cost = _run_once_and_extract()
+                return jsonify({
+                    "success": True,
+                    "session_id": requested_session_id,
+                    "parent_session_id": base_session_id,
+                    "thread_id": thread_id,
+                    "context_mode": context_mode,
+                    "history_turn_count": len(injected_turns),
+                    "final_output": final_output,
+                    "has_errors": bool(result.get("has_errors")) if isinstance(result, dict) else False,
+                    "total_cost": round(total_cost, 6),
+                })
+            finally:
+                if temp_file and os.path.exists(temp_file):
+                    try:
+                        os.remove(temp_file)
+                    except Exception:
+                        pass
+
+        # Async mode mirrors /api/run-cascade semantics
+        import threading
+
+        def _run_in_background():
+            try:
+                _run_once_and_extract()
+            except Exception as bg_err:
+                print(f"[revive-reply] background execution error: {bg_err}")
+            finally:
+                if temp_file and os.path.exists(temp_file):
+                    try:
+                        os.remove(temp_file)
+                    except Exception:
+                        pass
+
+        thread = threading.Thread(target=_run_in_background, daemon=True)
+        thread.start()
+
+        return jsonify({
+            "success": True,
+            "session_id": requested_session_id,
+            "parent_session_id": base_session_id,
+            "thread_id": thread_id,
+            "context_mode": context_mode,
+            "history_turn_count": len(injected_turns),
+            "message": "Revive turn started in background",
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route('/api/run-cascade', methods=['POST'])
@@ -4760,7 +5537,6 @@ def playground_session_stream(session_id):
     
     try:
         db = get_db()
-        shadow_store = get_shadow_read_store()
 
         # Parse query params
         after_ms = request.args.get('after_ms')  # Epoch milliseconds (new format)
@@ -4798,11 +5574,7 @@ def playground_session_stream(session_id):
         safe_session_id = session_id.replace("'", "''")
 
         def query_rows(sql: str):
-            shadow_rows = None
-            if shadow_store and shadow_store.enabled:
-                shadow_rows = shadow_store.query(sql, output_format='dict')
-            if shadow_rows is not None:
-                return shadow_rows
+            # Route through db adapter so CH/Duck/shadow routing remains consistent.
             return db.query(sql)
 
         # Query for relevant execution events INCLUDING child sub-cascades
@@ -4843,13 +5615,12 @@ def playground_session_stream(session_id):
                 context_hashes,
                 estimated_tokens
             FROM unified_logs
-            WHERE (prefix(session_id, '{safe_session_id}') OR CAST(parent_session_id AS VARCHAR) = '{safe_session_id}')
+            WHERE (session_id LIKE '{safe_session_id}%' OR COALESCE(parent_session_id, '') = '{safe_session_id}')
               AND epoch_ms(timestamp) > {after_ms_int}
             ORDER BY timestamp ASC
             LIMIT {limit + 1}
         """
 
-        # Shadow first, then primary DB fallback.
         rows = query_rows(query)
 
         # Check if there are more rows
@@ -4974,7 +5745,7 @@ def playground_session_stream(session_id):
         cost_query = f"""
             SELECT SUM(cost) as total
             FROM unified_logs
-            WHERE prefix(session_id, '{safe_session_id}')
+            WHERE session_id LIKE '{safe_session_id}%'
               AND cost > 0
         """
         cached_total_cost = _session_stream_cache_get(session_id, 'cost_total', default=_cache_miss)
@@ -5109,6 +5880,9 @@ def playground_session_stream(session_id):
                         SELECT output
                         FROM cascade_sessions
                         WHERE session_id = '{safe_session_id}'
+                          AND output IS NOT NULL
+                          AND output != ''
+                        ORDER BY created_at DESC
                         LIMIT 1
                     """
                     output_result = query_rows(output_query)
@@ -6621,7 +7395,7 @@ def get_available_tools():
                 tool_type = 'browser'
             elif name.startswith('rag_'):
                 tool_type = 'rag'
-            elif name.startswith('sql_') or name in ['smart_sql_run', 'list_sql_connections']:
+            elif name.startswith('sql_') or name in ['smart_sql_run', 'safe_sql_run', 'limited_sql_run', 'list_sql_connections']:
                 tool_type = 'sql'
             elif name in ['read_file', 'write_file', 'append_file', 'list_files', 'file_info']:
                 tool_type = 'filesystem'
@@ -6706,6 +7480,8 @@ def get_available_tools():
             {'name': 'create_plotly', 'description': 'Create a Plotly visualization', 'type': 'visualization'},
             # SQL
             {'name': 'smart_sql_run', 'description': 'Execute SQL queries with smart error handling', 'type': 'sql'},
+            {'name': 'safe_sql_run', 'description': 'Execute SQL and return an automatically truncated preview', 'type': 'sql'},
+            {'name': 'limited_sql_run', 'description': 'Alias for safe_sql_run with bounded preview output', 'type': 'sql'},
             {'name': 'sql_search', 'description': 'Search across SQL databases', 'type': 'sql'},
             {'name': 'sql_query', 'description': 'Execute raw SQL query', 'type': 'sql'},
             {'name': 'list_sql_connections', 'description': 'List available SQL database connections', 'type': 'sql'},
@@ -7495,6 +8271,59 @@ SERVE_STATIC = os.path.exists(os.path.join(FRONTEND_BUILD_DIR, 'index.html'))
 @app.route('/api/companion/pending', methods=['GET'])
 def companion_pending():
     """Poll for a pending input question from a cascade's wait_for_input() call."""
+    # Primary path: checkpoint-backed wait_for_input (multi-worker safe).
+    try:
+        from lars.checkpoints import get_checkpoint_manager
+
+        def _extract_question(cp):
+            if cp.cell_output and str(cp.cell_output).strip():
+                return str(cp.cell_output).strip()
+            ui_spec = cp.ui_spec if isinstance(cp.ui_spec, dict) else {}
+            if isinstance(ui_spec.get("prompt"), str) and ui_spec["prompt"].strip():
+                return ui_spec["prompt"].strip()
+            for section in ui_spec.get("sections", []):
+                if not isinstance(section, dict):
+                    continue
+                for key in ("prompt", "title", "content", "label"):
+                    value = section.get(key)
+                    if isinstance(value, str) and value.strip():
+                        return value.strip()
+            return "What would you like to do?"
+
+        session_id = (request.args.get("session_id") or "").strip() or None
+        cascade_id = (request.args.get("cascade_id") or "").strip() or None
+        allowed_types = {"free_text", "choice", "multi_choice", "confirmation", "rating"}
+
+        cm = get_checkpoint_manager()
+        pending = cm.get_pending_checkpoints(session_id=session_id)
+
+        if cascade_id:
+            pending = [cp for cp in pending if cp.cascade_id == cascade_id]
+        pending = [cp for cp in pending if cp.checkpoint_type.value in allowed_types]
+
+        if pending:
+            pending.sort(
+                key=lambda cp: (
+                    cp.created_at or datetime.min,
+                    cp.id
+                ),
+                reverse=True
+            )
+            cp = pending[0]
+            return jsonify({
+                "ok": True,
+                "pending": {
+                    "id": cp.id,
+                    "question": _extract_question(cp),
+                    "session_id": cp.session_id,
+                    "cascade_id": cp.cascade_id,
+                    "checkpoint_type": cp.checkpoint_type.value,
+                }
+            })
+    except Exception as cp_err:
+        print(f"[companion_pending] Checkpoint path unavailable: {cp_err}")
+
+    # Fallback path: legacy in-memory native input manager.
     from lars.skills.native_input import get_native_input_manager
     manager = get_native_input_manager()
     pending = manager.get_pending()
@@ -7506,15 +8335,102 @@ def companion_pending():
 @app.route('/api/companion/respond', methods=['POST'])
 def companion_respond():
     """Send user's text response to unblock a cascade's wait_for_input() call."""
-    from lars.skills.native_input import get_native_input_manager
     data = request.get_json() or {}
     request_id = data.get("id", "")
     text = data.get("text", "")
+    session_id = (data.get("session_id") or "").strip() or None
     if not request_id or not text:
         return jsonify({"ok": False, "error": "Missing 'id' or 'text'"}), 400
+
+    # Primary path: checkpoint manager response.
+    try:
+        from lars.checkpoints import get_checkpoint_manager
+
+        cm = get_checkpoint_manager()
+        response_payload = {
+            "text": text,
+            "message": text,
+            "action": "submit"
+        }
+
+        def _status_value(cp):
+            status = getattr(cp, "status", None)
+            return status.value if hasattr(status, "value") else str(status or "")
+
+        def _checkpoint_type_value(cp):
+            ctype = getattr(cp, "checkpoint_type", None)
+            return ctype.value if hasattr(ctype, "value") else str(ctype or "")
+
+        def _resolve_pending_for_session():
+            if not session_id:
+                return None
+            allowed_types = {"free_text", "choice", "multi_choice", "confirmation", "rating"}
+            pending = cm.get_pending_checkpoints(session_id=session_id)
+            pending = [cp for cp in pending if _checkpoint_type_value(cp) in allowed_types]
+            if not pending:
+                return None
+            pending.sort(
+                key=lambda cp: (
+                    cp.created_at or datetime.min,
+                    cp.id
+                ),
+                reverse=True
+            )
+            return pending[0]
+
+        resolved_from_id = None
+        try:
+            cp = cm.respond_to_checkpoint(
+                checkpoint_id=request_id,
+                response=response_payload
+            )
+        except ValueError as cp_err:
+            err_text = str(cp_err)
+            lower_err = err_text.lower()
+
+            # Idempotent accept if this checkpoint was already responded.
+            if "already responded" in lower_err:
+                existing = cm.get_checkpoint(request_id)
+                if existing and _status_value(existing) == "responded":
+                    return jsonify({
+                        "ok": True,
+                        "checkpoint_id": request_id,
+                        "status": "responded",
+                        "idempotent": True
+                    })
+
+            # If IDs raced, recover by finding current pending checkpoint in this session.
+            fallback_cp = _resolve_pending_for_session()
+            if fallback_cp and fallback_cp.id != request_id:
+                cp = cm.respond_to_checkpoint(
+                    checkpoint_id=fallback_cp.id,
+                    response=response_payload
+                )
+                resolved_from_id = request_id
+            else:
+                # Checkpoint IDs should never be routed through native-input fallback.
+                if request_id.startswith("cp_"):
+                    return jsonify({"ok": False, "error": err_text}), 404
+                raise
+
+        return jsonify({
+            "ok": True,
+            "checkpoint_id": cp.id,
+            "status": cp.status.value,
+            "resolved_from_id": resolved_from_id
+        })
+    except ValueError:
+        # Not a checkpoint ID; fall back to legacy native input bridge.
+        pass
+    except Exception as cp_err:
+        print(f"[companion_respond] Checkpoint path unavailable: {cp_err}")
+
+    from lars.skills.native_input import get_native_input_manager
     manager = get_native_input_manager()
     success = manager.respond(request_id, text)
-    return jsonify({"ok": success})
+    if success:
+        return jsonify({"ok": True})
+    return jsonify({"ok": False, "error": f"Request '{request_id}' not found or already answered"}), 404
 
 
 # Debug: always log frontend build status on import

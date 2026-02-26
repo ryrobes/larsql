@@ -20,6 +20,7 @@ from typing import Any, Dict, Optional
 import duckdb
 
 from lars.lars_db import SYSTEM_TABLES
+from lars.unified_logs_view import create_unified_logs_view
 
 
 log = logging.getLogger(__name__)
@@ -475,23 +476,8 @@ class ShadowReadStore:
 
     def _rebuild_unified_logs_view(self, conn: duckdb.DuckDBPyConnection):
         self._drop_relation(conn, "unified_logs")
-
-        try:
-            conn.execute(
-                """
-                CREATE VIEW unified_logs AS
-                SELECT
-                    ul.* EXCLUDE (cost, tokens_in, tokens_out, tokens_reasoning, parent_session_id),
-                    COALESCE(c.cost, ul.cost) AS cost,
-                    COALESCE(c.tokens_in, ul.tokens_in) AS tokens_in,
-                    COALESCE(c.tokens_out, ul.tokens_out) AS tokens_out,
-                    COALESCE(c.tokens_reasoning, ul.tokens_reasoning) AS tokens_reasoning,
-                    CAST(ul.parent_session_id AS VARCHAR) AS parent_session_id
-                FROM unified_logs_base ul
-                LEFT JOIN costs c ON ul.trace_id = c.trace_id
-                """
-            )
-        except Exception:
+        created = create_unified_logs_view(conn, include_parent_cast_fallback=True)
+        if not created:
             conn.execute("CREATE VIEW unified_logs AS SELECT * FROM unified_logs_base")
 
     def _rebuild_artifact_registry_current_view(self, conn: duckdb.DuckDBPyConnection):

@@ -291,10 +291,10 @@ def mark_as_trainable(
         return 0
 
     try:
-        from .lars_db import LarsDB
-        db = LarsDB()
+        from .db_adapter import get_db
+        db = get_db()
 
-        # Use LarsDB.write() for parquet-based persistence (same as benchmarks)
+        # Route through db adapter so multi-sink write policy stays consistent.
         now_ts = datetime.now(timezone.utc)
         rows = []
         for trace_id in trace_ids:
@@ -311,7 +311,7 @@ def mark_as_trainable(
             }
             rows.append(row)
 
-        db.write("training_annotations", rows)
+        db.insert_rows("training_annotations", rows, log_query=False)
 
         log.info(f"[training] Marked {len(rows)} traces as trainable={trainable} rating={rating}")
         return len(rows)

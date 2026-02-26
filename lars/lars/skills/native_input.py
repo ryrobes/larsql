@@ -1,8 +1,9 @@
 """
 Native input skill for RVBBIT companion.
 
-Simplified blocking input that waits for text from the RVBBIT embedded server
-instead of web checkpoints. No UI generation, no SSE, no web dependencies.
+Primary path uses the checkpoint system so input waits are durable across
+multi-worker Studio deployments. A legacy in-memory fallback is kept for
+interactive CLI sessions.
 
 The flow:
 1. Cascade calls `wait_for_input("What should I do?")`
@@ -15,7 +16,9 @@ RVBBIT side:
 - POST /companion/respond → sends user's text answer
 """
 
+import json
 import os
+import sys
 import time
 import uuid
 import threading
@@ -98,6 +101,28 @@ def get_native_input_manager() -> _NativeInputManager:
     return _manager
 
 
+def _extract_response_text(response) -> str:
+    """Normalize checkpoint response payloads into plain text."""
+    if response is None:
+        return ""
+    if isinstance(response, str):
+        return response
+    if isinstance(response, dict):
+        for key in ("text", "message", "value", "response"):
+            value = response.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        for value in response.values():
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+            if isinstance(value, dict):
+                nested = _extract_response_text(value)
+                if nested:
+                    return nested
+        return json.dumps(response, ensure_ascii=False)
+    return str(response)
+
+
 # ── The skill ──
 
 @simple_eddy
@@ -116,8 +141,82 @@ def wait_for_input(prompt: str = "What would you like to do?", timeout_seconds: 
         The user's text response
     """
     from rich.console import Console
-    console = Console()
+    from .state_tools import (
+        get_current_cell_name,
+        get_current_session_id,
+        set_state_internal,
+    )
 
+    console = Console()
+    cell_name = get_current_cell_name()
+    session_id = get_current_session_id()
+    timeout_seconds = max(1, int(timeout_seconds))
+
+    use_checkpoint = os.environ.get("LARS_USE_CHECKPOINTS", "false").lower() == "true"
+    if not sys.stdin.isatty():
+        use_checkpoint = True
+
+    if use_checkpoint and session_id:
+        try:
+            from ..checkpoints import get_checkpoint_manager, CheckpointType
+            from ..human_ui import generate_ask_human_ui
+            from ..tracing import get_current_trace
+
+            trace = get_current_trace()
+            checkpoint_manager = get_checkpoint_manager()
+            ui_spec = generate_ask_human_ui(
+                question=prompt,
+                context=None,
+                ui_hint="text",
+                cell_name=cell_name or "wait_for_input",
+                cascade_id=trace.name if trace else "unknown",
+                session_id=session_id,
+            )
+
+            checkpoint = checkpoint_manager.create_checkpoint(
+                session_id=session_id,
+                cascade_id=trace.name if trace else "unknown",
+                cell_name=cell_name or "wait_for_input",
+                checkpoint_type=CheckpointType.FREE_TEXT,
+                ui_spec=ui_spec,
+                echo_snapshot={},
+                cell_output=prompt,
+                timeout_seconds=timeout_seconds,
+            )
+
+            console.print(f"\n[bold cyan]{S.AGENT} Companion asks:[/bold cyan] {prompt}")
+            console.print(
+                f"[dim]Waiting for checkpoint input (id: {checkpoint.id}, timeout: {timeout_seconds}s)...[/dim]"
+            )
+
+            response = checkpoint_manager.wait_for_response(
+                checkpoint_id=checkpoint.id,
+                timeout=float(timeout_seconds),
+                poll_interval=0.15,
+            )
+            if response is None:
+                console.print(f"[yellow]{S.WARN} Input timeout after {timeout_seconds}s[/yellow]")
+                return "[No response - timeout]"
+
+            answer = _extract_response_text(response).strip()
+            if not answer:
+                answer = "[No response]"
+
+            console.print(f"[green]{S.OK} Received: {answer[:100]}{'...' if len(answer) > 100 else ''}[/green]")
+            if cell_name:
+                set_state_internal(cell_name, answer)
+            return answer
+
+        except Exception as checkpoint_err:
+            console.print(
+                f"[yellow]{S.WARN} Checkpoint input unavailable ({checkpoint_err}); falling back to in-memory bridge[/yellow]"
+            )
+    elif use_checkpoint and not session_id:
+        console.print(
+            f"[yellow]{S.WARN} No session ID available; falling back to in-memory bridge[/yellow]"
+        )
+
+    # Legacy in-memory fallback (single-process only).
     manager = get_native_input_manager()
     request_id = manager.create(prompt)
 
@@ -131,9 +230,6 @@ def wait_for_input(prompt: str = "What would you like to do?", timeout_seconds: 
         if response is not None:
             console.print(f"[green]{S.OK} Received: {response[:100]}{'...' if len(response) > 100 else ''}[/green]")
             
-            # Store in state for downstream cells
-            from .state_tools import get_current_cell_name, set_state_internal
-            cell_name = get_current_cell_name()
             if cell_name:
                 set_state_internal(cell_name, response)
             

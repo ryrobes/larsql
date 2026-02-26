@@ -602,6 +602,85 @@ def passthrough(
     return {"data": table_data}
 
 
+def python_transform(
+    code: str,
+    _table: Union[List[Dict[str, Any]], str, None],
+    _table_columns: Optional[List[str]] = None,
+    _table_path: Optional[str] = None,
+    _pipeline_context: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """
+    Execute inline Python code against the pipeline input table.
+
+    Execution context:
+      - df: pandas DataFrame of the input table
+      - pd: pandas module
+      - np: numpy module
+      - context: pipeline metadata (_pipeline_context)
+
+    Output contract:
+      - If code sets `result`, that value is used.
+      - Otherwise, the final `df` value is used.
+      - `result` must be a DataFrame, list[dict], or dict.
+    """
+    import numpy as np
+    import pandas as pd
+
+    if not isinstance(code, str) or not code.strip():
+        raise ValueError("PYTHON stage requires a non-empty code argument")
+
+    table_data = _resolve_table(_table, _table_path)
+
+    if table_data:
+        df = pd.DataFrame(table_data)
+    else:
+        df = pd.DataFrame(columns=_table_columns or [])
+
+    exec_globals: Dict[str, Any] = {
+        "df": df,
+        "pd": pd,
+        "np": np,
+        "context": _pipeline_context or {},
+        "__name__": "__lars_pipeline_python__",
+    }
+    exec_locals: Dict[str, Any] = {}
+
+    try:
+        exec(code, exec_globals, exec_locals)
+    except Exception as e:
+        raise ValueError(f"PYTHON stage execution failed: {e}") from e
+
+    if "result" in exec_locals:
+        result = exec_locals["result"]
+    elif "result" in exec_globals:
+        result = exec_globals["result"]
+    else:
+        result = exec_globals["df"]
+
+    if isinstance(result, pd.DataFrame):
+        return {"data": result.to_dict(orient="records")}
+
+    if isinstance(result, list):
+        if not result:
+            return {"data": []}
+        if all(isinstance(row, dict) for row in result):
+            return {"data": result}
+        raise ValueError("PYTHON stage result list must contain dict rows")
+
+    if isinstance(result, dict):
+        # Pass through canonical table wrappers
+        if "data" in result and isinstance(result["data"], list):
+            return {"data": result["data"]}
+        if "rows" in result and isinstance(result["rows"], list):
+            return {"data": result["rows"]}
+        # Treat plain dict as a single row table
+        return {"data": [result]}
+
+    raise ValueError(
+        "PYTHON stage result must be a DataFrame, list of dict rows, or dict"
+    )
+
+
 # =============================================================================
 # Mermaid Visualization Functions
 # =============================================================================

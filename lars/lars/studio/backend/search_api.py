@@ -488,7 +488,7 @@ def memory_search():
 @search_bp.route('/sql-elastic', methods=['POST'])
 def sql_elastic_search():
     """
-    Elasticsearch-based SQL schema search with hybrid ranking.
+    Optional Elasticsearch SQL schema search endpoint (legacy/diagnostic).
 
     Request body:
         {
@@ -661,7 +661,7 @@ def resolve_identifier():
         mode = data.get('mode', 'all')
         context_table = data.get('context_table')
 
-        # Use sql_search which handles ES→DuckDB RAG fallback automatically
+        # Use sql_search (local DuckDB/RAG by default; optional Elastic when enabled)
         result_json = sql_search(query=text, k=k * 2)
         result = json.loads(result_json)
         tables = result if isinstance(result, list) else result.get('tables', [])

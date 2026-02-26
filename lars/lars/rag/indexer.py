@@ -161,6 +161,9 @@ def embed_texts(
     parent_id: Optional[str] = None,
     cell_name: Optional[str] = None,
     cascade_id: Optional[str] = None,
+    timeout_seconds: Optional[float] = None,
+    max_retries: Optional[int] = None,
+    retry_base_delay: Optional[float] = None,
 ) -> Dict[str, Any]:
     """
     Embed texts using Agent.embed() - goes through standard provider config and logging.
@@ -175,6 +178,9 @@ def embed_texts(
         parent_id=parent_id,
         cell_name=cell_name,
         cascade_id=cascade_id,
+        timeout_seconds=timeout_seconds,
+        max_retries=max_retries,
+        retry_base_delay=retry_base_delay,
     )
 
 

@@ -3,6 +3,7 @@ import json
 import os
 import shutil
 import sys
+from contextlib import contextmanager
 from importlib.metadata import version as pkg_version
 from pathlib import Path
 
@@ -1063,8 +1064,8 @@ def main():
     serve_studio_parser.add_argument(
         '--workers',
         type=int,
-        default=5,
-        help='Number of Gunicorn workers (default: 5, ignored in dev mode)'
+        default=3,
+        help='Number of Gunicorn workers (default: 3, ignored in dev mode)'
     )
     serve_studio_parser.add_argument(
         '--dev',
@@ -1075,6 +1076,18 @@ def main():
         '--preload',
         action='store_true',
         help='Preload app in master before forking workers (reduces per-worker startup)'
+    )
+    serve_studio_parser.add_argument(
+        '--pgwire-mode',
+        choices=['auto', 'external', 'internal'],
+        default='auto',
+        help='PGwire behavior: auto (use existing or start), external (never start), internal (always ensure started)'
+    )
+    serve_studio_parser.add_argument(
+        '--runtime',
+        choices=['auto', 'subprocess', 'embedded'],
+        default='auto',
+        help='Studio server runtime: auto (embedded when frozen, subprocess otherwise), subprocess, or embedded'
     )
 
     # serve sql - PostgreSQL wire protocol server (same as sql server)
@@ -7238,6 +7251,117 @@ def _run_server_subprocess(cmd, cwd=None, env=None):
         signal.signal(signal.SIGTERM, original_sigterm)
 
 
+def _build_lars_reexec_command(args: list[str]) -> list[str]:
+    """Build a command that re-executes lars in this environment."""
+    if getattr(sys, "frozen", False):
+        return [sys.executable, *args]
+    return [sys.executable, '-m', 'lars.cli', *args]
+
+
+def _resolve_studio_runtime(mode: str) -> str:
+    """Resolve studio runtime mode with sensible defaults for frozen binaries."""
+    if mode in ("subprocess", "embedded"):
+        return mode
+
+    env_mode = os.environ.get("LARS_STUDIO_RUNTIME", "").strip().lower()
+    if env_mode in ("subprocess", "embedded"):
+        return env_mode
+
+    return "embedded" if getattr(sys, "frozen", False) else "subprocess"
+
+
+@contextmanager
+def _temporary_env(env_updates: dict[str, str]):
+    """Temporarily set environment variables for in-process studio execution."""
+    sentinel = object()
+    original = {}
+
+    for key, value in env_updates.items():
+        original[key] = os.environ.get(key, sentinel)
+        os.environ[key] = value
+
+    try:
+        yield
+    finally:
+        for key, value in original.items():
+            if value is sentinel:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+
+def _load_studio_flask_app(studio_backend_dir: str):
+    """Load Studio backend Flask app from backend/app.py."""
+    import importlib.util
+
+    app_py = os.path.join(studio_backend_dir, "app.py")
+    if not os.path.exists(app_py):
+        raise RuntimeError(f"Studio backend app.py not found at: {app_py}")
+
+    if studio_backend_dir not in sys.path:
+        sys.path.insert(0, studio_backend_dir)
+
+    spec = importlib.util.spec_from_file_location("_lars_studio_backend_app", app_py)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Could not load Studio backend module from: {app_py}")
+
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    flask_app = getattr(module, "app", None)
+    if flask_app is None:
+        raise RuntimeError("Studio backend module loaded but no Flask app object named 'app' was found")
+    return flask_app
+
+
+def _run_studio_embedded_flask(studio_backend_dir: str, host: str, port: int, env: dict[str, str], debug: bool):
+    """Run Studio backend in-process via Flask."""
+    with _temporary_env(env):
+        flask_app = _load_studio_flask_app(studio_backend_dir)
+        # Disable reloader so we remain single-process and signal handling stays predictable.
+        flask_app.run(host=host, port=port, debug=debug, threaded=True, use_reloader=False)
+
+
+def _run_studio_embedded_gunicorn(studio_backend_dir: str, host: str, port: int, workers: int, preload: bool, env: dict[str, str]):
+    """Run Studio backend in-process via Gunicorn BaseApplication."""
+    try:
+        from gunicorn.app.base import BaseApplication
+    except ImportError:
+        styled_print(f"{S.ERR} Gunicorn not installed. Install with: pip install gunicorn gevent")
+        print("   Or use --dev mode for Flask development server")
+        sys.exit(1)
+
+    class StandaloneGunicornApplication(BaseApplication):
+        def __init__(self, application, options=None):
+            self.options = options or {}
+            self.application = application
+            super().__init__()
+
+        def load_config(self):
+            config = {
+                key: value for key, value in self.options.items()
+                if value is not None and key in self.cfg.settings
+            }
+            for key, value in config.items():
+                self.cfg.set(key.lower(), value)
+
+        def load(self):
+            return self.application
+
+    with _temporary_env(env):
+        flask_app = _load_studio_flask_app(studio_backend_dir)
+        options = {
+            "worker_class": "gthread",
+            "workers": workers,
+            "threads": 4,
+            "bind": f"{host}:{port}",
+            "timeout": 600,
+            "graceful_timeout": 60,
+            "chdir": studio_backend_dir,
+            "preload_app": bool(preload),
+        }
+        StandaloneGunicornApplication(flask_app, options).run()
+
+
 def cmd_serve_studio(args):
     """Start LARS Studio web UI backend."""
     import subprocess
@@ -7281,6 +7405,8 @@ def cmd_serve_studio(args):
     print(f"   Host: {args.host}")
     print(f"   Port: {args.port}")
     print(f"   Mode: {'development' if args.dev else 'production'}")
+    print(f"   Runtime: {_resolve_studio_runtime(getattr(args, 'runtime', 'auto'))}")
+    print(f"   PGwire mode: {getattr(args, 'pgwire_mode', 'auto')}")
     print(f"   Static files: {'yes' if has_built_frontend and not args.dev else 'no'}")
     print()
 
@@ -7357,26 +7483,17 @@ def cmd_serve_studio(args):
 
     # Check if external PGwire is already running on default port
     DEFAULT_PGWIRE_PORT = 15432
+    pgwire_mode = getattr(args, "pgwire_mode", "auto")
 
-    if chdb_backend_active:
-        # CHDB mode: do not spawn internal PGwire subprocess.
-        # Studio will fall back to direct DuckDB for SQL execution.
-        pgwire_port = None
-        styled_print(f"{S.DB} CHDB mode: skipping internal PGwire server")
-    elif check_port(DEFAULT_PGWIRE_PORT):
-        pgwire_port = DEFAULT_PGWIRE_PORT
-        styled_print(f"{S.DB} Using existing PGwire server on port {pgwire_port}")
-    else:
-        # Start internal PGwire server for Studio on the SAME default port
-        # No more separate 15433 - one port to rule them all
+    def spawn_internal_pgwire() -> bool:
+        """Start internal PGwire server on the default port."""
+        nonlocal pgwire_process, pgwire_port
         styled_print(f"{S.RUN} Starting internal PGwire server on port {DEFAULT_PGWIRE_PORT}...")
-
-        pgwire_cmd = [
-            sys.executable, '-m', 'lars.cli',
+        pgwire_cmd = _build_lars_reexec_command([
             'serve', 'sql',
             '--port', str(DEFAULT_PGWIRE_PORT),
             '--host', args.host,
-        ]
+        ])
 
         pgwire_process = subprocess.Popen(
             pgwire_cmd,
@@ -7385,24 +7502,50 @@ def cmd_serve_studio(args):
             start_new_session=True,
         )
 
-        # Wait for server to be ready
         import time
         start_time = time.time()
         while time.time() - start_time < 10:
             if check_port(DEFAULT_PGWIRE_PORT):
                 pgwire_port = DEFAULT_PGWIRE_PORT
                 styled_print(f"{S.OK} Internal PGwire server ready")
-                break
+                return True
             if pgwire_process.poll() is not None:
                 styled_print(f"{S.WARN} PGwire server failed to start, falling back to direct DuckDB")
                 pgwire_process = None
-                break
+                return False
             time.sleep(0.2)
+
+        styled_print(f"{S.WARN} PGwire server timeout, falling back to direct DuckDB")
+        if pgwire_process:
+            pgwire_process.terminate()
+            pgwire_process = None
+        return False
+
+    if chdb_backend_active:
+        # CHDB mode: do not spawn internal PGwire subprocess.
+        # Studio will fall back to direct DuckDB for SQL execution.
+        pgwire_port = None
+        styled_print(f"{S.DB} CHDB mode: skipping internal PGwire server")
+    elif pgwire_mode == "external":
+        if check_port(DEFAULT_PGWIRE_PORT):
+            pgwire_port = DEFAULT_PGWIRE_PORT
+            styled_print(f"{S.DB} Using external PGwire server on port {pgwire_port}")
         else:
-            styled_print(f"{S.WARN} PGwire server timeout, falling back to direct DuckDB")
-            if pgwire_process:
-                pgwire_process.terminate()
-                pgwire_process = None
+            styled_print(f"{S.WARN} PGwire mode is 'external' but no server found on port {DEFAULT_PGWIRE_PORT}")
+            styled_print(f"{S.WARN} Studio will fall back to direct DuckDB where possible")
+    elif pgwire_mode == "internal":
+        if check_port(DEFAULT_PGWIRE_PORT):
+            pgwire_port = DEFAULT_PGWIRE_PORT
+            styled_print(f"{S.DB} PGwire already running on port {pgwire_port} (internal mode)")
+        else:
+            spawn_internal_pgwire()
+    else:
+        # Auto mode: use existing PGwire if available, otherwise start internal.
+        if check_port(DEFAULT_PGWIRE_PORT):
+            pgwire_port = DEFAULT_PGWIRE_PORT
+            styled_print(f"{S.DB} Using existing PGwire server on port {pgwire_port}")
+        else:
+            spawn_internal_pgwire()
 
     print()
 
@@ -7418,6 +7561,8 @@ def cmd_serve_studio(args):
                     pgwire_process.kill()
                 except Exception:
                     pass
+
+    runtime = _resolve_studio_runtime(getattr(args, "runtime", "auto"))
 
     if args.dev:
         # Development mode: run Flask directly
@@ -7435,12 +7580,22 @@ def cmd_serve_studio(args):
             env['LARS_STUDIO_PGWIRE_PORT'] = str(pgwire_port)
 
         try:
-            # Run app.py directly with graceful shutdown handling
-            _run_server_subprocess(
-                [sys.executable, 'app.py'],
-                cwd=studio_backend_dir,
-                env=env
-            )
+            if runtime == "embedded":
+                styled_print(f"{S.RUN} Starting Studio backend in embedded Flask runtime")
+                _run_studio_embedded_flask(
+                    studio_backend_dir=studio_backend_dir,
+                    host=args.host,
+                    port=args.port,
+                    env=env,
+                    debug=True,
+                )
+            else:
+                # Run app.py directly with graceful shutdown handling
+                _run_server_subprocess(
+                    [sys.executable, 'app.py'],
+                    cwd=studio_backend_dir,
+                    env=env
+                )
         finally:
             cleanup_pgwire()
     else:
@@ -7473,25 +7628,35 @@ def cmd_serve_studio(args):
         if pgwire_port:
             env['LARS_STUDIO_PGWIRE_PORT'] = str(pgwire_port)
 
-        # Build gunicorn command
-        # Use gthread (threaded) workers instead of gevent - gevent's greenlets
-        # don't work well with the cascade runner's threading model
-        cmd = [
-            sys.executable, '-m', 'gunicorn',
-            '--worker-class', 'gthread',
-            '--workers', str(args.workers),
-            '--threads', '4',  # threads per worker for gthread
-            '--bind', f'{args.host}:{args.port}',
-            '--timeout', '600',  # 10 min timeout for long test runs
-            '--graceful-timeout', '60',
-            '--chdir', studio_backend_dir,
-        ]
-        if args.preload:
-            cmd.append('--preload')
-        cmd.append('app:app')
-
         try:
-            _run_server_subprocess(cmd, env=env)
+            if runtime == "embedded":
+                styled_print(f"{S.RUN} Starting Studio backend in embedded Gunicorn runtime")
+                _run_studio_embedded_gunicorn(
+                    studio_backend_dir=studio_backend_dir,
+                    host=args.host,
+                    port=args.port,
+                    workers=args.workers,
+                    preload=bool(args.preload),
+                    env=env,
+                )
+            else:
+                # Build gunicorn command
+                # Use gthread (threaded) workers instead of gevent - gevent's greenlets
+                # don't work well with the cascade runner's threading model
+                cmd = [
+                    sys.executable, '-m', 'gunicorn',
+                    '--worker-class', 'gthread',
+                    '--workers', str(args.workers),
+                    '--threads', '4',  # threads per worker for gthread
+                    '--bind', f'{args.host}:{args.port}',
+                    '--timeout', '600',  # 10 min timeout for long test runs
+                    '--graceful-timeout', '60',
+                    '--chdir', studio_backend_dir,
+                ]
+                if args.preload:
+                    cmd.append('--preload')
+                cmd.append('app:app')
+                _run_server_subprocess(cmd, env=env)
         finally:
             cleanup_pgwire()
 

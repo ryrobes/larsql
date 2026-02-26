@@ -1,0 +1,47 @@
+cascade_id: pipeline_python
+internal: true
+description: |
+  PIPELINE cascade for inline Python table transforms.
+
+  Executes user-provided Python against the full pipeline input table.
+  This is an escape hatch for transformations that are awkward in SQL.
+
+  Usage:
+      SELECT * FROM sales THEN PYTHON('result = df.sort_values("revenue", ascending=False)')
+      SELECT * FROM sales THEN PYTHON('''
+      df["margin_pct"] = (df["profit"] / df["revenue"]) * 100
+      result = df[df["margin_pct"] > 20]
+      ''')
+
+inputs_schema:
+  code: Python code to execute
+  _table: Query results as JSON records
+  _table_columns: List of column names
+  _table_row_count: Number of rows
+  _pipeline_context: Stage execution metadata
+
+sql_function:
+  name: PYTHON
+  description: Transform query results with inline Python
+  args:
+    - name: code
+      type: VARCHAR
+    - name: _table
+      type: TABLE
+  returns: TABLE
+  shape: PIPELINE
+  operators:
+    - 'THEN PYTHON {{ code }}'
+    - 'THEN PYTHON({{ code }})'
+  cache: false
+
+cells:
+  - name: python_transform
+    deterministic: true
+    tool: python:lars.pipeline_tools.python_transform
+    inputs:
+      code: "{{ input.code }}"
+      _table: "{{ input._table }}"
+      _table_path: "{{ input._table_path | default('') }}"
+      _table_columns: "{{ input._table_columns | default([]) }}"
+      _pipeline_context: "{{ input._pipeline_context | default({}) }}"

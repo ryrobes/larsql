@@ -60,6 +60,8 @@ import duckdb
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from .unified_logs_view import create_unified_logs_view
+
 
 def _cleanup_duckdb_on_shutdown():
     """
@@ -585,6 +587,7 @@ SYSTEM_TABLES = {
             ("cell_name", "VARCHAR"),
             ("status", "VARCHAR"),
             ("created_at", "TIMESTAMP"),
+            ("updated_at", "TIMESTAMP"),
             ("responded_at", "TIMESTAMP"),
             ("timeout_at", "TIMESTAMP"),
             ("checkpoint_type", "VARCHAR"),
@@ -604,7 +607,7 @@ SYSTEM_TABLES = {
         "partition_by": None,
         "dedup": {
             "pk": "id",
-            "order_by": "created_at"
+            "order_by": "updated_at DESC NULLS LAST, created_at DESC"
         },
     },
 
@@ -1027,6 +1030,88 @@ SYSTEM_TABLES = {
             ("content_hash", "VARCHAR"),
             ("created_at", "TIMESTAMP"),
             ("updated_at", "TIMESTAMP"),
+        ],
+        "partition_by": None,
+    },
+
+    "rag_vector_chunks": {
+        "columns": [
+            ("chunk_id", "VARCHAR"),
+            ("rag_id", "VARCHAR"),
+            ("doc_id", "VARCHAR"),
+            ("chunk_index", "UINTEGER"),
+            ("text", "VARCHAR"),
+            ("embedding", "FLOAT[]"),
+            ("rel_path", "VARCHAR"),
+            ("start_line", "UINTEGER"),
+            ("end_line", "UINTEGER"),
+            ("char_start", "UINTEGER"),
+            ("char_end", "UINTEGER"),
+            ("file_hash", "VARCHAR"),
+            ("embedding_model", "VARCHAR"),
+            ("embedding_dim", "USMALLINT"),
+            ("collection_key", "VARCHAR"),
+            ("upsert_ts", "UBIGINT"),
+        ],
+        "partition_by": None,
+    },
+
+    "rag_vector_tombstones": {
+        "columns": [
+            ("tombstone_type", "VARCHAR"),
+            ("rag_id", "VARCHAR"),
+            ("doc_id", "VARCHAR"),
+            ("embedding_model", "VARCHAR"),
+            ("embedding_dim", "USMALLINT"),
+            ("collection_key", "VARCHAR"),
+            ("tombstone_ts", "UBIGINT"),
+        ],
+        "partition_by": None,
+    },
+
+    "sql_rag_chunks": {
+        "columns": [
+            ("chunk_id", "VARCHAR"),
+            ("rag_id", "VARCHAR"),
+            ("doc_id", "VARCHAR"),
+            ("chunk_index", "UINTEGER"),
+            ("text", "VARCHAR"),
+            ("embedding", "FLOAT[]"),
+            ("rel_path", "VARCHAR"),
+            ("start_line", "UINTEGER"),
+            ("end_line", "UINTEGER"),
+            ("char_start", "UINTEGER"),
+            ("char_end", "UINTEGER"),
+            ("file_hash", "VARCHAR"),
+            ("embedding_model", "VARCHAR"),
+            ("embedding_dim", "USMALLINT"),
+            ("upsert_ts", "UBIGINT"),
+        ],
+        "partition_by": None,
+    },
+
+    "sql_rag_manifests": {
+        "columns": [
+            ("rag_id", "VARCHAR"),
+            ("doc_id", "VARCHAR"),
+            ("rel_path", "VARCHAR"),
+            ("file_hash", "VARCHAR"),
+            ("file_size", "UBIGINT"),
+            ("mtime", "UBIGINT"),
+            ("chunk_count", "UINTEGER"),
+        ],
+        "partition_by": None,
+    },
+
+    "sql_rag_meta": {
+        "columns": [
+            ("rag_id", "VARCHAR"),
+            ("embed_model", "VARCHAR"),
+            ("embedding_dim", "USMALLINT"),
+            ("samples_dir", "VARCHAR"),
+            ("doc_count", "UINTEGER"),
+            ("chunk_count", "UINTEGER"),
+            ("updated_at", "UBIGINT"),
         ],
         "partition_by": None,
     },
@@ -2116,44 +2201,8 @@ class LarsDB:
         # Try multiple strategies from most featured to simplest — MUST always succeed
         unified_logs_created = False
         
-        # Strategy 1: Full join with costs table (best - shows updated costs)
-        if not unified_logs_created:
-            try:
-                conn.execute("""
-                    CREATE OR REPLACE VIEW unified_logs AS
-                    SELECT 
-                        ul.* EXCLUDE (cost, tokens_in, tokens_out, tokens_reasoning, parent_session_id),
-                        COALESCE(c.cost, ul.cost) AS cost,
-                        COALESCE(c.tokens_in, ul.tokens_in) AS tokens_in,
-                        COALESCE(c.tokens_out, ul.tokens_out) AS tokens_out,
-                        COALESCE(c.tokens_reasoning, ul.tokens_reasoning) AS tokens_reasoning,
-                        CAST(ul.parent_session_id AS VARCHAR) AS parent_session_id
-                    FROM unified_logs_base ul
-                    LEFT JOIN costs c ON ul.trace_id = c.trace_id
-                """)
-                unified_logs_created = True
-            except Exception:
-                pass
-        
-        # Strategy 2: Base table with parent_session_id cast (no costs join)
-        if not unified_logs_created:
-            try:
-                conn.execute("""
-                    CREATE OR REPLACE VIEW unified_logs AS
-                    SELECT *, CAST(parent_session_id AS VARCHAR) AS parent_session_id
-                    FROM (SELECT * EXCLUDE (parent_session_id) FROM unified_logs_base)
-                """)
-                unified_logs_created = True
-            except Exception:
-                pass
-        
-        # Strategy 3: Simple alias (works even with empty views)
-        if not unified_logs_created:
-            try:
-                conn.execute("CREATE OR REPLACE VIEW unified_logs AS SELECT * FROM unified_logs_base")
-                unified_logs_created = True
-            except Exception:
-                pass
+        if create_unified_logs_view(conn, include_parent_cast_fallback=True):
+            unified_logs_created = True
         
         if not unified_logs_created:
             # Create empty stub with full schema so downstream views don't fail
@@ -2491,19 +2540,97 @@ class LarsDB:
         except Exception:
             pass
     
-    def _write_rows_to_file(self, filepath: Path, rows: List[Dict[str, Any]], schema_def: dict) -> str:
+    def _sanitize_nat_value(self, val: Any) -> Any:
+        """Convert pandas null-like values (NaT/NaN) into plain None."""
+        if val is None:
+            return None
+        if hasattr(val, 'isnull') and val.isnull():
+            return None
+        try:
+            import pandas as pd
+            if pd.isna(val):
+                return None
+        except (TypeError, ValueError):
+            pass
+        return val
+
+    def _coerce_rows_to_schema_types(
+        self,
+        rows: List[Dict[str, Any]],
+        schema_def: dict,
+    ) -> List[Dict[str, Any]]:
+        """Coerce Python values to match DuckDB schema types."""
+        if not schema_def or not schema_def.get("columns"):
+            return rows
+
+        type_map = {col: dtype for col, dtype in schema_def["columns"]}
+        coerced_rows: List[Dict[str, Any]] = []
+        for row in rows:
+            coerced: Dict[str, Any] = {}
+            for col, val in row.items():
+                if val is None:
+                    coerced[col] = None
+                    continue
+
+                if col not in type_map:
+                    coerced[col] = val
+                    continue
+
+                dtype = type_map[col].upper()
+                try:
+                    if dtype in (
+                        "INTEGER",
+                        "INT",
+                        "INT32",
+                        "SMALLINT",
+                        "TINYINT",
+                        "BIGINT",
+                        "INT64",
+                        "UBIGINT",
+                        "UINTEGER",
+                        "UTINYINT",
+                        "USMALLINT",
+                        "INT8",
+                        "INT16",
+                        "UINT8",
+                        "UINT16",
+                        "UINT32",
+                        "UINT64",
+                    ):
+                        coerced[col] = int(val)
+                    elif dtype in ("DOUBLE", "FLOAT", "REAL", "FLOAT4", "FLOAT8"):
+                        coerced[col] = float(val)
+                    elif dtype == "BOOLEAN":
+                        if isinstance(val, bool):
+                            coerced[col] = val
+                        elif isinstance(val, str):
+                            coerced[col] = val.lower() in ("true", "1", "yes")
+                        else:
+                            coerced[col] = bool(val)
+                    else:
+                        coerced[col] = val
+                except (ValueError, TypeError):
+                    coerced[col] = None
+            coerced_rows.append(coerced)
+        return coerced_rows
+
+    def _normalize_rows_for_schema(
+        self,
+        rows: List[Dict[str, Any]],
+        schema_def: dict,
+    ) -> List[Dict[str, Any]]:
         """
-        Write rows to a parquet file. Internal helper for write().
-        
-        Handles normalization, type coercion, and atomic write.
+        Canonicalize rows against schema so every sink sees the same payload.
+
+        This fills generated keys/timestamps and performs lightweight type
+        coercion to align with parquet serialization behavior.
         """
-        # Normalize rows to ensure all columns are present
+        normalized_rows: List[Dict[str, Any]]
         if schema_def and schema_def.get("columns"):
             normalized_rows = []
             column_names = [col for col, _ in schema_def["columns"]]
             for row in rows:
                 normalized = {col: row.get(col) for col in column_names}
-                # Add timestamp and id if not present
                 if "timestamp" in normalized and normalized["timestamp"] is None:
                     normalized["timestamp"] = datetime.now(timezone.utc)
                 if "id" in normalized and normalized["id"] is None:
@@ -2511,59 +2638,38 @@ class LarsDB:
                 if "message_id" in normalized and normalized["message_id"] is None:
                     normalized["message_id"] = uuid.uuid4().hex
                 normalized_rows.append(normalized)
-            rows = normalized_rows
+        else:
+            normalized_rows = [dict(row) for row in rows]
+
+        sanitized_rows = [
+            {k: self._sanitize_nat_value(v) for k, v in row.items()}
+            for row in normalized_rows
+        ]
+        return self._coerce_rows_to_schema_types(sanitized_rows, schema_def)
+
+    def normalize_rows_for_write(self, table: str, rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Public row normalizer used by multi-sink write paths."""
+        schema_def = SYSTEM_TABLES.get(table, {})
+        return self._normalize_rows_for_schema(rows, schema_def)
+
+    def _write_rows_to_file(
+        self,
+        filepath: Path,
+        rows: List[Dict[str, Any]],
+        schema_def: dict,
+        *,
+        rows_already_normalized: bool = False,
+    ) -> str:
+        """
+        Write rows to a parquet file. Internal helper for write().
         
-        # Sanitize pandas NaT values → None (PyArrow can't handle NaT)
-        def _sanitize_nat(val):
-            if val is None:
-                return None
-            if hasattr(val, 'isnull') and val.isnull():  # pandas NaT, NaN
-                return None
-            try:
-                import pandas as pd
-                if pd.isna(val):
-                    return None
-            except (TypeError, ValueError):
-                pass
-            return val
-        
-        rows = [{k: _sanitize_nat(v) for k, v in row.items()} for row in rows]
-        
+        Handles normalization, type coercion, and atomic write.
+        """
+        if not rows_already_normalized:
+            rows = self._normalize_rows_for_schema(rows, schema_def)
+
         # Convert to Arrow and write with explicit schema (prevents type inference mismatches)
         if schema_def and schema_def.get("columns"):
-            # Coerce values to match schema types (PyArrow doesn't auto-coerce)
-            type_map = {col: dtype for col, dtype in schema_def["columns"]}
-            coerced_rows = []
-            for row in rows:
-                coerced = {}
-                for col, val in row.items():
-                    if val is None:
-                        coerced[col] = None
-                    elif col in type_map:
-                        dtype = type_map[col].upper()
-                        try:
-                            if dtype in ("INTEGER", "INT", "INT32", "SMALLINT", "TINYINT", 
-                                        "BIGINT", "INT64", "UBIGINT", "UINTEGER", 
-                                        "UTINYINT", "USMALLINT", "INT8", "INT16", "UINT8", "UINT16", "UINT32", "UINT64"):
-                                coerced[col] = int(val) if val is not None else None
-                            elif dtype in ("DOUBLE", "FLOAT", "REAL", "FLOAT4", "FLOAT8"):
-                                coerced[col] = float(val) if val is not None else None
-                            elif dtype == "BOOLEAN":
-                                if isinstance(val, bool):
-                                    coerced[col] = val
-                                elif isinstance(val, str):
-                                    coerced[col] = val.lower() in ("true", "1", "yes")
-                                else:
-                                    coerced[col] = bool(val)
-                            else:
-                                coerced[col] = val
-                        except (ValueError, TypeError):
-                            coerced[col] = None  # Can't coerce → null
-                    else:
-                        coerced[col] = val
-                coerced_rows.append(coerced)
-            rows = coerced_rows
-            
             arrow_schema = _schema_to_pyarrow(schema_def)
             table_data = pa.Table.from_pylist(rows, schema=arrow_schema)
         else:
@@ -2595,7 +2701,14 @@ class LarsDB:
         max_seconds = float(table_cfg.get("max_seconds", 0.5))
         return max_rows, max_seconds
 
-    def _write_rows_immediate(self, table: str, rows: List[Dict[str, Any]], partition_key: Optional[str]) -> str:
+    def _write_rows_immediate(
+        self,
+        table: str,
+        rows: List[Dict[str, Any]],
+        partition_key: Optional[str],
+        *,
+        rows_already_normalized: bool = False,
+    ) -> str:
         """Internal non-buffered parquet append implementation."""
         if not rows:
             return ""
@@ -2637,7 +2750,12 @@ class LarsDB:
                 unique_id = uuid.uuid4().hex[:8]
                 filename = f"{timestamp}_{unique_id}.parquet"
                 filepath = table_dir / filename
-                self._write_rows_to_file(filepath, partition_rows, schema_def)
+                self._write_rows_to_file(
+                    filepath,
+                    partition_rows,
+                    schema_def,
+                    rows_already_normalized=rows_already_normalized,
+                )
                 written_paths.append(str(filepath))
 
             return ",".join(written_paths)
@@ -2649,7 +2767,12 @@ class LarsDB:
         partition_suffix = f"_{partition_key}" if partition_key else ""
         filename = f"{timestamp}_{unique_id}{partition_suffix}.parquet"
         filepath = table_dir / filename
-        result = self._write_rows_to_file(filepath, rows, schema_def)
+        result = self._write_rows_to_file(
+            filepath,
+            rows,
+            schema_def,
+            rows_already_normalized=rows_already_normalized,
+        )
 
         if table not in LarsDB._HIGH_FREQ_TABLES:
             self.invalidate_all_connections()
@@ -2708,7 +2831,12 @@ class LarsDB:
         for table, rows in to_flush:
             if not rows:
                 continue
-            self._write_rows_immediate(table=table, rows=rows, partition_key=None)
+            self._write_rows_immediate(
+                table=table,
+                rows=rows,
+                partition_key=None,
+                rows_already_normalized=True,
+            )
             flushed_rows += len(rows)
 
         return flushed_rows
@@ -2734,10 +2862,12 @@ class LarsDB:
             pass
     
     def write(
-        self, 
-        table: str, 
-        rows: List[Dict[str, Any]], 
-        partition_key: Optional[str] = None
+        self,
+        table: str,
+        rows: List[Dict[str, Any]],
+        partition_key: Optional[str] = None,
+        *,
+        rows_already_normalized: bool = False,
     ) -> str:
         """
         Append rows to a table (writes new parquet file).
@@ -2753,10 +2883,13 @@ class LarsDB:
         Returns:
             Path to the written parquet file
         """
+        schema_def = SYSTEM_TABLES.get(table, {})
         if not rows:
             return ""
 
-        schema_def = SYSTEM_TABLES.get(table, {})
+        if not rows_already_normalized:
+            rows = self._normalize_rows_for_schema(rows, schema_def)
+            rows_already_normalized = True
 
         if self._should_buffer_table(table, schema_def, partition_key):
             needs_immediate_flush = False
@@ -2772,7 +2905,12 @@ class LarsDB:
             # Fast path return. Data becomes visible cross-process on periodic flush.
             return "buffered"
 
-        return self._write_rows_immediate(table=table, rows=rows, partition_key=partition_key)
+        return self._write_rows_immediate(
+            table=table,
+            rows=rows,
+            partition_key=partition_key,
+            rows_already_normalized=rows_already_normalized,
+        )
     
     def compact(self, table: str, threshold: int = 2, force: bool = False) -> dict:
         """
@@ -3354,7 +3492,7 @@ def attach_system_views(conn, data_root: Optional[Path] = None) -> int:
             "dedup": {"pk": "session_id", "order_by": "updated_at DESC"},
         },
         "checkpoints": {
-            "dedup": {"pk": "id", "order_by": "created_at DESC"},
+            "dedup": {"pk": "id", "order_by": "updated_at DESC NULLS LAST, created_at DESC"},
         },
         "cascade_sessions": {
             "dedup": {"pk": "session_id", "order_by": "created_at DESC"},
@@ -3435,28 +3573,9 @@ def attach_system_views(conn, data_root: Optional[Path] = None) -> int:
         except Exception as e:
             logger.warning(f"[attach_system_views] Failed to create view {table_name}: {e}")
     
-    # Create unified_logs (joins with costs) — same cascade strategy as _register_derived_views
-    for strategy, sql in [
-        ("costs_join", """
-            CREATE OR REPLACE VIEW unified_logs AS
-            SELECT 
-                ul.* EXCLUDE (cost, tokens_in, tokens_out, tokens_reasoning, parent_session_id),
-                COALESCE(c.cost, ul.cost) AS cost,
-                COALESCE(c.tokens_in, ul.tokens_in) AS tokens_in,
-                COALESCE(c.tokens_out, ul.tokens_out) AS tokens_out,
-                COALESCE(c.tokens_reasoning, ul.tokens_reasoning) AS tokens_reasoning,
-                CAST(ul.parent_session_id AS VARCHAR) AS parent_session_id
-            FROM unified_logs_base ul
-            LEFT JOIN costs c ON ul.trace_id = c.trace_id
-        """),
-        ("simple_alias", "CREATE OR REPLACE VIEW unified_logs AS SELECT * FROM unified_logs_base"),
-    ]:
-        try:
-            conn.execute(sql)
-            count += 1
-            break
-        except Exception:
-            continue
+    # Create unified_logs with shared cascade strategy.
+    if create_unified_logs_view(conn, include_parent_cast_fallback=True):
+        count += 1
     
     # Create lars_system namespace aliases
     lars_system_aliases = [
@@ -3588,7 +3707,10 @@ class LarsDBAdapter:
         if columns:
             # Filter rows to only include specified columns
             rows = [{k: r.get(k) for k in columns} for r in rows]
-        self._db.write(table, rows)
+        # Delegate to runtime adapter so write fan-out policy stays centralized.
+        from .db_adapter import get_db_adapter as _runtime_db_adapter
+
+        _runtime_db_adapter().insert_rows(table, rows, log_query=log_query)
     
     def run_housekeeping(self):
         """No-op for LarsDB (no migrations needed)."""

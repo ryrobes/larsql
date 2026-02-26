@@ -196,6 +196,7 @@ class SqlConnectionConfig(BaseModel):
     # === Discovery Settings ===
     sample_row_limit: int = 50
     distinct_value_threshold: int = 100        # Show distribution if < this many distinct values
+    value_distribution_limit: int = 5          # Keep top-N distinct values per low-cardinality column
     read_only: bool = True                     # Default to read-only connections
 
     # === Internal Fields ===

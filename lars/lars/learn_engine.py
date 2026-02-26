@@ -87,9 +87,9 @@ def log_work(
 ) -> None:
     """Write an entry to learn_work_log."""
     try:
-        from .lars_db import LarsDB
-        db = LarsDB()
-        db.write("learn_work_log", [{
+        from .db_adapter import get_db
+        db = get_db()
+        db.insert_rows("learn_work_log", [{
             "id": _gen_id(),
             "timestamp": _now_ts(),
             "activity_type": str(activity_type),
@@ -123,9 +123,9 @@ def log_change(
     """Write an entry to learn_changelog. Returns the change ID."""
     change_id = _gen_id()
     try:
-        from .lars_db import LarsDB
-        db = LarsDB()
-        db.write("learn_changelog", [{
+        from .db_adapter import get_db
+        db = get_db()
+        db.insert_rows("learn_changelog", [{
             "id": change_id,
             "timestamp": _now_ts(),
             "change_type": str(change_type),
@@ -153,8 +153,8 @@ def log_change(
 def revert_change(change_id: str) -> bool:
     """Mark a changelog entry as reverted."""
     try:
-        from .lars_db import LarsDB
-        db = LarsDB()
+        from .db_adapter import get_db
+        db = get_db()
         # Read current entry, mark reverted
         results = db.query(f"SELECT * FROM learn_changelog WHERE id = '{change_id}'")
         if not results:
@@ -164,7 +164,7 @@ def revert_change(change_id: str) -> bool:
         entry = results[0]
         # TODO: Actually restore before_state (model routing, prompt, etc.)
         # For now just mark as reverted
-        db.write("learn_changelog", [{
+        db.insert_rows("learn_changelog", [{
             **entry,
             "reverted": True,
             "reverted_at": _now_ts(),
@@ -355,8 +355,8 @@ def update_routing_table() -> Dict[str, str]:
     Returns dict of operator -> best model.
     """
     try:
-        from .lars_db import LarsDB
-        db = LarsDB()
+        from .db_adapter import get_db
+        db = get_db()
 
         # Query benchmark results aggregated by operator + model
         results = db.query(f"""
@@ -409,7 +409,7 @@ def update_routing_table() -> Dict[str, str]:
 
         if routing_entries:
             # Write all entries (overwrites previous routing state)
-            db.write("learn_model_routing", routing_entries)
+            db.insert_rows("learn_model_routing", routing_entries)
             log.info(f"[learn] Updated routing table: {len(routing_entries)} entries, "
                      f"{len(best_models)} operators routed")
 

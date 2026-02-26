@@ -8,10 +8,78 @@ Key functions:
 - read_chunk(): Get a specific chunk by ID
 - list_sources(): List all indexed documents
 """
+import copy
+import os
+import threading
+import time
+from collections import OrderedDict
 from typing import Any, Dict, List, Optional
 
 from .context import RagContext
 from .indexer import embed_texts
+
+_SEARCH_CACHE_ENABLED = str(os.getenv("LARS_RAG_SEARCH_CACHE_ENABLED", "1")).strip().lower() in {
+    "1", "true", "yes", "on"
+}
+_SEARCH_CACHE_TTL_SECONDS = max(0.1, float(os.getenv("LARS_RAG_SEARCH_CACHE_TTL_SECONDS", "45")))
+_SEARCH_CACHE_MAX_ENTRIES = max(1, int(os.getenv("LARS_RAG_SEARCH_CACHE_MAX_ENTRIES", "512")))
+_search_cache_lock = threading.Lock()
+_search_cache: "OrderedDict[str, tuple[float, List[Dict[str, Any]]]]" = OrderedDict()
+
+
+def _search_cache_key(
+    rag_ctx: RagContext,
+    query: str,
+    k: int,
+    score_threshold: Optional[float],
+    doc_filter: Optional[str],
+) -> str:
+    threshold_key = "" if score_threshold is None else str(float(score_threshold))
+    filter_key = doc_filter or ""
+    dim = int(rag_ctx.embedding_dim or 0) if getattr(rag_ctx, "embedding_dim", 0) else 0
+    return "|".join(
+        [
+            str(rag_ctx.rag_id),
+            str(rag_ctx.embed_model),
+            str(dim),
+            str(int(k)),
+            threshold_key,
+            filter_key,
+            str(query or ""),
+        ]
+    )
+
+
+def _search_cache_get(cache_key: str) -> Optional[List[Dict[str, Any]]]:
+    if not _SEARCH_CACHE_ENABLED:
+        return None
+    now = time.time()
+    with _search_cache_lock:
+        entry = _search_cache.get(cache_key)
+        if entry is None:
+            return None
+        expires_at, payload = entry
+        if expires_at <= now:
+            _search_cache.pop(cache_key, None)
+            return None
+        _search_cache.move_to_end(cache_key)
+        return copy.deepcopy(payload)
+
+
+def _search_cache_put(cache_key: str, payload: List[Dict[str, Any]]) -> None:
+    if not _SEARCH_CACHE_ENABLED:
+        return
+    expires_at = time.time() + _SEARCH_CACHE_TTL_SECONDS
+    with _search_cache_lock:
+        _search_cache[cache_key] = (expires_at, copy.deepcopy(payload))
+        _search_cache.move_to_end(cache_key)
+        while len(_search_cache) > _SEARCH_CACHE_MAX_ENTRIES:
+            _search_cache.popitem(last=False)
+
+
+def _search_cache_clear() -> None:
+    with _search_cache_lock:
+        _search_cache.clear()
 
 
 def list_sources(rag_ctx: RagContext) -> List[Dict[str, Any]]:
@@ -104,7 +172,9 @@ def search_chunks(
     query: str,
     k: int = 5,
     score_threshold: Optional[float] = None,
-    doc_filter: Optional[str] = None
+    doc_filter: Optional[str] = None,
+    query_embedding: Optional[List[float]] = None,
+    query_embedding_dim: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
     """
     Semantic search using DuckDB VSS.
@@ -115,24 +185,38 @@ def search_chunks(
         k: Number of results to return
         score_threshold: Minimum similarity score (0-1, higher = more similar)
         doc_filter: Optional filter on rel_path (substring match)
+        query_embedding: Optional precomputed embedding for query reuse
+        query_embedding_dim: Optional dimension for precomputed embedding
 
     Returns:
         List of search results with chunk data and similarity scores
     """
     from .duckdb_store import query_chunks
 
-    # Embed query using Agent.embed() - same model as the index
-    embed_result = embed_texts(
-        texts=[query],
-        model=rag_ctx.embed_model,
-        session_id=rag_ctx.session_id,
-        trace_id=rag_ctx.trace_id,
-        parent_id=rag_ctx.parent_id,
-        cell_name=rag_ctx.cell_name,
-        cascade_id=rag_ctx.cascade_id,
-    )
-    query_vec = embed_result["embeddings"][0]
-    query_dim = int(embed_result.get("dim") or 0)
+    cache_key = _search_cache_key(rag_ctx, query, k, score_threshold, doc_filter)
+    cached = _search_cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    if query_embedding is not None:
+        query_vec = [float(x) for x in query_embedding]
+        query_dim = int(query_embedding_dim or len(query_vec) or 0)
+    else:
+        # Embed query using Agent.embed() - same model as the index
+        embed_result = embed_texts(
+            texts=[query],
+            model=rag_ctx.embed_model,
+            session_id=rag_ctx.session_id,
+            trace_id=rag_ctx.trace_id,
+            parent_id=rag_ctx.parent_id,
+            cell_name=rag_ctx.cell_name,
+            cascade_id=rag_ctx.cascade_id,
+        )
+        query_vec = embed_result["embeddings"][0]
+        query_dim = int(embed_result.get("dim") or 0)
+
+    if not query_vec:
+        raise ValueError("Query embedding is empty.")
 
     expected_dim = int(rag_ctx.embedding_dim or 0) if getattr(rag_ctx, "embedding_dim", 0) else 0
     if expected_dim and query_dim and query_dim != expected_dim:
@@ -214,7 +298,9 @@ def search_chunks(
         if len(formatted) >= int(k):
             break
 
-    return formatted[: int(k)]
+    final_results = formatted[: int(k)]
+    _search_cache_put(cache_key, final_results)
+    return final_results
 
 
 def get_chunk_by_id(rag_id: str, chunk_id: str) -> Optional[Dict[str, Any]]:
@@ -275,7 +361,6 @@ def clear_cache():
     """
     Clear any cached data.
 
-    In the DuckDB implementation, there's no local cache to clear.
-    This function is kept for backward compatibility.
+    Clear in-memory RAG search cache.
     """
-    pass  # No-op - DuckDB handles caching internally
+    _search_cache_clear()

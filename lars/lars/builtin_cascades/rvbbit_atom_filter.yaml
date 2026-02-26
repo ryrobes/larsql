@@ -15,42 +15,92 @@ inputs_schema:
   display_type: "Current display type (number, barChart, table, etc.)"
   title: "Current atom title"
 
-model: "{{ models.fast }}"
+model: "{{ models.flagship }}"
 
 cells:
   - name: filter
-    model: "{{ models.fast }}"
+    model: "{{ models.flagship }}"
     skills:
-      - sql_data
+      - safe_sql_data
+      - sql_search
+      - sql_get_table_meta
     rules:
       max_attempts: 3
       loop_until:
         python: |
+          import ast
           import json
+          import re
+
+          def _strip_fence(text):
+              s = (text or "").strip()
+              if s.startswith("```"):
+                  lines = s.splitlines()
+                  if len(lines) >= 2:
+                      s = "\n".join(lines[1:])
+              if s.endswith("```"):
+                  s = s.rsplit("```", 1)[0]
+              return s.strip()
+
+          def _parse_json_like(text):
+              s = _strip_fence(text)
+              if not s:
+                  return None
+
+              try:
+                  return json.loads(s)
+              except Exception:
+                  pass
+
+              try:
+                  return ast.literal_eval(s)
+              except Exception:
+                  pass
+
+              for pattern in (r"(\{[\s\S]*\})", r"(\[[\s\S]*\])"):
+                  match = re.search(pattern, s)
+                  if not match:
+                      continue
+                  candidate = match.group(1).strip()
+                  try:
+                      return json.loads(candidate)
+                  except Exception:
+                      try:
+                          return ast.literal_eval(candidate)
+                      except Exception:
+                          continue
+              return None
+
           try:
-              text = content.strip()
-              if text.startswith('```'):
-                  text = '\n'.join(text.split('\n')[1:])
-              if text.endswith('```'):
-                  text = text.rsplit('```', 1)[0]
-              text = text.strip()
-              obj = json.loads(text)
-              if 'sql' not in obj:
+              text = (content or "").strip()
+
+              obj = _parse_json_like(text)
+              if isinstance(obj, str):
+                  obj = _parse_json_like(obj)
+
+              if not isinstance(obj, dict):
+                  result = {"valid": False, "reason": "Return a JSON object with sql/applied/verified/reason"}
+              elif 'sql' not in obj:
                   result = {"valid": False, "reason": "Missing 'sql' field"}
-              elif not obj.get('applied'):
-                  result = {"valid": False, "reason": "You must set 'applied': true if the filter was applied, or 'applied': false with a 'reason' if the filter cannot apply to this query. If you can apply it, also verify with sql_data first."}
-              elif obj.get('verified') or obj.get('applied') == False:
+              elif 'applied' not in obj:
+                  result = {"valid": False, "reason": "Missing 'applied' field (true if filter applied, false if not applicable)"}
+              elif obj.get('applied') is False:
+                  # Non-applicable filters are allowed without sql_data re-verification.
+                  result = {"valid": True, "reason": "Filter marked as not applicable"}
+              elif obj.get('verified'):
                   result = {"valid": True, "reason": "Filter result accepted"}
               else:
                   result = {"valid": False, "reason": "If applied=true, you must call sql_data to verify the mutated SQL works, then set verified=true"}
           except json.JSONDecodeError as e:
               result = {"valid": False, "reason": f"Invalid JSON: {e}"}
+          except Exception as e:
+              result = {"valid": False, "reason": f"Validator runtime error: {e}"}
       retry_instructions: |
         {{ validation_reason }}
         Return ONLY a JSON object. Attempt {{ attempt }}/{{ max_attempts }}
     instructions: |
       You are a SQL filter specialist for the RVBBIT semantic grid.
-      
+
       ## Task
       Apply a filter to an existing SQL query. The filter may or may not be directly
       applicable — use your judgment.
@@ -74,14 +124,17 @@ cells:
          - The filter dimension might exist in the table but not in the SELECT
          - For aggregations (COUNT, SUM), add the filter to WHERE, not HAVING
          - For number/KPI atoms, filter the underlying data, not the aggregation
-      
+
       2. **IF NOT POSSIBLE:** If the filter truly cannot apply (e.g. the table has
          no related column at all), return the original SQL unchanged with
          `"applied": false` and explain why.
 
       3. **BE CREATIVE:** The filter says "state = Florida" but the column might be
          called "state_name", "us_state", "location_state", or the value might need
-         matching (e.g., "FL" vs "Florida"). Use sql_data to check if needed.
+         matching (e.g., "FL" vs "Florida"). If columns are unclear, use `sql_search`
+         then `sql_get_table_meta(qualified_name=...)` to verify exact names/types.
+         Use `sql_table_ref` as the table reference exactly as returned; do not add `.main`.
+         Use sql_data to check behavior if needed.
 
       4. **VERIFY:** If you modified the SQL, call `sql_data` to confirm it works.
          Only set `"verified": true` after sql_data returns successfully.

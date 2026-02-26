@@ -12,6 +12,7 @@ Key features:
 - Async fire-and-forget logging for query/deref events
 """
 import json
+import logging
 import os
 import threading
 import time
@@ -19,12 +20,17 @@ import contextvars
 import atexit
 import uuid
 import copy
+import random
+import hashlib
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Union
 
 import pandas as pd
 
 from .lars_db import LarsDB, get_lars_db, SYSTEM_TABLES
+
+
+log = logging.getLogger(__name__)
 
 
 # =============================================================================
@@ -172,6 +178,23 @@ def _env_enabled(name: str, default: str = "0") -> bool:
     )
 
 
+def _env_float(name: str, default: float) -> float:
+    """Parse float env values with fallback."""
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        return float(raw)
+    except Exception:
+        return default
+
+
+def _env_csv(name: str) -> List[str]:
+    """Parse comma-separated env list values."""
+    raw = os.environ.get(name, "")
+    return [part.strip() for part in raw.split(",") if part.strip()]
+
+
 class QueryLogger:
     """
     Async fire-and-forget query logger that writes to ui_sql_log table.
@@ -292,8 +315,7 @@ class QueryLogger:
 
     def _flush_batch(self, batch: List[Dict]):
         try:
-            db = self._get_db()
-            db.write("ui_sql_log", batch)
+            get_db_adapter().insert_rows("ui_sql_log", batch, log_query=False)
         except Exception as e:
             print(f"[QueryLogger] Flush failed: {e}")
 
@@ -443,8 +465,7 @@ class DerefLogger:
 
     def _flush_batch(self, batch: List[Dict]):
         try:
-            db = self._get_db()
-            db.write("deref_log", batch)
+            get_db_adapter().insert_rows("deref_log", batch, log_query=False)
         except Exception as e:
             print(f"[DerefLogger] Flush failed: {e}")
 
@@ -508,6 +529,12 @@ class DuckDBAdapter:
     _SHADOW_UI_READS_ENABLED = True
     _SHADOW_UI_QUERY_SOURCE = "ui_backend"
     _SHADOW_UI_MAX_STALE_SECONDS = 5.0
+    _CH_READ_ALL_TOKENS = {"*", "all"}
+    _CH_READ_TABLE_ALIASES = {
+        "lars_system.logs": "unified_logs",
+        "lars_system.logs_raw": "unified_logs_base",
+        "lars_system.sessions": "session_state",
+    }
     _READ_CACHE_CONFIG = {
         "enabled": True,
         "ttl_seconds": 0.75,
@@ -535,6 +562,11 @@ class DuckDBAdapter:
         "now64(",
     )
 
+    @staticmethod
+    def _canonicalize_ch_read_table_name(table_name: str) -> str:
+        token = (table_name or "").strip().strip("`\"").lower()
+        return DuckDBAdapter._CH_READ_TABLE_ALIASES.get(token, token)
+
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
             with cls._lock:
@@ -549,9 +581,21 @@ class DuckDBAdapter:
                 return
             
             self._db = get_lars_db()
-            self._shadow_ui_reads_enabled = bool(DuckDBAdapter._SHADOW_UI_READS_ENABLED)
-            self._shadow_ui_query_source = DuckDBAdapter._SHADOW_UI_QUERY_SOURCE
-            self._shadow_ui_max_stale_seconds = float(DuckDBAdapter._SHADOW_UI_MAX_STALE_SECONDS)
+            self._shadow_ui_reads_enabled = (
+                bool(DuckDBAdapter._SHADOW_UI_READS_ENABLED)
+                and _env_enabled("LARS_SHADOW_UI_READS_ENABLED", "1")
+            )
+            self._shadow_ui_query_source = (
+                os.environ.get("LARS_SHADOW_UI_QUERY_SOURCE", DuckDBAdapter._SHADOW_UI_QUERY_SOURCE).strip()
+                or DuckDBAdapter._SHADOW_UI_QUERY_SOURCE
+            )
+            self._shadow_ui_max_stale_seconds = max(
+                0.1,
+                _env_float(
+                    "LARS_SHADOW_UI_MAX_STALE_SECONDS",
+                    float(DuckDBAdapter._SHADOW_UI_MAX_STALE_SECONDS),
+                ),
+            )
             self._shadow_store = None
             self._shadow_store_init_attempted = False
             self._read_cache_enabled = bool(DuckDBAdapter._READ_CACHE_CONFIG.get("enabled", True))
@@ -560,7 +604,76 @@ class DuckDBAdapter:
             self._read_cache_max_rows = int(DuckDBAdapter._READ_CACHE_CONFIG.get("max_rows", 2000))
             self._read_cache_lock = threading.Lock()
             self._read_cache: Dict[str, tuple[float, Any]] = {}
+            self._ch_shadow_writer = None
+            self._ch_shadow_writer_init_attempted = False
+            self._shadow_parity_enabled = _env_enabled(
+                "LARS_CH_SHADOW_PARITY_CHECK_ENABLED", "1"
+            )
+            self._shadow_parity_interval_s = max(
+                10.0, _env_float("LARS_CH_SHADOW_PARITY_CHECK_INTERVAL_SECONDS", 60.0)
+            )
+            self._shadow_parity_stop = threading.Event()
+            self._shadow_parity_thread = None
+            self._shadow_parity_baseline: Dict[str, Dict[str, Optional[int]]] = {}
+            # Optional ClickHouse read router (default off). This preserves
+            # DuckDB/parquet as the baseline behavior unless explicitly enabled.
+            self._ch_read_enabled = _env_enabled("LARS_CH_READ_ENABLED", "0")
+            ch_read_sources = _env_csv("LARS_CH_READ_QUERY_SOURCES")
+            if not ch_read_sources:
+                ch_read_sources = ["ui_backend"]
+            self._ch_read_query_sources = {s.strip().lower() for s in ch_read_sources if s.strip()}
+            ch_read_tables = _env_csv("LARS_CH_READ_TABLES")
+            lowered_tables = [t.strip().lower() for t in ch_read_tables]
+            self._ch_read_all_tables = any(token in DuckDBAdapter._CH_READ_ALL_TOKENS for token in lowered_tables)
+            self._ch_read_tables = set()
+            for token in lowered_tables:
+                if token in DuckDBAdapter._CH_READ_ALL_TOKENS:
+                    continue
+                canonical = DuckDBAdapter._canonicalize_ch_read_table_name(token)
+                if canonical:
+                    self._ch_read_tables.add(canonical)
+            self._ch_read_fallback_to_duck = _env_enabled("LARS_CH_READ_FALLBACK_TO_DUCK", "1")
+            if self._ch_read_enabled and not self._ch_read_fallback_to_duck:
+                # Strict CH mode should avoid shadow Duck reads to prevent split-brain
+                # between CH snapshots and shadow/parquet snapshots.
+                self._shadow_ui_reads_enabled = False
+            try:
+                retry_attempts = int(os.environ.get("LARS_CH_READ_RETRY_ATTEMPTS", "0"))
+            except Exception:
+                retry_attempts = 0
+            self._ch_read_retry_attempts = max(0, retry_attempts)
+            self._ch_read_retry_sleep_s = max(
+                0.0, _env_float("LARS_CH_READ_RETRY_SLEEP_SECONDS", 0.05)
+            )
+            self._ch_read_retry_on_empty = _env_enabled("LARS_CH_READ_RETRY_ON_EMPTY", "0")
+            self._ch_read_compare_enabled = _env_enabled("LARS_CH_READ_COMPARE_ENABLED", "0")
+            self._ch_read_compare_sample_pct = min(
+                1.0,
+                max(0.0, _env_float("LARS_CH_READ_COMPARE_SAMPLE_PCT", 0.01)),
+            )
+            try:
+                compare_max_rows = int(os.environ.get("LARS_CH_READ_COMPARE_MAX_ROWS", "50"))
+            except Exception:
+                compare_max_rows = 50
+            self._ch_read_compare_max_rows = max(1, compare_max_rows)
+            self._ch_read_client = None
+            self._ch_read_client_lock = threading.Lock()
+            self._ch_read_client_retry_after_ts = 0.0
+            self._ch_read_last_fail_log_ts = 0.0
+            self._duck_primary_write_enabled = _env_enabled(
+                "LARS_DUCK_PRIMARY_WRITE_ENABLED", "1"
+            )
+            self._duck_primary_write_disabled_tables = set(
+                _env_csv("LARS_DUCK_PRIMARY_WRITE_DISABLED_TABLES")
+            )
+            self._duck_primary_skip_log_tables: set[str] = set()
             DuckDBAdapter._initialized = True
+
+    def _should_write_duck_primary(self, table: str) -> bool:
+        """Return True when parquet remains the primary sink for this table."""
+        if not self._duck_primary_write_enabled:
+            return False
+        return table not in self._duck_primary_write_disabled_tables
 
     def run_housekeeping(self):
         """
@@ -606,6 +719,277 @@ class DuckDBAdapter:
             self._shadow_store = None
             return None
 
+    def _get_clickhouse_shadow_writer(self):
+        """Lazy-load optional ClickHouse shadow writer."""
+        if self._ch_shadow_writer is not None:
+            return self._ch_shadow_writer
+        if self._ch_shadow_writer_init_attempted:
+            return None
+
+        self._ch_shadow_writer_init_attempted = True
+        try:
+            from .clickhouse_shadow_writer import ClickHouseShadowWriter
+
+            writer = ClickHouseShadowWriter()
+            if writer.enabled:
+                self._ch_shadow_writer = writer
+            return self._ch_shadow_writer
+        except Exception as e:
+            log.warning("[CH Shadow] initialization failed: %s", e)
+            self._ch_shadow_writer = None
+            return None
+
+    def _shadow_write_rows(self, table: str, rows: List[Dict]) -> None:
+        writer = self._get_clickhouse_shadow_writer()
+        if writer is None:
+            return
+        try:
+            self._start_shadow_parity_monitor_if_needed(writer)
+            writer.enqueue(table, rows)
+        except Exception:
+            # Primary persistence is DuckDB; shadow write must never block/raise.
+            pass
+
+    def _start_shadow_parity_monitor_if_needed(self, writer) -> None:
+        """
+        Start periodic parity checks once shadow writing is active.
+
+        Uses delta-since-start counts so historical data mismatches do not
+        create noise during cutover.
+        """
+        if not self._shadow_parity_enabled or writer is None:
+            return
+        if self._shadow_parity_thread is not None and self._shadow_parity_thread.is_alive():
+            return
+
+        tables = sorted(writer.tables)
+        if not tables:
+            return
+
+        baseline: Dict[str, Dict[str, Optional[int]]] = {}
+        for table in tables:
+            baseline[table] = {
+                "duck": self.get_table_row_count(table),
+                "ch": writer.get_table_count(table),
+            }
+        self._shadow_parity_baseline = baseline
+
+        self._shadow_parity_stop.clear()
+
+        def _loop():
+            tick = 0
+            while not self._shadow_parity_stop.wait(self._shadow_parity_interval_s):
+                tick += 1
+                try:
+                    writer.flush_now()
+                    mismatches: List[str] = []
+                    ok_parts: List[str] = []
+                    for table in tables:
+                        base = self._shadow_parity_baseline.get(table, {})
+                        base_duck = base.get("duck")
+                        base_ch = base.get("ch")
+
+                        duck_now = self.get_table_row_count(table)
+                        ch_now = writer.get_table_count(table)
+                        if base_ch is None and ch_now is not None:
+                            # First successful CH observation becomes baseline.
+                            base_ch = ch_now
+                            base["ch"] = base_ch
+
+                        duck_delta = None if base_duck is None else (duck_now - base_duck)
+                        ch_delta = (
+                            None
+                            if base_ch is None or ch_now is None
+                            else (ch_now - base_ch)
+                        )
+                        parity_delta = (
+                            None
+                            if duck_delta is None or ch_delta is None
+                            else (duck_delta - ch_delta)
+                        )
+
+                        if parity_delta not in (None, 0):
+                            mismatches.append(
+                                f"{table}(duck+{duck_delta}, ch+{ch_delta}, delta={parity_delta})"
+                            )
+                        else:
+                            if duck_delta is None or ch_delta is None:
+                                ok_parts.append(f"{table}(pending)")
+                            else:
+                                ok_parts.append(f"{table}(+{duck_delta})")
+
+                    if mismatches:
+                        log.warning("[CH Shadow] parity mismatch: %s", ", ".join(mismatches))
+                    elif tick % 10 == 0:
+                        # Low-noise heartbeat every ~10 intervals.
+                        log.info("[CH Shadow] parity ok: %s", ", ".join(ok_parts))
+                except Exception as e:
+                    log.warning("[CH Shadow] parity check failed: %s", e)
+
+        self._shadow_parity_thread = threading.Thread(
+            target=_loop,
+            daemon=True,
+            name="lars-ch-shadow-parity",
+        )
+        self._shadow_parity_thread.start()
+
+    def shutdown_shadow_parity_monitor(self):
+        """Stop periodic shadow parity monitor."""
+        self._shadow_parity_stop.set()
+        if self._shadow_parity_thread is not None and self._shadow_parity_thread.is_alive():
+            self._shadow_parity_thread.join(timeout=2.0)
+
+    def backfill_shadow_tables(
+        self,
+        tables: List[str] | None = None,
+        *,
+        clear_target: bool = False,
+        batch_rows: int = 2000,
+    ) -> Dict[str, Any]:
+        """
+        One-shot backfill of parquet data into shadow ClickHouse tables.
+
+        Useful when you need full historical parity (not just post-restart).
+        """
+        writer = self._get_clickhouse_shadow_writer()
+        if writer is None:
+            return {"enabled": False, "error": "shadow writer not enabled"}
+
+        selected_tables = tables or sorted(writer.tables)
+        reports: Dict[str, Any] = {"enabled": True, "tables": {}}
+
+        for table in selected_tables:
+            table_dir = self._db.root / "system" / table
+            if not table_dir.exists():
+                reports["tables"][table] = {
+                    "status": "skipped",
+                    "error": f"table dir missing: {table_dir}",
+                }
+                continue
+
+            parquet_glob = str(table_dir / "**" / "*.parquet")
+            report = writer.backfill_parquet_glob(
+                table=table,
+                parquet_glob=parquet_glob,
+                batch_rows=batch_rows,
+                clear_target=clear_target,
+            )
+            duck_count = self.get_table_row_count(table)
+            ch_count = writer.get_table_count(table)
+            report["duck_count"] = duck_count
+            report["clickhouse_count"] = ch_count
+            report["delta"] = None if ch_count is None else (duck_count - ch_count)
+            reports["tables"][table] = report
+
+        return reports
+
+    def get_shadow_write_stats(self) -> Dict[str, Any]:
+        """Return ClickHouse shadow writer runtime stats."""
+        writer = self._get_clickhouse_shadow_writer()
+        if writer is None:
+            return {"enabled": False}
+        return writer.stats()
+
+    def mirror_rows_to_shadow(
+        self,
+        table: str,
+        rows: List[Dict[str, Any]],
+        *,
+        clear_table: bool = False,
+        flush: bool = False,
+        batch_rows: int = 2000,
+        normalize_rows: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Mirror rows directly to ClickHouse shadow writer without Duck primary writes.
+
+        Useful for write paths that do not use insert_rows() (for example,
+        dedicated DuckDB index files) but still need parity data in ClickHouse.
+        """
+        writer = self._get_clickhouse_shadow_writer()
+        report: Dict[str, Any] = {
+            "enabled": False,
+            "table": table,
+            "rows_attempted": len(rows or []),
+            "rows_enqueued": 0,
+            "clear_table": bool(clear_table),
+            "flushed": bool(flush),
+            "error": None,
+        }
+        if writer is None or not getattr(writer, "enabled", False):
+            return report
+
+        report["enabled"] = True
+        if not writer.allows_table(table):
+            report["error"] = "table not configured for shadow writing"
+            return report
+
+        payload = rows or []
+        try:
+            if normalize_rows and payload:
+                payload = self._db.normalize_rows_for_write(table, payload)
+
+            if clear_table:
+                writer.flush_now()
+                writer.truncate_table(table)
+
+            if payload:
+                batch_size = max(1, int(batch_rows))
+                for i in range(0, len(payload), batch_size):
+                    batch = payload[i : i + batch_size]
+                    writer.enqueue(table, batch)
+                    report["rows_enqueued"] += len(batch)
+
+            if flush:
+                writer.flush_now()
+        except Exception as e:
+            report["error"] = str(e)
+            log.warning("[CH Shadow] mirror_rows_to_shadow failed for %s: %s", table, e)
+
+        return report
+
+    def get_shadow_parity_counts(
+        self,
+        tables: List[str] | None = None,
+        *,
+        flush: bool = True,
+    ) -> Dict[str, Dict[str, Optional[int]]]:
+        """
+        Return row-count parity snapshot between DuckDB and ClickHouse shadow tables.
+
+        This is meant for migration validation, not transactional consistency.
+        """
+        writer = self._get_clickhouse_shadow_writer()
+        if tables is not None:
+            selected_tables = tables
+        elif writer is not None:
+            selected_tables = sorted(writer.tables)
+        else:
+            selected_tables = ["unified_logs_base", "costs"]
+        if writer is None:
+            return {
+                table: {
+                    "duck_count": self.get_table_row_count(table),
+                    "clickhouse_count": None,
+                    "delta": None,
+                }
+                for table in selected_tables
+            }
+
+        if flush:
+            writer.flush_now()
+
+        out: Dict[str, Dict[str, Optional[int]]] = {}
+        for table in selected_tables:
+            duck_count = self.get_table_row_count(table)
+            ch_count = writer.get_table_count(table)
+            out[table] = {
+                "duck_count": duck_count,
+                "clickhouse_count": ch_count,
+                "delta": None if ch_count is None else (duck_count - ch_count),
+            }
+        return out
+
     def _should_try_shadow_query(self, sql: str) -> bool:
         """Return True when this query should try Studio shadow store first."""
         if not self._shadow_ui_reads_enabled:
@@ -634,6 +1018,327 @@ class DuckDBAdapter:
             output_format=output_format,
             max_stale_seconds=self._shadow_ui_max_stale_seconds,
         )
+
+    def _get_clickhouse_read_client(self):
+        """Lazy-load optional ClickHouse read client for env-gated read routing."""
+        now = time.time()
+        if now < self._ch_read_client_retry_after_ts:
+            return None
+
+        if self._ch_read_client is not None:
+            return self._ch_read_client
+
+        try:
+            import clickhouse_driver
+        except Exception as e:
+            self._ch_read_client_retry_after_ts = time.time() + 5.0
+            log.warning("[CH Read] clickhouse_driver import failed: %s", e)
+            return None
+
+        from .config import get_config
+
+        cfg = get_config()
+        host = cfg.clickhouse_host or "127.0.0.1"
+        # Prefer explicit/native ports first. clickhouse_port can be HTTP.
+        port_raw = (
+            os.environ.get("LARS_CH_READ_NATIVE_PORT")
+            or os.environ.get("LARS_CH_SHADOW_WRITE_NATIVE_PORT")
+            or os.environ.get("LARS_CLICKHOUSE_NATIVE_PORT")
+            or str(cfg.clickhouse_port or "9000")
+        )
+        try:
+            port = int(port_raw)
+        except Exception:
+            port = 9000
+        user = cfg.clickhouse_user or "default"
+        password = cfg.clickhouse_password or ""
+        db_name = cfg.clickhouse_database or "lars"
+
+        try:
+            client = clickhouse_driver.Client(
+                host=host,
+                port=port,
+                user=user,
+                password=password,
+                database=db_name,
+                connect_timeout=1.0,
+                send_receive_timeout=3.0,
+            )
+            with self._ch_read_client_lock:
+                client.execute("SELECT 1")
+            self._ch_read_client = client
+            return self._ch_read_client
+        except Exception as e:
+            self._ch_read_client_retry_after_ts = time.time() + 5.0
+            log.warning("[CH Read] connect failed %s:%s: %s", host, port, e)
+            self._ch_read_client = None
+            return None
+
+    def _extract_sql_tables(self, sql: str) -> set[str]:
+        """
+        Best-effort table extractor for FROM/JOIN clauses.
+        Conservative is fine: if uncertain, routing falls back to DuckDB.
+        """
+        import re
+
+        sql_no_comments = re.sub(r"--[^\n]*", " ", sql)
+        sql_no_comments = re.sub(r"/\*.*?\*/", " ", sql_no_comments, flags=re.DOTALL)
+        pattern = re.compile(r"\b(?:from|join)\s+([`\"\w\.\-]+)", re.IGNORECASE)
+
+        out: set[str] = set()
+        for match in pattern.finditer(sql_no_comments):
+            token = (match.group(1) or "").strip().strip(",")
+            if not token or token.startswith("("):
+                continue
+            token = DuckDBAdapter._canonicalize_ch_read_table_name(token)
+            if not token:
+                continue
+            out.add(token)
+        return out
+
+    def _rewrite_sql_table_aliases_for_ch(self, sql: str) -> str:
+        """
+        Rewrite common Duck/Studio logical table names to ClickHouse physical
+        shadow tables so read routing can handle `unified_logs` style queries.
+        """
+        import re
+
+        if not sql:
+            return sql
+        if "unified_logs" not in sql.lower() and "lars_system." not in sql.lower():
+            return sql
+
+        pattern = re.compile(
+            r"(?P<prefix>\b(?:from|join)\s+)(?P<table>[`\"\w\.\-]+)",
+            re.IGNORECASE,
+        )
+
+        def _replace(match: re.Match[str]) -> str:
+            table_token = match.group("table")
+            canonical = DuckDBAdapter._canonicalize_ch_read_table_name(table_token)
+            if not canonical or canonical == table_token.strip("`\"").lower():
+                return match.group(0)
+            return f"{match.group('prefix')}{canonical}"
+
+        return pattern.sub(_replace, sql)
+
+    def _translate_duck_sql_for_clickhouse(self, sql: str) -> str:
+        """
+        Best-effort translation for DuckDB-centric read SQL before CH execution.
+
+        This keeps call sites Duck-friendly while strict CH read routing is enabled.
+        """
+        import re
+
+        out = sql
+
+        # FINAL is used for Duck dedup semantics; MergeTree rejects it.
+        out = re.sub(r"\bFINAL\b", "", out, flags=re.IGNORECASE)
+
+        # Duck prefix(x, y) -> CH startsWith(x, y)
+        out = re.sub(r"\bprefix\s*\(", "startsWith(", out, flags=re.IGNORECASE)
+
+        # Duck CAST(x AS VARCHAR/TEXT) can fail for Nullable values in CH.
+        # Prefer toString(x), which preserves Nullable semantics safely.
+        out = re.sub(
+            r"\bCAST\s*\(\s*([^)]+?)\s+AS\s+(?:VARCHAR|TEXT)\s*\)",
+            r"toString(\1)",
+            out,
+            flags=re.IGNORECASE,
+        )
+
+        # Duck epoch_ms(ts) -> CH epoch milliseconds
+        def _replace_epoch_ms(match: re.Match[str]) -> str:
+            arg = (match.group(1) or "").strip()
+            return f"(toUnixTimestamp({arg}) * 1000)"
+
+        out = re.sub(
+            r"\bepoch_ms\s*\(\s*([^)]+?)\s*\)",
+            _replace_epoch_ms,
+            out,
+            flags=re.IGNORECASE,
+        )
+
+        # Common Duck interval-seconds pattern: epoch(MAX(ts) - MIN(ts))
+        def _replace_epoch_max_min(match: re.Match[str]) -> str:
+            max_arg = (match.group(1) or "").strip()
+            min_arg = (match.group(2) or "").strip()
+            return f"(toUnixTimestamp(MAX({max_arg})) - toUnixTimestamp(MIN({min_arg})))"
+
+        out = re.sub(
+            r"\bepoch\s*\(\s*MAX\s*\(\s*([^)]+?)\s*\)\s*-\s*MIN\s*\(\s*([^)]+?)\s*\)\s*\)",
+            _replace_epoch_max_min,
+            out,
+            flags=re.IGNORECASE,
+        )
+
+        # Duck epoch(ts) -> CH toUnixTimestamp(ts)
+        def _replace_epoch(match: re.Match[str]) -> str:
+            arg = (match.group(1) or "").strip()
+            return f"toUnixTimestamp({arg})"
+
+        out = re.sub(
+            r"\bepoch\s*\(\s*([^)]+?)\s*\)",
+            _replace_epoch,
+            out,
+            flags=re.IGNORECASE,
+        )
+
+        return out
+
+    def _query_tables_allowed_for_ch(self, sql: str) -> bool:
+        tables = self._extract_sql_tables(sql)
+        if not tables:
+            return False
+        if self._ch_read_all_tables:
+            return True
+        if not self._ch_read_tables:
+            return False
+
+        for table in tables:
+            short = table.split(".")[-1]
+            if table in self._ch_read_tables or short in self._ch_read_tables:
+                continue
+            return False
+        return True
+
+    def _should_try_clickhouse_query(self, sql: str, output_format: str) -> bool:
+        """Return True if this query is eligible for ClickHouse read routing."""
+        if not self._ch_read_enabled:
+            return False
+
+        if output_format not in ("dict", "raw", "dataframe"):
+            return False
+
+        source = (query_source_context.get() or "").strip().lower()
+        if not source:
+            return False
+        if (
+            self._ch_read_query_sources
+            and "*" not in self._ch_read_query_sources
+            and source not in self._ch_read_query_sources
+        ):
+            return False
+
+        sql_lower = sql.lstrip().lower()
+        if not (sql_lower.startswith("select") or sql_lower.startswith("with")):
+            return False
+
+        return self._query_tables_allowed_for_ch(sql)
+
+    def _query_clickhouse(self, sql: str, output_format: str):
+        """Execute a read query against ClickHouse and normalize output shape."""
+        client = self._get_clickhouse_read_client()
+        if client is None:
+            raise RuntimeError("clickhouse read client unavailable")
+
+        with self._ch_read_client_lock:
+            result, col_types = client.execute(sql, with_column_types=True)
+
+        if output_format == "raw":
+            return result
+
+        columns = [c[0] for c in (col_types or [])]
+        if output_format == "dict":
+            return [dict(zip(columns, row)) for row in result]
+        if output_format == "dataframe":
+            return pd.DataFrame(result, columns=columns)
+        return result
+
+    def _query_clickhouse_with_retries(self, sql: str, output_format: str):
+        """
+        Execute CH read with bounded retry behavior.
+
+        Useful during cutover where writes are eventually visible and consumers
+        poll frequently. Retries can optionally trigger on empty results.
+        """
+        total_attempts = max(1, 1 + self._ch_read_retry_attempts)
+        last_err: Exception | None = None
+
+        for attempt_idx in range(total_attempts):
+            try:
+                result = self._query_clickhouse(sql, output_format)
+                if (
+                    self._ch_read_retry_on_empty
+                    and attempt_idx < (total_attempts - 1)
+                    and self._result_row_count(result, output_format) == 0
+                ):
+                    if self._ch_read_retry_sleep_s > 0:
+                        time.sleep(self._ch_read_retry_sleep_s)
+                    continue
+                return result
+            except Exception as e:
+                last_err = e
+                if attempt_idx >= (total_attempts - 1):
+                    raise
+                if self._ch_read_retry_sleep_s > 0:
+                    time.sleep(self._ch_read_retry_sleep_s)
+
+        # Defensive: should not happen because loop either returns or raises.
+        if last_err is not None:
+            raise last_err
+        raise RuntimeError("clickhouse read retry loop exited unexpectedly")
+
+    def _should_compare_clickhouse_query(self) -> bool:
+        if not self._ch_read_compare_enabled:
+            return False
+        if self._ch_read_compare_sample_pct <= 0:
+            return False
+        return random.random() < self._ch_read_compare_sample_pct
+
+    def _result_signature(self, result: Any, output_format: str) -> tuple[int, str]:
+        """Create a compact signature for sampled parity checks."""
+        max_rows = self._ch_read_compare_max_rows
+        if output_format == "dataframe":
+            row_count = int(len(result)) if result is not None else 0
+            sample_rows = []
+            if result is not None and row_count > 0:
+                sample_rows = result.head(max_rows).to_dict(orient="records")
+        elif output_format == "dict":
+            row_count = int(len(result)) if result is not None else 0
+            sample_rows = list(result[:max_rows]) if result else []
+        else:
+            row_count = int(len(result)) if isinstance(result, (list, tuple)) else 0
+            if isinstance(result, (list, tuple)):
+                sample_rows = [list(r) for r in result[:max_rows]]
+            else:
+                sample_rows = []
+
+        encoded = json.dumps(sample_rows, default=str, sort_keys=True, ensure_ascii=False)
+        digest = hashlib.md5(encoded.encode("utf-8", errors="replace")).hexdigest()
+        return row_count, digest
+
+    def _compare_clickhouse_vs_duck(
+        self,
+        *,
+        ch_sql: str,
+        duck_sql: str,
+        ch_result: Any,
+        output_format: str,
+    ) -> None:
+        """Sampled best-effort comparison for confidence during phased cutover."""
+        try:
+            duck_result = self._db.query(duck_sql, output_format=output_format)
+            ch_rows, ch_sig = self._result_signature(ch_result, output_format)
+            duck_rows, duck_sig = self._result_signature(duck_result, output_format)
+            if ch_rows != duck_rows or ch_sig != duck_sig:
+                log.warning(
+                    "[CH Read] sampled mismatch rows(ch=%s duck=%s) sig(ch=%s duck=%s) sql=%s",
+                    ch_rows,
+                    duck_rows,
+                    ch_sig[:8],
+                    duck_sig[:8],
+                    ch_sql[:240].replace("\n", " "),
+                )
+        except Exception as e:
+            log.warning("[CH Read] sampled compare failed: %s", e)
+
+    def _result_row_count(self, result: Any, output_format: str) -> int:
+        if output_format == "dataframe":
+            return len(result) if result is not None else 0
+        if output_format == "dict":
+            return len(result) if result is not None else 0
+        return len(result) if isinstance(result, (list, tuple)) else 0
 
     def _invalidate_read_cache(self):
         """Invalidate short-lived in-process SELECT result cache."""
@@ -711,44 +1416,55 @@ class DuckDBAdapter:
             # Substitute params into SQL (DuckDB uses $1 style, but we support %(name)s for compat)
             if params:
                 sql = self._substitute_params(sql, params)
+            ch_sql = self._rewrite_sql_table_aliases_for_ch(sql)
+            ch_sql = self._translate_duck_sql_for_clickhouse(ch_sql)
             
             # Translate DuckDB-specific SQL to DuckDB
             sql = self._translate_clickhouse_sql(sql)
-
-            if self._should_try_shadow_query(sql):
-                shadow_result = self._query_shadow_store(sql, output_format)
-                if shadow_result is not None:
-                    if output_format == "dataframe":
-                        rows_returned = len(shadow_result) if shadow_result is not None else 0
-                    elif output_format == "dict":
-                        rows_returned = len(shadow_result)
-                    else:
-                        rows_returned = len(shadow_result) if isinstance(shadow_result, (list, tuple)) else 0
-                    return shadow_result
 
             if self._can_use_read_cache(sql, output_format):
                 cache_key = f"{output_format}:{sql}"
                 cached_result = self._read_cache_get(cache_key)
                 if cached_result is not None:
-                    if output_format == "dataframe":
-                        rows_returned = len(cached_result) if cached_result is not None else 0
-                    elif output_format == "dict":
-                        rows_returned = len(cached_result)
-                    else:
-                        rows_returned = len(cached_result) if isinstance(cached_result, (list, tuple)) else 0
+                    rows_returned = self._result_row_count(cached_result, output_format)
                     return cached_result
+
+            if self._should_try_clickhouse_query(ch_sql, output_format):
+                try:
+                    ch_result = self._query_clickhouse_with_retries(ch_sql, output_format)
+                    if self._should_compare_clickhouse_query():
+                        self._compare_clickhouse_vs_duck(
+                            ch_sql=ch_sql,
+                            duck_sql=sql,
+                            ch_result=ch_result,
+                            output_format=output_format,
+                        )
+                    if cache_key is not None:
+                        self._read_cache_set(cache_key, ch_result)
+                    rows_returned = self._result_row_count(ch_result, output_format)
+                    return ch_result
+                except Exception as e:
+                    if not self._ch_read_fallback_to_duck:
+                        raise
+                    now = time.time()
+                    if now - self._ch_read_last_fail_log_ts >= 5.0:
+                        self._ch_read_last_fail_log_ts = now
+                        log.warning("[CH Read] query failed; falling back to DuckDB: %s", e)
+
+            if self._should_try_shadow_query(sql):
+                shadow_result = self._query_shadow_store(sql, output_format)
+                if shadow_result is not None:
+                    if cache_key is not None:
+                        self._read_cache_set(cache_key, shadow_result)
+                    rows_returned = self._result_row_count(shadow_result, output_format)
+                    return shadow_result
 
             result = self._db.query(sql, output_format=output_format)
 
             if cache_key is not None:
                 self._read_cache_set(cache_key, result)
             
-            if output_format == "dataframe":
-                rows_returned = len(result) if result is not None else 0
-            elif output_format == "dict":
-                rows_returned = len(result)
-            else:
-                rows_returned = len(result) if isinstance(result, (list, tuple)) else 0
+            rows_returned = self._result_row_count(result, output_format)
             
             return result
             
@@ -1248,8 +1964,35 @@ class DuckDBAdapter:
             if columns:
                 # Filter rows to only include specified columns
                 rows = [{k: r.get(k) for k in columns} for r in rows]
-            
-            self._db.write(table, rows)
+
+            rows = self._db.normalize_rows_for_write(table, rows)
+            if not rows:
+                return
+
+            write_duck_primary = self._should_write_duck_primary(table)
+            if write_duck_primary:
+                self._db.write(table, rows, rows_already_normalized=True)
+            else:
+                writer = self._get_clickhouse_shadow_writer()
+                shadow_accepts_table = False
+                if writer is not None:
+                    if hasattr(writer, "allows_table"):
+                        shadow_accepts_table = bool(writer.allows_table(table))
+                    else:
+                        shadow_accepts_table = table in writer.tables
+                if not shadow_accepts_table:
+                    raise RuntimeError(
+                        f"Duck primary writes are disabled for '{table}', "
+                        f"but no alternate sink is configured for that table."
+                    )
+                if table not in self._duck_primary_skip_log_tables:
+                    self._duck_primary_skip_log_tables.add(table)
+                    log.warning(
+                        "[Persistence] Duck primary write disabled for table=%s; relying on shadow sink",
+                        table,
+                    )
+
+            self._shadow_write_rows(table, rows)
             self._invalidate_read_cache()
             
         except Exception as e:
@@ -1367,8 +2110,8 @@ class DuckDBAdapter:
             })
         
         if cost_rows:
-            self._db.write('costs', cost_rows)
-            self._invalidate_read_cache()
+            # Route through insert_rows so Duck + shadow write path is identical.
+            self.insert_rows('costs', cost_rows, log_query=False)
 
     def mark_take_winner(
         self,
@@ -1392,9 +2135,8 @@ class DuckDBAdapter:
             'winning_take_index': take_index,
         }
         
-        # Write to take_winners table (creates table if needed)
-        self._db.write('take_winners', [winner_record])
-        self._invalidate_read_cache()
+        # Route through insert_rows so sink behavior stays consistent.
+        self.insert_rows('take_winners', [winner_record], log_query=False)
 
     # =========================================================================
     # Vector Search (delegates to DuckDB VSS)
@@ -1426,8 +2168,7 @@ class DuckDBAdapter:
         """Insert context cards."""
         if not rows:
             return
-        self._db.write('context_cards', rows)
-        self._invalidate_read_cache()
+        self.insert_rows('context_cards', rows, log_query=False)
 
     def get_context_cards(
         self,
@@ -1538,9 +2279,74 @@ def ensure_housekeeping():
     get_db_adapter().run_housekeeping()
 
 
+def get_shadow_write_stats() -> Dict[str, Any]:
+    """Get ClickHouse shadow writer stats from the singleton adapter."""
+    return get_db_adapter().get_shadow_write_stats()
+
+
+def mirror_rows_to_shadow(
+    table: str,
+    rows: List[Dict[str, Any]],
+    *,
+    clear_table: bool = False,
+    flush: bool = False,
+    batch_rows: int = 2000,
+    normalize_rows: bool = True,
+) -> Dict[str, Any]:
+    """Mirror rows directly to ClickHouse shadow tables without Duck primary writes."""
+    return get_db_adapter().mirror_rows_to_shadow(
+        table=table,
+        rows=rows,
+        clear_table=clear_table,
+        flush=flush,
+        batch_rows=batch_rows,
+        normalize_rows=normalize_rows,
+    )
+
+
+def get_shadow_parity_counts(
+    tables: List[str] | None = None,
+    *,
+    flush: bool = True,
+) -> Dict[str, Dict[str, Optional[int]]]:
+    """Get row-count parity snapshot for shadowed tables."""
+    return get_db_adapter().get_shadow_parity_counts(tables=tables, flush=flush)
+
+
+def backfill_shadow_tables(
+    tables: List[str] | None = None,
+    *,
+    clear_target: bool = False,
+    batch_rows: int = 2000,
+) -> Dict[str, Any]:
+    """One-shot backfill of parquet data into shadow ClickHouse tables."""
+    return get_db_adapter().backfill_shadow_tables(
+        tables=tables,
+        clear_target=clear_target,
+        batch_rows=batch_rows,
+    )
+
+
 def reset_adapter():
     """Reset the adapter singleton (mainly for testing)."""
     global _db_adapter
+    if _db_adapter is not None:
+        try:
+            _db_adapter.shutdown_shadow_parity_monitor()
+        except Exception:
+            pass
+        writer = getattr(_db_adapter, "_ch_shadow_writer", None)
+        if writer is not None:
+            try:
+                writer.shutdown()
+            except Exception:
+                pass
+        read_client = getattr(_db_adapter, "_ch_read_client", None)
+        if read_client is not None:
+            try:
+                read_client.disconnect()
+            except Exception:
+                pass
     _db_adapter = None
     DuckDBAdapter._instance = None
     DuckDBAdapter._initialized = False

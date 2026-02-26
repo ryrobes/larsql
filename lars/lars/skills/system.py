@@ -152,7 +152,7 @@ def map_cascade(
     input_key: str = "item",
     additional_inputs: Optional[Union[Dict[str, Any], str]] = None,
     mode: str = "aggregate",
-    max_parallel: Union[int, str] = 5,
+    max_parallel: Union[int, str] = 10,
     on_error: str = "continue",
     timeout: Optional[Union[int, str]] = None
 ) -> Dict[str, Any]:
@@ -174,7 +174,7 @@ def map_cascade(
             - "aggregate": Return array of all results
             - "first_valid": Return first non-error result
             - "all_or_nothing": Fail if any cascade fails, otherwise return all
-        max_parallel: Maximum number of concurrent cascade executions (default: 5)
+        max_parallel: Maximum number of concurrent cascade executions (default: 10)
         on_error: How to handle individual cascade failures:
             - "continue": Log error, continue processing remaining items
             - "fail_fast": Stop immediately on first error
@@ -211,7 +211,7 @@ def map_cascade(
         try:
             max_parallel = int(max_parallel)
         except ValueError:
-            max_parallel = 5  # Default fallback
+            max_parallel = 10  # Default fallback
 
     if isinstance(timeout, str):
         try:

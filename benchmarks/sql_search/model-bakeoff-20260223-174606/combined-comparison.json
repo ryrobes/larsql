@@ -1,0 +1,77 @@
+{
+  "models": {
+    "openai/text-embedding-3-large": {
+      "paths": {
+        "process": "benchmarks/sql_search/model-bakeoff-20260223-174606/openai__text-embedding-3-large/process.json",
+        "quality": "benchmarks/sql_search/model-bakeoff-20260223-174606/openai__text-embedding-3-large/quality.json",
+        "thread": "benchmarks/sql_search/model-bakeoff-20260223-174606/openai__text-embedding-3-large/thread.json"
+      },
+      "process_sql_search_unique_p50": {
+        "1": 1.526681,
+        "2": 1.684853,
+        "4": 2.192269,
+        "8": 2.447215
+      },
+      "process_sql_search_unique_p95": {
+        "1": 1.526681,
+        "2": 1.684853,
+        "4": 2.277608,
+        "8": 2.69435
+      },
+      "quality": {
+        "hit_at_1_rate": 0.9166666666666666,
+        "hit_at_5_rate": 1.0,
+        "mrr": 0.9583333333333334
+      },
+      "thread_sql_search_unique_p50": {
+        "1": 0.85972,
+        "12": 0.77264,
+        "4": 0.581325,
+        "8": 0.726496
+      },
+      "thread_sql_search_unique_p95": {
+        "1": 0.85972,
+        "12": 2.826068,
+        "4": 0.591495,
+        "8": 0.809654
+      }
+    },
+    "qwen/qwen3-embedding-8b": {
+      "paths": {
+        "process": "benchmarks/sql_search/model-bakeoff-20260223-174606-qwen-only/qwen__qwen3-embedding-8b/process.json",
+        "quality": "benchmarks/sql_search/model-bakeoff-20260223-174606-qwen-only/qwen__qwen3-embedding-8b/quality.json",
+        "thread": "benchmarks/sql_search/model-bakeoff-20260223-174606-qwen-only/qwen__qwen3-embedding-8b/thread.json"
+      },
+      "process_sql_search_unique_p50": {
+        "1": 4.012832,
+        "2": 1.76175,
+        "4": 4.034703,
+        "8": 3.685157
+      },
+      "process_sql_search_unique_p95": {
+        "1": 4.012832,
+        "2": 1.76175,
+        "4": 4.307764,
+        "8": 5.541114
+      },
+      "quality": {
+        "hit_at_1_rate": 0.8333333333333334,
+        "hit_at_5_rate": 1.0,
+        "mrr": 0.9027777777777777
+      },
+      "thread_sql_search_unique_p50": {
+        "1": 2.812305,
+        "12": 3.151746,
+        "4": 3.649252,
+        "8": 3.436267
+      },
+      "thread_sql_search_unique_p95": {
+        "1": 2.812305,
+        "12": 9.539027,
+        "4": 4.338384,
+        "8": 7.492118
+      }
+    }
+  },
+  "winner_recommendation": "openai/text-embedding-3-large"
+}

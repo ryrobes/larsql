@@ -21,8 +21,7 @@ import json
 import uuid
 import threading
 
-from .db_adapter import get_db_adapter
-from .schema import get_schema
+from .db_adapter import get_db_adapter, query_source_context
 
 
 class CheckpointStatus(str, Enum):
@@ -174,16 +173,122 @@ class CheckpointManager:
     def _ensure_table_exists(self):
         """Ensure the checkpoints table exists in the database."""
         try:
-            from .config import get_config
-            config = get_config()
-
-            # Only create table for DuckDB server mode
-            if hasattr(config, 'use_clickhouse_server') and config.use_clickhouse_server:
-                db = get_db_adapter()
-                ddl = get_schema("checkpoints")
-                db.execute(ddl)
+            # LarsDB/Parquet creates known system tables on first write.
+            # Initializing the adapter here is enough to ensure writes succeed.
+            _ = get_db_adapter()
         except Exception as e:
             print(f"[LARS] Warning: Could not ensure checkpoints table exists: {e}")
+
+    @staticmethod
+    def _decode_json(raw: Any, default: Any) -> Any:
+        """Decode JSON-ish values from parquet rows, with safe fallback."""
+        if raw is None:
+            return default
+        if isinstance(raw, (dict, list)):
+            return raw
+        if isinstance(raw, str):
+            text = raw.strip()
+            if not text:
+                return default
+            try:
+                return json.loads(text)
+            except Exception:
+                return default
+        return default
+
+    @staticmethod
+    def _parse_datetime(value: Any) -> Optional[datetime]:
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            return value
+        if isinstance(value, str):
+            try:
+                return datetime.fromisoformat(value.replace("Z", "+00:00"))
+            except Exception:
+                return None
+        return None
+
+    def _checkpoint_to_row(
+        self,
+        checkpoint: Checkpoint,
+        *,
+        updated_at: Optional[datetime] = None
+    ) -> Dict[str, Any]:
+        """Serialize checkpoint to append-only parquet row."""
+        return {
+            "id": checkpoint.id,
+            "session_id": checkpoint.session_id,
+            "cascade_id": checkpoint.cascade_id,
+            "cell_name": checkpoint.cell_name,
+            "status": checkpoint.status.value,
+            "created_at": checkpoint.created_at,
+            "updated_at": updated_at or checkpoint.created_at or datetime.utcnow(),
+            "responded_at": checkpoint.responded_at,
+            "timeout_at": checkpoint.timeout_at,
+            "checkpoint_type": checkpoint.checkpoint_type.value,
+            "ui_spec": json.dumps(checkpoint.ui_spec or {}),
+            "echo_snapshot": json.dumps(checkpoint.echo_snapshot or {}),
+            "cell_output": checkpoint.cell_output,
+            "trace_context": json.dumps(checkpoint.trace_context.to_dict()) if checkpoint.trace_context else None,
+            "take_outputs": json.dumps(checkpoint.take_outputs) if checkpoint.take_outputs is not None else None,
+            "take_metadata": json.dumps(checkpoint.take_metadata) if checkpoint.take_metadata is not None else None,
+            "response": json.dumps(checkpoint.response) if checkpoint.response is not None else None,
+            "response_reasoning": checkpoint.response_reasoning,
+            "response_confidence": checkpoint.response_confidence,
+            "winner_index": checkpoint.winner_index,
+            "rankings": json.dumps(checkpoint.rankings) if checkpoint.rankings is not None else None,
+            "ratings": json.dumps(checkpoint.ratings) if checkpoint.ratings is not None else None,
+        }
+
+    def _checkpoint_from_row(self, row: Dict[str, Any]) -> Optional[Checkpoint]:
+        """Deserialize a checkpoint row from parquet-backed view."""
+        try:
+            trace_context = None
+            trace_payload = self._decode_json(row.get("trace_context"), None)
+            if isinstance(trace_payload, dict):
+                trace_context = TraceContext.from_dict(trace_payload)
+
+            response_payload = self._decode_json(row.get("response"), None)
+            if response_payload is not None and not isinstance(response_payload, dict):
+                response_payload = {"value": response_payload}
+
+            return Checkpoint(
+                id=row.get("id", ""),
+                session_id=row.get("session_id", ""),
+                cascade_id=row.get("cascade_id", ""),
+                cell_name=row.get("cell_name", ""),
+                checkpoint_type=CheckpointType(row.get("checkpoint_type", CheckpointType.FREE_TEXT.value)),
+                status=CheckpointStatus(row.get("status", CheckpointStatus.PENDING.value)),
+                ui_spec=self._decode_json(row.get("ui_spec"), {}),
+                echo_snapshot=self._decode_json(row.get("echo_snapshot"), {}),
+                cell_output=row.get("cell_output") or "",
+                trace_context=trace_context,
+                created_at=self._parse_datetime(row.get("created_at")) or datetime.utcnow(),
+                timeout_at=self._parse_datetime(row.get("timeout_at")),
+                responded_at=self._parse_datetime(row.get("responded_at")),
+                take_outputs=self._decode_json(row.get("take_outputs"), None),
+                take_metadata=self._decode_json(row.get("take_metadata"), None),
+                response=response_payload,
+                response_reasoning=row.get("response_reasoning"),
+                response_confidence=row.get("response_confidence"),
+                winner_index=row.get("winner_index"),
+                rankings=self._decode_json(row.get("rankings"), None),
+                ratings=self._decode_json(row.get("ratings"), None),
+                summary=row.get("summary"),
+            )
+        except Exception as row_err:
+            print(f"[LARS] Warning: Could not parse checkpoint row: {row_err}")
+            return None
+
+    def _query_rows(self, sql: str) -> List[Dict[str, Any]]:
+        """Run checkpoint reads against the freshest store (skip stale UI shadow cache)."""
+        db = get_db_adapter()
+        token = query_source_context.set("checkpoint_manager")
+        try:
+            return db.query(sql, output_format="dict")
+        finally:
+            query_source_context.reset(token)
 
     def create_checkpoint(
         self,
@@ -629,33 +734,10 @@ class CheckpointManager:
     def _save_checkpoint(self, checkpoint: Checkpoint):
         """Persist checkpoint to database using insert_rows for proper escaping."""
         try:
-            from .config import get_config
-            config = get_config()
-
-            if hasattr(config, 'use_clickhouse_server') and config.use_clickhouse_server:
-                db = get_db_adapter()
-
-                # Build row dict - insert_rows handles escaping properly
-                row = {
-                    'id': checkpoint.id,
-                    'session_id': checkpoint.session_id,
-                    'cascade_id': checkpoint.cascade_id,
-                    'cell_name': checkpoint.cell_name,
-                    'status': checkpoint.status.value,
-                    'created_at': checkpoint.created_at,
-                    'timeout_at': checkpoint.timeout_at,
-                    'checkpoint_type': checkpoint.checkpoint_type.value,
-                    'ui_spec': json.dumps(checkpoint.ui_spec),  # JSON string, properly escaped by insert_rows
-                    'echo_snapshot': json.dumps(checkpoint.echo_snapshot),
-                    'cell_output': checkpoint.cell_output,
-                    'take_outputs': json.dumps(checkpoint.take_outputs) if checkpoint.take_outputs else None,
-                    'take_metadata': json.dumps(checkpoint.take_metadata) if checkpoint.take_metadata else None,
-                    'trace_context': json.dumps(checkpoint.trace_context.to_dict()) if checkpoint.trace_context else None,
-                    'summary': checkpoint.summary  # Will be NULL initially, updated async
-                }
-
-                db.insert_rows('checkpoints', [row], columns=list(row.keys()))
-                print(f"[Checkpoints] Saved checkpoint {checkpoint.id} to database")
+            db = get_db_adapter()
+            row = self._checkpoint_to_row(checkpoint, updated_at=checkpoint.created_at or datetime.utcnow())
+            db.insert_rows("checkpoints", [row], columns=list(row.keys()))
+            print(f"[Checkpoints] Saved checkpoint {checkpoint.id} to database")
 
         except Exception as e:
             print(f"[LARS] Warning: Could not persist checkpoint to DB: {e}")
@@ -665,33 +747,10 @@ class CheckpointManager:
     def _update_checkpoint(self, checkpoint: Checkpoint):
         """Update existing checkpoint in database."""
         try:
-            from .config import get_config
-            config = get_config()
-
-            if hasattr(config, 'use_clickhouse_server') and config.use_clickhouse_server:
-                db = get_db_adapter()
-                # DuckDB supports ALTER TABLE UPDATE for MergeTree family
-                responded_at_sql = f"toDateTime64('{checkpoint.responded_at.isoformat()}', 3)" if checkpoint.responded_at else "NULL"
-                response_sql = f"'{json.dumps(checkpoint.response).replace(chr(39), chr(39)+chr(39))}'" if checkpoint.response else "NULL"
-                reasoning_sql = f"'{checkpoint.response_reasoning.replace(chr(39), chr(39)+chr(39))}'" if checkpoint.response_reasoning else "NULL"
-                confidence_sql = str(checkpoint.response_confidence) if checkpoint.response_confidence is not None else "NULL"
-                winner_sql = str(checkpoint.winner_index) if checkpoint.winner_index is not None else "NULL"
-                rankings_sql = f"'{json.dumps(checkpoint.rankings)}'" if checkpoint.rankings else "NULL"
-                ratings_sql = f"'{json.dumps(checkpoint.ratings)}'" if checkpoint.ratings else "NULL"
-
-                db.execute(f"""
-                    ALTER TABLE checkpoints UPDATE
-                        status = '{checkpoint.status.value}',
-                        responded_at = {responded_at_sql},
-                        response = {response_sql},
-                        response_reasoning = {reasoning_sql},
-                        response_confidence = {confidence_sql},
-                        winner_index = {winner_sql},
-                        rankings = {rankings_sql},
-                        ratings = {ratings_sql}
-                    WHERE id = '{checkpoint.id}'
-                """)
-                print(f"[LARS] Checkpoint {checkpoint.id} updated in DB (status={checkpoint.status.value})")
+            db = get_db_adapter()
+            row = self._checkpoint_to_row(checkpoint, updated_at=datetime.utcnow())
+            db.insert_rows("checkpoints", [row], columns=list(row.keys()))
+            print(f"[LARS] Checkpoint {checkpoint.id} updated in DB (status={checkpoint.status.value})")
         except Exception as e:
             print(f"[LARS] Warning: Could not update checkpoint in DB: {e}")
 
@@ -746,22 +805,6 @@ class CheckpointManager:
                     if checkpoint_id in self._cache:
                         self._cache[checkpoint_id].summary = summary
 
-                        # Update database
-                        if self.use_db:
-                            try:
-                                if hasattr(config, 'use_clickhouse_server') and config.use_clickhouse_server:
-                                    db = get_db_adapter()
-                                    # Escape single quotes for SQL
-                                    safe_summary = summary.replace("'", "''")
-                                    db.execute(f"""
-                                        ALTER TABLE checkpoints UPDATE
-                                            summary = '{safe_summary}'
-                                        WHERE id = '{checkpoint_id}'
-                                    """)
-                                    print(f"[Checkpoints] Generated summary for {checkpoint_id}: {summary}")
-                            except Exception as db_err:
-                                print(f"[Checkpoints] Failed to save summary to DB: {db_err}")
-
             except Exception as e:
                 print(f"[Checkpoints] Failed to generate summary for {checkpoint_id}: {e}")
                 import traceback
@@ -774,50 +817,20 @@ class CheckpointManager:
     def _load_checkpoint(self, checkpoint_id: str) -> Optional[Checkpoint]:
         """Load checkpoint from database."""
         try:
-            from .config import get_config
-            config = get_config()
+            db = get_db_adapter()
+            safe_id = checkpoint_id.replace("'", "''")
+            result = self._query_rows(
+                f"""
+                SELECT *
+                FROM checkpoints
+                WHERE id = '{safe_id}'
+                ORDER BY updated_at DESC NULLS LAST, created_at DESC
+                LIMIT 1
+                """
+            )
 
-            if hasattr(config, 'use_clickhouse_server') and config.use_clickhouse_server:
-                db = get_db_adapter()
-                result = db.query(f"""
-                    SELECT *
-                    FROM checkpoints
-                    WHERE id = '{checkpoint_id}'
-                    ORDER BY created_at DESC
-                    LIMIT 1
-                """, output_format="dict")
-
-                if result:
-                    row = result[0]
-                    # Deserialize trace_context if present
-                    trace_context = None
-                    if row.get("trace_context"):
-                        trace_context_data = json.loads(row["trace_context"])
-                        trace_context = TraceContext.from_dict(trace_context_data)
-
-                    return Checkpoint(
-                        id=row["id"],
-                        session_id=row["session_id"],
-                        cascade_id=row["cascade_id"],
-                        cell_name=row["cell_name"],
-                        checkpoint_type=CheckpointType(row["checkpoint_type"]),
-                        status=CheckpointStatus(row["status"]),
-                        ui_spec=json.loads(row["ui_spec"]),
-                        echo_snapshot=json.loads(row["echo_snapshot"]),
-                        cell_output=row["cell_output"],
-                        trace_context=trace_context,
-                        created_at=row["created_at"],
-                        timeout_at=row.get("timeout_at"),
-                        responded_at=row.get("responded_at"),
-                        take_outputs=json.loads(row["take_outputs"]) if row.get("take_outputs") else None,
-                        take_metadata=json.loads(row["take_metadata"]) if row.get("take_metadata") else None,
-                        response=json.loads(row["response"]) if row.get("response") else None,
-                        response_reasoning=row.get("response_reasoning"),
-                        response_confidence=row.get("response_confidence"),
-                        winner_index=row.get("winner_index"),
-                        rankings=json.loads(row["rankings"]) if row.get("rankings") else None,
-                        ratings=json.loads(row["ratings"]) if row.get("ratings") else None,
-                    )
+            if result:
+                return self._checkpoint_from_row(result[0])
         except Exception as e:
             print(f"[LARS] Warning: Could not load checkpoint from DB: {e}")
 
@@ -837,59 +850,26 @@ class CheckpointManager:
         """
         checkpoints = []
         try:
-            from .config import get_config
-            config = get_config()
+            db = get_db_adapter()
+            session_filter = ""
+            if session_id:
+                safe_session = session_id.replace("'", "''")
+                session_filter = f"AND session_id = '{safe_session}'"
 
-            if hasattr(config, 'use_clickhouse_server') and config.use_clickhouse_server:
-                db = get_db_adapter()
+            result = self._query_rows(
+                f"""
+                SELECT *
+                FROM checkpoints
+                WHERE status = 'pending'
+                {session_filter}
+                ORDER BY updated_at DESC NULLS LAST, created_at DESC
+                """
+            )
 
-                # Build query with optional session filter
-                session_filter = f"AND session_id = '{session_id}'" if session_id else ""
-
-                result = db.query(f"""
-                    SELECT *
-                    FROM checkpoints
-                    WHERE status = 'pending'
-                    {session_filter}
-                    ORDER BY created_at DESC
-                """, output_format="dict")
-
-                for row in result:
-                    try:
-                        # Deserialize trace_context if present
-                        trace_context = None
-                        if row.get("trace_context"):
-                            trace_context_data = json.loads(row["trace_context"])
-                            trace_context = TraceContext.from_dict(trace_context_data)
-
-                        checkpoint = Checkpoint(
-                            id=row["id"],
-                            session_id=row["session_id"],
-                            cascade_id=row["cascade_id"],
-                            cell_name=row["cell_name"],
-                            checkpoint_type=CheckpointType(row["checkpoint_type"]),
-                            status=CheckpointStatus(row["status"]),
-                            ui_spec=json.loads(row["ui_spec"]),
-                            echo_snapshot=json.loads(row["echo_snapshot"]),
-                            cell_output=row["cell_output"],
-                            trace_context=trace_context,
-                            created_at=row["created_at"],
-                            timeout_at=row.get("timeout_at"),
-                            responded_at=row.get("responded_at"),
-                            take_outputs=json.loads(row["take_outputs"]) if row.get("take_outputs") else None,
-                            take_metadata=json.loads(row["take_metadata"]) if row.get("take_metadata") else None,
-                            response=json.loads(row["response"]) if row.get("response") else None,
-                            response_reasoning=row.get("response_reasoning"),
-                            response_confidence=row.get("response_confidence"),
-                            winner_index=row.get("winner_index"),
-                            rankings=json.loads(row["rankings"]) if row.get("rankings") else None,
-                            ratings=json.loads(row["ratings"]) if row.get("ratings") else None,
-                            summary=row.get("summary"),
-                        )
-                        checkpoints.append(checkpoint)
-                    except Exception as row_err:
-                        print(f"[LARS] Warning: Could not parse checkpoint row: {row_err}")
-                        continue
+            for row in result:
+                checkpoint = self._checkpoint_from_row(row)
+                if checkpoint:
+                    checkpoints.append(checkpoint)
 
         except Exception as e:
             print(f"[LARS] Warning: Could not load pending checkpoints from DB: {e}")
@@ -908,55 +888,21 @@ class CheckpointManager:
         """
         checkpoints = []
         try:
-            from .config import get_config
-            config = get_config()
+            db = get_db_adapter()
+            safe_session = session_id.replace("'", "''")
+            result = self._query_rows(
+                f"""
+                SELECT *
+                FROM checkpoints
+                WHERE session_id = '{safe_session}'
+                ORDER BY created_at ASC
+                """
+            )
 
-            if hasattr(config, 'use_clickhouse_server') and config.use_clickhouse_server:
-                db = get_db_adapter()
-
-                result = db.query(f"""
-                    SELECT *
-                    FROM checkpoints
-                    WHERE session_id = '{session_id}'
-                    ORDER BY created_at ASC
-                """, output_format="dict")
-
-                for row in result:
-                    try:
-                        # Deserialize trace_context if present
-                        trace_context = None
-                        if row.get("trace_context"):
-                            trace_context_data = json.loads(row["trace_context"])
-                            trace_context = TraceContext.from_dict(trace_context_data)
-
-                        checkpoint = Checkpoint(
-                            id=row["id"],
-                            session_id=row["session_id"],
-                            cascade_id=row["cascade_id"],
-                            cell_name=row["cell_name"],
-                            checkpoint_type=CheckpointType(row["checkpoint_type"]),
-                            status=CheckpointStatus(row["status"]),
-                            ui_spec=json.loads(row["ui_spec"]),
-                            echo_snapshot=json.loads(row["echo_snapshot"]),
-                            cell_output=row["cell_output"],
-                            trace_context=trace_context,
-                            created_at=row["created_at"],
-                            timeout_at=row.get("timeout_at"),
-                            responded_at=row.get("responded_at"),
-                            take_outputs=json.loads(row["take_outputs"]) if row.get("take_outputs") else None,
-                            take_metadata=json.loads(row["take_metadata"]) if row.get("take_metadata") else None,
-                            response=json.loads(row["response"]) if row.get("response") else None,
-                            response_reasoning=row.get("response_reasoning"),
-                            response_confidence=row.get("response_confidence"),
-                            winner_index=row.get("winner_index"),
-                            rankings=json.loads(row["rankings"]) if row.get("rankings") else None,
-                            ratings=json.loads(row["ratings"]) if row.get("ratings") else None,
-                            summary=row.get("summary"),
-                        )
-                        checkpoints.append(checkpoint)
-                    except Exception as row_err:
-                        print(f"[LARS] Warning: Could not parse checkpoint row: {row_err}")
-                        continue
+            for row in result:
+                checkpoint = self._checkpoint_from_row(row)
+                if checkpoint:
+                    checkpoints.append(checkpoint)
 
         except Exception as e:
             print(f"[LARS] Warning: Could not load all checkpoints from DB: {e}")

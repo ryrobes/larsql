@@ -1,0 +1,425 @@
+{
+  "benchmarks": [
+    {
+      "batch_elapsed_s": 1.512858,
+      "errors_sample": [],
+      "latency": {
+        "errors": 0,
+        "max": 1.170805,
+        "mean": 1.170805,
+        "min": 1.170805,
+        "ok": 1,
+        "p50": 1.170805,
+        "p95": 1.170805,
+        "p99": 1.170805
+      },
+      "name": "sql_search:same_query",
+      "parallel": 1,
+      "throughput_rps": 0.661001
+    },
+    {
+      "batch_elapsed_s": 1.519804,
+      "errors_sample": [],
+      "latency": {
+        "errors": 0,
+        "max": 1.143956,
+        "mean": 1.143956,
+        "min": 1.143956,
+        "ok": 1,
+        "p50": 1.143956,
+        "p95": 1.143956,
+        "p99": 1.143956
+      },
+      "name": "sql_search:unique_query",
+      "parallel": 1,
+      "throughput_rps": 0.65798
+    },
+    {
+      "batch_elapsed_s": 1.629219,
+      "errors_sample": [],
+      "latency": {
+        "errors": 0,
+        "max": 1.165248,
+        "mean": 1.165151,
+        "min": 1.165054,
+        "ok": 2,
+        "p50": 1.165248,
+        "p95": 1.165248,
+        "p99": 1.165248
+      },
+      "name": "sql_search:same_query",
+      "parallel": 2,
+      "throughput_rps": 1.227582
+    },
+    {
+      "batch_elapsed_s": 1.617483,
+      "errors_sample": [],
+      "latency": {
+        "errors": 0,
+        "max": 1.158118,
+        "mean": 1.153393,
+        "min": 1.148668,
+        "ok": 2,
+        "p50": 1.158118,
+        "p95": 1.158118,
+        "p99": 1.158118
+      },
+      "name": "sql_search:unique_query",
+      "parallel": 2,
+      "throughput_rps": 1.236489
+    },
+    {
+      "batch_elapsed_s": 1.888163,
+      "errors_sample": [],
+      "latency": {
+        "errors": 0,
+        "max": 1.31362,
+        "mean": 1.304621,
+        "min": 1.294005,
+        "ok": 4,
+        "p50": 1.310139,
+        "p95": 1.31362,
+        "p99": 1.31362
+      },
+      "name": "sql_search:same_query",
+      "parallel": 4,
+      "throughput_rps": 2.118461
+    },
+    {
+      "batch_elapsed_s": 1.884928,
+      "errors_sample": [],
+      "latency": {
+        "errors": 0,
+        "max": 1.341154,
+        "mean": 1.291134,
+        "min": 1.250709,
+        "ok": 4,
+        "p50": 1.290447,
+        "p95": 1.341154,
+        "p99": 1.341154
+      },
+      "name": "sql_search:unique_query",
+      "parallel": 4,
+      "throughput_rps": 2.122097
+    },
+    {
+      "batch_elapsed_s": 2.832521,
+      "errors_sample": [],
+      "latency": {
+        "errors": 0,
+        "max": 2.055171,
+        "mean": 2.013729,
+        "min": 1.949018,
+        "ok": 8,
+        "p50": 2.023903,
+        "p95": 2.055171,
+        "p99": 2.055171
+      },
+      "name": "sql_search:same_query",
+      "parallel": 8,
+      "throughput_rps": 2.824339
+    },
+    {
+      "batch_elapsed_s": 2.84192,
+      "errors_sample": [],
+      "latency": {
+        "errors": 0,
+        "max": 2.058575,
+        "mean": 1.961733,
+        "min": 1.926402,
+        "ok": 8,
+        "p50": 1.945802,
+        "p95": 2.058575,
+        "p99": 2.058575
+      },
+      "name": "sql_search:unique_query",
+      "parallel": 8,
+      "throughput_rps": 2.814998
+    },
+    {
+      "batch_elapsed_s": 3.282455,
+      "errors_sample": [],
+      "latency": {
+        "errors": 0,
+        "max": 2.364596,
+        "mean": 2.29361,
+        "min": 2.216417,
+        "ok": 10,
+        "p50": 2.307911,
+        "p95": 2.364596,
+        "p99": 2.364596
+      },
+      "name": "sql_search:same_query",
+      "parallel": 10,
+      "throughput_rps": 3.046501
+    },
+    {
+      "batch_elapsed_s": 3.408194,
+      "errors_sample": [],
+      "latency": {
+        "errors": 0,
+        "max": 2.478186,
+        "mean": 2.414183,
+        "min": 2.339793,
+        "ok": 10,
+        "p50": 2.438345,
+        "p95": 2.478186,
+        "p99": 2.478186
+      },
+      "name": "sql_search:unique_query",
+      "parallel": 10,
+      "throughput_rps": 2.934105
+    },
+    {
+      "batch_elapsed_s": 3.977483,
+      "errors_sample": [],
+      "latency": {
+        "errors": 0,
+        "max": 2.901326,
+        "mean": 2.830356,
+        "min": 2.772749,
+        "ok": 12,
+        "p50": 2.828796,
+        "p95": 2.901326,
+        "p99": 2.901326
+      },
+      "name": "sql_search:same_query",
+      "parallel": 12,
+      "throughput_rps": 3.016983
+    },
+    {
+      "batch_elapsed_s": 4.464202,
+      "errors_sample": [],
+      "latency": {
+        "errors": 0,
+        "max": 3.290743,
+        "mean": 3.208457,
+        "min": 3.027943,
+        "ok": 12,
+        "p50": 3.232629,
+        "p95": 3.290743,
+        "p99": 3.290743
+      },
+      "name": "sql_search:unique_query",
+      "parallel": 12,
+      "throughput_rps": 2.68805
+    },
+    {
+      "batch_elapsed_s": 1.45734,
+      "errors_sample": [],
+      "latency": {
+        "errors": 0,
+        "max": 1.128138,
+        "mean": 1.128138,
+        "min": 1.128138,
+        "ok": 1,
+        "p50": 1.128138,
+        "p95": 1.128138,
+        "p99": 1.128138
+      },
+      "name": "sql_rag_search:same_query",
+      "parallel": 1,
+      "throughput_rps": 0.686181
+    },
+    {
+      "batch_elapsed_s": 1.472417,
+      "errors_sample": [],
+      "latency": {
+        "errors": 0,
+        "max": 1.103126,
+        "mean": 1.103126,
+        "min": 1.103126,
+        "ok": 1,
+        "p50": 1.103126,
+        "p95": 1.103126,
+        "p99": 1.103126
+      },
+      "name": "sql_rag_search:unique_query",
+      "parallel": 1,
+      "throughput_rps": 0.679155
+    },
+    {
+      "batch_elapsed_s": 1.599277,
+      "errors_sample": [],
+      "latency": {
+        "errors": 0,
+        "max": 1.182335,
+        "mean": 1.180891,
+        "min": 1.179447,
+        "ok": 2,
+        "p50": 1.182335,
+        "p95": 1.182335,
+        "p99": 1.182335
+      },
+      "name": "sql_rag_search:same_query",
+      "parallel": 2,
+      "throughput_rps": 1.250565
+    },
+    {
+      "batch_elapsed_s": 1.683766,
+      "errors_sample": [],
+      "latency": {
+        "errors": 0,
+        "max": 1.216079,
+        "mean": 1.214277,
+        "min": 1.212475,
+        "ok": 2,
+        "p50": 1.216079,
+        "p95": 1.216079,
+        "p99": 1.216079
+      },
+      "name": "sql_rag_search:unique_query",
+      "parallel": 2,
+      "throughput_rps": 1.187813
+    },
+    {
+      "batch_elapsed_s": 1.876348,
+      "errors_sample": [],
+      "latency": {
+        "errors": 0,
+        "max": 1.345546,
+        "mean": 1.332734,
+        "min": 1.323856,
+        "ok": 4,
+        "p50": 1.337149,
+        "p95": 1.345546,
+        "p99": 1.345546
+      },
+      "name": "sql_rag_search:same_query",
+      "parallel": 4,
+      "throughput_rps": 2.1318
+    },
+    {
+      "batch_elapsed_s": 1.931929,
+      "errors_sample": [],
+      "latency": {
+        "errors": 0,
+        "max": 1.378144,
+        "mean": 1.332239,
+        "min": 1.305678,
+        "ok": 4,
+        "p50": 1.330657,
+        "p95": 1.378144,
+        "p99": 1.378144
+      },
+      "name": "sql_rag_search:unique_query",
+      "parallel": 4,
+      "throughput_rps": 2.07047
+    },
+    {
+      "batch_elapsed_s": 2.806734,
+      "errors_sample": [],
+      "latency": {
+        "errors": 0,
+        "max": 2.020983,
+        "mean": 1.980818,
+        "min": 1.930113,
+        "ok": 8,
+        "p50": 1.98808,
+        "p95": 2.020983,
+        "p99": 2.020983
+      },
+      "name": "sql_rag_search:same_query",
+      "parallel": 8,
+      "throughput_rps": 2.850288
+    },
+    {
+      "batch_elapsed_s": 2.79919,
+      "errors_sample": [],
+      "latency": {
+        "errors": 0,
+        "max": 2.043389,
+        "mean": 1.983944,
+        "min": 1.922793,
+        "ok": 8,
+        "p50": 1.987056,
+        "p95": 2.043389,
+        "p99": 2.043389
+      },
+      "name": "sql_rag_search:unique_query",
+      "parallel": 8,
+      "throughput_rps": 2.857969
+    },
+    {
+      "batch_elapsed_s": 3.321507,
+      "errors_sample": [],
+      "latency": {
+        "errors": 0,
+        "max": 2.403834,
+        "mean": 2.345624,
+        "min": 2.250702,
+        "ok": 10,
+        "p50": 2.378962,
+        "p95": 2.403834,
+        "p99": 2.403834
+      },
+      "name": "sql_rag_search:same_query",
+      "parallel": 10,
+      "throughput_rps": 3.010682
+    },
+    {
+      "batch_elapsed_s": 3.441249,
+      "errors_sample": [],
+      "latency": {
+        "errors": 0,
+        "max": 2.505848,
+        "mean": 2.435553,
+        "min": 2.356245,
+        "ok": 10,
+        "p50": 2.477122,
+        "p95": 2.505848,
+        "p99": 2.505848
+      },
+      "name": "sql_rag_search:unique_query",
+      "parallel": 10,
+      "throughput_rps": 2.905922
+    },
+    {
+      "batch_elapsed_s": 3.927742,
+      "errors_sample": [],
+      "latency": {
+        "errors": 0,
+        "max": 2.80767,
+        "mean": 2.756593,
+        "min": 2.720601,
+        "ok": 12,
+        "p50": 2.755787,
+        "p95": 2.80767,
+        "p99": 2.80767
+      },
+      "name": "sql_rag_search:same_query",
+      "parallel": 12,
+      "throughput_rps": 3.055191
+    },
+    {
+      "batch_elapsed_s": 3.993543,
+      "errors_sample": [],
+      "latency": {
+        "errors": 0,
+        "max": 2.873874,
+        "mean": 2.757921,
+        "min": 2.559038,
+        "ok": 12,
+        "p50": 2.782091,
+        "p95": 2.873874,
+        "p99": 2.873874
+      },
+      "name": "sql_rag_search:unique_query",
+      "parallel": 12,
+      "throughput_rps": 3.00485
+    }
+  ],
+  "cwd": "/Users/ryanr/projects/larsql",
+  "generated_at": "2026-02-23T21:48:25.289584+00:00",
+  "lars_root_env": "/Users/ryanr/.rvbbit/lars",
+  "mp_start_method": "spawn",
+  "parallel_counts": [
+    1,
+    2,
+    4,
+    8,
+    10,
+    12
+  ],
+  "python": "3.14.2 (main, Dec  5 2025, 16:49:16) [Clang 17.0.0 (clang-1700.6.3.2)]"
+}

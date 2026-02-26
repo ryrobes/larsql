@@ -388,7 +388,8 @@ class TableMetadata:
             columns = self._extract_column_metadata(
                 full_table_name,
                 config.distinct_value_threshold,
-                row_count
+                row_count,
+                config.value_distribution_limit,
             )
 
             # Get sample rows in compact array-of-arrays format
@@ -417,9 +418,13 @@ class TableMetadata:
         self,
         full_table_name: str,
         threshold: int,
-        total_rows: int
+        total_rows: int,
+        value_distribution_limit: int,
     ) -> List[Dict[str, Any]]:
         """Extract metadata for all columns including distributions."""
+
+        # Zero/negative disables low-cardinality value distribution sampling.
+        dist_limit = max(0, int(value_distribution_limit))
 
         # Get column names and types via DESCRIBE
         desc_sql = f"DESCRIBE {full_table_name}"
@@ -445,7 +450,7 @@ class TableMetadata:
             }
 
             # Low-cardinality: get value distribution with counts
-            if distinct_count < threshold and distinct_count > 0:
+            if distinct_count < threshold and distinct_count > 0 and dist_limit > 0:
                 try:
                     dist_sql = f"""
                         SELECT
@@ -455,7 +460,7 @@ class TableMetadata:
                         FROM {full_table_name}
                         GROUP BY "{col_name}"
                         ORDER BY count DESC
-                        LIMIT 100
+                        LIMIT {dist_limit}
                     """
                     dist_df = self.conn.fetch_df(dist_sql)
                     metadata["value_distribution"] = dist_df.to_dict('records')

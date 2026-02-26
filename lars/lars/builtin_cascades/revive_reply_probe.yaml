@@ -1,0 +1,32 @@
+cascade_id: revive_reply_probe
+description: Deterministic probe for revive-reply session chaining.
+inputs_schema:
+  message: Latest user message for this turn.
+  thread_id: Stable thread lineage identifier.
+  revive_history: Prior turns injected by /api/cascade/revive-reply.
+
+cells:
+  - name: inspect_thread
+    tool: python_data
+    inputs:
+      code: |
+        history = input.get("revive_history") or []
+        message = (input.get("message") or "").strip()
+        thread_id = input.get("thread_id")
+
+        previous = history[-1] if history else {}
+        previous_user = previous.get("user")
+        previous_assistant = previous.get("assistant")
+
+        turn_index = len(history) + 1
+        reply = f"I remember {len(history)} prior turns. You said: {message}"
+
+        result = {
+            "thread_id": thread_id,
+            "turn_index": turn_index,
+            "history_count": len(history),
+            "previous_user": previous_user,
+            "previous_assistant": previous_assistant,
+            "message": message,
+            "assistant_reply": reply
+        }

@@ -1224,7 +1224,7 @@ class SqlMappingConfig(BaseModel):
     cascade: Optional[str] = None  # Cascade to spawn per row
     instructions: Optional[str] = None  # Or use instructions for LLM cell per row
     inputs: Optional[Dict[str, str]] = None  # Jinja2 templates for cascade inputs ({{ row.column_name }})
-    max_parallel: int = 5
+    max_parallel: int = 10
     result_table: Optional[str] = None  # Optional: collect results into temp table
     on_error: str = "continue"  # continue, fail_fast, collect_errors
 
@@ -1589,8 +1589,12 @@ class PolyglotValidatorConfig(BaseModel):
     The code receives validation context and must return {"valid": bool, "reason": str}.
 
     For Python/JS/Clojure:
-        - `content`: The output to validate (string)
+        - `content`: Raw assistant output to validate (string)
         - `original_input`: The original cascade input (dict)
+        - `response_content`: Same as content (explicit alias)
+        - `tool_outputs`: Structured tool results list (if any)
+        - `content_with_tool_outputs`: Debug/composite text (if available)
+        - `validation_context`: Dict wrapper with extended validator context
         - Code must set a `result` variable with {"valid": bool, "reason": str}
 
     For SQL:
@@ -1767,7 +1771,7 @@ class CascadeConfig(BaseModel):
 
     # Parallel cell execution configuration
     # When cells have independent dependencies (fan-out pattern), they can run in parallel
-    # This sets the maximum number of concurrent cell executions (default: 5)
+    # This sets the maximum number of concurrent cell executions (default: 10)
     # Example: max_parallel: 10 allows up to 10 cells to run simultaneously
     max_parallel: Optional[int] = None
 
@@ -1819,6 +1823,10 @@ def _migrate_legacy_terminology(data: Dict) -> Dict:
 
 
 _cascade_config_cache: Dict[str, "CascadeConfig"] = {}
+_cascade_id_aliases: Dict[str, str] = {
+    # Alternate built-in variant file names that intentionally do not match cascade_id.
+    "calliope_grid": "calliope_grid.yaml",
+}
 
 def load_cascade_config(path_or_dict: Union[str, Dict, "CascadeConfig"]) -> CascadeConfig:
     # If already a CascadeConfig, return as-is
@@ -1831,7 +1839,63 @@ def load_cascade_config(path_or_dict: Union[str, Dict, "CascadeConfig"]) -> Casc
         if path_or_dict in _cascade_config_cache:
             return _cascade_config_cache[path_or_dict]
 
-        # Try registry first (fast path - supports both ID and path)
+        # Fast path: explicit config-file refs should load directly from filesystem/package
+        # without initializing the artifact registry (expensive on cold process start).
+        from pathlib import Path
+        is_file_ref = (
+            Path(path_or_dict).suffix.lower() in {".yaml", ".yml", ".json"}
+            or "/" in path_or_dict
+            or "\\" in path_or_dict
+        )
+        if is_file_ref:
+            from .loaders import load_config_file
+            try:
+                data = load_config_file(path_or_dict)
+                data = _migrate_legacy_terminology(data)
+                config = CascadeConfig(**data)
+                _cascade_config_cache[path_or_dict] = config
+                return config
+            except FileNotFoundError:
+                # If file resolution fails, continue to registry/ID lookup fallback.
+                pass
+
+        # Fast path for common builtin IDs (e.g., "calliope" -> "calliope.yaml").
+        # Only accept the result if cascade_id matches the requested ID.
+        if not is_file_ref:
+            from .loaders import load_config_file
+            alias_target = _cascade_id_aliases.get(path_or_dict)
+            if alias_target:
+                try:
+                    data = load_config_file(alias_target)
+                    data = _migrate_legacy_terminology(data)
+                    config = CascadeConfig(**data)
+                    _cascade_config_cache[path_or_dict] = config
+                    return config
+                except Exception:
+                    # Fall back to normal ID resolution if alias loading fails.
+                    pass
+
+            id_candidates = (
+                f"{path_or_dict}.yaml",
+                f"{path_or_dict}.cascade.yaml",
+                f"{path_or_dict}.yml",
+                f"{path_or_dict}.json",
+            )
+            for candidate in id_candidates:
+                try:
+                    data = load_config_file(candidate)
+                except FileNotFoundError:
+                    continue
+                try:
+                    data = _migrate_legacy_terminology(data)
+                    config = CascadeConfig(**data)
+                except Exception:
+                    continue
+                if getattr(config, "cascade_id", None) == path_or_dict:
+                    _cascade_config_cache[path_or_dict] = config
+                    return config
+
+        # Try registry first for cascade IDs (supports ID + path-like fallback)
         try:
             from .artifact_registry import get_artifact_registry
             registry = get_artifact_registry()

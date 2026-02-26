@@ -703,6 +703,16 @@ def get_artifact_registry() -> ArtifactRegistry:
     return _registry
 
 
+def get_existing_artifact_registry() -> Optional[ArtifactRegistry]:
+    """
+    Return the existing singleton registry instance without initializing it.
+
+    Useful on one-shot execution paths where metadata can be best-effort and
+    we want to avoid paying full registry startup cost.
+    """
+    return _registry
+
+
 def shutdown_artifact_registry():
     """Shutdown the artifact registry (called on process exit)."""
     global _registry

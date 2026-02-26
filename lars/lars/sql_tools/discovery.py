@@ -9,6 +9,7 @@ import yaml
 import time
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 
@@ -41,6 +42,7 @@ def _sanitize_for_yaml(obj):
 from ..config import get_config
 from ..rag.indexer import ensure_rag_index
 from ..cascade import RagConfig
+from .sql_duckdb_index import USE_DEDICATED_SQL_DUCKDB_INDEX, rebuild_sql_index
 from .config import (
     load_sql_connections,
     save_discovery_metadata,
@@ -58,8 +60,108 @@ except ImportError:
 
 console = Console()
 
+_SQL_FIELD_INDEX_INCLUDE_TEXT_SAMPLES = os.getenv(
+    "LARS_SQL_FIELD_INDEX_INCLUDE_TEXT_SAMPLES",
+    "0",
+).strip().lower() in {"1", "true", "yes", "on"}
+_SQL_FIELD_INDEX_MAX_SAMPLE_VALUE_CHARS = max(
+    16,
+    int(os.getenv("LARS_SQL_FIELD_INDEX_MAX_SAMPLE_VALUE_CHARS", "80")),
+)
+_SQL_FIELD_INDEX_MAX_SAMPLE_VALUES = max(
+    0,
+    int(os.getenv("LARS_SQL_FIELD_INDEX_MAX_SAMPLE_VALUES", "5")),
+)
 
-def _write_field_index(db_dir: str, table_meta: dict):
+
+def _ident_equal(left: Optional[str], right: Optional[str]) -> bool:
+    if left is None or right is None:
+        return False
+    return str(left).strip().lower() == str(right).strip().lower()
+
+
+def _normalized_schema_value(database: Optional[str], schema: Optional[str]) -> Optional[str]:
+    if schema is None:
+        return None
+    norm_schema = str(schema).strip()
+    norm_db = str(database).strip() if database else ""
+    if not norm_schema:
+        return None
+    if norm_db and _ident_equal(norm_schema, norm_db):
+        return None
+    return norm_schema
+
+
+def _sql_table_ref_for_index(table_meta: dict, conn_type: Optional[str] = None) -> Optional[str]:
+    database = str(table_meta.get("database") or "").strip()
+    table_name = str(table_meta.get("table_name") or "").strip()
+    if not database or not table_name:
+        return None
+
+    raw_schema = str(table_meta.get("schema") or "").strip()
+    schema = _normalized_schema_value(database, raw_schema)
+    ctype = str(conn_type or "").strip().lower()
+
+    # For duckdb_folder connections, metadata.schema is the attached DB name.
+    if ctype == "duckdb_folder":
+        if raw_schema:
+            return f"{raw_schema}.{table_name}"
+        return f"{database}.{table_name}"
+
+    # Connection-local, schema-less query forms.
+    if ctype in {
+        "csv_folder",
+        "jsonl_folder",
+        "markdown_folder",
+        "sqlite",
+        "duckdb",
+        "native",
+        "s3",
+        "azure",
+        "gcs",
+        "http",
+        "mongodb",
+        "cassandra",
+        "oracle",
+        "mssql",
+        "db2",
+        "hana",
+        "excel",
+        "gsheets",
+        "delta",
+        "iceberg",
+        "clickhouse",
+    }:
+        return f"{database}.{table_name}"
+
+    if schema:
+        return f"{database}.{schema}.{table_name}"
+    return f"{database}.{table_name}"
+
+
+def _enrich_table_doc_for_index(table_meta: dict, conn_type: Optional[str] = None) -> dict:
+    doc = dict(table_meta or {})
+    sql_table_ref = _sql_table_ref_for_index(doc, conn_type)
+    if sql_table_ref:
+        doc["sql_table_ref"] = sql_table_ref
+        doc["example_query"] = f"SELECT * FROM {sql_table_ref} LIMIT 5"
+    return doc
+
+
+def _is_text_like_type(col_type: str) -> bool:
+    col_type_norm = str(col_type or "").upper()
+    text_markers = ("CHAR", "TEXT", "STRING", "VARCHAR", "JSON", "XML", "CLOB", "BLOB", "BYTEA")
+    return any(marker in col_type_norm for marker in text_markers)
+
+
+def _clean_sample_value(value: object, max_chars: int) -> str:
+    text = str(value).replace("\n", " ").replace("\r", " ").strip()
+    if len(text) <= max_chars:
+        return text
+    return text[: max_chars - 3] + "..."
+
+
+def _write_field_index(db_dir: str, table_meta: dict, conn_type: Optional[str] = None):
     """
     Generate a field-level index file for granular RAG search.
 
@@ -80,6 +182,10 @@ def _write_field_index(db_dir: str, table_meta: dict):
         qualified = f"{database}.{schema}.{table_name}"
     else:
         qualified = f"{database}.{table_name}"
+    sql_table_ref = table_meta.get("sql_table_ref") or _sql_table_ref_for_index(table_meta, conn_type)
+    example_query = table_meta.get("example_query")
+    if not example_query and sql_table_ref:
+        example_query = f"SELECT * FROM {sql_table_ref} LIMIT 5"
 
     # Generate one entry per field with rich searchable text
     field_entries = []
@@ -102,10 +208,17 @@ def _write_field_index(db_dir: str, table_meta: dict):
         if row_count:
             desc_parts.append(f"Table has {row_count} rows.")
 
-        # Add sample values if available (from value_distribution)
+        # Add sample values if available (from value_distribution), but gate noisy long-text fields.
         dist = meta.get("value_distribution", [])
-        if dist and len(dist) > 0:
-            samples = [str(d.get("value", "")) for d in dist[:5] if d.get("value") is not None]
+        include_samples = True
+        if _is_text_like_type(col_type) and not _SQL_FIELD_INDEX_INCLUDE_TEXT_SAMPLES:
+            include_samples = False
+        if include_samples and dist and len(dist) > 0 and _SQL_FIELD_INDEX_MAX_SAMPLE_VALUES > 0:
+            samples = [
+                _clean_sample_value(d.get("value"), _SQL_FIELD_INDEX_MAX_SAMPLE_VALUE_CHARS)
+                for d in dist[:_SQL_FIELD_INDEX_MAX_SAMPLE_VALUES]
+                if d.get("value") is not None
+            ]
             if samples:
                 desc_parts.append(f"Sample values: {', '.join(samples)}.")
 
@@ -127,9 +240,14 @@ def _write_field_index(db_dir: str, table_meta: dict):
 
     if field_entries:
         fields_file = os.path.join(db_dir, f"{table_name}_fields.yaml")
+        payload = {"fields": field_entries, "source_table": qualified}
+        if sql_table_ref:
+            payload["sql_table_ref"] = sql_table_ref
+        if example_query:
+            payload["example_query"] = example_query
         with open(fields_file, "w") as f:
             yaml.safe_dump(
-                {"fields": field_entries, "source_table": qualified},
+                payload,
                 f, default_flow_style=False, sort_keys=False, allow_unicode=True
             )
 
@@ -219,6 +337,7 @@ def discover_all_schemas(session_id: str | None = None):
 
                     if table_meta is None:
                         continue
+                    table_doc = _enrich_table_doc_for_index(table_meta, conn_config.type)
 
                     # Save to file
                     if conn_config.type == "csv_folder":
@@ -236,35 +355,35 @@ def discover_all_schemas(session_id: str | None = None):
                     table_file = os.path.join(db_dir, f"{table_name}.yaml")
 
                     with open(table_file, "w") as f:
-                        yaml.safe_dump(_sanitize_for_yaml(table_meta), f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+                        yaml.safe_dump(_sanitize_for_yaml(table_doc), f, default_flow_style=False, sort_keys=False, allow_unicode=True)
 
                     # Generate field-level index file for granular RAG search
-                    _write_field_index(db_dir, table_meta)
+                    _write_field_index(db_dir, table_doc, conn_type=conn_config.type)
 
                     total_tables += 1
-                    total_columns += len(table_meta["columns"])
+                    total_columns += len(table_doc["columns"])
 
                     # Also index to Elasticsearch if available
                     # Note: Embedding will be added after RAG index builds it
                     if elastic_enabled:
                         try:
                             # Build qualified name for Elasticsearch ID
-                            if table_meta['schema'] and table_meta['schema'] != table_meta['database']:
-                                qualified_name = f"{table_meta['database']}.{table_meta['schema']}.{table_meta['table_name']}"
+                            if table_doc['schema'] and table_doc['schema'] != table_doc['database']:
+                                qualified_name = f"{table_doc['database']}.{table_doc['schema']}.{table_doc['table_name']}"
                             else:
-                                qualified_name = f"{table_meta['database']}.{table_meta['table_name']}"
+                                qualified_name = f"{table_doc['database']}.{table_doc['table_name']}"
 
                             # Temporarily index without embedding - will update after RAG index is built
-                            table_meta['qualified_name'] = qualified_name
-                            table_meta['embedding'] = None  # Will be updated later
-                            table_meta['embedding_model'] = None
-                            table_meta['indexed_at'] = datetime.now().isoformat()
+                            table_doc['qualified_name'] = qualified_name
+                            table_doc['embedding'] = None  # Will be updated later
+                            table_doc['embedding_model'] = None
+                            table_doc['indexed_at'] = datetime.now().isoformat()
 
                             # Don't index yet - we'll do it after embeddings are created
                             # Just store for later
                             if not hasattr(discover_all_schemas, '_pending_elastic_docs'):
                                 discover_all_schemas._pending_elastic_docs = []
-                            discover_all_schemas._pending_elastic_docs.append(table_meta)
+                            discover_all_schemas._pending_elastic_docs.append(table_doc)
 
                         except Exception as e:
                             console.print(f"[dim][WARN] Elasticsearch prep failed for {table_name}: {e}[/dim]")
@@ -298,11 +417,28 @@ def discover_all_schemas(session_id: str | None = None):
     )
 
     try:
-        rag_ctx = ensure_rag_index(
-            rag_config=rag_config,
-            cascade_path=None,
-            session_id=session_id
-        )
+        if USE_DEDICATED_SQL_DUCKDB_INDEX:
+            index_stats = rebuild_sql_index(
+                samples_dir=samples_dir,
+                embed_model=None,
+                session_id=session_id,
+                trace_id=None,
+                parent_id=None,
+                cell_name="sql_crawl",
+                cascade_id=None,
+            )
+            rag_id = index_stats["rag_id"]
+            embed_model = index_stats["embed_model"]
+            embedding_dim = int(index_stats["embedding_dim"])
+        else:
+            rag_ctx = ensure_rag_index(
+                rag_config=rag_config,
+                cascade_path=None,
+                session_id=session_id
+            )
+            rag_id = rag_ctx.rag_id
+            embed_model = rag_ctx.embed_model
+            embedding_dim = int(getattr(rag_ctx, "embedding_dim", 0) or 0)
 
         # Index to Elasticsearch (optional).
         #
@@ -339,19 +475,21 @@ def discover_all_schemas(session_id: str | None = None):
         # Save discovery metadata
         metadata = DiscoveryMetadata(
             last_discovery=datetime.now().isoformat(),
-            rag_id=rag_ctx.rag_id,
+            rag_id=rag_id,
             databases_indexed=databases_indexed,
             table_count=total_tables,
             total_columns=total_columns,
-            embed_model=rag_ctx.embed_model
+            embed_model=embed_model
         )
 
         save_discovery_metadata(metadata)
 
         console.print(f"[bold green][TARGET] SQL schema discovery complete![/bold green]")
-        console.print(f"[dim]  RAG ID: {rag_ctx.rag_id}[/dim]")
+        console.print(f"[dim]  RAG ID: {rag_id}[/dim]")
         console.print(f"[dim]  Tables indexed: {total_tables}[/dim]")
         console.print(f"[dim]  Total columns: {total_columns}[/dim]")
+        if USE_DEDICATED_SQL_DUCKDB_INDEX:
+            console.print(f"[dim]  Backend: dedicated SQL DuckDB ({embedding_dim} dims)[/dim]")
         console.print(f"[dim]  Metadata saved: sql_connections/discovery_metadata.yaml[/dim]")
         console.print()
         console.print("[cyan][TIP] Use sql_search tool in cascades to search schemas[/cyan]")

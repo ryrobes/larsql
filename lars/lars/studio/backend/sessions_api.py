@@ -207,32 +207,30 @@ def _enrich_sessions_with_metrics(sessions: list) -> list:
                     'bottleneck_cell_pct': float(row.get('bottleneck_cell_pct', 0) or 0),
                 }
 
-        # Query for distinct models used per session
+        # Query models in row form and aggregate in Python for SQL portability
+        # across DuckDB and ClickHouse (array_agg/distinct syntax differs).
         models_query = f"""
-            SELECT
-                session_id,
-                array_agg(DISTINCT model) as models
+            SELECT session_id, model
             FROM unified_logs
             WHERE session_id IN ('{session_ids_str}')
                 AND model IS NOT NULL
                 AND model != ''
-            GROUP BY session_id
+            ORDER BY timestamp DESC
         """
 
         models_result = db.query(models_query)
 
-        # Build models map
+        # Build models map (first-seen order after DESC timestamp ordering).
         models_map = {}
         for row in models_result:
             sid = row.get('session_id')
-            if sid:
-                # DuckDB returns numpy arrays - convert to list and filter nulls
-                models_raw = row.get('models')
-                if models_raw is not None:
-                    models_list = list(models_raw) if hasattr(models_raw, '__iter__') and not isinstance(models_raw, str) else []
-                    models_map[sid] = [m for m in models_list if m is not None and m != '']
-                else:
-                    models_map[sid] = []
+            model = row.get('model')
+            if not sid or not model:
+                continue
+            if sid not in models_map:
+                models_map[sid] = []
+            if model not in models_map[sid]:
+                models_map[sid].append(model)
 
         # Build metrics map
         metrics_map = {}
@@ -297,38 +295,76 @@ def _enrich_sessions_with_metrics(sessions: list) -> list:
                 metrics_map[sid]['models'] = models_map[sid]
 
         # Get input_data and output from cascade_sessions table
-        # ALWAYS fetch this regardless of cascade_analytics presence
-        # Truncate both to 300 chars to reduce payload size
+        # ALWAYS fetch this regardless of cascade_analytics presence.
+        # We sort newest-first and merge non-empty fields across rows because
+        # some write paths persist input/output in separate updates.
         cascade_sessions_query = f"""
             SELECT
                 session_id,
-                LEFT(CAST(input_data AS VARCHAR), 300) as input_data_truncated,
-                LEFT(output, 300) as output_truncated
+                input_data,
+                output,
+                created_at
             FROM cascade_sessions
             WHERE session_id IN ('{session_ids_str}')
+            ORDER BY created_at DESC
         """
 
         cascade_sessions_result = db.query(cascade_sessions_query)
 
         import json
+
+        def _truncate(value, limit=300):
+            if value is None:
+                return None
+            text = value if isinstance(value, str) else str(value)
+            return text[:limit]
+
         for row in cascade_sessions_result:
             sid = row.get('session_id')
 
             if sid in metrics_map:
-                # Process input_data (already truncated to 300 chars in query)
-                if row.get('input_data_truncated'):
+                # Fill latest non-empty input_data and output per session.
+                if metrics_map[sid]['input_data'] is None and row.get('input_data'):
                     try:
-                        input_data = row['input_data_truncated']
+                        input_data = row['input_data']
                         if isinstance(input_data, str):
                             input_data = json.loads(input_data)
                         metrics_map[sid]['input_data'] = input_data
-                    except Exception as e:
-                        # If JSON parse fails (likely due to truncation), use as string
-                        metrics_map[sid]['input_data'] = row['input_data_truncated']
+                    except Exception:
+                        metrics_map[sid]['input_data'] = _truncate(row['input_data'])
 
-                # Process output
-                if row.get('output_truncated'):
-                    metrics_map[sid]['output'] = row['output_truncated']
+                if metrics_map[sid]['output'] is None and row.get('output'):
+                    metrics_map[sid]['output'] = _truncate(row['output'])
+
+        # Second fallback for missing input_data: infer from first user message.
+        sessions_without_input = [sid for sid, m in metrics_map.items() if m.get('input_data') is None]
+        if sessions_without_input:
+            fallback_input_ids_str = "', '".join(sessions_without_input)
+            fallback_input_query = f"""
+                SELECT
+                    session_id,
+                    content_json
+                FROM unified_logs
+                WHERE session_id IN ('{fallback_input_ids_str}')
+                  AND role = 'user'
+                  AND content_json IS NOT NULL
+                ORDER BY timestamp ASC
+            """
+            fallback_input_rows = db.query(fallback_input_query)
+            seen_input = set()
+            for row in fallback_input_rows:
+                sid = row.get('session_id')
+                if not sid or sid in seen_input or sid not in metrics_map:
+                    continue
+                raw_content = row.get('content_json')
+                if raw_content is None:
+                    continue
+                try:
+                    parsed = json.loads(raw_content) if isinstance(raw_content, str) else raw_content
+                except Exception:
+                    parsed = _truncate(raw_content)
+                metrics_map[sid]['input_data'] = parsed
+                seen_input.add(sid)
 
         # Fallback: For sessions not in cascade_analytics, fetch cost/message_count from unified_logs
         sessions_without_analytics = [sid for sid in metrics_map.keys()
@@ -504,10 +540,9 @@ def _include_virtual_sessions(existing_sessions: list, cascade_id_filter: str | 
                 MIN(timestamp) as started_at,
                 MAX(timestamp) as updated_at,
                 SUM(cost) as total_cost,
-                COUNT(*) as message_count,
-                array_agg(DISTINCT model) as models
+                COUNT(*) as message_count
             FROM unified_logs
-            WHERE timestamp > current_timestamp - INTERVAL '7 days'
+            WHERE timestamp > now() - INTERVAL 7 DAY
             {cascade_filter}
             GROUP BY session_id, cascade_id
             ORDER BY started_at DESC
@@ -515,6 +550,28 @@ def _include_virtual_sessions(existing_sessions: list, cascade_id_filter: str | 
         """
 
         result = db.query(query)
+        models_map = {}
+        session_ids = [row.get("session_id") for row in result if row.get("session_id")]
+        if session_ids:
+            session_ids_str = "', '".join(session_ids)
+            models_query = f"""
+                SELECT session_id, model
+                FROM unified_logs
+                WHERE session_id IN ('{session_ids_str}')
+                  AND model IS NOT NULL
+                  AND model != ''
+                ORDER BY timestamp DESC
+            """
+            models_result = db.query(models_query)
+            for model_row in models_result:
+                sid = model_row.get("session_id")
+                model = model_row.get("model")
+                if not sid or not model:
+                    continue
+                if sid not in models_map:
+                    models_map[sid] = []
+                if model not in models_map[sid]:
+                    models_map[sid].append(model)
 
         # Count how many virtual sessions we find
         virtual_count = 0
@@ -556,7 +613,7 @@ def _include_virtual_sessions(existing_sessions: list, cascade_id_filter: str | 
                 'total_cost': float(row.get('total_cost', 0) or 0),
                 'total_duration_ms': 0,  # Not available for virtual sessions
                 'message_count': int(row.get('message_count', 0) or 0),
-                'models': _safe_list(row.get('models')),  # Filter nulls, handle numpy arrays
+                'models': _safe_list(models_map.get(sid, [])),  # Filter nulls, handle numpy arrays
                 # Flags for UI
                 'is_dynamic': True,
                 'description': description,
@@ -894,7 +951,7 @@ def get_console_kpis():
                 COALESCE(SUM(cost), 0) as total,
                 COUNT(DISTINCT session_id) as session_count
             FROM unified_logs
-            WHERE timestamp > current_timestamp - INTERVAL '1 days'
+            WHERE timestamp > now() - INTERVAL 1 DAY
               AND cost > 0
               AND role = 'assistant'
         """
@@ -908,7 +965,7 @@ def get_console_kpis():
                 COALESCE(SUM(cost), 0) as total,
                 COUNT(DISTINCT session_id) as session_count
             FROM unified_logs
-            WHERE timestamp BETWEEN current_timestamp - INTERVAL '2 days' AND current_timestamp - INTERVAL '1 days'
+            WHERE timestamp BETWEEN now() - INTERVAL 2 DAY AND now() - INTERVAL 1 DAY
               AND cost > 0
               AND role = 'assistant'
         """
@@ -923,7 +980,7 @@ def get_console_kpis():
             SELECT COUNT(*) as count
             FROM cascade_analytics
             WHERE is_cost_outlier = true
-                AND created_at > current_timestamp - INTERVAL '1 days'
+                AND created_at > now() - INTERVAL 1 DAY
         """
         outlier_result = db.query(outlier_query)
         outlier_count = int(outlier_result[0]['count']) if len(outlier_result) > 0 else 0
@@ -934,7 +991,7 @@ def get_console_kpis():
                 SUM(total_context_cost_estimated) as total_context,
                 SUM(total_cost) as total_cost
             FROM cascade_analytics
-            WHERE created_at > current_timestamp - INTERVAL '1 days'
+            WHERE created_at > now() - INTERVAL 1 DAY
         """
         context_stats_result = db.query(context_stats_query)
         context_stats = context_stats_result[0] if len(context_stats_result) > 0 else {'total_context': 0, 'total_cost': 0}
@@ -944,13 +1001,24 @@ def get_console_kpis():
                 SUM(total_context_cost_estimated) as total_context,
                 SUM(total_cost) as total_cost
             FROM cascade_analytics
-            WHERE created_at BETWEEN current_timestamp - INTERVAL '2 days' AND current_timestamp - INTERVAL '1 days'
+            WHERE created_at BETWEEN now() - INTERVAL 2 DAY AND now() - INTERVAL 1 DAY
         """
         context_prev_result = db.query(context_prev_query)
         context_prev = context_prev_result[0] if len(context_prev_result) > 0 else {'total_context': 0, 'total_cost': 0}
 
-        avg_context_pct = (context_stats['total_context'] / context_stats['total_cost'] * 100) if context_stats['total_cost'] > 0 else 0
-        prev_context_pct = (context_prev['total_context'] / context_prev['total_cost'] * 100) if context_prev['total_cost'] > 0 else 0
+        def _to_num(v):
+            try:
+                return float(v or 0)
+            except Exception:
+                return 0.0
+
+        current_total_context = _to_num(context_stats.get('total_context'))
+        current_total_cost = _to_num(context_stats.get('total_cost'))
+        prev_total_context = _to_num(context_prev.get('total_context'))
+        prev_total_cost = _to_num(context_prev.get('total_cost'))
+
+        avg_context_pct = (current_total_context / current_total_cost * 100) if current_total_cost > 0 else 0
+        prev_context_pct = (prev_total_context / prev_total_cost * 100) if prev_total_cost > 0 else 0
         context_trend_pct = avg_context_pct - prev_context_pct
 
         # Top bottleneck cell
@@ -959,7 +1027,7 @@ def get_console_kpis():
                 cell_name,
                 AVG(cell_cost_pct) as avg_pct
             FROM cell_analytics
-            WHERE created_at > current_timestamp - INTERVAL '1 days'
+            WHERE created_at > now() - INTERVAL 1 DAY
             GROUP BY cell_name
             ORDER BY avg_pct DESC
             LIMIT 1

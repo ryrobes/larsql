@@ -76,7 +76,17 @@ def _register_all_skills():
     from .skills.filesystem import read_file, write_file, append_file, list_files, file_info, read_image, edit_file, search_files, tree, get_image_info, read_images, list_images, save_image, copy_image
     from .skills.image_gen import outpaint_image, generate_image, llm_outpaint, llm_generate
     from .rag.tools import rag_search, rag_read_chunk, rag_list_sources
-    from .sql_tools.tools import sql_search, sql_rag_search, smart_sql_search, run_sql as sql_run_sql, list_sql_connections, validate_sql
+    from .sql_tools.tools import (
+        sql_search,
+        sql_rag_search,
+        sql_get_table_meta,
+        smart_sql_search,
+        run_sql as sql_run_sql,
+        safe_sql_run,
+        limited_sql_run,
+        list_sql_connections,
+        validate_sql,
+    )
     from .validators import validate_parse_expression, validate_sql_expression, validate_json_output
     from .skills.data_tools import sql_data, python_data, js_data, clojure_data, lars_data
     from .skills.bash_substrate import bash_data
@@ -92,6 +102,7 @@ def _register_all_skills():
     from .skills.bi_tools import find_understanding, save_understanding
     from .skills.valid_json import valid_json, valid_json_array
     from .skills.valid_rvbbit import valid_rvbbit
+    from .skills.rvbbit_atom import valid_rvbbit_atom
     from .skills.rvbbit_canvas import (
         canvas_list_cells, canvas_get_cell, canvas_search_cells,
         canvas_create_cell, canvas_update_cell, canvas_move_cell,
@@ -171,8 +182,11 @@ def _register_all_skills():
     # SQL tools
     register_skill("sql_search", sql_search)
     register_skill("sql_rag_search", sql_rag_search)
+    register_skill("sql_get_table_meta", sql_get_table_meta)
     register_skill("smart_sql_search", smart_sql_search)
     register_skill("sql_query", sql_run_sql)
+    register_skill("safe_sql_run", safe_sql_run)
+    register_skill("limited_sql_run", limited_sql_run)
     register_skill("list_sql_connections", list_sql_connections)
     register_skill("validate_sql", validate_sql)
     register_skill("validate_parse_expression", validate_parse_expression)

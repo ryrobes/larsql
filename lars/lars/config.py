@@ -106,7 +106,7 @@ _CONFIG_YAML_SCHEMA = [
 
     # ─── Server ──────────────────────────────
     ("_section", "Server", None, None, None),
-    ("parallel_workers", "LARS_PARALLEL_WORKERS", 8, "Parallel workers for semantic SQL operators", None),
+    ("parallel_workers", "LARS_PARALLEL_WORKERS", 10, "Parallel workers for semantic SQL operators", None),
     ("result_max_rows", "LARS_RESULT_MAX_ROWS", 100000, "Maximum rows returned per query", None),
     ("studio_pgwire_port", "LARS_STUDIO_PGWIRE_PORT", 5444, "PostgreSQL wire-protocol port", None),
 
@@ -839,7 +839,7 @@ class Config(BaseModel):
     # Number of parallel workers for Arrow vectorized UDF execution
     # Used by semantic SQL operators (MEANS, ABOUT, etc.) for batch parallelism
     parallel_workers: int = Field(
-        default_factory=lambda: int(_yget("parallel_workers", 8))
+        default_factory=lambda: int(_yget("parallel_workers", 10))
     )
 
     # =========================================================================

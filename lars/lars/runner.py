@@ -337,10 +337,11 @@ class LARSRunner:
         # Get cascade version from artifact registry for audit trail
         self.cascade_version = None
         try:
-            from .artifact_registry import get_artifact_registry
-            registry = get_artifact_registry()
-            # Check if this cascade is in registry
-            if hasattr(self.config, 'cascade_id'):
+            from .artifact_registry import get_existing_artifact_registry
+            registry = get_existing_artifact_registry()
+            # Avoid forcing registry initialization on one-shot runs. If a registry
+            # is already active (e.g., persistent server mode), keep version metadata.
+            if registry is not None and hasattr(self.config, 'cascade_id'):
                 key = ('cascade', self.config.cascade_id)
                 self.cascade_version = registry._versions.get(key)
                 # Store in Echo for auto-extraction in all logs
@@ -740,8 +741,8 @@ class LARSRunner:
         # Snapshot context for thread safety
         echo_state_snapshot = copy.deepcopy(self.echo.state)
 
-        # Determine max workers from config (default: 5)
-        configured_max = self.config.max_parallel or 5
+        # Determine max workers from config (default: 10)
+        configured_max = self.config.max_parallel or 10
         max_workers = min(len(self.config.cells), configured_max)
         console.print(f"{indent}  Max parallel workers: {max_workers}")
 
@@ -5972,14 +5973,16 @@ Use them as inspiration for effective patterns, but stay creative - find novel v
         content: str,
         original_input: dict,
         trace: TraceNode,
-        validator_name: str = "polyglot_validator"
+        validator_name: str = "polyglot_validator",
+        validation_context: Optional[dict] = None
     ) -> dict:
         """
         Run a polyglot validator (Python, JS, SQL, etc.) and return validation result.
 
         The polyglot code receives:
-        - content: The output to validate (string)
+        - content: The raw assistant output to validate (string)
         - original_input: The original cascade input (dict)
+        - validation_context: Optional dict with richer context (tool outputs, debug text)
 
         And must return {"valid": bool, "reason": str}.
 
@@ -5989,6 +5992,7 @@ Use them as inspiration for effective patterns, but stay creative - find novel v
             original_input: Original cascade input for context
             trace: Parent trace node
             validator_name: Name for logging/tracing
+            validation_context: Optional context for validators that need tool result inspection
 
         Returns:
             dict with: valid, reason, validator
@@ -5997,6 +6001,11 @@ Use them as inspiration for effective patterns, but stay creative - find novel v
         console.print(f"{indent}    [cyan][CFG] Running polyglot validator...[/cyan]")
 
         try:
+            validation_context = validation_context or {}
+            response_content = validation_context.get("response_content", content)
+            content_with_tool_outputs = validation_context.get("content_with_tool_outputs", content)
+            tool_outputs = validation_context.get("tool_outputs", [])
+
             # Get the tool and inputs from the config
             tool_name, tool_inputs = validator_config.get_tool_and_inputs(content, original_input)
 
@@ -6018,8 +6027,12 @@ Use them as inspiration for effective patterns, but stay creative - find novel v
                 # Inject validation context at the start of the code
                 code_with_context = f'''
 # Validation context
-content = """{content.replace('"', '\\"').replace("'''", "\\'\\'\\'")}"""
+content = {json.dumps(content)}
 original_input = {json.dumps(original_input)}
+validation_context = {json.dumps(validation_context)}
+response_content = {json.dumps(response_content)}
+content_with_tool_outputs = {json.dumps(content_with_tool_outputs)}
+tool_outputs = {json.dumps(tool_outputs)}
 
 # User validation code
 {validator_config.python}
@@ -6032,6 +6045,10 @@ original_input = {json.dumps(original_input)}
 // Validation context
 const content = {json.dumps(content)};
 const original_input = {json.dumps(original_input)};
+const validation_context = {json.dumps(validation_context)};
+const response_content = {json.dumps(response_content)};
+const content_with_tool_outputs = {json.dumps(content_with_tool_outputs)};
+const tool_outputs = {json.dumps(tool_outputs)};
 
 // User validation code
 {validator_config.javascript}
@@ -6049,6 +6066,10 @@ const original_input = {json.dumps(original_input)};
 ;; Validation context
 (def content {json.dumps(content)})
 (def original-input {json.dumps(original_input)})
+(def validation-context {json.dumps(validation_context)})
+(def response-content {json.dumps(response_content)})
+(def content-with-tool-outputs {json.dumps(content_with_tool_outputs)})
+(def tool-outputs {json.dumps(tool_outputs)})
 
 ;; User validation code
 {validator_config.clojure}
@@ -6061,6 +6082,10 @@ const original_input = {json.dumps(original_input)};
                 code_with_context = f'''
 export CONTENT={json.dumps(content)}
 export ORIGINAL_INPUT='{json.dumps(original_input)}'
+export VALIDATION_CONTEXT='{json.dumps(validation_context)}'
+export RESPONSE_CONTENT={json.dumps(response_content)}
+export CONTENT_WITH_TOOL_OUTPUTS={json.dumps(content_with_tool_outputs)}
+export TOOL_OUTPUTS='{json.dumps(tool_outputs)}'
 
 {validator_config.bash}
 '''
@@ -6453,7 +6478,8 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
         trace: TraceNode,
         attempt: int = 0,
         turn: int = 0,
-        is_per_turn: bool = False
+        is_per_turn: bool = False,
+        validation_context: Optional[dict] = None
     ) -> dict:
         """
         Run a loop_until validator to check if cell output satisfies requirements.
@@ -6464,12 +6490,13 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
 
         Args:
             validator_spec: Validator specification - can be string name or PolyglotValidatorConfig
-            content: The content to validate (agent response + tool outputs)
+            content: Raw assistant response content to validate
             input_data: Original cascade input (passed to cascade validators)
             trace: Parent trace node for logging
             attempt: Current attempt number (for session ID generation)
             turn: Current turn number (for logging)
             is_per_turn: Whether this is a per-turn check (vs post-loop)
+            validation_context: Optional rich validation context (tool outputs, debug content)
 
         Returns:
             dict with:
@@ -6479,6 +6506,10 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
         """
         indent = "  " * self.depth
         check_type = "per-turn" if is_per_turn else "post-loop"
+        validation_context = validation_context or {}
+        tool_outputs = validation_context.get("tool_outputs", [])
+        content_with_tool_outputs = validation_context.get("content_with_tool_outputs", content)
+        response_content = validation_context.get("response_content", content)
 
         # === PRIORITY 0: Check if validator is a PolyglotValidatorConfig (inline polyglot code) ===
         if isinstance(validator_spec, PolyglotValidatorConfig):
@@ -6491,7 +6522,8 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
                 content,
                 input_data,
                 validation_trace,
-                validator_name="loop_until_polyglot"
+                validator_name="loop_until_polyglot",
+                validation_context=validation_context
             )
 
             # Log validation result
@@ -6535,6 +6567,9 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
             validator_input = {
                 "content": content,
                 "original_input": input_data,
+                "response_content": response_content,
+                "content_with_tool_outputs": content_with_tool_outputs,
+                "tool_outputs": tool_outputs,
                 "has_images": len(context_images) > 0,
                 "image_count": len(context_images)
             }
@@ -6641,8 +6676,12 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
             if validator_tool and callable(validator_tool):
                 try:
                     set_current_trace(validation_trace)
-                    # Pass content plus all original inputs as flat kwargs
-                    result = validator_tool(content=content, **input_data)
+                    # Pass content plus original inputs and optional validation context.
+                    validator_kwargs = dict(input_data)
+                    validator_kwargs.setdefault("response_content", response_content)
+                    validator_kwargs.setdefault("content_with_tool_outputs", content_with_tool_outputs)
+                    validator_kwargs.setdefault("tool_outputs", tool_outputs)
+                    result = validator_tool(content=content, **validator_kwargs)
 
                     if isinstance(result, str):
                         try:
@@ -6666,7 +6705,10 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
                     # Pass both the output AND original input for context
                     validator_input = {
                         "content": content,
-                        "original_input": input_data
+                        "original_input": input_data,
+                        "response_content": response_content,
+                        "content_with_tool_outputs": content_with_tool_outputs,
+                        "tool_outputs": tool_outputs,
                     }
 
                     # Generate unique validator session ID
@@ -11411,7 +11453,8 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
         max_attempts = cell.rules.max_attempts or 1
 
         response_content = ""
-        validation_content = ""  # Separate var for validators (includes tool outputs with "Agent Response:" prefix)
+        validation_content = ""  # Debug-only combined view (agent response + tool outputs)
+        validation_tool_outputs: List[Dict[str, str]] = []
         validation_passed = False
 
         # We iterate turns.
@@ -12423,221 +12466,268 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                             is_loop_retry=False  # Follow-ups are not loop retries
                         )
 
-                        if self.depth == 0 and is_main_thread:
-                            with console.status(f"{indent}[bold green]Agent processing results...[/bold green]", spinner="dots") as status:
+                        # Allow bounded multi-step follow-up chains:
+                        # assistant(tool_call) -> tool_result -> assistant(final JSON)
+                        max_followup_steps = max(1, int(os.getenv("LARS_MAX_FOLLOWUP_STEPS", "3")))
+                        followup_step = 0
+
+                        while followup_step < max_followup_steps:
+                            if self.depth == 0 and is_main_thread:
+                                if followup_step == 0:
+                                    status_text = f"{indent}[bold green]Agent processing results...[/bold green]"
+                                else:
+                                    status_text = f"{indent}[bold green]Agent processing follow-up step {followup_step + 1}/{max_followup_steps}...[/bold green]"
+                                with console.status(status_text, spinner="dots") as status:
+                                    follow_up = agent.run(None, context_messages=followup_context)
+                            else:
+                                if followup_step == 0:
+                                    console.print(f"{indent}[dim]Agent processing results (depth {self.depth})...[/dim]")
+                                else:
+                                    console.print(f"{indent}[dim]Agent processing follow-up step {followup_step + 1}/{max_followup_steps} (depth {self.depth})...[/dim]")
                                 follow_up = agent.run(None, context_messages=followup_context)
-                        else:
-                            console.print(f"{indent}[dim]Agent processing results (depth {self.depth})...[/dim]")
-                            follow_up = agent.run(None, context_messages=followup_context)
-                         
-                        content = follow_up.get("content")
-                        request_id = follow_up.get("id")
-                        model_used = follow_up.get("model", self.model)
-                        provider = follow_up.get("provider", "unknown")
-                        full_request = follow_up.get("full_request")  # Capture full request
-                        full_response = follow_up.get("full_response")  # Capture full response
 
-                        # Extract reasoning token data (OpenRouter extended thinking)
-                        followup_reasoning_enabled = follow_up.get("reasoning_enabled")
-                        followup_reasoning_effort = follow_up.get("reasoning_effort")
-                        followup_reasoning_max_tokens = follow_up.get("reasoning_max_tokens")
-                        followup_tokens_reasoning = follow_up.get("tokens_reasoning")
+                            content = follow_up.get("content")
+                            followup_tool_calls = follow_up.get("tool_calls")
+                            request_id = follow_up.get("id")
+                            model_used = follow_up.get("model", self.model)
+                            provider = follow_up.get("provider", "unknown")
+                            full_request = follow_up.get("full_request")  # Capture full request
+                            full_response = follow_up.get("full_response")  # Capture full response
 
-                        # NOTE: Don't call track_request() - old async cost system is deprecated
-                        # Cost tracking now handled by unified_logs.py non-blocking worker
+                            # Extract reasoning token data (OpenRouter extended thinking)
+                            followup_reasoning_enabled = follow_up.get("reasoning_enabled")
+                            followup_reasoning_effort = follow_up.get("reasoning_effort")
+                            followup_reasoning_max_tokens = follow_up.get("reasoning_max_tokens")
+                            followup_tokens_reasoning = follow_up.get("tokens_reasoning")
 
-                        if content:
-                            console.print(Panel(Markdown(content), title=f"Agent ({self.model})", border_style="green", expand=False))
+                            # NOTE: Don't call track_request() - old async cost system is deprecated
+                            # Cost tracking now handled by unified_logs.py non-blocking worker
 
-                            # ONLY add to message history if content is non-empty
-                            # Empty assistant messages violate Anthropic's API requirements
-                            assistant_msg = {"role": "assistant", "content": content}
-                            self.context_messages.append(assistant_msg)
+                            followup_parse_error = None
+                            if not use_native and not followup_tool_calls:
+                                followup_source = content if isinstance(content, str) else ""
+                                followup_tool_calls, followup_parse_error = self._parse_prompt_tool_calls(followup_source)
 
-                            followup_trace = turn_trace.create_child("msg", "follow_up")
+                            has_followup_content = bool(content and str(content).strip())
 
-                            # Log to unified system with full context for cost tracking
-                            # IMPORTANT: Include full_request and full_response so we can see what was actually sent
-                            from .unified_logs import log_unified
-                            log_unified(
-                                session_id=self.session_id,
-                                parent_session_id=self.parent_session_id,
-                                trace_id=followup_trace.id,
-                                parent_id=turn_trace.id,
-                                node_type="follow_up",
-                                role="assistant",
-                                depth=self.depth,
-                                cell_name=cell.name,
-                                cascade_id=self.config.cascade_id,
-                                model=model_used,
-                                request_id=request_id,  # For non-blocking cost tracking
-                                provider=provider,
-                                content=content,
-                                full_request=full_request,  # ADD: Include complete request with images
-                                full_response=full_response,  # ADD: Include complete response
-                                take_index=self.current_cell_take_index or self.take_index,  # FIX: Tag with take
-                                reforge_step=getattr(self, 'current_reforge_step', None),  # FIX: Tag with reforge
-                                reasoning_enabled=followup_reasoning_enabled,
-                                reasoning_effort=followup_reasoning_effort,
-                                reasoning_max_tokens=followup_reasoning_max_tokens,
-                                tokens_reasoning=followup_tokens_reasoning,
-                                metadata=self._get_metadata({"is_follow_up": True, "turn_number": self.current_turn_number})
-                            )
+                            if has_followup_content or followup_tool_calls:
+                                if has_followup_content:
+                                    console.print(Panel(Markdown(content), title=f"Agent ({self.model})", border_style="green", expand=False))
 
-                            self._update_graph() # Update after follow up
-                            response_content = content
+                                # Keep assistant message when native tool calls are present, even with empty content.
+                                assistant_msg = {"role": "assistant", "content": content or ""}
+                                if followup_tool_calls and use_native:
+                                    assistant_msg["tool_calls"] = followup_tool_calls
+                                self.context_messages.append(assistant_msg)
 
-                            # CRITICAL FIX: Check if follow-up contains tool calls
-                            # This enables multi-step tool chains (e.g., create_chart -> ask_human_custom)
-                            # Without this, tool calls in follow-up responses are ignored
-                            if not use_native:
-                                followup_tool_calls, followup_parse_error = self._parse_prompt_tool_calls(content)
+                                followup_trace = turn_trace.create_child("msg", "follow_up")
 
-                                if followup_parse_error:
-                                    console.print(f"{indent}  [bold red]{S.WARN}  Follow-up JSON Parse Error:[/bold red] {followup_parse_error}")
-                                elif followup_tool_calls:
-                                    console.print(f"{indent}  [dim cyan]Follow-up contains {len(followup_tool_calls)} tool call(s) - executing...[/dim cyan]")
+                                # Log to unified system with full context for cost tracking
+                                # IMPORTANT: Include full_request and full_response so we can see what was actually sent
+                                from .unified_logs import log_unified
+                                log_unified(
+                                    session_id=self.session_id,
+                                    parent_session_id=self.parent_session_id,
+                                    trace_id=followup_trace.id,
+                                    parent_id=turn_trace.id,
+                                    node_type="follow_up",
+                                    role="assistant",
+                                    depth=self.depth,
+                                    cell_name=cell.name,
+                                    cascade_id=self.config.cascade_id,
+                                    model=model_used,
+                                    request_id=request_id,  # For non-blocking cost tracking
+                                    provider=provider,
+                                    content=content,
+                                    full_request=full_request,  # ADD: Include complete request with images
+                                    full_response=full_response,  # ADD: Include complete response
+                                    tool_calls=followup_tool_calls,
+                                    take_index=self.current_cell_take_index or self.take_index,  # FIX: Tag with take
+                                    reforge_step=getattr(self, 'current_reforge_step', None),  # FIX: Tag with reforge
+                                    reasoning_enabled=followup_reasoning_enabled,
+                                    reasoning_effort=followup_reasoning_effort,
+                                    reasoning_max_tokens=followup_reasoning_max_tokens,
+                                    tokens_reasoning=followup_tokens_reasoning,
+                                    metadata=self._get_metadata({"is_follow_up": True, "turn_number": self.current_turn_number})
+                                )
 
-                                    # Execute the follow-up tool calls
-                                    for tc in followup_tool_calls:
-                                        func_name = tc["function"]["name"]
-                                        tool_trace_fu = turn_trace.create_child("tool", f"followup_{func_name}")
+                                self._update_graph() # Update after follow up
+                                if has_followup_content:
+                                    response_content = content
+                            else:
+                                # Log that follow-up had no actionable output.
+                                log_message(self.session_id, "system", "Follow-up response had empty content and no tool calls (not added to history)",
+                                           trace_id=turn_trace.id, parent_id=turn_trace.parent_id, node_type="warning", depth=turn_trace.depth)
+                                break
 
-                                        args_str = tc["function"]["arguments"]
-                                        try:
-                                            args = json.loads(args_str)
-                                        except:
-                                            args = {}
+                            if followup_parse_error:
+                                console.print(f"{indent}  [bold red]{S.WARN}  Follow-up JSON Parse Error:[/bold red] {followup_parse_error}")
+                                break
 
-                                        # Log tool call
-                                        call_trace_fu = tool_trace_fu.create_child("msg", "tool_call")
-                                        self.echo.add_history(
-                                            {"role": "tool_call", "content": f"Calling {func_name} (follow-up)", "tool_name": func_name, "arguments": args},
-                                            trace_id=call_trace_fu.id, parent_id=tool_trace_fu.id, node_type="tool_call",
-                                            metadata=self._get_metadata({"tool_name": func_name, "arguments": args, "is_followup": True},
-                                                                        semantic_purpose="tool_request")
+                            if not followup_tool_calls:
+                                break
+
+                            console.print(f"{indent}  [dim cyan]Follow-up contains {len(followup_tool_calls)} tool call(s) - executing...[/dim cyan]")
+
+                            # Execute the follow-up tool calls
+                            for tc in followup_tool_calls:
+                                func_name = tc["function"]["name"]
+                                tool_trace_fu = turn_trace.create_child("tool", f"followup_{func_name}")
+
+                                args_str = tc["function"]["arguments"]
+                                try:
+                                    args = json.loads(args_str)
+                                except:
+                                    args = {}
+
+                                # Log tool call
+                                call_trace_fu = tool_trace_fu.create_child("msg", "tool_call")
+                                self.echo.add_history(
+                                    {"role": "tool_call", "content": f"Calling {func_name} (follow-up)", "tool_name": func_name, "arguments": args},
+                                    trace_id=call_trace_fu.id, parent_id=tool_trace_fu.id, node_type="tool_call",
+                                    metadata=self._get_metadata({"tool_name": func_name, "arguments": args, "is_followup": True},
+                                                                semantic_purpose="tool_request")
+                                )
+
+                                # Update cell progress
+                                update_cell_progress(
+                                    self.session_id, self.config.cascade_id, cell.name, self.depth,
+                                    tool_name=func_name
+                                )
+
+                                # Find and execute tool - check cell tool_map, then global registry
+                                tool_func = tool_map.get(func_name)
+                                if not tool_func:
+                                    tool_func = get_skill(func_name)
+                                result = "Tool not found."
+
+                                # Check for route_to
+                                if func_name == "route_to" and "target" in args:
+                                    chosen_next_cell = args["target"]
+                                    console.print(f"{indent}  {S.RUN} [bold magenta]Dynamic Handoff Triggered (follow-up):[/bold magenta] {chosen_next_cell}")
+
+                                if tool_func:
+                                    set_current_trace(tool_trace_fu)
+                                    try:
+                                        self.hooks.on_tool_call(func_name, cell.name, self.session_id, args)
+                                        result = tool_func(**args)
+                                        self.hooks.on_tool_result(func_name, cell.name, self.session_id, result)
+                                    except Exception as e:
+                                        result = f"Error: {str(e)}"
+
+                                console.print(f"{indent}    [green]✔ {func_name} (follow-up)[/green] -> {str(result)[:100]}...")
+
+                                # EPHEMERAL RAG: Check if follow-up tool result is too large
+                                # Same pattern as initial tool processing - index and inject search tool
+                                result_content_fu = str(result)
+                                if self._ephemeral_rag_manager:
+                                    processed_result_fu, new_tool_fu = self._ephemeral_rag_manager.process_tool_result(func_name, result_content_fu)
+                                    if new_tool_fu:
+                                        console.print(f"{indent}    [bold cyan]📦 Follow-up result too large, indexed: {new_tool_fu}()[/bold cyan]")
+                                        # Inject the new search tool for follow-up
+                                        new_tool_fn_fu = self._ephemeral_rag_manager.get_tool(new_tool_fu)
+                                        if new_tool_fn_fu and new_tool_fu not in tool_map:
+                                            tool_map[new_tool_fu] = new_tool_fn_fu
+                                            tools_schema.append(get_tool_schema(new_tool_fn_fu, name=new_tool_fu))
+                                            tool_descriptions.append(self._generate_tool_description(new_tool_fn_fu, new_tool_fu))
+                                        # Log follow-up tool result indexing to unified_logs
+                                        log_message(
+                                            self.session_id, "ephemeral_rag_index",
+                                            f"Follow-up tool result from '{func_name}' too large, indexed: {new_tool_fu}()",
+                                            trace_id=tool_trace_fu.id, parent_id=trace.id, node_type="ephemeral_rag",
+                                            depth=trace.depth + 1, cell_name=cell.name, cascade_id=self.config.cascade_id,
+                                            metadata={
+                                                "tool_created": new_tool_fu,
+                                                "source_tool": func_name,
+                                                "result_size_chars": len(result_content_fu),
+                                                "threshold": get_config().ephemeral_rag_threshold,
+                                                "trigger": "follow_up_tool_result",
+                                            }
                                         )
+                                    result_content_fu = processed_result_fu
 
-                                        # Update cell progress
-                                        update_cell_progress(
-                                            self.session_id, self.config.cascade_id, cell.name, self.depth,
-                                            tool_name=func_name
-                                        )
+                                # Track tool output
+                                tool_outputs.append({
+                                    "tool": func_name,
+                                    "result": result_content_fu
+                                })
 
-                                        # Find and execute tool - check cell tool_map, then global registry
-                                        tool_func = tool_map.get(func_name)
-                                        if not tool_func:
-                                            tool_func = get_skill(func_name)
-                                        result = "Tool not found."
+                                # Add tool result to context
+                                if use_native and tc.get("id"):
+                                    tool_msg_fu = {"role": "tool", "tool_call_id": tc["id"], "content": result_content_fu}
+                                else:
+                                    tool_msg_fu = {"role": "user", "content": f"Tool Result ({func_name}):\n{result_content_fu}"}
+                                self.context_messages.append(tool_msg_fu)
 
-                                        # Check for route_to
-                                        if func_name == "route_to" and "target" in args:
-                                            chosen_next_cell = args["target"]
-                                            console.print(f"{indent}  {S.RUN} [bold magenta]Dynamic Handoff Triggered (follow-up):[/bold magenta] {chosen_next_cell}")
+                                # Log to echo
+                                result_trace_fu = tool_trace_fu.create_child("msg", "tool_result")
+                                self.echo.add_history(tool_msg_fu, trace_id=result_trace_fu.id, parent_id=tool_trace_fu.id, node_type="tool_result",
+                                                    metadata=self._get_metadata({"tool_name": func_name, "result": str(result)[:500], "is_followup": True},
+                                                                                semantic_actor="framework", semantic_purpose="tool_response"))
 
-                                        if tool_func:
-                                            set_current_trace(tool_trace_fu)
+                                # Handle image injection from follow-up tools
+                                parsed_result = result
+                                if isinstance(result, str):
+                                    try:
+                                        parsed_result = json.loads(result)
+                                    except:
+                                        pass
+
+                                if isinstance(parsed_result, dict) and "images" in parsed_result:
+                                    images = parsed_result.get("images", [])
+                                    content_block = [{"type": "text", "text": "Result Images from follow-up tool:"}]
+
+                                    from .utils import get_image_save_path, decode_and_save_image, get_next_image_index
+                                    next_idx = get_next_image_index(self.session_id, cell.name, self.current_cell_take_index)
+
+                                    for img_i, img_path in enumerate(images):
+                                        encoded_img = encode_image_base64(img_path)
+                                        if not encoded_img.startswith("[Error"):
+                                            content_block.append({
+                                                "type": "image_url",
+                                                "image_url": {"url": encoded_img}
+                                            })
+
+                                            save_path = get_image_save_path(
+                                                self.session_id, cell.name, next_idx + img_i,
+                                                extension=img_path.split('.')[-1] if '.' in img_path else 'png',
+                                                take_index=self.current_cell_take_index
+                                            )
                                             try:
-                                                self.hooks.on_tool_call(func_name, cell.name, self.session_id, args)
-                                                result = tool_func(**args)
-                                                self.hooks.on_tool_result(func_name, cell.name, self.session_id, result)
+                                                decode_and_save_image(encoded_img, save_path)
+                                                console.print(f"{indent}    [dim]{S.SAVE} Saved follow-up image: {save_path}[/dim]")
                                             except Exception as e:
-                                                result = f"Error: {str(e)}"
+                                                console.print(f"{indent}    [dim yellow]{S.WARN}  Failed to save follow-up image: {e}[/dim yellow]")
 
-                                        console.print(f"{indent}    [green]✔ {func_name} (follow-up)[/green] -> {str(result)[:100]}...")
+                                    if len(content_block) > 1:
+                                        image_injection_msg = {"role": "user", "content": content_block}
+                                        self.context_messages.append(image_injection_msg)
+                                        img_trace_fu = tool_trace_fu.create_child("msg", "image_injection")
+                                        self.echo.add_history(image_injection_msg, trace_id=img_trace_fu.id, parent_id=tool_trace_fu.id, node_type="injection",
+                                                            metadata=self._get_metadata({"cell_name": cell.name, "is_followup": True},
+                                                                                        semantic_actor="framework", semantic_purpose="context_injection"))
 
-                                        # EPHEMERAL RAG: Check if follow-up tool result is too large
-                                        # Same pattern as initial tool processing - index and inject search tool
-                                        result_content_fu = str(result)
-                                        if self._ephemeral_rag_manager:
-                                            processed_result_fu, new_tool_fu = self._ephemeral_rag_manager.process_tool_result(func_name, result_content_fu)
-                                            if new_tool_fu:
-                                                console.print(f"{indent}    [bold cyan]📦 Follow-up result too large, indexed: {new_tool_fu}()[/bold cyan]")
-                                                # Inject the new search tool for follow-up
-                                                new_tool_fn_fu = self._ephemeral_rag_manager.get_tool(new_tool_fu)
-                                                if new_tool_fn_fu and new_tool_fu not in tool_map:
-                                                    tool_map[new_tool_fu] = new_tool_fn_fu
-                                                    tools_schema.append(get_tool_schema(new_tool_fn_fu, name=new_tool_fu))
-                                                    tool_descriptions.append(self._generate_tool_description(new_tool_fn_fu, new_tool_fu))
-                                                # Log follow-up tool result indexing to unified_logs
-                                                log_message(
-                                                    self.session_id, "ephemeral_rag_index",
-                                                    f"Follow-up tool result from '{func_name}' too large, indexed: {new_tool_fu}()",
-                                                    trace_id=tool_trace_fu.id, parent_id=trace.id, node_type="ephemeral_rag",
-                                                    depth=trace.depth + 1, cell_name=cell.name, cascade_id=self.config.cascade_id,
-                                                    metadata={
-                                                        "tool_created": new_tool_fu,
-                                                        "source_tool": func_name,
-                                                        "result_size_chars": len(result_content_fu),
-                                                        "threshold": get_config().ephemeral_rag_threshold,
-                                                        "trigger": "follow_up_tool_result",
-                                                    }
-                                                )
-                                            result_content_fu = processed_result_fu
+                                self._update_graph()
 
-                                        # Track tool output
-                                        tool_outputs.append({
-                                            "tool": func_name,
-                                            "result": result_content_fu
-                                        })
+                            followup_step += 1
+                            if followup_step >= max_followup_steps:
+                                log_message(
+                                    self.session_id,
+                                    "system",
+                                    f"Reached max follow-up steps ({max_followup_steps}) with pending tool-call chain",
+                                    trace_id=turn_trace.id,
+                                    parent_id=turn_trace.parent_id,
+                                    node_type="warning",
+                                    depth=turn_trace.depth,
+                                )
+                                break
 
-                                        # Add tool result to context
-                                        tool_msg_fu = {"role": "user", "content": f"Tool Result ({func_name}):\n{result_content_fu}"}
-                                        self.context_messages.append(tool_msg_fu)
-
-                                        # Log to echo
-                                        result_trace_fu = tool_trace_fu.create_child("msg", "tool_result")
-                                        self.echo.add_history(tool_msg_fu, trace_id=result_trace_fu.id, parent_id=tool_trace_fu.id, node_type="tool_result",
-                                                            metadata=self._get_metadata({"tool_name": func_name, "result": str(result)[:500], "is_followup": True},
-                                                                                        semantic_actor="framework", semantic_purpose="tool_response"))
-
-                                        # Handle image injection from follow-up tools
-                                        parsed_result = result
-                                        if isinstance(result, str):
-                                            try:
-                                                parsed_result = json.loads(result)
-                                            except:
-                                                pass
-
-                                        if isinstance(parsed_result, dict) and "images" in parsed_result:
-                                            images = parsed_result.get("images", [])
-                                            content_block = [{"type": "text", "text": "Result Images from follow-up tool:"}]
-
-                                            from .utils import get_image_save_path, decode_and_save_image, get_next_image_index
-                                            next_idx = get_next_image_index(self.session_id, cell.name, self.current_cell_take_index)
-
-                                            for img_i, img_path in enumerate(images):
-                                                encoded_img = encode_image_base64(img_path)
-                                                if not encoded_img.startswith("[Error"):
-                                                    content_block.append({
-                                                        "type": "image_url",
-                                                        "image_url": {"url": encoded_img}
-                                                    })
-
-                                                    save_path = get_image_save_path(
-                                                        self.session_id, cell.name, next_idx + img_i,
-                                                        extension=img_path.split('.')[-1] if '.' in img_path else 'png',
-                                                        take_index=self.current_cell_take_index
-                                                    )
-                                                    try:
-                                                        decode_and_save_image(encoded_img, save_path)
-                                                        console.print(f"{indent}    [dim]{S.SAVE} Saved follow-up image: {save_path}[/dim]")
-                                                    except Exception as e:
-                                                        console.print(f"{indent}    [dim yellow]{S.WARN}  Failed to save follow-up image: {e}[/dim yellow]")
-
-                                            if len(content_block) > 1:
-                                                image_injection_msg = {"role": "user", "content": content_block}
-                                                self.context_messages.append(image_injection_msg)
-                                                img_trace_fu = tool_trace_fu.create_child("msg", "image_injection")
-                                                self.echo.add_history(image_injection_msg, trace_id=img_trace_fu.id, parent_id=tool_trace_fu.id, node_type="injection",
-                                                                    metadata=self._get_metadata({"cell_name": cell.name, "is_followup": True},
-                                                                                                semantic_actor="framework", semantic_purpose="context_injection"))
-
-                                        self._update_graph()
-                        else:
-                            # Log that follow-up had no content (don't add to history - would cause API error)
-                            log_message(self.session_id, "system", "Follow-up response had empty content (not added to history)",
-                                       trace_id=turn_trace.id, parent_id=turn_trace.parent_id, node_type="warning", depth=turn_trace.depth)
+                            # Rebuild context after follow-up tool results and continue chain.
+                            followup_context, followup_stats = self._build_turn_context(
+                                cell,
+                                turn_number=i,
+                                is_loop_retry=False
+                            )
 
                         # Auto-save any images/videos from messages (catches manual injection, feedback loops, etc.)
                         self._save_images_from_messages(self.context_messages, cell.name)
@@ -12686,9 +12776,11 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                             validation_content_parts.append(f"\n[{tool_output['tool']}]:\n{tool_output['result']}\n")
 
                         validation_content = "\n".join(validation_content_parts)
+                        validation_tool_outputs = list(tool_outputs)
                         console.print(f"{indent}  [dim green][DEBUG] Validation content built: {len(validation_content)} chars total[/dim green]")
                     else:
                         validation_content = response_content
+                        validation_tool_outputs = []
                         console.print(f"{indent}  [dim yellow][DEBUG] tool_outputs is empty - validator will only see agent response![/dim yellow]")
 
                     # ========== PER-TURN LOOP_UNTIL VALIDATION ==========
@@ -12698,12 +12790,17 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                     if cell.rules.loop_until and i < max_turns - 1:
                         per_turn_result = self._run_loop_until_validator(
                             validator_spec=cell.rules.loop_until,
-                            content=validation_content,
+                            content=response_content,
                             input_data=input_data,
                             trace=turn_trace,
                             attempt=attempt,
                             turn=i,
-                            is_per_turn=True
+                            is_per_turn=True,
+                            validation_context={
+                                "response_content": response_content,
+                                "content_with_tool_outputs": validation_content,
+                                "tool_outputs": validation_tool_outputs
+                            }
                         )
 
                         if per_turn_result.get("valid"):
@@ -13017,6 +13114,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                        "validator": validator_display_name,
                        "attempt": attempt + 1,
                        "content_preview": response_content[:200] if response_content else "(empty)",
+                       "content_with_tool_outputs_preview": validation_content[:200] if validation_content else "(empty)",
                        "semantic_actor": "framework",
                        "semantic_purpose": "lifecycle"
                    })
@@ -13027,13 +13125,18 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                 # Check if this is a polyglot validator (inline code)
                 if isinstance(validator_spec, PolyglotValidatorConfig):
                     # Run the polyglot validator directly
-                    # Use validation_content which includes tool outputs for comprehensive validation
+                    # Pass raw response as primary content; keep rich context in side-channel fields.
                     polyglot_result = self._run_polyglot_validator(
                         validator_spec,
-                        validation_content,
+                        response_content,
                         input_data,
                         validation_trace,
-                        validator_name="loop_until"
+                        validator_name="loop_until",
+                        validation_context={
+                            "response_content": response_content,
+                            "content_with_tool_outputs": validation_content,
+                            "tool_outputs": validation_tool_outputs
+                        }
                     )
                     validator_result = polyglot_result
                     validator_name = validator_display_name  # For logging below
@@ -13052,11 +13155,13 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                     if validator_name in manifest and manifest[validator_name]["type"] == "cascade":
                         # It's a cascade validator - invoke it as a sub-cascade
                         cascade_path = manifest[validator_name]["path"]
-                        # Pass both the output AND original input for context (validators can use what they need)
-                        # Use validation_content which includes tool outputs for comprehensive validation
+                        # Pass raw response as `content` and richer validator context separately.
                         validator_input = {
-                            "content": validation_content,
-                            "original_input": input_data
+                            "content": response_content,
+                            "original_input": input_data,
+                            "response_content": response_content,
+                            "content_with_tool_outputs": validation_content,
+                            "tool_outputs": validation_tool_outputs,
                         }
 
                         # Generate unique validator session ID (include take index if inside takes)
@@ -13146,9 +13251,12 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                         # Set trace context for validator
                         set_current_trace(validation_trace)
 
-                        # Call validator with validation content AND original cascade inputs
-                        # input_data contains the cascade inputs (e.g., text, instruction for parse)
-                        validator_result = validator_tool(content=validation_content, **input_data)
+                        # Call validator with raw content and optional rich validation context.
+                        validator_kwargs = dict(input_data)
+                        validator_kwargs.setdefault("response_content", response_content)
+                        validator_kwargs.setdefault("content_with_tool_outputs", validation_content)
+                        validator_kwargs.setdefault("tool_outputs", validation_tool_outputs)
+                        validator_result = validator_tool(content=response_content, **validator_kwargs)
 
                         # Parse validator result
                         if isinstance(validator_result, str):

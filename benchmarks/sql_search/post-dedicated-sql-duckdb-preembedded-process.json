@@ -1,0 +1,138 @@
+{
+  "benchmarks": [
+    {
+      "batch_elapsed_s": 1.38803,
+      "latency": {
+        "errors": 0,
+        "max": 0.247395,
+        "mean": 0.247395,
+        "min": 0.247395,
+        "ok": 1,
+        "p50": 0.247395,
+        "p95": 0.247395,
+        "p99": 0.247395
+      },
+      "name": "sql_rag_search_preembedded:same_query",
+      "parallel": 1,
+      "throughput_rps": 0.720446
+    },
+    {
+      "batch_elapsed_s": 1.474473,
+      "latency": {
+        "errors": 0,
+        "max": 0.242844,
+        "mean": 0.242789,
+        "min": 0.242733,
+        "ok": 2,
+        "p50": 0.242844,
+        "p95": 0.242844,
+        "p99": 0.242844
+      },
+      "name": "sql_rag_search_preembedded:same_query",
+      "parallel": 2,
+      "throughput_rps": 1.356417
+    },
+    {
+      "batch_elapsed_s": 1.707608,
+      "latency": {
+        "errors": 0,
+        "max": 0.264555,
+        "mean": 0.261992,
+        "min": 0.260615,
+        "ok": 4,
+        "p50": 0.262021,
+        "p95": 0.264555,
+        "p99": 0.264555
+      },
+      "name": "sql_rag_search_preembedded:same_query",
+      "parallel": 4,
+      "throughput_rps": 2.342458
+    },
+    {
+      "batch_elapsed_s": 2.755224,
+      "latency": {
+        "errors": 0,
+        "max": 0.46425,
+        "mean": 0.419026,
+        "min": 0.393679,
+        "ok": 8,
+        "p50": 0.404975,
+        "p95": 0.46425,
+        "p99": 0.46425
+      },
+      "name": "sql_rag_search_preembedded:same_query",
+      "parallel": 8,
+      "throughput_rps": 2.903575
+    },
+    {
+      "batch_elapsed_s": 3.219996,
+      "latency": {
+        "errors": 0,
+        "max": 0.54888,
+        "mean": 0.4825,
+        "min": 0.44094,
+        "ok": 10,
+        "p50": 0.483396,
+        "p95": 0.54888,
+        "p99": 0.54888
+      },
+      "name": "sql_rag_search_preembedded:same_query",
+      "parallel": 10,
+      "throughput_rps": 3.105594
+    },
+    {
+      "batch_elapsed_s": 3.852395,
+      "latency": {
+        "errors": 0,
+        "max": 0.667041,
+        "mean": 0.566253,
+        "min": 0.459933,
+        "ok": 12,
+        "p50": 0.571389,
+        "p95": 0.667041,
+        "p99": 0.667041
+      },
+      "name": "sql_rag_search_preembedded:same_query",
+      "parallel": 12,
+      "throughput_rps": 3.114945
+    },
+    {
+      "batch_elapsed_s": 4.972188,
+      "latency": {
+        "errors": 0,
+        "max": 0.807534,
+        "mean": 0.723645,
+        "min": 0.619093,
+        "ok": 16,
+        "p50": 0.720692,
+        "p95": 0.807534,
+        "p99": 0.807534
+      },
+      "name": "sql_rag_search_preembedded:same_query",
+      "parallel": 16,
+      "throughput_rps": 3.217899
+    },
+    {
+      "batch_elapsed_s": 6.178653,
+      "latency": {
+        "errors": 0,
+        "max": 1.058304,
+        "mean": 0.94389,
+        "min": 0.844899,
+        "ok": 20,
+        "p50": 0.944014,
+        "p95": 1.058304,
+        "p99": 1.058304
+      },
+      "name": "sql_rag_search_preembedded:same_query",
+      "parallel": 20,
+      "throughput_rps": 3.236951
+    }
+  ],
+  "cwd": "/Users/ryanr/projects/larsql",
+  "embed_model": "fastembed/bge-small-en-v1.5",
+  "embedding_dim": 384,
+  "generated_at": "2026-02-23T22:22:10.545782+00:00",
+  "lars_root_env": "/Users/ryanr/.rvbbit/lars",
+  "rag_id": "7302661478ef"
+}

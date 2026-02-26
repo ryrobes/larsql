@@ -556,9 +556,9 @@ def _backfill_costs(results: List['BenchmarkResult']):
 
 def _store_results(results: List[BenchmarkResult]):
     """Store benchmark results as parquet via LarsDB."""
-    from .lars_db import LarsDB
+    from .db_adapter import get_db
 
-    lars_db = LarsDB()
+    db = get_db()
     
     rows = []
     for r in results:
@@ -580,7 +580,7 @@ def _store_results(results: List[BenchmarkResult]):
             "created_at": datetime.fromisoformat(r.created_at) if isinstance(r.created_at, str) else r.created_at,
         })
     
-    lars_db.write("model_benchmarks", rows)
+    db.insert_rows("model_benchmarks", rows, log_query=False)
     console.print(f"[green]Stored {len(results)} benchmark results[/green]")
 
 

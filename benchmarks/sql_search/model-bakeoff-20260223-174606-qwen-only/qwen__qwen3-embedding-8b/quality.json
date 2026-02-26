@@ -1,0 +1,228 @@
+{
+  "details": [
+    {
+      "expected_any": [
+        "enron_emails"
+      ],
+      "hit_at_1": true,
+      "hit_at_5": true,
+      "match_rank": 1,
+      "query": "user emails and message content",
+      "top_scores": [
+        0.7004016637802124,
+        0.6107725501060486
+      ],
+      "top_tables": [
+        "csv_files.enron_emails",
+        "sample_data.default.activities"
+      ]
+    },
+    {
+      "expected_any": [
+        "superstore",
+        "orders"
+      ],
+      "hit_at_1": true,
+      "hit_at_5": true,
+      "match_rank": 1,
+      "query": "retail orders sales profit and discounts",
+      "top_scores": [
+        0.7169527411460876,
+        0.7157044410705566
+      ],
+      "top_tables": [
+        "superstore_sqlite.default.superstore",
+        "csv_files.superstore"
+      ]
+    },
+    {
+      "expected_any": [
+        "support_tickets"
+      ],
+      "hit_at_1": true,
+      "hit_at_5": true,
+      "match_rank": 1,
+      "query": "customer support tickets with status and priority",
+      "top_scores": [
+        0.831095814704895
+      ],
+      "top_tables": [
+        "sample_data.default.support_tickets"
+      ]
+    },
+    {
+      "expected_any": [
+        "products",
+        "superstore"
+      ],
+      "hit_at_1": true,
+      "hit_at_5": true,
+      "match_rank": 1,
+      "query": "products catalog with category and price",
+      "top_scores": [
+        0.7492656707763672,
+        0.6808263063430786,
+        0.6769912838935852,
+        0.6725931763648987
+      ],
+      "top_tables": [
+        "sample_data.default.products",
+        "superstore_sqlite.default.superstore",
+        "sample_data.default.orders",
+        "csv_files.superstore"
+      ]
+    },
+    {
+      "expected_any": [
+        "tracks",
+        "setlists",
+        "locations_venue",
+        "metallica_tracks",
+        "metallica_setlists"
+      ],
+      "hit_at_1": false,
+      "hit_at_5": true,
+      "match_rank": 3,
+      "query": "album tracks setlists and venues",
+      "top_scores": [
+        0.7968451380729675,
+        0.7664662599563599,
+        0.763430655002594
+      ],
+      "top_tables": [
+        "met_on_tour.default.albums",
+        "csv_files.metallica_albums",
+        "met_on_tour.default.tracks"
+      ]
+    },
+    {
+      "expected_any": [
+        "bigfoot_sightings_locations",
+        "bigfoot_sightings"
+      ],
+      "hit_at_1": true,
+      "hit_at_5": true,
+      "match_rank": 1,
+      "query": "bigfoot sightings with latitude longitude and county",
+      "top_scores": [
+        0.9247555136680603,
+        0.8857908844947815
+      ],
+      "top_tables": [
+        "csv_files.bigfoot_sightings_locations",
+        "csv_files.bigfoot_sightings"
+      ]
+    },
+    {
+      "expected_any": [
+        "us_zipcodes",
+        "ref_us_zipcodes",
+        "us_counties",
+        "ref_us_counties"
+      ],
+      "hit_at_1": false,
+      "hit_at_5": true,
+      "match_rank": 2,
+      "query": "US zip code and county reference data",
+      "top_scores": [
+        0.9108667373657227,
+        0.8837016820907593
+      ],
+      "top_tables": [
+        "csv_files.fips_us_mapping_codes",
+        "csv_files.ref_us_zipcodes"
+      ]
+    },
+    {
+      "expected_any": [
+        "ufo_sightings"
+      ],
+      "hit_at_1": true,
+      "hit_at_5": true,
+      "match_rank": 1,
+      "query": "ufo sightings with city state date duration",
+      "top_scores": [
+        0.871665894985199,
+        0.766695499420166
+      ],
+      "top_tables": [
+        "csv_files.ufo_sightings",
+        "csv_files.bigfoot_sightings_locations"
+      ]
+    },
+    {
+      "expected_any": [
+        "crypto"
+      ],
+      "hit_at_1": true,
+      "hit_at_5": true,
+      "match_rank": 1,
+      "query": "crypto market prices and symbols",
+      "top_scores": [
+        0.7331772446632385,
+        0.5818524956703186
+      ],
+      "top_tables": [
+        "csv_files.crypto",
+        "csv_files.doge_contract"
+      ]
+    },
+    {
+      "expected_any": [
+        "air_traffic_passenger_statistics"
+      ],
+      "hit_at_1": true,
+      "hit_at_5": true,
+      "match_rank": 1,
+      "query": "air traffic passenger statistics by airport",
+      "top_scores": [
+        0.8511876463890076
+      ],
+      "top_tables": [
+        "csv_files.air_traffic_passenger_statistics"
+      ]
+    },
+    {
+      "expected_any": [
+        "activities"
+      ],
+      "hit_at_1": true,
+      "hit_at_5": true,
+      "match_rank": 1,
+      "query": "customer activity events and timestamps",
+      "top_scores": [
+        0.7524658441543579,
+        0.7191436886787415
+      ],
+      "top_tables": [
+        "sample_data.default.activities",
+        "sample_data.default.customers"
+      ]
+    },
+    {
+      "expected_any": [
+        "orders",
+        "customers"
+      ],
+      "hit_at_1": true,
+      "hit_at_5": true,
+      "match_rank": 1,
+      "query": "orders joined to customers by customer_id",
+      "top_scores": [
+        0.7048367261886597,
+        0.6547747850418091
+      ],
+      "top_tables": [
+        "sample_data.default.orders",
+        "superstore_sqlite.default.superstore"
+      ]
+    }
+  ],
+  "hit_at_1": 10,
+  "hit_at_1_rate": 0.8333333333333334,
+  "hit_at_5": 12,
+  "hit_at_5_rate": 1.0,
+  "k": 5,
+  "mrr": 0.9027777777777777,
+  "queries": 12
+}

@@ -1,0 +1,124 @@
+{
+  "generated_at": "2026-02-23T22:55:02.028781+00:00",
+  "lars_root": "/Users/ryanr/.rvbbit/lars",
+  "models": [
+    "qwen/qwen3-embedding-8b"
+  ],
+  "process_parallel": "1,2,4,8",
+  "quality_k": 5,
+  "repo_root": "/Users/ryanr/projects/larsql",
+  "runs": [
+    {
+      "completed_at": "2026-02-23T23:04:32.701653+00:00",
+      "index_stats": {
+        "chunk_count": 1735,
+        "db_path": "/Users/ryanr/.rvbbit/lars/sql_connections/sql_rag_index.duckdb",
+        "doc_count": 126,
+        "embed_model": "Qwen/Qwen3-Embedding-8B",
+        "embedding_dim": 4096,
+        "rag_id": "005ae8478198"
+      },
+      "model": "qwen/qwen3-embedding-8b",
+      "process_bench_seconds": 158.3057958749705,
+      "process_path": "/Users/ryanr/projects/larsql/benchmarks/sql_search/model-bakeoff-20260223-174606-qwen-only/qwen__qwen3-embedding-8b/process.json",
+      "process_sql_search_unique": {
+        "1": {
+          "errors": 0,
+          "max": 4.012832,
+          "mean": 4.012832,
+          "min": 4.012832,
+          "ok": 1,
+          "p50": 4.012832,
+          "p95": 4.012832,
+          "p99": 4.012832
+        },
+        "2": {
+          "errors": 0,
+          "max": 1.76175,
+          "mean": 1.74285,
+          "min": 1.723951,
+          "ok": 2,
+          "p50": 1.76175,
+          "p95": 1.76175,
+          "p99": 1.76175
+        },
+        "4": {
+          "errors": 0,
+          "max": 4.307764,
+          "mean": 3.543709,
+          "min": 1.837281,
+          "ok": 4,
+          "p50": 4.034703,
+          "p95": 4.307764,
+          "p99": 4.307764
+        },
+        "8": {
+          "errors": 0,
+          "max": 5.541114,
+          "mean": 3.587954,
+          "min": 2.574331,
+          "ok": 8,
+          "p50": 3.685157,
+          "p95": 5.541114,
+          "p99": 5.541114
+        }
+      },
+      "quality_path": "/Users/ryanr/projects/larsql/benchmarks/sql_search/model-bakeoff-20260223-174606-qwen-only/qwen__qwen3-embedding-8b/quality.json",
+      "quality_summary": {
+        "hit_at_1_rate": 0.8333333333333334,
+        "hit_at_5_rate": 1.0,
+        "mrr": 0.9027777777777777
+      },
+      "rebuild_seconds": 259.314025959,
+      "slug": "qwen__qwen3-embedding-8b",
+      "started_at": "2026-02-23T22:55:02.028837+00:00",
+      "thread_bench_seconds": 131.40076266700635,
+      "thread_path": "/Users/ryanr/projects/larsql/benchmarks/sql_search/model-bakeoff-20260223-174606-qwen-only/qwen__qwen3-embedding-8b/thread.json",
+      "thread_sql_search_unique": {
+        "1": {
+          "errors": 0,
+          "max": 2.812305,
+          "mean": 2.812305,
+          "min": 2.812305,
+          "ok": 1,
+          "p50": 2.812305,
+          "p95": 2.812305,
+          "p99": 2.812305
+        },
+        "12": {
+          "errors": 0,
+          "max": 9.539027,
+          "mean": 3.726032,
+          "min": 0.732827,
+          "ok": 12,
+          "p50": 3.151746,
+          "p95": 9.539027,
+          "p99": 9.539027
+        },
+        "4": {
+          "errors": 0,
+          "max": 4.338384,
+          "mean": 2.866086,
+          "min": 0.675029,
+          "ok": 4,
+          "p50": 3.649252,
+          "p95": 4.338384,
+          "p99": 4.338384
+        },
+        "8": {
+          "errors": 0,
+          "max": 7.492118,
+          "mean": 3.82723,
+          "min": 2.471514,
+          "ok": 8,
+          "p50": 3.436267,
+          "p95": 7.492118,
+          "p99": 7.492118
+        }
+      }
+    }
+  ],
+  "samples_dir": "/Users/ryanr/.rvbbit/lars/sql_connections/samples",
+  "skip_process": false,
+  "thread_parallel": "1,4,8,12"
+}

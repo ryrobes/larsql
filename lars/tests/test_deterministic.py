@@ -322,6 +322,16 @@ def test_parse_json_error():
     assert "error" in result
 
 
+def test_parse_json_passthrough_dict():
+    """Test JSON parsing passes through already-parsed dict."""
+    from lars.demo_tools import parse_json
+
+    payload = {"key": "value"}
+    result = parse_json(payload)
+    assert result["_route"] == "success"
+    assert result["data"] == payload
+
+
 # Integration test - load cascade config
 def test_load_deterministic_cascade():
     """Test that deterministic cascade configs load correctly."""

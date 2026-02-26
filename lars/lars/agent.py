@@ -859,7 +859,25 @@ class Agent:
                     time.sleep(1 * (attempt + 1))
                     continue
 
-                if "RateLimit" in str(e) and attempt < retries:
+                # LiteLLM regression path observed after upgrade:
+                # OpenRouter can return finish_reason="error" (e.g. native_finish_reason=MALFORMED_FUNCTION_CALL)
+                # which trips LiteLLM response-object validation and raises:
+                #   "Invalid response object ... finish_reason ... input_value='error'"
+                # Treat as transient parser/provider mismatch and retry with conservative payload.
+                error_text = str(e)
+                error_text_l = error_text.lower()
+                litellm_invalid_response_object = (
+                    "invalid response object" in error_text_l
+                    and ("finish_reason" in error_text_l or "malformed_function_call" in error_text_l)
+                )
+                if litellm_invalid_response_object and attempt < retries:
+                    args["messages"] = messages  # Use plain sanitized messages (no TOON transform)
+                    args["metadata"] = {}
+                    import time
+                    time.sleep(1 * (attempt + 1))
+                    continue
+
+                if "RateLimit" in error_text and attempt < retries:
                     import time
                     time.sleep(2 * (attempt + 1))
                     continue
@@ -957,6 +975,9 @@ class Agent:
         cell_name: str | None = None,
         cascade_id: str | None = None,
         caller_id: str | None = None,
+        timeout_seconds: float | None = None,
+        max_retries: int | None = None,
+        retry_base_delay: float | None = None,
     ) -> Dict[str, Any]:
         """
         Generate embeddings using the standard provider config.
@@ -994,8 +1015,9 @@ class Agent:
 
         # Batching config - most embedding APIs have limits on batch size
         batch_size = int(os.getenv("LARS_EMBED_BATCH_SIZE", "50"))
-        max_retries = 3
-        base_delay = 2.0  # seconds
+        retries = max(0, int(max_retries if max_retries is not None else 3))
+        base_delay = float(retry_base_delay if retry_base_delay is not None else 2.0)
+        http_timeout = float(timeout_seconds if timeout_seconds is not None else 300.0)
 
         # Direct HTTP call to embeddings endpoint - same pattern as chat completions
         import httpx
@@ -1041,8 +1063,8 @@ class Agent:
         model_used = embed_model
         dim = None
 
-        # Use longer timeout (5 minutes) for embedding requests which can be slow
-        with httpx.Client(timeout=300.0) as client:
+        # Default remains 5 minutes for large indexing jobs unless overridden.
+        with httpx.Client(timeout=http_timeout) as client:
             if use_ollama_format:
                 # Ollama: one text at a time, different request/response format
                 total = len(texts)
@@ -1059,7 +1081,7 @@ class Agent:
                         text = text[:truncate_limit]
                     
                     last_error = None
-                    for attempt in range(max_retries):
+                    for attempt in range(max(1, retries)):
                         try:
                             payload = {
                                 "model": model_name,
@@ -1108,9 +1130,9 @@ class Agent:
                                 text = original_text[:truncate_limit]
                                 continue  # Retry with truncated text (don't count as retry)
                             
-                            if attempt < max_retries - 1:
+                            if attempt < max(1, retries) - 1:
                                 delay = base_delay * (2 ** attempt)
-                                print(f"[Embed] Retry {attempt + 1}/{max_retries} after {delay}s: {type(e).__name__}")
+                                print(f"[Embed] Retry {attempt + 1}/{max(1, retries)} after {delay}s: {type(e).__name__}")
                                 if attempt == 0:
                                     text_preview = text[:100] + "..." if len(text) > 100 else text
                                     print(f"[Embed] Failed on text {i}/{len(texts)}: {text_preview}")
@@ -1119,7 +1141,7 @@ class Agent:
                                 time.sleep(delay)
                             else:
                                 text_preview = text[:200] + "..." if len(text) > 200 else text
-                                raise RuntimeError(f"Embedding failed after {max_retries} retries on text {i}: '{text_preview}' - {e} - Body: {error_body}") from e
+                                raise RuntimeError(f"Embedding failed after {max(1, retries)} retries on text {i}: '{text_preview}' - {e} - Body: {error_body}") from e
             else:
                 # OpenRouter/OpenAI format: batch requests
                 for batch_start in range(0, len(texts), batch_size):
@@ -1131,7 +1153,7 @@ class Agent:
 
                     # Retry loop with exponential backoff
                     last_error = None
-                    for attempt in range(max_retries):
+                    for attempt in range(max(1, retries)):
                         try:
                             resp = client.post(url, json=payload, headers=headers)
                             resp.raise_for_status()
@@ -1162,12 +1184,12 @@ class Agent:
 
                         except (httpx.TimeoutException, httpx.HTTPStatusError) as e:
                             last_error = e
-                            if attempt < max_retries - 1:
+                            if attempt < max(1, retries) - 1:
                                 delay = base_delay * (2 ** attempt)
-                                print(f"[Embed] Retry {attempt + 1}/{max_retries} after {delay}s: {type(e).__name__}")
+                                print(f"[Embed] Retry {attempt + 1}/{max(1, retries)} after {delay}s: {type(e).__name__}")
                                 time.sleep(delay)
                             else:
-                                raise RuntimeError(f"Embedding failed after {max_retries} retries: {e}") from e
+                                raise RuntimeError(f"Embedding failed after {max(1, retries)} retries: {e}") from e
 
         if not all_vectors:
             raise RuntimeError("No embeddings generated")

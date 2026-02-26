@@ -1559,18 +1559,36 @@ def get_session_cascade(session_id):
         db = get_db()
 
         # Try to get from cascade_sessions table first (new system)
+        # Merge newest sparse rows so input/cascade_definition remain available
+        # when writes happen in separate updates.
         query = f"""
             SELECT cascade_definition, input_data, cascade_id, created_at, config_path
             FROM cascade_sessions
             WHERE session_id = '{session_id}'
-            LIMIT 1
+            ORDER BY created_at DESC
+            LIMIT 50
         """
 
         rows = db.query(query)
 
         if rows and len(rows) > 0:
-            # Found in cascade_sessions table!
-            row = rows[0]
+            # Found in cascade_sessions table; merge non-empty fields across rows.
+            def _is_meaningful(value):
+                if value is None:
+                    return False
+                if isinstance(value, str):
+                    return bool(value.strip())
+                return True
+
+            merged = {}
+            for candidate in rows:
+                for key in ("cascade_definition", "input_data", "cascade_id", "created_at", "config_path"):
+                    if key not in merged or not _is_meaningful(merged.get(key)):
+                        value = candidate.get(key)
+                        if _is_meaningful(value):
+                            merged[key] = value
+
+            row = merged if merged else rows[0]
             cascade_def_raw = row['cascade_definition']
             input_data_json = row['input_data']
             cascade_id = row['cascade_id']
