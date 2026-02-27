@@ -350,14 +350,27 @@ def _find_candidates(
             remaining = max_entities - len(candidates)
             limit_clause = f"LIMIT {int(remaining)}"
 
+        # Find entities that need enrichment:
+        #  1) Never enriched (no Tier 2 observations), OR
+        #  2) Description was clobbered by re-crawl (still generic Tier 1 pattern
+        #     like "Table 'X' with N columns..." but has Tier 2 observations)
         sql = f"""
             SELECT e.entity_id, e.entity_type, e.name, e.qualified_name,
                    e.description, e.properties_json, e.source_connection
             FROM kg_entities e
             WHERE e.entity_type = '{etype}'
-              AND e.entity_id NOT IN (
-                  SELECT DISTINCT entity_id FROM kg_observations
-                  WHERE tier >= 2
+              AND (
+                  e.entity_id NOT IN (
+                      SELECT DISTINCT entity_id FROM kg_observations
+                      WHERE tier >= 2
+                  )
+                  OR (
+                      e.description LIKE 'Table ''%'' with %% columns%%'
+                      AND e.entity_id IN (
+                          SELECT DISTINCT entity_id FROM kg_observations
+                          WHERE tier >= 2
+                      )
+                  )
               )
             ORDER BY e.name
             {limit_clause}

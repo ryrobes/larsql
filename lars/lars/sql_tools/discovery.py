@@ -110,6 +110,24 @@ def _run_kg_extraction(samples_dir: str, session_id: str | None = None):
             console.print(f"[yellow][WARN] Tier 2 enrichment failed: {e}[/yellow]")
             console.print("[dim]  Tier 1 data is unaffected. You can run kg_dream manually.[/dim]")
 
+        # Tier 2.5: Embed entities for kg_search (runs after dreaming)
+        try:
+            from ..kg.embedder import embed_kg_entities
+            console.print(f"[bold cyan]🔮 Embedding KG entities for semantic search...[/bold cyan]")
+            embed_result = embed_kg_entities()
+        except Exception as e:
+            console.print(f"[yellow][WARN] KG entity embedding failed: {e}[/yellow]")
+            console.print("[dim]  KG data is unaffected. You can run kg_embed manually.[/dim]")
+
+        # Tier 2.5b: Embed observations for observation-level relevance ranking
+        try:
+            from ..kg.embedder import embed_kg_observations
+            console.print(f"[bold cyan]🔮 Embedding KG observations for relevance ranking...[/bold cyan]")
+            obs_embed_result = embed_kg_observations()
+        except Exception as e:
+            console.print(f"[yellow][WARN] KG observation embedding failed: {e}[/yellow]")
+            console.print("[dim]  kg_search will fall back to tier/confidence ranking for observations.[/dim]")
+
 
 _SQL_FIELD_INDEX_INCLUDE_TEXT_SAMPLES = os.getenv(
     "LARS_SQL_FIELD_INDEX_INCLUDE_TEXT_SAMPLES",

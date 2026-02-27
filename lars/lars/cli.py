@@ -409,6 +409,48 @@ def main():
     )
     sql_test_conn_parser.set_defaults(func=cmd_sql_test_connection)
 
+    # Knowledge Graph command group
+    kg_parser = subparsers.add_parser('kg', help='Knowledge graph commands (search, dream, embed, stats)')
+    kg_subparsers = kg_parser.add_subparsers(dest='kg_command', help='KG subcommands')
+
+    # kg search
+    kg_search_parser = kg_subparsers.add_parser(
+        'search',
+        help='Semantic search for relevant database tables'
+    )
+    kg_search_parser.add_argument('query', help='Natural language query (e.g. "boston crime incidents shooting")')
+    kg_search_parser.add_argument('--k', type=int, default=3, help='Number of tables to return (default: 3)')
+    kg_search_parser.add_argument('--obs', type=int, default=15, help='Max observations to rank per table (default: 15)')
+    kg_search_parser.add_argument('--no-filter', action='store_true', help='Skip fast-model observation filter')
+
+    # kg dream
+    kg_dream_parser = kg_subparsers.add_parser(
+        'dream',
+        help='Run Tier 2 LLM enrichment over the knowledge graph'
+    )
+    kg_dream_parser.add_argument('--max', type=int, default=0, help='Max entities to enrich (0 = all)')
+    kg_dream_parser.add_argument('--model-tier', default='standard', choices=['fast', 'standard', 'quality'], help='LLM tier (default: standard)')
+    kg_dream_parser.add_argument('--dry-run', action='store_true', help='Show what would be enriched without calling LLM')
+
+    # kg embed
+    kg_embed_parser = kg_subparsers.add_parser(
+        'embed',
+        help='Embed KG entities and observations for semantic search'
+    )
+    kg_embed_parser.add_argument('--force', action='store_true', help='Re-embed all even if already embedded')
+    kg_embed_parser.add_argument('--max-entities', type=int, default=0, help='Max entities to embed (0 = all)')
+    kg_embed_parser.add_argument('--max-observations', type=int, default=0, help='Max observations to embed (0 = all)')
+
+    # kg stats
+    kg_subparsers.add_parser('stats', help='Show knowledge graph statistics')
+
+    # kg context
+    kg_context_parser = kg_subparsers.add_parser(
+        'context',
+        help='Get everything known about a named entity'
+    )
+    kg_context_parser.add_argument('name', help='Entity name or qualified_name (e.g. "customers")')
+
     # Embedding command group
     embed_parser = subparsers.add_parser('embed', help='Embedding system management')
     embed_subparsers = embed_parser.add_subparsers(dest='embed_command', help='Embedding subcommands')
@@ -1681,6 +1723,20 @@ def main():
                 sys.exit(1)
         else:
             sql_parser.print_help()
+            sys.exit(1)
+    elif args.command == 'kg':
+        if args.kg_command == 'search':
+            cmd_kg_search(args)
+        elif args.kg_command == 'dream':
+            cmd_kg_dream(args)
+        elif args.kg_command == 'embed':
+            cmd_kg_embed(args)
+        elif args.kg_command == 'stats':
+            cmd_kg_stats(args)
+        elif args.kg_command == 'context':
+            cmd_kg_context(args)
+        else:
+            kg_parser.print_help()
             sys.exit(1)
     elif args.command == 'embed':
         if args.embed_command == 'status':
@@ -8025,6 +8081,58 @@ def cmd_sql_crawl(args):
     from lars.sql_tools.discovery import discover_all_schemas
 
     discover_all_schemas(session_id=args.session)
+
+
+# =============================================================================
+# KG Commands
+# =============================================================================
+
+def cmd_kg_search(args):
+    """Semantic search for relevant database tables."""
+    from lars.kg.skills import kg_search
+    result = kg_search(
+        query=args.query,
+        k=args.k,
+        obs_per_table=args.obs,
+        use_fast_filter=not args.no_filter,
+    )
+    print(result)
+
+
+def cmd_kg_dream(args):
+    """Run Tier 2 LLM enrichment over the knowledge graph."""
+    from lars.kg.skills import kg_dream
+    result = kg_dream(
+        max_entities=args.max,
+        model_tier=args.model_tier,
+        dry_run=args.dry_run,
+    )
+    print(result)
+
+
+def cmd_kg_embed(args):
+    """Embed KG entities and observations for semantic search."""
+    from lars.kg.skills import kg_embed
+    result = kg_embed(
+        force=args.force,
+        max_entities=args.max_entities,
+        max_observations=args.max_observations,
+    )
+    print(result)
+
+
+def cmd_kg_stats(args):
+    """Show knowledge graph statistics."""
+    from lars.kg.skills import kg_stats
+    result = kg_stats()
+    print(result)
+
+
+def cmd_kg_context(args):
+    """Get everything known about a named entity."""
+    from lars.kg.skills import kg_context
+    result = kg_context(name=args.name)
+    print(result)
 
 
 # =============================================================================

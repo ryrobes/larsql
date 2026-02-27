@@ -86,67 +86,605 @@ def _query(sql: str, params: list = None) -> List[Dict[str, Any]]:
 
 
 # ---------------------------------------------------------------------------
-# kg_search
+# kg_search — 2-stage vector-powered semantic schema discovery
 # ---------------------------------------------------------------------------
+
+def _embed_query(query: str) -> tuple:
+    """Embed a search query once, returning (vector, dim) or (None, 0).
+
+    Reused by both entity search (Stage 1) and observation search
+    (Stage 2) so we only pay the embedding API cost once per query.
+    """
+    from ..config import get_config
+    from ..rag.indexer import embed_texts
+
+    cfg = get_config()
+    embed_model = cfg.default_embed_model
+    if not embed_model:
+        log.warning("kg_search: no embedding model configured")
+        return None, 0
+
+    try:
+        result = embed_texts(
+            texts=[query],
+            model=embed_model,
+            session_id="kg_search",
+            cell_name="kg_search_query",
+            cascade_id="kg_system",
+        )
+        vec = result.get("embeddings", [[]])[0]
+        dim = result.get("dim", 0)
+        return (vec, dim) if vec else (None, 0)
+    except Exception as e:
+        log.warning("kg_search: query embedding failed (%s: %s)", type(e).__name__, e)
+        return None, 0
+
+
+def _kg_vector_search(
+    query: str,
+    k: int = 10,
+    query_vec: Optional[List[float]] = None,
+    embed_dim: int = 0,
+) -> List[Dict[str, Any]]:
+    """Stage 1: Vector similarity search over KG entity embeddings.
+
+    Finds the top-k table entities by cosine similarity to the query.
+
+    If query_vec is provided, uses it directly (avoids re-embedding).
+    Otherwise embeds the query internally for backward compatibility.
+
+    Returns ranked list of entity dicts with match_score.
+    """
+    # All embedding checks use DuckDB directly — embeddings are stored in
+    # parquet and array_cosine_similarity is a DuckDB function.  Going
+    # through _query() can hit ClickHouse where embeddings may be NULL.
+    conn = _get_duck_conn()
+
+    # Check if any entities have embeddings
+    try:
+        check = conn.execute("SELECT COUNT(*) as cnt FROM kg_entities WHERE embedding IS NOT NULL").fetchone()
+        cnt = check[0] if check else 0
+    except Exception as e:
+        log.warning("kg_search: entity embedding check failed: %s", e)
+        cnt = 0
+    if cnt == 0:
+        log.warning("kg_search: no embedded entities found (cnt=0 in DuckDB)")
+        return []
+
+    # Get embedding dimension from first embedded entity
+    try:
+        dim_row = conn.execute("SELECT array_length(embedding, 1) as dim FROM kg_entities WHERE embedding IS NOT NULL LIMIT 1").fetchone()
+        dim = dim_row[0] if dim_row else 0
+    except Exception as e:
+        log.warning("kg_search: entity dim check failed: %s", e)
+        dim = 0
+    if not dim:
+        return []
+
+    # Use provided vector or embed the query
+    if query_vec is None:
+        query_vec, dim = _embed_query(query)
+        if not query_vec:
+            return []
+
+    # Cosine similarity search in DuckDB
+    try:
+        rows = conn.execute(
+            f"""
+            SELECT
+                entity_id, entity_type, name, qualified_name,
+                description, properties_json, source_connection, tier,
+                array_cosine_similarity(
+                    embedding::FLOAT[{dim}],
+                    ?::FLOAT[{dim}]
+                ) AS match_score
+            FROM kg_entities
+            WHERE embedding IS NOT NULL
+            ORDER BY match_score DESC
+            LIMIT ?
+            """,
+            [[float(x) for x in query_vec], k],
+        ).fetchall()
+        columns = [desc[0] for desc in conn.description]
+        return [dict(zip(columns, row)) for row in rows]
+    except Exception as e:
+        log.warning("kg_search: DuckDB vector query failed (%s: %s)", type(e).__name__, e)
+        return []
+
+
+def _kg_lexical_search(query: str, k: int = 10) -> List[Dict[str, Any]]:
+    """Fallback word-level search when vector search unavailable.
+
+    Splits the query into words and matches ANY word against entity
+    name, qualified_name, description, **or observation content**.
+    Results are scored by fraction of query words matched.
+    """
+    words = [w for w in query.split() if len(w) >= 2]
+    if not words:
+        return []
+
+    # Build per-word ILIKE conditions — check entity fields + observations
+    word_clauses = []
+    score_parts = []
+    for w in words[:8]:  # cap to avoid SQL explosion
+        safe = _esc(w)
+        condition = (
+            f"(e.name ILIKE '%{safe}%' OR e.qualified_name ILIKE '%{safe}%' "
+            f"OR e.description ILIKE '%{safe}%' OR obs_agg.obs_text ILIKE '%{safe}%')"
+        )
+        word_clauses.append(condition)
+        score_parts.append(f"CASE WHEN {condition} THEN 1 ELSE 0 END")
+
+    where = " OR ".join(word_clauses)
+    score_expr = " + ".join(score_parts)
+
+    return _query(f"""
+        SELECT e.entity_id, e.entity_type, e.name, e.qualified_name,
+               e.description, e.properties_json, e.source_connection, e.tier,
+               ({score_expr}) * 1.0 / {len(words)} AS match_score
+        FROM kg_entities e
+        LEFT JOIN (
+            SELECT entity_id, STRING_AGG(content, ' ') AS obs_text
+            FROM kg_observations
+            WHERE superseded_by IS NULL
+            GROUP BY entity_id
+        ) obs_agg ON obs_agg.entity_id = e.entity_id
+        WHERE e.entity_type = 'table'
+          AND ({where})
+        ORDER BY match_score DESC, e.name
+        LIMIT {int(k)}
+    """)
+
+
+def _kg_observation_vector_search(
+    query_vec: List[float],
+    entity_ids: List[str],
+    top_k_per_entity: int = 15,
+    embed_dim: int = 0,
+) -> Dict[str, List[Dict[str, Any]]]:
+    """Stage 2: Vector-rank observations within matched entities.
+
+    For each entity_id, finds the observations most relevant to the
+    query via cosine similarity on observation embeddings.  Uses a
+    single DuckDB query with a window function to rank per-entity.
+
+    Args:
+        query_vec: Pre-computed query embedding.
+        entity_ids: Entity IDs to search observations within.
+        top_k_per_entity: Max observations per entity.
+        embed_dim: Embedding dimension.
+
+    Returns:
+        Dict mapping entity_id → sorted list of observation dicts
+        (with obs_match_score), or empty dict on failure.
+    """
+    if not query_vec or not entity_ids:
+        return {}
+
+    # All embedding checks use DuckDB directly — embeddings are stored in
+    # parquet and array_cosine_similarity is a DuckDB function.  Going
+    # through _query() can hit ClickHouse where embeddings may be NULL.
+    conn = _get_duck_conn()
+
+    # Check if any observations have embeddings
+    try:
+        check = conn.execute("SELECT COUNT(*) as cnt FROM kg_observations WHERE embedding IS NOT NULL").fetchone()
+        obs_embed_cnt = check[0] if check else 0
+    except Exception as e:
+        log.warning("kg_search: observation embedding check failed: %s", e)
+        obs_embed_cnt = 0
+    if obs_embed_cnt == 0:
+        log.info("kg_search: no embedded observations (cnt=0 in DuckDB) — falling back to tier/confidence ranking")
+        return {}
+
+    # Get observation embedding dimension
+    if not embed_dim:
+        try:
+            dim_row = conn.execute("SELECT array_length(embedding, 1) as dim FROM kg_observations WHERE embedding IS NOT NULL LIMIT 1").fetchone()
+            embed_dim = dim_row[0] if dim_row else 0
+        except Exception as e:
+            log.warning("kg_search: observation dim check failed: %s", e)
+            embed_dim = 0
+        if not embed_dim:
+            return {}
+
+    log.debug("kg_search: Stage 2 — %d embedded observations available, searching within %d entities", obs_embed_cnt, len(entity_ids))
+
+    # Build entity_id IN-list
+    eid_list = ", ".join(f"'{_esc(eid)}'" for eid in entity_ids)
+
+    try:
+        rows = conn.execute(
+            f"""
+            WITH scored AS (
+                SELECT
+                    observation_id, entity_id, category, content,
+                    confidence, tier,
+                    array_cosine_similarity(
+                        embedding::FLOAT[{embed_dim}],
+                        ?::FLOAT[{embed_dim}]
+                    ) AS obs_match_score
+                FROM kg_observations
+                WHERE embedding IS NOT NULL
+                  AND superseded_by IS NULL
+                  AND entity_id IN ({eid_list})
+            ),
+            ranked AS (
+                SELECT *, ROW_NUMBER() OVER (
+                    PARTITION BY entity_id
+                    ORDER BY obs_match_score DESC
+                ) AS rn
+                FROM scored
+            )
+            SELECT observation_id, entity_id, category, content,
+                   confidence, tier, obs_match_score
+            FROM ranked
+            WHERE rn <= {int(top_k_per_entity)}
+            ORDER BY entity_id, obs_match_score DESC
+            """,
+            [[float(x) for x in query_vec]],
+        ).fetchall()
+        columns = [desc[0] for desc in conn.description]
+        obs_rows = [dict(zip(columns, row)) for row in rows]
+    except Exception as e:
+        log.warning("kg_search: observation vector search failed (%s: %s)", type(e).__name__, e)
+        return {}
+
+    # Group by entity_id
+    result: Dict[str, List[Dict[str, Any]]] = {}
+    for row in obs_rows:
+        eid = row["entity_id"]
+        if eid not in result:
+            result[eid] = []
+        result[eid].append(row)
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Stage 3: Fast-model observation filter/summary
+# ---------------------------------------------------------------------------
+
+_FILTER_SYSTEM_PROMPT = """\
+You are a data analyst assistant. Given a user's search query and a list of \
+observations about a database table, select and summarize ONLY the observations \
+that are relevant to the query.
+
+Return a JSON object with a single key "observations" containing an array of \
+strings. Each string should be a concise observation (1-2 sentences max). \
+Include ONLY observations that help answer or contextualize the query. \
+Drop irrelevant ones entirely.
+
+If ALL observations are relevant, include them all but condense each to its \
+essence. If NONE are relevant, return {"observations": []}.
+
+Return ONLY valid JSON, no markdown fences or commentary.\
+"""
+
+
+def _parse_filter_response(content: str) -> Optional[List[str]]:
+    """Parse the fast model's JSON response for filtered observations."""
+    text = content.strip()
+    # Strip markdown fences if present
+    if text.startswith("```"):
+        lines = text.split("\n")
+        if lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        text = "\n".join(lines)
+    try:
+        data = json.loads(text)
+        if isinstance(data, dict) and "observations" in data:
+            return [str(o) for o in data["observations"] if o]
+        return None
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+
+def _fast_model_filter_observations(
+    query: str,
+    table_name: str,
+    observations: List[Dict[str, Any]],
+    table_description: str = "",
+) -> List[str]:
+    """Stage 3: Use a fast model to filter/summarize observations.
+
+    Takes the top-N vector-matched observations for a single table,
+    sends them to the fast model with the original query, and returns
+    a compact filtered list of observation text lines.
+
+    On failure, returns the original observations unfiltered (graceful
+    degradation).
+
+    Args:
+        query: The original user search query.
+        table_name: Qualified table name for context.
+        observations: List of observation dicts (from Stage 2 vector search).
+        table_description: Optional table description for context.
+
+    Returns:
+        List of observation text lines (filtered/summarized).
+    """
+    if not observations:
+        return []
+
+    from ..agent import Agent
+    from ..models import get_model_for_tier
+
+    # Build the prompt
+    obs_block = "\n".join(
+        f"- [{o.get('category', 'general')}] {o.get('content', '')} "
+        f"(similarity: {o.get('obs_match_score', 0):.3f})"
+        for o in observations
+    )
+
+    desc_line = f"\nDescription: {table_description}" if table_description else ""
+    user_prompt = (
+        f"Query: {query}\n\n"
+        f"Table: {table_name}{desc_line}\n\n"
+        f"Observations (ranked by relevance to query):\n{obs_block}\n\n"
+        f"Select and condense the observations most relevant to the query."
+    )
+
+    try:
+        model_name = get_model_for_tier("fast")
+        agent = Agent(model=model_name, system_prompt=_FILTER_SYSTEM_PROMPT)
+        response = agent.run(input_message=user_prompt)
+
+        parsed = _parse_filter_response(response.get("content", ""))
+        if parsed is not None:
+            log.debug(
+                "kg_search: fast filter %s: %d → %d observations",
+                table_name, len(observations), len(parsed),
+            )
+            return parsed
+        log.debug("kg_search: fast filter returned unparseable response for %s", table_name)
+    except Exception as e:
+        log.warning("kg_search: fast model filter failed for %s (%s) — using unfiltered", table_name, e)
+
+    # Fallback: return vector-ranked observations as-is
+    return [f"[{o.get('category', 'general')}] {o.get('content', '')}" for o in observations]
+
+
+# ---------------------------------------------------------------------------
+# Context assembly
+# ---------------------------------------------------------------------------
+
+def _assemble_table_context(
+    entity: Dict[str, Any],
+    pre_ranked_observations: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """Build a compact context package for one table entity.
+
+    Returns everything needed to write SQL against this table, optimised
+    for token-efficiency so it can be returned as a tool result without
+    blowing out the provider context window.
+
+    Args:
+        entity: Entity dict from search results.
+        pre_ranked_observations: If provided, use these observation lines
+            directly instead of querying the DB. Comes from Stage 2+3
+            (vector-ranked and optionally fast-model-filtered).
+    """
+    eid = _esc(entity["entity_id"])
+
+    # Parse properties
+    props = {}
+    try:
+        props = json.loads(entity.get("properties_json") or "{}")
+    except (json.JSONDecodeError, TypeError):
+        pass
+
+    # ── Columns – compact "name TYPE (stats)" lines ──────────────────
+    children = _query(f"""
+        SELECT e.name, e.properties_json
+        FROM kg_edges ed
+        JOIN kg_entities e ON e.entity_id = ed.target_id
+        WHERE ed.source_id = '{eid}' AND ed.rel_type = 'contains'
+          AND e.entity_type = 'column'
+        ORDER BY e.name
+    """)
+    col_lines = []
+    for child in children:
+        cp = {}
+        try:
+            cp = json.loads(child.get("properties_json") or "{}")
+        except (json.JSONDecodeError, TypeError):
+            pass
+        dtype = cp.get("data_type", "?")
+        parts = [f"{child['name']} {dtype}"]
+        if cp.get("nullable") is False:
+            parts.append("NOT NULL")
+        dc = cp.get("distinct_count")
+        if dc is not None:
+            parts.append(f"{dc} distinct")
+        tv = cp.get("top_values")
+        if tv:
+            vals = [str(v["value"]) for v in tv[:3]]
+            parts.append(f"e.g. {', '.join(vals)}")
+        col_lines.append(" | ".join(parts))
+
+    # ── Observations ────────────────────────────────────────────────
+    if pre_ranked_observations is not None:
+        # Stage 2+3 provided relevance-ranked (and optionally filtered)
+        # observation lines — use them directly.
+        obs_lines = pre_ranked_observations
+    else:
+        # Fallback: grab top 8 by tier/confidence (lexical path or
+        # when observation embeddings aren't available yet).
+        observations = _query(f"""
+            SELECT category, content, confidence, tier
+            FROM kg_observations
+            WHERE (entity_id = '{eid}' OR entity_ids_json LIKE '%{eid}%')
+              AND superseded_by IS NULL
+            ORDER BY tier DESC, confidence DESC
+            LIMIT 8
+        """)
+        obs_lines = []
+        for o in observations:
+            text = (o.get("content") or "")[:200]
+            obs_lines.append(f"[{o['category']}] {text}")
+
+    # ── Description ──────────────────────────────────────────────────
+    desc = entity.get("description") or ""
+
+    return {
+        "qualified_name": entity.get("qualified_name"),
+        "sql_table_ref": props.get("sql_table_ref", entity.get("qualified_name")),
+        "connection": entity.get("source_connection"),
+        "description": desc,
+        "row_count": props.get("row_count"),
+        "match_score": round(float(entity.get("match_score", 0)), 4),
+        "columns": col_lines,
+        "observations": obs_lines,
+    }
+
 
 @register_skill("kg_search")
 def kg_search(
     query: str,
-    entity_type: Optional[str] = None,
-    limit: int = 20,
+    k: int = 5,
+    obs_per_table: int = 15,
+    use_fast_filter: bool = True,
 ) -> str:
     """
-    Search the knowledge graph for entities and observations matching a query.
+    Semantic search for relevant database tables (2-stage with observation ranking).
 
-    Uses SQL LIKE/ILIKE for Tier 1 (no embeddings yet). Will use vector
-    similarity when Tier 2 embeddings are populated.
+    Stage 1: Finds the top-k tables by vector similarity on entity embeddings.
+    Stage 2: For each table, vector-ranks its observations against the query
+             to surface only the most relevant insights.
+    Stage 3 (optional): A fast model filters and condenses the observations
+             based on the query, removing noise.
+
+    Falls back gracefully: no observation embeddings → tier/confidence ranking,
+    no entity embeddings → lexical word-match, fast model fails → unfiltered.
+
+    This is the primary schema discovery tool.  One call gives you all the
+    context you need — no follow-up search required.
 
     Args:
-        query: Search text (matched against name, qualified_name, description).
-        entity_type: Optional filter: 'connection', 'schema', 'table', 'column'.
-        limit: Max results (default 20).
+        query: Natural language description of what data you're looking for.
+               e.g. "profitable furniture orders", "customer locations",
+               "tables with date ranges and revenue data"
+        k: Number of tables to return (default 5).
+        obs_per_table: Max observations to vector-rank per table (default 15).
+        use_fast_filter: Run fast-model filter on observations (default True).
 
     Returns:
-        JSON string with matching entities and observations.
+        JSON object with:
+        - query: The search query used
+        - source: Search method used (kg:vector, kg:lexical)
+        - table_count: Number of tables returned
+        - tables: Array of matching tables, each with:
+            - qualified_name: Full table path
+            - sql_table_ref: Use this in SQL FROM clauses
+            - connection: Database connection name
+            - description: Semantic description of the table
+            - row_count: Number of rows
+            - match_score: Similarity score (higher = better match)
+            - columns: Compact column schema lines
+            - observations: Relevance-ranked insights about the data
     """
-    results = {"entities": [], "observations": []}
+    # Embed query once — reused for entity search + observation search
+    query_vec, embed_dim = _embed_query(query)
+    log.info("kg_search: query_vec=%s, embed_dim=%d", "OK" if query_vec else "NONE", embed_dim)
 
-    like_pattern = _esc(query)
-    type_filter = ""
-    if entity_type:
-        type_filter = f"AND entity_type = '{_esc(entity_type)}'"
+    # ── Stage 1: Entity search ───────────────────────────────────────
+    if query_vec:
+        matches = _kg_vector_search(query, k=k, query_vec=query_vec, embed_dim=embed_dim)
+        search_mode = "vector"
+    else:
+        matches = []
+        search_mode = "lexical"
 
-    entity_sql = f"""
-        SELECT entity_id, entity_type, name, qualified_name, description,
-               properties_json, source_connection, tier
-        FROM kg_entities
-        WHERE (name ILIKE '%{like_pattern}%'
-               OR qualified_name ILIKE '%{like_pattern}%'
-               OR description ILIKE '%{like_pattern}%')
-        {type_filter}
-        ORDER BY
-            CASE entity_type
-                WHEN 'table' THEN 1
-                WHEN 'column' THEN 2
-                WHEN 'schema' THEN 3
-                WHEN 'connection' THEN 4
-                ELSE 5
-            END,
-            name
-        LIMIT {int(limit)}
-    """
-    results["entities"] = _query(entity_sql)
+    if not matches:
+        if search_mode == "vector":
+            log.info("kg_search: vector search returned 0 results for %r — trying lexical", query)
+        matches = _kg_lexical_search(query, k=k)
+        search_mode = "lexical"
+        if not matches:
+            log.warning("kg_search: lexical search also returned 0 results for %r", query)
 
-    obs_sql = f"""
-        SELECT observation_id, entity_id, level, category, content, confidence, tier
-        FROM kg_observations
-        WHERE content ILIKE '%{like_pattern}%'
-        ORDER BY confidence DESC
-        LIMIT {int(limit)}
-    """
-    results["observations"] = _query(obs_sql)
+    log.info("kg_search: Stage 1 → %s, %d matches", search_mode, len(matches))
 
-    return json.dumps(results, default=str, indent=2)
+    # ── Stage 2: Observation vector ranking ──────────────────────────
+    obs_by_entity: Dict[str, List[Dict[str, Any]]] = {}
+    stage2_status = "skipped"
+    if query_vec and matches:
+        entity_ids = [m["entity_id"] for m in matches]
+        obs_by_entity = _kg_observation_vector_search(
+            query_vec=query_vec,
+            entity_ids=entity_ids,
+            top_k_per_entity=int(obs_per_table),
+            embed_dim=embed_dim,
+        )
+        if obs_by_entity:
+            stage2_status = f"ranked ({sum(len(v) for v in obs_by_entity.values())} obs across {len(obs_by_entity)} tables)"
+        else:
+            stage2_status = "empty (fallback to tier/confidence)"
+    elif not query_vec:
+        stage2_status = "skipped (no query vector)"
+
+    log.info("kg_search: Stage 2 → %s", stage2_status)
+
+    # ── Stage 3 + Assembly ───────────────────────────────────────────
+    tables = []
+    stage3_status = "skipped"
+    obs_path_counts = {"fast_filter": 0, "vector_ranked": 0, "tier_fallback": 0}
+
+    for entity in matches:
+        eid = entity["entity_id"]
+        ranked_obs = obs_by_entity.get(eid)
+
+        if ranked_obs and use_fast_filter:
+            # Stage 3: fast model filter/summary
+            filtered_lines = _fast_model_filter_observations(
+                query=query,
+                table_name=entity.get("qualified_name", ""),
+                observations=ranked_obs,
+                table_description=entity.get("description") or "",
+            )
+            ctx = _assemble_table_context(entity, pre_ranked_observations=filtered_lines)
+            obs_path_counts["fast_filter"] += 1
+        elif ranked_obs:
+            # Stage 2 only: use vector-ranked observations without LLM filter
+            obs_lines = [
+                f"[{o.get('category', 'general')}] {o.get('content', '')}"
+                for o in ranked_obs
+            ]
+            ctx = _assemble_table_context(entity, pre_ranked_observations=obs_lines)
+            obs_path_counts["vector_ranked"] += 1
+        else:
+            # Fallback: original tier/confidence ranking
+            ctx = _assemble_table_context(entity)
+            obs_path_counts["tier_fallback"] += 1
+
+        tables.append(ctx)
+
+    if obs_path_counts["fast_filter"]:
+        stage3_status = f"filtered {obs_path_counts['fast_filter']} tables"
+    elif obs_path_counts["vector_ranked"]:
+        stage3_status = "vector-ranked only (no fast filter)"
+
+    log.info("kg_search: Stage 3 → %s | paths: %s", stage3_status, obs_path_counts)
+
+    return json.dumps({
+        "query": query,
+        "source": f"kg:{search_mode}",
+        "table_count": len(tables),
+        "tables": tables,
+        "_meta": {
+            "stages": {
+                "embed_query": "ok" if query_vec else "failed",
+                "entity_search": search_mode,
+                "entity_matches": len(matches),
+                "obs_ranking": stage2_status,
+                "fast_filter": stage3_status,
+            },
+            "obs_paths": obs_path_counts,
+        },
+    }, default=str, indent=2)
 
 
 # ---------------------------------------------------------------------------
@@ -460,3 +998,53 @@ def kg_dream(
         dry_run=bool(dry_run),
     )
     return json.dumps(result, default=str, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# kg_embed
+# ---------------------------------------------------------------------------
+
+@register_skill("kg_embed")
+def kg_embed(
+    force: bool = False,
+    max_entities: int = 0,
+    max_observations: int = 0,
+) -> str:
+    """
+    Embed KG entities and observations for semantic search (Tier 2.5).
+
+    Embeds two targets:
+    1. **Entity search documents** — built from each table's description,
+       column schema, and observations. Powers Stage 1 of kg_search
+       (finding relevant tables).
+    2. **Observation content** — embeds each observation's text individually.
+       Powers Stage 2 of kg_search (ranking observations by query relevance
+       within matched tables).
+
+    Normally runs automatically after dreaming. Use this to manually
+    trigger re-embedding (e.g., after adding observations or changing
+    the embedding model).
+
+    Args:
+        force: If True, re-embed all even if already embedded.
+        max_entities: 0 = all (default), >0 = cap for entities.
+        max_observations: 0 = all (default), >0 = cap for observations.
+
+    Returns:
+        JSON summary with entity and observation embedding counts.
+    """
+    from .embedder import embed_kg_entities, embed_kg_observations
+
+    entity_result = embed_kg_entities(
+        max_entities=int(max_entities),
+        force=bool(force),
+    )
+    obs_result = embed_kg_observations(
+        max_observations=int(max_observations),
+        force=bool(force),
+    )
+
+    return json.dumps({
+        "entities": entity_result,
+        "observations": obs_result,
+    }, default=str, indent=2)

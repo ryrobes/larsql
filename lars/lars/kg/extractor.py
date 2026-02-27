@@ -242,6 +242,27 @@ def extract_from_crawl_yaml(samples_dir: str) -> KGExtractResult:
     # Track table stems (singular/plural) for FK matching
     table_stem_index: Dict[str, str] = {}
 
+    # Load existing Tier 2 descriptions + embeddings so we don't clobber them
+    # during re-crawl.  entity_id → {description, embedding, embedding_model}
+    _tier2_cache: Dict[str, Dict] = {}
+    try:
+        from ..db_adapter import get_db_adapter
+        _db = get_db_adapter()
+        _existing = _db.query(
+            "SELECT entity_id, description, embedding, embedding_model, tier "
+            "FROM kg_entities WHERE tier >= 2"
+        )
+        for _row in (_existing or []):
+            _tier2_cache[_row["entity_id"]] = {
+                "description": _row.get("description"),
+                "embedding": _row.get("embedding"),
+                "embedding_model": _row.get("embedding_model"),
+            }
+        if _tier2_cache:
+            log.info("KG extract: preserving %d Tier 2 descriptions/embeddings", len(_tier2_cache))
+    except Exception as e:
+        log.debug("KG extract: could not load Tier 2 cache: %s", e)
+
     # ------------------------------------------------------------------
     # Pass 1: Walk YAML files, extract entities + containment edges
     # ------------------------------------------------------------------
@@ -349,21 +370,25 @@ def extract_from_crawl_yaml(samples_dir: str) -> KGExtractResult:
         if sql_table_ref:
             table_props["sql_table_ref"] = sql_table_ref
 
+        # Preserve Tier 2 description + embeddings if they exist
+        _tier2 = _tier2_cache.get(table_eid, {})
+        _t2_desc = _tier2.get("description")
+        _t1_desc = (
+            f"Table '{table_name}' with {len(columns)} columns"
+            + (f" and {row_count:,} rows" if row_count else "")
+            + "."
+        )
         result.entities.append({
             "entity_id": table_eid,
             "entity_type": "table",
             "name": table_name,
             "qualified_name": table_qname,
-            "description": (
-                f"Table '{table_name}' with {len(columns)} columns"
-                + (f" and {row_count:,} rows" if row_count else "")
-                + "."
-            ),
+            "description": _t2_desc if _t2_desc else _t1_desc,
             "properties_json": _props(table_props),
             "source_connection": conn_name,
-            "embedding": None,
-            "embedding_model": None,
-            "tier": 1,
+            "embedding": _tier2.get("embedding"),
+            "embedding_model": _tier2.get("embedding_model"),
+            "tier": 2 if _t2_desc else 1,
             "discovered_at": now,
             "updated_at": now,
         })

@@ -27,14 +27,13 @@ auto_context:
     mask_observations_after: 3
 
 tool_caching:
-  enabled: true
+  enabled: false
 
 cells:
   - name: discover_tables
     model: "{{ models.flagship }}"
     skills:
-      - smart_sql_search
-      - kg_context
+      - kg_search
     use_native_tools: true
     handoffs:
       - parse_discovery
@@ -76,15 +75,15 @@ cells:
                   if isinstance(item, dict):
                       tool_names.add(str(item.get("tool") or item.get("tool_name") or "").strip())
 
-              has_search = any(n in {"sql_search", "smart_sql_search"} for n in tool_names)
+              has_search = any(n in {"kg_search", "sql_search", "smart_sql_search"} for n in tool_names)
               if not has_search:
-                  result = {"valid": False, "reason": "Call sql_search before returning final JSON."}
+                  result = {"valid": False, "reason": "Call kg_search before returning final JSON."}
               else:
                   result = {"valid": True, "reason": f"Grounded discovery with {len(obj['tables'])} tables."}
       retry_instructions: |
         {{ validation_reason }}
         Tool calls are allowed before final JSON.
-        First call sql_search with k<=5, then return grounded candidates.
+        First call kg_search with k<=3, then return grounded candidates.
         Return ONLY JSON object: {"tables":[...], "notes":"..."}.
         Attempt {{ attempt }}/{{ max_attempts }}.
     output_schema:
@@ -135,23 +134,24 @@ cells:
       {% endif %}
 
       Required workflow:
-      1. Call `sql_search(query=..., k=5)` to find tables relevant to this exact intent.
-      2. Call `kg_context(name=<table_name>)` on the top 1-2 candidates from sql_search.
-         This returns knowledge graph context: FK relationships to other tables, column
-         cardinality observations (is a column an enum? a key? a flag?), and data ranges.
-         Use this to identify join paths and understand column roles.
-      3. Use sql_search results + kg_context to return grounded candidates useful for drafting SQL.
-         Include any discovered join paths in your notes.
+      1. Call `kg_search(query=..., k=3)` to find tables relevant to this intent.
+         kg_search returns EVERYTHING you need in one call:
+         - Table descriptions and semantic observations from the knowledge graph
+         - Complete column schema (names, types, distinct counts, value ranges, top values)
+         - sql_table_ref for use in FROM clauses
+         - FK relationship and data quality observations
+      2. Review the kg_search results and select the best candidates for SQL drafting.
+         The observations tell you about column roles, data patterns, and join paths.
 
       Discovery quality bar:
       - Prefer fact/event tables that directly contain requested measures and dimensions.
       - Include dimension/lookup tables only when they materially improve labels or joins.
-      - Use kg_context FK edges to identify join tables rather than guessing from column names.
+      - Use relationship observations to identify join paths rather than guessing from column names.
       - Keep list tight (1-5 tables), not broad.
       - Put strongest candidates first.
 
       Naming rules:
-      - Use `sql_table_ref` exactly as returned by tools.
+      - Use `sql_table_ref` exactly as returned by kg_search.
       - Never append synthetic schema names like `.main`.
       - If schema is null (attached/federated sources like CSV), use `database.table`.
 
@@ -171,7 +171,7 @@ cells:
           }
         ],
         "notes": "short planning notes",
-        "join_paths": "any FK relationships discovered via kg_context (e.g., orders.customer_id → customers)"
+        "join_paths": "any FK relationships from kg_search observations (e.g., orders.customer_id → customers)"
       }
 
   - name: parse_discovery
@@ -505,3 +505,15 @@ cells:
       - For scope=atom, final output must contain exactly one verified atom.
 
       Return JSON only.
+
+# takes:
+#   evaluator_instructions: "Compare these
+#     three complete solution approaches based on:
+
+#     1) Correctness - Does it solve the problem accurately?
+
+#     2) Completeness - Does it cover all aspects?
+
+#     Select the BEST complete solution. DO NOT RETURN REASONS OR EXPLAIN - JUST THE ORIGINAL OUTPUT AND PASS IT AS YOU RECEIVED IT."
+#   factor: 3
+#   mutate: false
