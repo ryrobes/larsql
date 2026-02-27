@@ -9,9 +9,8 @@ proxy and points litellm at it. The proxy:
 
 1. Receives standard Anthropic API requests from litellm
 2. Rewrites auth headers (x-api-key → Authorization: Bearer)
-3. Adds Claude Code stealth headers (required for OAuth tokens)
-4. Injects required Claude Code identity into system prompt
-5. Forwards to api.anthropic.com
+3. Ensures the required OAuth beta flag is present
+4. Forwards to api.anthropic.com without mutating request bodies
 
 The user experience is: set ANTHROPIC_API_KEY=sk-ant-oat-xxx and go.
 """
@@ -21,48 +20,49 @@ import logging
 import os
 import threading
 import time
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from typing import Optional
 
 import httpx
 
 log = logging.getLogger("lars.anthropic_oauth_proxy")
 
-# Claude Code stealth headers (required for OAuth tokens)
-CLAUDE_CODE_VERSION = "2.1.2"
+# OAuth token support requires the oauth beta flag.
+REQUIRED_OAUTH_BETA = "oauth-2025-04-20"
 ANTHROPIC_API_BASE = "https://api.anthropic.com"
-BETA_FEATURES = [
-    "claude-code-20250219",
-    "oauth-2025-04-20",
-    "fine-grained-tool-streaming-2025-05-14",
-    "interleaved-thinking-2025-05-14",
-]
-CLAUDE_CODE_SYSTEM_PREFIX = "You are Claude Code, Anthropic's official CLI for Claude."
 
-# Tool name mapping (Claude Code canonical casing)
-CLAUDE_CODE_TOOLS = [
-    "Read", "Write", "Edit", "Bash", "Grep", "Glob",
-    "AskUserQuestion", "EnterPlanMode", "ExitPlanMode",
-    "KillShell", "NotebookEdit", "Skill", "Task", "TaskOutput",
-    "TodoWrite", "WebFetch", "WebSearch",
-]
-CC_TOOL_LOOKUP = {t.lower(): t for t in CLAUDE_CODE_TOOLS}
+
+def _merge_beta_header(beta_header: Optional[str]) -> str:
+    """
+    Merge request beta flags with required OAuth beta while preserving order.
+
+    Keeps request semantics intact and only adds the minimum OAuth capability
+    required by Anthropic for oauth tokens.
+    """
+    betas = []
+    if beta_header:
+        for b in beta_header.split(","):
+            clean = b.strip()
+            if clean and clean not in betas:
+                betas.append(clean)
+
+    if REQUIRED_OAUTH_BETA not in betas:
+        betas.append(REQUIRED_OAUTH_BETA)
+
+    return ",".join(betas)
 
 
 def list_oauth_models(oauth_token: str) -> list[dict]:
     """List models available via Anthropic OAuth token."""
     headers = {
-        'authorization': f'Bearer {oauth_token}',
-        'anthropic-version': '2023-06-01',
-        'anthropic-beta': ','.join(BETA_FEATURES),
-        'user-agent': f'claude-cli/{CLAUDE_CODE_VERSION} (external, cli)',
-        'x-app': 'cli',
-        'anthropic-dangerous-direct-browser-access': 'true',
+        "authorization": f"Bearer {oauth_token}",
+        "anthropic-version": "2023-06-01",
+        "anthropic-beta": REQUIRED_OAUTH_BETA,
     }
     try:
-        resp = httpx.get(f'{ANTHROPIC_API_BASE}/v1/models', headers=headers, timeout=15)
+        resp = httpx.get(f"{ANTHROPIC_API_BASE}/v1/models", headers=headers, timeout=15)
         if resp.status_code == 200:
-            return resp.json().get('data', [])
+            return resp.json().get("data", [])
     except Exception as e:
         log.warning(f"[OAuthProxy] Failed to list models: {e}")
     return []
@@ -73,55 +73,51 @@ def is_oauth_token(key: str) -> bool:
     return key.startswith("sk-ant-oat")
 
 
-def _rewrite_tool_names(tools: list) -> list:
-    """Remap tool names to Claude Code canonical casing."""
-    if not tools:
-        return tools
-    for tool in tools:
-        name = tool.get("name", "")
-        cc_name = CC_TOOL_LOOKUP.get(name.lower())
-        if cc_name:
-            tool["name"] = cc_name
-    return tools
-
-
-def _inject_system_prompt(body: dict) -> dict:
-    """Ensure Claude Code identity is in the system prompt (required for OAuth)."""
-    system = body.get("system")
-
-    if system is None:
-        body["system"] = [{"type": "text", "text": CLAUDE_CODE_SYSTEM_PREFIX}]
-    elif isinstance(system, str):
-        body["system"] = [
-            {"type": "text", "text": CLAUDE_CODE_SYSTEM_PREFIX},
-            {"type": "text", "text": system},
-        ]
-    elif isinstance(system, list):
-        # Check if prefix already present
-        has_prefix = any(
-            isinstance(b, dict) and CLAUDE_CODE_SYSTEM_PREFIX in b.get("text", "")
-            for b in system
-        )
-        if not has_prefix:
-            body["system"] = [
-                {"type": "text", "text": CLAUDE_CODE_SYSTEM_PREFIX},
-                *system,
-            ]
-    return body
-
-
 class OAuthProxyHandler(BaseHTTPRequestHandler):
     """HTTP handler that proxies Anthropic API requests with OAuth auth."""
 
     # Shared state (set by server)
     oauth_token: str = ""
     _http_client: Optional[httpx.Client] = None
+    protocol_version = "HTTP/1.1"
 
     @classmethod
     def get_client(cls) -> httpx.Client:
         if cls._http_client is None or cls._http_client.is_closed:
             cls._http_client = httpx.Client(timeout=300.0)
         return cls._http_client
+
+    def _build_forward_headers(self, has_body: bool) -> dict[str, str]:
+        """
+        Build proxy-forward headers with minimal auth/beta mutation.
+
+        Preserves provider-specific behavior by passing through client headers,
+        while rewriting auth to OAuth Bearer and ensuring oauth beta is present.
+        """
+        forward_headers: dict[str, str] = {}
+        for key, value in self.headers.items():
+            lower = key.lower()
+            if lower in (
+                "host",
+                "content-length",
+                "connection",
+                "proxy-connection",
+                "authorization",
+                "x-api-key",
+            ):
+                continue
+            forward_headers[key] = value
+
+        forward_headers["authorization"] = f"Bearer {self.oauth_token}"
+        forward_headers["anthropic-version"] = self.headers.get("anthropic-version", "2023-06-01")
+        forward_headers["anthropic-beta"] = _merge_beta_header(self.headers.get("anthropic-beta"))
+
+        if "accept" not in {k.lower() for k in forward_headers}:
+            forward_headers["accept"] = "application/json"
+        if has_body and "content-type" not in {k.lower() for k in forward_headers}:
+            forward_headers["content-type"] = "application/json"
+
+        return forward_headers
 
     def log_message(self, format, *args):
         """Route logs through Python logging instead of stderr."""
@@ -137,32 +133,17 @@ class OAuthProxyHandler(BaseHTTPRequestHandler):
         except json.JSONDecodeError:
             body = {}
 
-        # Rewrite for OAuth compatibility
-        body = _inject_system_prompt(body)
-        if "tools" in body:
-            body["tools"] = _rewrite_tool_names(body["tools"])
-
-        # Build stealth headers
-        forward_headers = {
-            "content-type": "application/json",
-            "accept": "application/json",
-            "authorization": f"Bearer {self.oauth_token}",
-            "anthropic-version": self.headers.get("anthropic-version", "2023-06-01"),
-            "anthropic-beta": ",".join(BETA_FEATURES),
-            "anthropic-dangerous-direct-browser-access": "true",
-            "user-agent": f"claude-cli/{CLAUDE_CODE_VERSION} (external, cli)",
-            "x-app": "cli",
-        }
+        forward_headers = self._build_forward_headers(has_body=bool(raw_body))
 
         # Forward to Anthropic
         target_url = f"{ANTHROPIC_API_BASE}{self.path}"
-        is_streaming = body.get("stream", False)
+        is_streaming = bool(body.get("stream")) if isinstance(body, dict) else False
 
         try:
             if is_streaming:
-                self._handle_streaming(target_url, forward_headers, body)
+                self._handle_streaming(target_url, forward_headers, raw_body)
             else:
-                self._handle_non_streaming(target_url, forward_headers, body)
+                self._handle_non_streaming(target_url, forward_headers, raw_body)
         except Exception as e:
             log.error(f"[OAuthProxy] Request failed: {e}")
             error_body = json.dumps({
@@ -175,10 +156,10 @@ class OAuthProxyHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(error_body)
 
-    def _handle_non_streaming(self, url, headers, body):
+    def _handle_non_streaming(self, url, headers, raw_body: bytes):
         """Forward non-streaming request."""
         client = self.get_client()
-        resp = client.post(url, headers=headers, json=body)
+        resp = client.post(url, headers=headers, content=raw_body)
 
         self.send_response(resp.status_code)
         for key, value in resp.headers.items():
@@ -188,11 +169,11 @@ class OAuthProxyHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(resp.content)
 
-    def _handle_streaming(self, url, headers, body):
+    def _handle_streaming(self, url, headers, raw_body: bytes):
         """Forward streaming request with SSE passthrough."""
         client = self.get_client()
 
-        with client.stream("POST", url, headers=headers, json=body) as resp:
+        with client.stream("POST", url, headers=headers, content=raw_body) as resp:
             self.send_response(resp.status_code)
             for key, value in resp.headers.items():
                 if key.lower() not in ("transfer-encoding", "content-encoding", "connection"):
@@ -226,10 +207,7 @@ class OAuthProxyHandler(BaseHTTPRequestHandler):
             headers = {
                 "authorization": f"Bearer {self.oauth_token}",
                 "anthropic-version": "2023-06-01",
-                "anthropic-beta": ",".join(BETA_FEATURES),
-                "anthropic-dangerous-direct-browser-access": "true",
-                "user-agent": f"claude-cli/{CLAUDE_CODE_VERSION} (external, cli)",
-                "x-app": "cli",
+                "anthropic-beta": REQUIRED_OAUTH_BETA,
             }
             try:
                 client = self.get_client()
@@ -268,7 +246,7 @@ class OAuthProxy:
     def __init__(self, oauth_token: str, port: int = 0):
         self.oauth_token = oauth_token
         self._port = port
-        self._server: Optional[HTTPServer] = None
+        self._server: Optional[ThreadingHTTPServer] = None
         self._thread: Optional[threading.Thread] = None
 
     @property
@@ -288,7 +266,7 @@ class OAuthProxy:
 
         OAuthProxyHandler.oauth_token = self.oauth_token
 
-        self._server = HTTPServer(("127.0.0.1", self._port), OAuthProxyHandler)
+        self._server = ThreadingHTTPServer(("127.0.0.1", self._port), OAuthProxyHandler)
         self._port = self._server.server_address[1]
 
         self._thread = threading.Thread(

@@ -101,23 +101,23 @@ def grid_plan_atoms(
     This is your primary tool for building dashboards and explorations.
 
     Each atom needs:
-    - intent: Natural language description of what this atom should show.
-      Write it as if you're briefing an analyst. Be specific about the
-      data, dimensions, groupings, and desired visualization.
-    - col: Column position (0-indexed)
-    - row: Row position (0-indexed)
-    - colSpan: Width in grid cells (default 1). Use 2 for charts, 1 for KPIs.
-    - rowSpan: Height in grid cells (default 1). Use 2 for detailed charts/tables.
+    - intent: A detailed brief for the worker agent. Include: what metric/aggregation,
+      from which table (use sql_table_ref), which columns, desired chart type, and
+      sort/limit/filter criteria. Workers resolve atoms independently — they cannot
+      see other atoms, so each intent must be self-contained.
+    - col: Column position (0-indexed). Grid is 24 columns wide (= one viewport width).
+    - row: Row position (0-indexed).
+    - colSpan: Width in grid columns. Minimum 2. Sizing guide:
+        KPI/number=4-6, sparkline=8, standard chart=8, hero chart=12,
+        full-width=24, quarter panel=6, table=12-16.
+    - rowSpan: Height in grid rows. Grid rows are fine-grained — atoms need
+        generous rowSpan to be readable. Minimums:
+        KPI/number=5, sparkline=5, standard chart=6-8, hero chart=10-12,
+        full-width=8, quarter panel=8, table=8-10.
+        NEVER use rowSpan < 5 for any visible atom.
 
-    If grid_name is set, a new sub-grid is created first and atoms are
-    added inside it. The user will see the new grid appear and populate.
-
-    The atoms will be resolved by worker agents who will:
-    1. Discover the relevant schema
-    2. Generate and verify SQL
-    3. Pick the best display type (chart, table, map, number, etc.)
-
-    You do NOT need to write SQL — just describe what you want clearly.
+    If grid_name is set, a new sub-grid is created first.
+    Workers will discover schema, generate SQL, and select display type.
 
     Args:
         atoms: List of dicts, each with {intent, col, row, colSpan?, rowSpan?}
@@ -127,14 +127,14 @@ def grid_plan_atoms(
     Returns:
         JSON with created atom IDs and grid info.
 
-    Example:
+    Example (trend analysis dashboard — grid is 24 columns wide):
         grid_plan_atoms(atoms=[
-            {"intent": "Total number of bigfoot sightings as a big number", "col": 0, "row": 0, "colSpan": 1, "rowSpan": 1},
-            {"intent": "Bar chart of top 15 US states by sighting count", "col": 1, "row": 0, "colSpan": 2, "rowSpan": 2},
-            {"intent": "Monthly trend of sightings over time as a line chart", "col": 3, "row": 0, "colSpan": 2, "rowSpan": 2},
-            {"intent": "Map of sighting locations colored by classification type", "col": 0, "row": 2, "colSpan": 3, "rowSpan": 2},
-            {"intent": "Recent sightings table showing date, state, county, and description", "col": 3, "row": 2, "colSpan": 2, "rowSpan": 2},
-        ], grid_name="Bigfoot Analysis")
+            {"intent": "Total revenue from csv_files.sales as a big number KPI. Hero metric for the dashboard.", "col": 0, "row": 0, "colSpan": 6, "rowSpan": 5},
+            {"intent": "Month-over-month revenue change as a percentage KPI from csv_files.sales. Compare current month total to previous month. Show as number with +/- prefix.", "col": 6, "row": 0, "colSpan": 6, "rowSpan": 5},
+            {"intent": "Monthly revenue trend from csv_files.sales (use order_date truncated to month) as a line chart with temporal x-axis. This is the primary visual — show the full time range.", "col": 0, "row": 5, "colSpan": 12, "rowSpan": 10},
+            {"intent": "Top 8 product categories by total revenue from csv_files.sales joined with csv_files.products on product_id. Horizontal bar chart sorted descending. Reveals which categories drive the total.", "col": 12, "row": 0, "colSpan": 12, "rowSpan": 8},
+            {"intent": "Revenue by region from csv_files.sales as a bar chart, sorted descending. Show geographic concentration.", "col": 12, "row": 8, "colSpan": 12, "rowSpan": 7},
+        ], grid_name="Revenue Trend Analysis")
     """
     payload = {
         "atoms": atoms,

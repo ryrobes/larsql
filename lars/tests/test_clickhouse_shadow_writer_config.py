@@ -96,7 +96,11 @@ def test_shadow_writer_upsert_table_ddl_enables_nullable_key(monkeypatch):
 
     writer._ensure_table("session_state")
     assert statements, "expected CREATE TABLE statement"
-    ddl = statements[-1]
+    ddl = next(
+        (sql for sql in statements if "create table if not exists `lars`.`session_state`" in sql.lower()),
+        "",
+    )
+    assert ddl, "expected session_state CREATE TABLE statement"
     assert "ORDER BY (`session_id`)" in ddl
     assert "SETTINGS allow_nullable_key = 1" in ddl
 
@@ -120,9 +124,16 @@ def test_shadow_writer_non_upsert_table_ddl_has_no_nullable_key_setting(monkeypa
         lambda table, sample_rows: [("id", "VARCHAR"), ("timestamp", "TIMESTAMP")],
     )
 
+    # Prevent support-object bootstrap from appending unrelated DDL.
+    monkeypatch.setattr(writer, "_ensure_support_objects", lambda _client: None)
+
     writer._ensure_table("unified_logs_base")
     assert statements, "expected CREATE TABLE statement"
-    ddl = statements[-1]
+    ddl = next(
+        (sql for sql in statements if "create table if not exists `lars`.`unified_logs_base`" in sql.lower()),
+        "",
+    )
+    assert ddl, "expected unified_logs_base CREATE TABLE statement"
     assert "ORDER BY tuple()" in ddl
     assert "allow_nullable_key" not in ddl
 
@@ -171,3 +182,80 @@ def test_shadow_writer_creates_unified_logs_view_after_base_and_costs(monkeypatc
     assert view_ddls, "expected unified_logs view DDL"
     assert any("left join" in sql.lower() for sql in view_ddls)
     assert any("coalesce" in sql.lower() for sql in view_ddls)
+
+
+def test_shadow_writer_creates_training_views_when_dependencies_exist(monkeypatch):
+    _base_env(monkeypatch)
+    monkeypatch.setenv("LARS_CH_SHADOW_WRITE_TABLES", "*")
+
+    writer = ClickHouseShadowWriter()
+    statements = []
+
+    class FakeClient:
+        def execute(self, sql):
+            statements.append(sql)
+            if sql.lower().startswith("describe table"):
+                # Return no columns to keep reconciliation path simple in this test.
+                return []
+            return []
+
+    monkeypatch.setattr(writer, "_get_client", lambda: FakeClient())
+
+    def fake_schema(table, _sample_rows):
+        if table == "unified_logs_base":
+            return [
+                ("trace_id", "VARCHAR"),
+                ("content_json", "VARCHAR"),
+                ("full_request_json", "VARCHAR"),
+                ("role", "VARCHAR"),
+                ("cascade_id", "VARCHAR"),
+                ("cell_name", "VARCHAR"),
+                ("session_id", "VARCHAR"),
+                ("timestamp", "TIMESTAMP"),
+                ("node_type", "VARCHAR"),
+                ("caller_id", "VARCHAR"),
+                ("cost", "DOUBLE"),
+                ("tokens_in", "INTEGER"),
+                ("tokens_out", "INTEGER"),
+                ("tokens_reasoning", "INTEGER"),
+                ("duration_ms", "DOUBLE"),
+                ("model", "VARCHAR"),
+                ("content_type", "VARCHAR"),
+                ("metadata_json", "VARCHAR"),
+                ("candidate_index", "INTEGER"),
+                ("timestamp_iso", "VARCHAR"),
+                ("parent_id", "VARCHAR"),
+            ]
+        if table == "costs":
+            return [
+                ("trace_id", "VARCHAR"),
+                ("cost", "DOUBLE"),
+                ("tokens_in", "INTEGER"),
+                ("tokens_out", "INTEGER"),
+                ("tokens_reasoning", "INTEGER"),
+                ("timestamp", "TIMESTAMP"),
+            ]
+        if table == "training_annotations":
+            return [
+                ("trace_id", "VARCHAR"),
+                ("trainable", "BOOLEAN"),
+                ("verified", "BOOLEAN"),
+                ("confidence", "FLOAT"),
+                ("rating", "VARCHAR"),
+                ("notes", "VARCHAR"),
+                ("tags", "VARCHAR[]"),
+                ("annotated_at", "TIMESTAMP"),
+                ("annotated_by", "VARCHAR"),
+            ]
+        return [("id", "VARCHAR")]
+
+    monkeypatch.setattr(writer, "_table_schema", fake_schema)
+
+    writer._ensure_table("unified_logs_base")
+    writer._ensure_table("costs")
+
+    lowered = [sql.lower() for sql in statements]
+    assert any("create table if not exists `lars`.`training_annotations`" in sql for sql in lowered)
+    assert any("create or replace view `lars`.`training_examples_mv`" in sql for sql in lowered)
+    assert any("create or replace view `lars`.`training_examples_with_annotations`" in sql for sql in lowered)
+    assert any("create or replace view `lars`.`training_stats_by_cascade`" in sql for sql in lowered)

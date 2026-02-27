@@ -254,6 +254,9 @@ def _register_all_skills():
     # Backward compatibility
     register_skill("run_sql", run_sql)
 
+    # Knowledge Graph tools
+    import lars.kg.skills  # noqa: F401 — registers kg_* skills via @register_skill
+
     # Conditional: ElevenLabs TTS
     from .skills.tts import say as elevenlabs_say, is_available as elevenlabs_available
     if elevenlabs_available():

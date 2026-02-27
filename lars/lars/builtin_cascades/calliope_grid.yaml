@@ -1,9 +1,11 @@
 # calliope_grid.yaml - Calliope (Atom Grid Edition)
 #
-# One-shot revive-turn flow:
-# 1) acknowledge_request: speak immediate acknowledgement
-# 2) plan_and_act: do exploration/planning/grid actions
-# 3) report_back: speak concise completion summary
+# Flow:
+# 1) acknowledge_request  -> speak immediate acknowledgement
+# 2) explore_data         -> discover schema, probe the data, form a thesis
+# 3) design_layout        -> pure planning (no tools) with takes+reforge for quality
+# 4) dispatch             -> validate plan and call grid_plan_atoms
+# 5) report_back          -> speak concise completion summary
 
 cascade_id: calliope
 description: >
@@ -11,12 +13,15 @@ description: >
   as grids of intent-driven atoms, and manages the workspace.
 
 memory: calliope_memory
-model: "{{ models.flagship }}"
+#model: "{{ models.flagship }}"
+model: anthropic-direct/claude-opus-4-6
 internal: true
 
 cells:
+  # ── Phase 1: Acknowledge ─────────────────────────────────────
   - name: acknowledge_request
-    model: "{{ models.flagship }}"
+    #model: "{{ models.flagship }}"
+    model: anthropic-direct/claude-opus-4-6
     instructions: |
       You are Calliope.
       This is the ACKNOWLEDGEMENT phase for a one-shot turn.
@@ -38,16 +43,19 @@ cells:
       - companion_speak
 
     handoffs:
-      - plan_and_act
+      - explore_data
 
     rules:
       max_turns: 1
 
-  - name: plan_and_act
-    model: "{{ models.flagship }}"
+  # ── Phase 2: Explore Data ────────────────────────────────────
+  # Tool-heavy phase: discover schema, probe the data, find what's interesting.
+  # Output: structured data brief for the planning phase.
+  - name: explore_data
+    #model: "{{ models.flagship }}"
+    model: anthropic-direct/claude-opus-4-6
     instructions: |
-      You are Calliope, RVBBIT's planner for the Atom Grid.
-      This is the ACTION phase for the current one-shot turn.
+      You are Calliope, RVBBIT's data explorer.
 
       ## Turn Input
       Current user message:
@@ -56,90 +64,298 @@ cells:
       Prior thread context (if available):
       {{ input.revive_history_text or input.boot_history_excerpt or "" }}
 
-      ## Persona
-      - Warm, capable, direct.
-      - Slight sarcasm is okay if it helps tone.
-      - You are proactive and execution-oriented.
-
-      ## Role
-      You are the planner. You design and update dashboards and explorations.
-      You do NOT write markdown reports for the user in this phase.
+      ## Task
+      Explore the available data to prepare a detailed brief for the dashboard designer.
+      You are NOT building the dashboard yet — you are researching the data.
 
       ## Workflow
-      1. Explore the available data first.
-      2. Plan or update the grid layout intentionally.
-      3. Execute needed grid actions.
-      4. Review outcomes when relevant.
-
-      ## Tool Guidance
-      Data exploration tools:
-      - list_sql_connections
-      - sql_search
-      - sql_get_table_meta
-      - safe_sql_run
-
-      Grid tools:
-      - grid_current
-      - grid_get_atom
-      - grid_plan_atoms
-      - grid_add_atom
-      - grid_update_atom
-      - grid_remove_atom
-      - grid_execute
-      - grid_create_subgrid
-      - grid_drill_up
-      - grid_atom_screenshot
-
-      Memory/state tools:
-      - calliope_memory
+      1. Check the current grid state with `grid_current` to understand existing context.
+      2. Call `sql_search` to find tables relevant to the user's request.
+      3. Call `kg_context` on the top 1-3 table names to get knowledge graph context:
+         - Related tables (FK relationships, same-name columns across databases)
+         - Column observations (cardinality patterns, value ranges, constraints)
+         - This tells you how tables connect WITHOUT guessing from column names.
+      4. Call `sql_get_table_meta` on the top 1-3 candidates to get exact column names and types.
+      5. Run 2-4 probing queries with `safe_sql_run` to understand:
+         - Row counts and date ranges (how much data? what time span?)
+         - Key distributions (what are the top categories? how skewed?)
+         - Interesting aggregations (totals, averages, min/max for key measures)
+         - Anything surprising (outliers, missing data, unexpected patterns)
+      6. Store any durable findings in `calliope_memory` if they'd be useful across sessions.
 
       ## Important Rules
-      - Explore before planning. Do not guess schema. Use the sql_search tool.
-      - After selecting likely tables, call sql_get_table_meta with qualified_name to confirm exact columns before writing atom intents.
-      - Use sql_table_ref from sql_search/sql_get_table_meta as the canonical SQL table reference (exact string; never add .main).
-      - Be specific in atom intent so independent workers can resolve correctly.
-      - If a chart needs advanced rendering, state that clearly in the intent.
-      - Don't just put random things on the page, have an opinion from looking at the data, dashboards should "say something" and not just be a buffet of stuff
+      - Use sql_table_ref from sql_search/sql_get_table_meta as the canonical table reference (exact string; never add .main).
+      - Run REAL queries — don't just read metadata. The probing queries are where you discover what's interesting.
+      - DO NOT call `companion_speak` or any `grid_*` mutation tools. This phase is read-only.
 
-      ### For the intent / spec for each worker try to be an specific and detailed as you can so they dont misunderstand. table names, field names - the best data viz to use to try and show what it is you are trying to highlight. They should have all the information they need to execute on your vision for that particular atom.
+      ## Output Contract
+      End with a structured data brief in this format:
 
-      ## Output Contract For Next Cell
-      DO NOT call `companion_speak` in this phase.
-
-      End this phase with a concise plain-text work log that includes:
-      - what you checked
-      - what you changed
-      - key result(s)
-      - recommended next step
+      DATA BRIEF
+      ===========
+      User request: (restate what they asked for)
+      Tables: (qualified sql_table_refs with key columns)
+      Relationships: (FK links and join paths discovered via kg_context — e.g., "orders.customer_id → customers")
+      Row counts: (approximate sizes)
+      Date range: (if temporal data exists)
+      Key findings: (2-4 bullets about what you found interesting — distributions, outliers, trends)
+      Thesis: (one sentence — what story should this dashboard tell, based on what you found?)
+      Recommended archetype: (Operational Monitor | Exploratory Breakdown | Comparison View | Trend Analysis | Diagnostic Deep-Dive)
 
     skills:
       - grid_current
       - grid_get_atom
-      - grid_plan_atoms
-      - grid_add_atom
-      - grid_update_atom
-      - grid_remove_atom
-      - grid_execute
-      - grid_create_subgrid
-      - grid_drill_up
-      - grid_atom_screenshot
       - list_sql_connections
       - sql_search
       - sql_get_table_meta
+      - kg_context
+      - kg_search
       - safe_sql_run
       - calliope_memory
 
     handoffs:
-      - report_back
+      - design_layout
 
     rules:
       max_turns: 1
 
-  - name: report_back
-    model: "{{ models.flagship }}"
+  # ── Phase 3: Design Layout ───────────────────────────────────
+  # Pure LLM planning — no tools. Gets the data brief and produces a plan.
+  # Has takes+reforge so multiple designs are generated and refined.
+  - name: design_layout
+    #model: "{{ models.flagship }}"
+    model: anthropic-direct/claude-opus-4-6
     context:
       from:
-        - cell: plan_and_act
+        - cell: explore_data
+          include:
+            - output
+            - messages
+    instructions: |
+      You are Calliope's layout designer. You receive a data brief from the explorer
+      and compose a dashboard plan as a JSON array of atoms.
+
+      ## Data Brief
+      {{ state.output_explore_data }}
+
+      ## User Request
+      "{{ input.message or input.user_message or input.reply_message or input.initial_prompt or '' }}"
+
+      ## Dashboard Composition Guide
+
+      Think like an editor, not a database browser. Each dashboard should have:
+
+      **A headline atom** — the single most important number or insight (KPI, delta, status).
+      **Supporting evidence** — 2-3 atoms that explain WHY the headline looks the way it does.
+      **Context or detail** — 1-2 atoms that let the user drill deeper or see the raw shape.
+
+      ### Dashboard Archetypes (pick the one that fits the thesis)
+
+      **Operational Monitor** — "How are we doing right now?"
+      - Hero KPI (current value + trend direction in title), sparkline or small trend,
+        breakdown by the most actionable dimension, recent activity table.
+      - Layout: KPIs across top row, charts in middle, detail at bottom.
+
+      **Exploratory Breakdown** — "What does this data look like?"
+      - Distribution of the primary measure, top/bottom N by key dimension,
+        time trend if temporal data exists, scatter or correlation if two numeric dimensions exist.
+      - Layout: Overview chart large at top, breakdowns in 2-column grid below.
+
+      **Comparison View** — "How do A and B differ?"
+      - Side-by-side or overlaid metrics for the compared groups,
+        dimension where the gap is largest, timeline showing divergence point.
+      - Layout: Comparison chart wide at top, dimension breakdowns below.
+
+      **Trend Analysis** — "What changed and when?"
+      - Primary trend line (large), period-over-period delta KPI,
+        breakdown of what's driving the change, anomaly or peak callout.
+      - Layout: Trend chart dominant, KPIs and breakdowns around it.
+
+      **Diagnostic Deep-Dive** — "Why is X happening?"
+      - The metric in question (KPI), segmented breakdown to isolate the cause,
+        timeline to pinpoint when it started, correlated metrics that moved together.
+
+      ### Visualization Selection
+
+      Match the viz to the analytical question, not the data type:
+      - "How much?" → `number` (KPI)
+      - "How is it distributed?" → `barChart` (sorted by value, top N)
+      - "How did it change over time?" → `lineChart` or `areaChart`
+      - "Is there a correlation?" → `scatterPlot`
+      - "What's the composition?" → `barChart` with stacking or `pieChart` (≤6 slices)
+      - "What are the records?" → `table` (only when detail matters)
+      - "Where?" → `map` (only with lat/lon or geo codes)
+      - "What's the micro-trend?" → `sparkline`
+
+      Avoid: `table` as a fallback when a chart would communicate faster.
+      Avoid: `pieChart` with more than 6 categories.
+      Avoid: redundant atoms showing the same dimension in different wrappers.
+
+      ### Layout Grid (24 columns wide, fine-grained rows)
+
+      Grid rows are fine-grained — atoms need generous rowSpan to be readable.
+      NEVER use rowSpan < 5 for any visible atom.
+
+      | Role             | colSpan | rowSpan | Notes                          |
+      |------------------|---------|---------|--------------------------------|
+      | KPI / number     | 4-6     | 5       | Compact, top row               |
+      | Sparkline        | 8       | 5       | Compact trend, pairs with KPIs |
+      | Standard chart   | 8       | 6-8     | Default for most charts        |
+      | Hero chart       | 12      | 10-12   | Primary visual, center of gravity |
+      | Full-width chart | 24      | 8       | Statement piece, use sparingly |
+      | Quarter panel    | 6       | 8       | Small supporting chart         |
+      | Table            | 12-16   | 8-10    | Detail view, bottom row        |
+
+      IMPORTANT: Minimum colSpan is 2. Never use colSpan < 4 for anything visible.
+      IMPORTANT: Minimum rowSpan is 5. Never use rowSpan < 5 — content will be unreadable.
+      A typical row: three 8-wide, or one 12-wide + two 6-wide.
+      Most important insight goes top-left.
+
+      ### Intent Writing Rules
+
+      Workers resolve atoms independently — they CANNOT see other atoms or the data brief.
+      Each intent must be a self-contained brief including:
+      1. **What** — metric, aggregation, grouping, sort, limit
+      2. **From where** — exact sql_table_ref and column names
+      3. **How to display** — specific chart type
+      4. **Why** — what analytical role this atom plays
+
+      ## Output Format
+
+      Return ONLY a JSON object:
+      {
+        "thesis": "One sentence: what this dashboard reveals",
+        "archetype": "Trend Analysis",
+        "grid_name": "Dashboard Title",
+        "atoms": [
+          {
+            "intent": "Detailed intent string...",
+            "col": 0, "row": 0, "colSpan": 6, "rowSpan": 5,
+            "role": "headline"
+          }
+        ]
+      }
+
+      Each atom must have: intent, col, row, colSpan, rowSpan, role.
+      Role is one of: headline, evidence, context, detail.
+      Aim for 4-7 atoms total.
+
+    skills: []
+    handoffs:
+      - dispatch
+
+    rules:
+      max_turns: 1
+
+    takes:
+      factor: 2
+      evaluator_instructions: |
+        Evaluate these dashboard plans on:
+        1. Thesis clarity — does the dashboard tell a specific story, or is it a data dump?
+        2. Intent quality — are intents self-contained briefs with table refs, columns, chart types, and analytical role?
+        3. Layout coherence — do atoms build on each other (headline → evidence → detail)?
+        4. Visualization choices — are chart types matched to analytical questions, not just data types?
+        5. Sizing — are colSpans appropriate (KPIs=4-6, charts=8-12, no colSpan < 4)? Are rowSpans large enough (minimum 5 for KPIs, 6-8 for charts, 10+ for hero charts, no rowSpan < 5)?
+
+        Select the plan that a data analyst would find most immediately useful.
+      reforge:
+        steps: 1
+        factor_per_step: 2
+        honing_prompt: |
+          Refine this dashboard plan:
+          - Sharpen the thesis: make it more specific and insight-driven.
+          - Strengthen intents: ensure every intent has sql_table_ref, exact column names,
+            aggregation method, sort order, limit, and chart type.
+          - Check layout: hero chart should be largest (colSpan 12+, rowSpan 10-12), KPIs should be 4-6 wide with rowSpan 5. No rowSpan below 5.
+          - Check for redundancy: no two atoms should show the same dimension the same way.
+          - Check analytical flow: does headline → evidence → detail make a logical argument?
+        evaluator_override: |
+          Pick the more refined plan. Prioritize:
+          1. Intent specificity (does every intent have enough detail for a worker to execute without guessing?)
+          2. Visual hierarchy (is there a clear hero chart with supporting KPIs?)
+          3. Story coherence (do the atoms together answer a question?)
+
+  # ── Phase 4: Dispatch ────────────────────────────────────────
+  # Validates the plan and fires grid_plan_atoms.
+  - name: dispatch
+    #model: "{{ models.flagship }}"
+    model: anthropic-direct/claude-opus-4-6
+    context:
+      from:
+        - cell: design_layout
+          include:
+            - output
+    rules:
+      max_turns: 1
+      max_attempts: 2
+      loop_until:
+        python: |
+          import json
+
+          def _parse(text):
+              s = (text or "").strip()
+              if s.startswith("```"):
+                  lines = s.splitlines()
+                  if len(lines) >= 2:
+                      s = "\n".join(lines[1:])
+              if s.endswith("```"):
+                  s = s.rsplit("```", 1)[0]
+              s = s.strip()
+              try:
+                  return json.loads(s)
+              except Exception:
+                  return None
+
+          obj = _parse(content)
+          if not isinstance(obj, dict) or "dispatched" not in obj:
+              result = {"valid": False, "reason": "Return JSON with 'dispatched': true after calling grid_plan_atoms."}
+          else:
+              result = {"valid": True, "reason": "Plan dispatched."}
+      retry_instructions: |
+        {{ validation_reason }}
+        Call grid_plan_atoms with the atom list, then return {"dispatched": true, "atom_count": N}.
+    instructions: |
+      You are the dispatch gate. You receive a dashboard plan and execute it.
+
+      ## Plan from designer:
+      {{ state.output_design_layout }}
+
+      ## Task
+      1. Parse the plan JSON from the designer.
+      2. Validate each atom:
+         - Intent must mention a specific sql_table_ref (not just a table name).
+         - Intent must specify a chart type or display type.
+         - colSpan must be >= 4 for any chart or table atom.
+         - colSpan must be >= 4 for KPI atoms.
+         - rowSpan must be >= 5 for ALL atoms. Grid rows are fine-grained and anything
+           smaller is unreadable. KPIs=5, charts=6-8, hero charts=10-12, tables=8-10.
+      3. If any atom fails validation, fix its intent or sizing before dispatching.
+      4. Call `grid_plan_atoms` with the atoms array and grid_name from the plan.
+      5. Return {"dispatched": true, "atom_count": N} after successful dispatch.
+
+    skills:
+      - grid_plan_atoms
+      - grid_add_atom
+      - grid_execute
+      - grid_create_subgrid
+      - grid_current
+
+    handoffs:
+      - report_back
+
+  # ── Phase 5: Report Back ─────────────────────────────────────
+  - name: report_back
+    #model: "{{ models.flagship }}"
+    model: anthropic-direct/claude-opus-4-6
+    context:
+      from:
+        - cell: explore_data
+          include:
+            - output
+        - cell: design_layout
+          include:
+            - output
+        - cell: dispatch
           include:
             - output
             - messages
@@ -150,13 +366,13 @@ cells:
       You are Calliope.
       This is the REPORT phase for a one-shot turn.
 
-      Use the plan_and_act outputs/messages to craft the final spoken update.
+      Use the outputs from explore_data, design_layout, and dispatch to craft the final spoken update.
 
       Requirements:
       - Call `companion_speak` exactly once.
-      - Keep it to 1-3 sentences.
-      - State what you just did and the most relevant result.
-      - If you changed the grid, mention what was created/updated.
+      - Keep it to 2-4 sentences.
+      - Lead with the dashboard thesis (what story does this grid tell?).
+      - Mention what was created: grid name, number of atoms, key visualizations.
       - If no changes were made, explain the blocker clearly.
       - End naturally. Do not ask for `wait_for_input`.
 

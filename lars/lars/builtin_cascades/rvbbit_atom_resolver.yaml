@@ -1,7 +1,7 @@
 # RVBBIT Atom Resolver (Linear Multi-Phase)
 #
 # 1) discover_tables    -> find grounded table candidates
-# 2) draft_atoms        -> produce SQL + display spec draft
+# 2) draft_atoms        -> produce SQL + Vega-lite-first display spec draft
 # 3) execute_and_verify -> run/repair SQL and return verified output
 
 cascade_id: rvbbit_atom_resolver
@@ -13,7 +13,7 @@ inputs_schema:
   intent: "Natural language description of what the user wants to see"
   scope: "atom | grid — whether resolving a single atom or planning a full grid"
   schema_context: "Optional: pre-fetched schema summary"
-  sibling_context: "Optional: JSON array of existing sibling atoms (intent + displayType + title)"
+  sibling_context: "Optional: JSON array of existing sibling atoms (intent + displayType + displayHints + title)"
   grid_name: "Optional: name of the grid this atom belongs to"
 
 internal: true
@@ -26,14 +26,24 @@ auto_context:
     compress_loops: true
     mask_observations_after: 3
 
+tool_caching:
+  enabled: true
+
 cells:
   - name: discover_tables
     model: "{{ models.flagship }}"
     skills:
-      - sql_search
+      - smart_sql_search
+      - kg_context
     use_native_tools: true
     handoffs:
       - parse_discovery
+    context:
+      anchors:
+        from_phases:
+          - previous
+        include:
+          - output
     rules:
       max_attempts: 3
       max_turns: 1
@@ -109,6 +119,7 @@ cells:
                 items: { type: string }
             additionalProperties: true
         notes: { type: [string, "null"] }
+        join_paths: { type: [string, "null"] }
       additionalProperties: false
     instructions: |
       You are the DISCOVERY phase for RVBBIT atom resolution.
@@ -125,11 +136,17 @@ cells:
 
       Required workflow:
       1. Call `sql_search(query=..., k=5)` to find tables relevant to this exact intent.
-      2. Use `sql_search` results directly and return only grounded candidates useful for drafting SQL.
+      2. Call `kg_context(name=<table_name>)` on the top 1-2 candidates from sql_search.
+         This returns knowledge graph context: FK relationships to other tables, column
+         cardinality observations (is a column an enum? a key? a flag?), and data ranges.
+         Use this to identify join paths and understand column roles.
+      3. Use sql_search results + kg_context to return grounded candidates useful for drafting SQL.
+         Include any discovered join paths in your notes.
 
       Discovery quality bar:
       - Prefer fact/event tables that directly contain requested measures and dimensions.
       - Include dimension/lookup tables only when they materially improve labels or joins.
+      - Use kg_context FK edges to identify join tables rather than guessing from column names.
       - Keep list tight (1-5 tables), not broad.
       - Put strongest candidates first.
 
@@ -153,13 +170,20 @@ cells:
             "time_columns": ["event_ts"]
           }
         ],
-        "notes": "short planning notes"
+        "notes": "short planning notes",
+        "join_paths": "any FK relationships discovered via kg_context (e.g., orders.customer_id → customers)"
       }
 
   - name: parse_discovery
     tool: python:lars.demo_tools.parse_json
     handoffs:
       - draft_atoms
+    context:
+      anchors:
+        from_phases:
+          - previous
+        include:
+          - output
     inputs:
       text: "{{ state.output_discover_tables }}"
 
@@ -167,6 +191,12 @@ cells:
     model: "{{ models.flagship }}"
     handoffs:
       - parse_draft
+    context:
+      anchors:
+        from_phases:
+          - previous
+        include:
+          - output
     rules:
       max_attempts: 3
       max_turns: 1
@@ -255,6 +285,12 @@ cells:
       Grounded discovery output:
       {{ state.output_parse_discovery.data | tojson }}
 
+      {% if state.output_parse_discovery.data.join_paths %}
+      Known join paths (from knowledge graph):
+      {{ state.output_parse_discovery.data.join_paths }}
+      Use these when writing JOINs instead of guessing from column names.
+      {% endif %}
+
       {% if input.sibling_context %}
       Existing siblings (avoid overlap, prefer complementary coverage):
       {{ input.sibling_context }}
@@ -262,69 +298,73 @@ cells:
 
       Task:
       - Draft atom specs and SQL using only discovered `sql_table_ref` references.
-      - Do not execute SQL in this phase.
-      - Set `verified` to false for all atoms.
+      - Do not execute SQL in this phase. Set `verified` to false.
+      - Scope `atom`: exactly 1 atom. Scope `grid`: 4-8 complementary atoms.
+      - SQL must be complete DuckDB SQL with real columns, explicit SELECT aliases, no `SELECT *`.
 
-      Output quality bar:
-      - Scope `atom`: exactly 1 high-quality atom.
-      - Scope `grid`: 4-8 complementary atoms that tell a coherent story.
-      - SQL must be complete DuckDB SQL with real columns (no placeholders).
-      - Use explicit SELECT aliases; avoid `SELECT *`.
-      - Keep title/summary tightly aligned with SQL output.
+      Display type selection:
+      - Top N by category → `barChart`
+      - Trend over time → `lineChart` or `areaChart`
+      - Single KPI → `number`
+      - Record-level detail → `table`
 
-      Display selection heuristics:
-      - If intent is "top N by category", default to `barChart`, not `table`.
-      - If intent is trend over time, default to `lineChart` or `areaChart`.
-      - If intent is a single KPI value, use `number`.
-      - Use `table` only for record-level or multi-column detail views.
+      Chart spec contract:
+      For chart displayTypes, put a Vega-Lite spec object in `displayHints.spec`.
+      The `spec` value is a JSON object (not a string). SQL must do ALL data shaping.
 
-      RVBBIT chart hint DSL (use `displayHints`, keyed to SELECT aliases):
+      SUPPORTED keys only (everything else is silently dropped):
+        marks:     bar, line, area, point, rule, rect
+        encoding:  x, y, x2, y2, color, detail
+        channel:   field, type (nominal/quantitative/temporal/ordinal), timeUnit, axis, scale, stack
+        axis:      title, grid, tickCount, format, orient, timeZone, weekStart, fillMissing
+        scale:     domain ([min,max])
+        mark obj:  type, opacity, strokeWidth, interpolate, size, cornerRadius, color, fill, stroke, strokeDash
+        layer:     array of {mark, encoding} for multi-mark charts
 
-      Example A: Number KPI
+      NOT SUPPORTED (silently ignored — do not use):
+        transform, aggregate, calculate, filter, selection, condition, params,
+        facet, repeat, concat, resolve, data, datasets, projection, window, lookup
+
+      Every `field` value must exactly match a SELECT alias from the SQL.
+
+      Example A — Bar chart:
+      SQL: SELECT state, COUNT(*) AS sightings FROM t GROUP BY state ORDER BY sightings DESC LIMIT 10
       {
-        "displayType": "number",
-        "displayHints": {"value": "total_sightings", "format": "integer"}
-      }
-
-      Example B: Top-N Bar Chart
-      SQL shape:
-      SELECT state, COUNT(*) AS sightings_count
-      FROM csv_files.ufo_sightings
-      GROUP BY state
-      ORDER BY sightings_count DESC
-      LIMIT 10
-      displayHints:
-      {
-        "x": "state",
-        "y": "sightings_count",
-        "sort": "-sightings_count",
-        "orientation": "vertical"
-      }
-
-      Example C: Time Series Line Chart
-      SQL shape:
-      SELECT month, SUM(revenue) AS total_revenue
-      FROM ...
-      GROUP BY month
-      ORDER BY month
-      displayHints:
-      {
-        "x": "month",
-        "y": "total_revenue"
-      }
-
-      Example D: Detail Table
-      {
-        "displayType": "table",
+        "displayType": "barChart",
         "displayHints": {
-          "columns": ["payment_id", "status", "amount", "attempted_at"],
-          "defaultSort": [{"field": "attempted_at", "direction": "desc"}]
+          "spec": {
+            "mark": "bar",
+            "encoding": {
+              "x": {"field": "state", "type": "nominal"},
+              "y": {"field": "sightings", "type": "quantitative"}
+            }
+          }
         }
       }
 
-      DuckDB + naming rules:
+      Example B — Time series:
+      SQL: SELECT month, SUM(revenue) AS total_revenue FROM t GROUP BY month ORDER BY month
+      {
+        "displayType": "lineChart",
+        "displayHints": {
+          "spec": {
+            "mark": "line",
+            "encoding": {
+              "x": {"field": "month", "type": "temporal", "timeUnit": "month"},
+              "y": {"field": "total_revenue", "type": "quantitative"}
+            }
+          }
+        }
+      }
+
+      Example C — Number KPI:
+      {"displayType": "number", "displayHints": {"value": "total_count", "format": "integer"}}
+
+      Example D — Table:
+      {"displayType": "table", "displayHints": {"columns": ["id", "status", "amount"]}}
+
+      DuckDB rules:
       - Use discovered table refs exactly; do not invent schema segments.
-      - If discovery returned `csv_files.ufo_sightings`, use that exact reference.
       - Keep `detectedDimensions` to categorical/time fields, not pure measures.
 
       Return JSON only.
@@ -333,6 +373,12 @@ cells:
     tool: python:lars.demo_tools.parse_json
     handoffs:
       - execute_and_verify
+    context:
+      anchors:
+        from_phases:
+          - previous
+        include:
+          - output
     inputs:
       text: "{{ state.output_draft_atoms }}"
 
@@ -340,7 +386,13 @@ cells:
     model: "{{ models.flagship }}"
     skills:
       - safe_sql_run
-    use_native_tools: false
+    context:
+      anchors:
+        from_phases:
+          - previous
+        include:
+          - output
+    use_native_tools: true
     output_schema:
       type: object
       required: [atoms]
@@ -423,18 +475,27 @@ cells:
       Grounded discovery refs:
       {{ state.output_parse_discovery.data | tojson }}
 
+      {% if state.output_parse_discovery.data.join_paths %}
+      Known join paths (from knowledge graph):
+      {{ state.output_parse_discovery.data.join_paths }}
+      Use these when writing or repairing JOINs.
+      {% endif %}
+
       Draft atoms:
       {{ state.output_parse_draft.data | tojson }}
 
       Task:
       1. Execute each draft SQL via `safe_sql_run`.
       2. If SQL errors or returns zero rows, repair and rerun.
-      3. Return final atoms with executable SQL and high-quality display metadata.
+      3. Return final atoms with executable SQL and verified display metadata.
 
-      Rendering quality checks:
-      - Ensure displayType matches the intent and SQL shape.
-      - For chart atoms, keep displayHints tied to real SELECT aliases.
-      - If user asked for a chart and SQL supports aggregated chart output, do not fall back to table.
+      Spec quality checks:
+      - Every `field` in `displayHints.spec.encoding` must match a SELECT alias from the final SQL.
+      - `mark` must be one of: bar, line, area, point, rule, rect.
+      - Do NOT use transform, aggregate, data, selection, condition, or params keys in the spec.
+      - For chart atoms, `displayHints.spec` must be a JSON object (not a string).
+      - For time-series intents, ensure `encoding.x.type` is `"temporal"`.
+      - If user asked for a chart and SQL supports it, do not fall back to table.
       - Keep titles short and specific; summaries factual and concise.
 
       Guardrails:

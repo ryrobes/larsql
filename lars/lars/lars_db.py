@@ -1836,6 +1836,95 @@ SYSTEM_TABLES = {
         "partition_by": None,
     },
 
+    # =========================================================================
+    # Knowledge Graph tables (kg_*)
+    # =========================================================================
+
+    "kg_entities": {
+        "columns": [
+            ("entity_id", "VARCHAR"),           # deterministic: {type}:{qualified_path}
+            ("entity_type", "VARCHAR"),          # connection, schema, table, column
+            ("name", "VARCHAR"),                 # human-readable short name
+            ("qualified_name", "VARCHAR"),       # full dotted path
+            ("description", "VARCHAR"),          # NL description (Tier 1: auto-generated, Tier 2+: LLM)
+            ("properties_json", "VARCHAR"),      # type-specific attrs (row_count, data_type, etc.)
+            ("source_connection", "VARCHAR"),    # which LARS connection this came from
+            ("embedding", "FLOAT[]"),            # vector embedding (null until Tier 2)
+            ("embedding_model", "VARCHAR"),      # model used for embedding
+            ("tier", "UTINYINT"),                # which tier created/last updated (1=crawl, 2+=LLM)
+            ("discovered_at", "TIMESTAMP"),      # first seen
+            ("updated_at", "TIMESTAMP"),         # last update
+        ],
+        "partition_by": None,
+        "dedup": {
+            "pk": "entity_id",
+            "order_by": "updated_at",
+        },
+    },
+
+    "kg_edges": {
+        "columns": [
+            ("edge_id", "VARCHAR"),             # deterministic: {src}:{rel}:{tgt}
+            ("source_id", "VARCHAR"),           # references kg_entities.entity_id
+            ("target_id", "VARCHAR"),           # references kg_entities.entity_id
+            ("rel_type", "VARCHAR"),            # contains, likely_fk, same_name, same_domain, ...
+            ("confidence", "FLOAT"),            # 1.0 = deterministic, <1.0 = inferred
+            ("evidence", "VARCHAR"),            # how this was determined
+            ("properties_json", "VARCHAR"),     # extra attrs
+            ("tier", "UTINYINT"),               # which tier created this
+            ("created_at", "TIMESTAMP"),
+        ],
+        "partition_by": None,
+        "dedup": {
+            "pk": "edge_id",
+            "order_by": "created_at",
+        },
+    },
+
+    "kg_observations": {
+        "columns": [
+            ("observation_id", "VARCHAR"),       # deterministic hash (Tier 1) or UUID (Tier 2+)
+            ("entity_id", "VARCHAR"),            # primary entity (nullable for cross-entity)
+            ("entity_ids_json", "VARCHAR"),       # JSON list of all related entity IDs
+            ("level", "VARCHAR"),                # connection, schema, table, column, cross_table, domain
+            ("tier", "UTINYINT"),                # 1=deterministic, 2=semantic, 3=data-validated, 4=synthesis
+            ("category", "VARCHAR"),             # cardinality, pattern, relationship, quality, domain, ...
+            ("content", "VARCHAR"),              # the observation text
+            ("confidence", "FLOAT"),             # how sure
+            ("embedding", "FLOAT[]"),            # vector for RAG
+            ("embedding_model", "VARCHAR"),
+            ("superseded_by", "VARCHAR"),        # observation_id that replaces this
+            ("dream_session_id", "VARCHAR"),     # which dream session produced this
+            ("created_at", "TIMESTAMP"),
+        ],
+        "partition_by": None,
+        "dedup": {
+            "pk": "observation_id",
+            "order_by": "created_at",
+        },
+    },
+
+    "kg_dream_sessions": {
+        "columns": [
+            ("session_id", "VARCHAR"),           # UUID
+            ("tier", "UTINYINT"),                # which tier ran
+            ("scope", "VARCHAR"),                # what was scanned (connection name, *, etc.)
+            ("status", "VARCHAR"),               # running, completed, failed
+            ("entities_added", "UINTEGER"),
+            ("entities_updated", "UINTEGER"),
+            ("edges_added", "UINTEGER"),
+            ("observations_added", "UINTEGER"),
+            ("summary", "VARCHAR"),              # human-readable summary
+            ("started_at", "TIMESTAMP"),
+            ("completed_at", "TIMESTAMP"),
+        ],
+        "partition_by": None,
+        "dedup": {
+            "pk": "session_id",
+            "order_by": "completed_at",
+        },
+    },
+
 }
 
 

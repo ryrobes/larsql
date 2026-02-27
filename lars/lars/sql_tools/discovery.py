@@ -60,6 +60,57 @@ except ImportError:
 
 console = Console()
 
+
+_KG_TIER2_AUTO = os.getenv(
+    "LARS_KG_TIER2_AUTO", "1",
+).strip().lower() in {"1", "true", "yes", "on"}
+
+_KG_TIER2_MAX_ENTITIES = int(os.getenv("LARS_KG_TIER2_MAX_ENTITIES", "0"))  # 0 = all
+_KG_TIER2_MODEL_TIER = os.getenv("LARS_KG_TIER2_MODEL_TIER", "fast")
+
+
+def _run_kg_extraction(samples_dir: str, session_id: str | None = None):
+    """Run Tier 1 KG extraction, then optionally Tier 2 LLM enrichment.
+
+    Tier 2 is controlled by LARS_KG_TIER2_AUTO (default on).
+    Non-fatal: logs warnings on failure.
+    """
+    try:
+        from ..kg.extractor import extract_kg_from_crawl
+        console.print(f"[bold cyan]🔗 Building knowledge graph (Tier 1)...[/bold cyan]")
+        result = extract_kg_from_crawl(samples_dir=samples_dir, session_id=session_id)
+        console.print(
+            f"[green][OK] Knowledge graph: "
+            f"{result['entities_added']} entities, "
+            f"{result['edges_added']} edges, "
+            f"{result['observations_added']} observations "
+            f"({result['elapsed_seconds']}s)[/green]"
+        )
+    except Exception as e:
+        console.print(f"[yellow][WARN] Knowledge graph extraction failed: {e}[/yellow]")
+        console.print("[dim]  Schema discovery and RAG index are unaffected.[/dim]")
+        return  # Skip Tier 2 if Tier 1 failed
+
+    # Tier 2: LLM enrichment (runs after Tier 1 completes)
+    if _KG_TIER2_AUTO:
+        try:
+            from ..kg.dreamer import dream_tier2
+            limit_label = f"max {_KG_TIER2_MAX_ENTITIES}" if _KG_TIER2_MAX_ENTITIES > 0 else "all"
+            console.print(
+                f"[bold cyan]🧠 Dreaming (Tier 2 enrichment, "
+                f"{limit_label} entities, "
+                f"model={_KG_TIER2_MODEL_TIER})...[/bold cyan]"
+            )
+            t2_result = dream_tier2(
+                max_entities=_KG_TIER2_MAX_ENTITIES,
+                model_tier=_KG_TIER2_MODEL_TIER,
+                samples_dir=samples_dir,
+            )
+        except Exception as e:
+            console.print(f"[yellow][WARN] Tier 2 enrichment failed: {e}[/yellow]")
+            console.print("[dim]  Tier 1 data is unaffected. You can run kg_dream manually.[/dim]")
+
+
 _SQL_FIELD_INDEX_INCLUDE_TEXT_SAMPLES = os.getenv(
     "LARS_SQL_FIELD_INDEX_INCLUDE_TEXT_SAMPLES",
     "0",
@@ -494,6 +545,9 @@ def discover_all_schemas(session_id: str | None = None):
         console.print()
         console.print("[cyan][TIP] Use sql_search tool in cascades to search schemas[/cyan]")
 
+        # Build Knowledge Graph (Tier 1 - deterministic)
+        _run_kg_extraction(samples_dir, session_id)
+
     except Exception as e:
         console.print(f"[yellow][WARN]  Failed to build RAG index: {e}[/yellow]")
         console.print(f"[dim]RAG semantic search will not be available, but schema files were saved.[/dim]")
@@ -517,3 +571,6 @@ def discover_all_schemas(session_id: str | None = None):
         console.print()
         console.print("[yellow][TIP] Note: sql_search tool requires RAG index. Check embedding API configuration.[/yellow]")
         console.print("[dim]     You can still use sql_query tool with qualified table names.[/dim]")
+
+        # Build Knowledge Graph even if RAG failed (Tier 1 is deterministic, no embeddings needed)
+        _run_kg_extraction(samples_dir, session_id)

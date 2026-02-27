@@ -41,6 +41,59 @@ def _allow_unlisted_chatgpt_models() -> bool:
     )
 
 
+def _has_valid_chatgpt_auth(token_dir: str) -> bool:
+    """
+    Check whether token_dir/auth.json looks like a completed ChatGPT OAuth cache.
+
+    LiteLLM may create an auth.json with only device flow bookkeeping fields
+    (e.g. `device_code_requested_at`) before login completes; that file should
+    not be treated as valid auth for unattended runs.
+    """
+    auth_file = os.path.join(os.path.expanduser(token_dir), "auth.json")
+    if not os.path.exists(auth_file):
+        return False
+
+    try:
+        with open(auth_file, encoding="utf-8") as f:
+            auth_data = json.load(f)
+    except Exception:
+        return False
+
+    if not isinstance(auth_data, dict):
+        return False
+
+    access_token = auth_data.get("access_token")
+    refresh_token = auth_data.get("refresh_token")
+    has_access = isinstance(access_token, str) and bool(access_token.strip())
+    has_refresh = isinstance(refresh_token, str) and bool(refresh_token.strip())
+    return has_access or has_refresh
+
+
+def _resolve_chatgpt_token_dir(root_dir: str) -> str:
+    """
+    Resolve ChatGPT auth cache directory with sane fallback behavior.
+
+    Priority:
+      1. Explicit CHATGPT_TOKEN_DIR (user override)
+      2. LARS_ROOT/auth/chatgpt when it has completed auth
+      3. LiteLLM default ~/.config/litellm/chatgpt when it has completed auth
+      4. LARS_ROOT/auth/chatgpt (bootstrap target for new auth)
+    """
+    explicit = os.environ.get("CHATGPT_TOKEN_DIR", "").strip()
+    if explicit:
+        return os.path.expanduser(explicit)
+
+    lars_default = os.path.expanduser(os.path.join(root_dir, "auth", "chatgpt"))
+    litellm_default = os.path.expanduser("~/.config/litellm/chatgpt")
+
+    if _has_valid_chatgpt_auth(lars_default):
+        return lars_default
+    if _has_valid_chatgpt_auth(litellm_default):
+        return litellm_default
+
+    return lars_default
+
+
 def _parse_llm_response_content(content: Any) -> Any:
     """
     Parse LLM response content - try TOON, then JSON, then return as-is.
@@ -381,11 +434,9 @@ class Agent:
             if not os.environ.get("CHATGPT_DEFAULT_INSTRUCTIONS"):
                 os.environ["CHATGPT_DEFAULT_INSTRUCTIONS"] = "You are a helpful assistant."
 
-            # Keep ChatGPT OAuth cache under LARS_ROOT by default
-            chatgpt_token_dir = os.environ.get("CHATGPT_TOKEN_DIR") or os.path.join(
-                cfg.root_dir, "auth", "chatgpt"
-            )
-            chatgpt_token_dir = os.path.expanduser(chatgpt_token_dir)
+            # Prefer a completed auth cache; avoid getting stuck on partial
+            # device-flow marker files in LARS_ROOT when a valid LiteLLM cache exists.
+            chatgpt_token_dir = _resolve_chatgpt_token_dir(cfg.root_dir)
             os.environ["CHATGPT_TOKEN_DIR"] = chatgpt_token_dir
             os.makedirs(chatgpt_token_dir, exist_ok=True)
 

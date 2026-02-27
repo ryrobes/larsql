@@ -271,6 +271,7 @@ class ClickHouseShadowWriter:
         self._client_lock = threading.Lock()
         self._tables_initialized: set[str] = set()
         self._views_initialized: set[str] = set()
+        self._ensuring_support_objects = False
         self._seen_tables: set[str] = set()
         self._shutdown = False
         self._client_retry_after_ts = 0.0
@@ -650,12 +651,16 @@ class ClickHouseShadowWriter:
         if not query_sql:
             return
 
+        self._create_or_replace_view(client, view_name, query_sql)
+
+    def _create_or_replace_view(self, client, view_name: str, query_sql: str) -> bool:
+        """Best-effort CREATE OR REPLACE VIEW with fallback for older CH builds."""
         view_ref = f"{_qid(self._db_name)}.{_qid(view_name)}"
         try:
             with self._client_lock:
                 client.execute(f"CREATE OR REPLACE VIEW {view_ref} AS {query_sql}")
             self._views_initialized.add(view_name)
-            return
+            return True
         except Exception:
             # Older ClickHouse builds may not support CREATE OR REPLACE VIEW.
             pass
@@ -665,51 +670,247 @@ class ClickHouseShadowWriter:
                 client.execute(f"DROP VIEW IF EXISTS {view_ref}")
                 client.execute(f"CREATE VIEW {view_ref} AS {query_sql}")
             self._views_initialized.add(view_name)
+            return True
         except Exception as e:
             self._record_error(e)
-            log.warning("[CH Shadow] failed creating unified_logs view: %s", e)
+            log.warning("[CH Shadow] failed creating %s view: %s", view_name, e)
+            return False
+
+    def _reconcile_table_columns(
+        self,
+        client,
+        table: str,
+        schema: List[Tuple[str, str]],
+    ) -> None:
+        """Add any missing columns so existing CH tables track current Duck schema."""
+        table_ref = f"{_qid(self._db_name)}.{_qid(table)}"
+        existing_cols: set[str] = set()
+        try:
+            with self._client_lock:
+                desc_rows = client.execute(f"DESCRIBE TABLE {table_ref}")
+            existing_cols = {str(row[0]) for row in (desc_rows or []) if row}
+        except Exception as e:
+            self._record_error(e)
+            log.warning("[CH Shadow] could not inspect table schema for %s: %s", table, e)
+            return
+
+        for col_name, duck_type in schema:
+            if col_name in existing_cols:
+                continue
+            add_sql = (
+                f"ALTER TABLE {table_ref} "
+                f"ADD COLUMN IF NOT EXISTS {_qid(col_name)} {_duck_type_to_clickhouse(duck_type)}"
+            )
+            try:
+                with self._client_lock:
+                    client.execute(add_sql)
+            except Exception as e:
+                self._record_error(e)
+                log.warning(
+                    "[CH Shadow] failed adding missing column %s.%s: %s",
+                    table,
+                    col_name,
+                    e,
+                )
+
+    def _build_training_examples_mv_query(self) -> str:
+        return (
+            f"SELECT "
+            f"trace_id, "
+            f"session_id, "
+            f"timestamp, "
+            f"cascade_id, "
+            f"cell_name, "
+            f"if((full_request_json IS NOT NULL) AND (full_request_json != ''), substring(full_request_json, 1, 2000), '') AS user_input, "
+            f"coalesce(content_json, '') AS assistant_output, "
+            f"model, cost, tokens_in, tokens_out, duration_ms, caller_id, node_type, role "
+            f"FROM {_qid(self._db_name)}.{_qid('unified_logs')} "
+            f"WHERE role = 'assistant' "
+            f"AND cascade_id IS NOT NULL AND cascade_id != '' "
+            f"AND content_json IS NOT NULL AND content_json != '' "
+            f"AND cascade_id != 'analyze_context_relevance'"
+        )
+
+    def _build_training_examples_with_annotations_query(self) -> str:
+        return (
+            "WITH latest_ts AS ("
+            "  SELECT trace_id, max(annotated_at) AS annotated_at "
+            f"  FROM {_qid(self._db_name)}.{_qid('training_annotations')} "
+            "  GROUP BY trace_id"
+            "), latest_annotations AS ("
+            "  SELECT "
+            "    ta.trace_id, "
+            "    ta.trainable, "
+            "    ta.verified, "
+            "    ta.confidence, "
+            "    ta.rating, "
+            "    ta.notes, "
+            "    ta.tags, "
+            "    ta.annotated_at, "
+            "    ta.annotated_by "
+            f"  FROM {_qid(self._db_name)}.{_qid('training_annotations')} AS ta "
+            "  INNER JOIN latest_ts AS lt "
+            "    ON ta.trace_id = lt.trace_id "
+            "   AND ta.annotated_at = lt.annotated_at"
+            ") "
+            "SELECT "
+            "  mv.*, "
+            "  coalesce(la.trainable, false) AS trainable, "
+            "  coalesce(la.verified, false) AS verified, "
+            "  la.confidence AS confidence, "
+            "  la.rating AS rating, "
+            "  coalesce(la.notes, '') AS notes, "
+            "  la.tags AS tags, "
+            "  la.annotated_at AS annotated_at, "
+            "  coalesce(la.annotated_by, '') AS annotated_by "
+            f"FROM {_qid(self._db_name)}.{_qid('training_examples_mv')} AS mv "
+            "LEFT JOIN latest_annotations AS la ON mv.trace_id = la.trace_id"
+        )
+
+    def _build_training_stats_by_cascade_query(self) -> str:
+        return (
+            "SELECT "
+            "  cascade_id, "
+            "  cell_name, "
+            "  countIf(trainable = true) AS trainable_count, "
+            "  countIf(verified = true) AS verified_count, "
+            "  avg(confidence) AS avg_confidence, "
+            "  count() AS total_executions "
+            f"FROM {_qid(self._db_name)}.{_qid('training_examples_with_annotations')} "
+            "GROUP BY cascade_id, cell_name "
+            "ORDER BY trainable_count DESC"
+        )
+
+    def _build_render_entries_query(self) -> str:
+        return (
+            "SELECT "
+            "  session_id, trace_id, parent_id, timestamp_iso, cascade_id, cell_name, "
+            "  content_type, content_json, metadata_json, candidate_index, role, node_type, "
+            "  JSONExtractString(metadata_json, 'screenshot_path') AS screenshot_path, "
+            "  JSONExtractString(metadata_json, 'screenshot_url') AS screenshot_url, "
+            "  JSONExtractString(metadata_json, 'checkpoint_id') AS checkpoint_id "
+            f"FROM {_qid(self._db_name)}.{_qid('unified_logs')} "
+            "WHERE content_type LIKE 'render:%' "
+            "ORDER BY timestamp_iso DESC"
+        )
+
+    def _build_request_decision_renders_query(self) -> str:
+        return (
+            "SELECT "
+            "  session_id, trace_id, timestamp_iso, cascade_id, cell_name, "
+            "  content_json AS ui_spec, "
+            "  JSONExtractString(metadata_json, 'screenshot_path') AS screenshot_path, "
+            "  JSONExtractString(metadata_json, 'screenshot_url') AS screenshot_url, "
+            "  JSONExtractString(metadata_json, 'checkpoint_id') AS checkpoint_id, "
+            "  JSONExtractString(metadata_json, 'question') AS question, "
+            "  JSONExtractString(metadata_json, 'severity') AS severity, "
+            "  JSONExtractBool(metadata_json, 'has_html') AS has_html, "
+            "  JSONExtractInt(metadata_json, 'options_count') AS options_count, "
+            "  candidate_index "
+            f"FROM {_qid(self._db_name)}.{_qid('unified_logs')} "
+            "WHERE content_type = 'render:request_decision' "
+            "ORDER BY timestamp_iso DESC"
+        )
+
+    def _ensure_support_objects(self, client) -> None:
+        """Create derived views/tables needed by CH read paths even when mostly empty."""
+        if self._ensuring_support_objects:
+            return
+        self._ensuring_support_objects = True
+        try:
+            # Unified logs derived view.
+            self._ensure_unified_logs_view(client)
+
+            # Training views depend on training_annotations + unified_logs.
+            if "training_annotations" not in self._tables_initialized:
+                self._ensure_table_with_client(client, "training_annotations", sample_rows=[], ensure_support=False)
+            if "unified_logs" in self._views_initialized and "training_annotations" in self._tables_initialized:
+                if "training_examples_mv" not in self._views_initialized:
+                    self._create_or_replace_view(
+                        client,
+                        "training_examples_mv",
+                        self._build_training_examples_mv_query(),
+                    )
+                if "training_examples_with_annotations" not in self._views_initialized:
+                    self._create_or_replace_view(
+                        client,
+                        "training_examples_with_annotations",
+                        self._build_training_examples_with_annotations_query(),
+                    )
+                if "training_stats_by_cascade" not in self._views_initialized:
+                    self._create_or_replace_view(
+                        client,
+                        "training_stats_by_cascade",
+                        self._build_training_stats_by_cascade_query(),
+                    )
+
+                # UI render inspection views.
+                if "render_entries" not in self._views_initialized:
+                    self._create_or_replace_view(
+                        client,
+                        "render_entries",
+                        self._build_render_entries_query(),
+                    )
+                if "request_decision_renders" not in self._views_initialized:
+                    self._create_or_replace_view(
+                        client,
+                        "request_decision_renders",
+                        self._build_request_decision_renders_query(),
+                    )
+        finally:
+            self._ensuring_support_objects = False
+
+    def _ensure_table_with_client(
+        self,
+        client,
+        table: str,
+        sample_rows: Optional[List[Dict[str, Any]]] = None,
+        *,
+        ensure_support: bool = True,
+    ) -> None:
+        schema = self._table_schema(table, sample_rows or [])
+        if not schema:
+            return
+
+        if table not in self._tables_initialized:
+            columns_sql = ", ".join(
+                f"{_qid(name)} {_duck_type_to_clickhouse(duck_type)}"
+                for name, duck_type in schema
+            )
+            order_by = "tuple()"
+            use_nullable_key_setting = False
+            if self._uses_upsert(table):
+                key_cols = [col for col in self._upsert_key_columns(table) if col in {c[0] for c in schema}]
+                if key_cols:
+                    order_by = f"({', '.join(_qid(col) for col in key_cols)})"
+                    # Keep schema permissive (Nullable columns) while allowing
+                    # MergeTree sorting keys on those columns.
+                    use_nullable_key_setting = True
+            settings_sql = ""
+            if use_nullable_key_setting:
+                settings_sql = " SETTINGS allow_nullable_key = 1"
+            ddl = (
+                f"CREATE TABLE IF NOT EXISTS {_qid(self._db_name)}.{_qid(table)} ("
+                f"{columns_sql}"
+                f") ENGINE = MergeTree ORDER BY {order_by}"
+                f"{settings_sql}"
+            )
+            with self._client_lock:
+                client.execute(ddl)
+
+            self._tables_initialized.add(table)
+
+        # Keep existing tables in sync with current SYSTEM_TABLES columns.
+        self._reconcile_table_columns(client, table, schema)
+
+        if ensure_support:
+            self._ensure_support_objects(client)
 
     def _ensure_table(self, table: str, sample_rows: Optional[List[Dict[str, Any]]] = None) -> None:
         client = self._get_client()
         if client is None:
             return
-
-        if table in self._tables_initialized:
-            if table in {"unified_logs_base", "costs"}:
-                self._ensure_unified_logs_view(client)
-            return
-
-        schema = self._table_schema(table, sample_rows or [])
-        if not schema:
-            return
-
-        columns_sql = ", ".join(
-            f"{_qid(name)} {_duck_type_to_clickhouse(duck_type)}"
-            for name, duck_type in schema
-        )
-        order_by = "tuple()"
-        use_nullable_key_setting = False
-        if self._uses_upsert(table):
-            key_cols = [col for col in self._upsert_key_columns(table) if col in {c[0] for c in schema}]
-            if key_cols:
-                order_by = f"({', '.join(_qid(col) for col in key_cols)})"
-                # Keep schema permissive (Nullable columns) while allowing
-                # MergeTree sorting keys on those columns.
-                use_nullable_key_setting = True
-        settings_sql = ""
-        if use_nullable_key_setting:
-            settings_sql = " SETTINGS allow_nullable_key = 1"
-        ddl = (
-            f"CREATE TABLE IF NOT EXISTS {_qid(self._db_name)}.{_qid(table)} ("
-            f"{columns_sql}"
-            f") ENGINE = MergeTree ORDER BY {order_by}"
-            f"{settings_sql}"
-        )
-        with self._client_lock:
-            client.execute(ddl)
-        self._tables_initialized.add(table)
-        if table in {"unified_logs_base", "costs"}:
-            self._ensure_unified_logs_view(client)
+        self._ensure_table_with_client(client, table, sample_rows=sample_rows, ensure_support=True)
 
     def _insert_rows(self, table: str, rows: List[Dict[str, Any]]) -> None:
         client = self._get_client()

@@ -1192,11 +1192,11 @@ def _compute_cell_baselines(db, cascade_id: str, cell_name: str, species_hash: s
 
     try:
         # Global baseline (all runs of this cell)
-        # Filter isfinite() to exclude NaN/Inf values
+        # Filter isFinite() to exclude NaN/Inf values (ClickHouse + DuckDB compatible)
         global_query = f"""
             SELECT
-                COALESCE(AVG(cell_cost) FILTER (WHERE isfinite(cell_cost)), 0) as avg_cost,
-                COALESCE(AVG(cell_duration_ms) FILTER (WHERE isfinite(cell_duration_ms)), 0) as avg_duration,
+                COALESCE(AVG(cell_cost) FILTER (WHERE isFinite(cell_cost)), 0) as avg_cost,
+                COALESCE(AVG(cell_duration_ms) FILTER (WHERE isFinite(cell_duration_ms)), 0) as avg_duration,
                 COUNT(*) as run_count
             FROM cell_analytics
             WHERE cascade_id = '{cascade_id}'
@@ -1217,14 +1217,14 @@ def _compute_cell_baselines(db, cascade_id: str, cell_name: str, species_hash: s
 
     try:
         # Species baseline (same species_hash - exact config)
-        # Filter isfinite() to exclude NaN/Inf values that break stddev_pop
+        # Filter isFinite() to exclude NaN/Inf values that break stddev_pop
         if species_hash and species_hash != '':
             species_query = f"""
                 SELECT
-                    COALESCE(AVG(cell_cost) FILTER (WHERE isfinite(cell_cost)), 0) as avg_cost,
-                    COALESCE(stddev_pop(cell_cost) FILTER (WHERE isfinite(cell_cost)), 0) as stddev_cost,
-                    COALESCE(AVG(cell_duration_ms) FILTER (WHERE isfinite(cell_duration_ms)), 0) as avg_duration,
-                    COALESCE(stddev_pop(cell_duration_ms) FILTER (WHERE isfinite(cell_duration_ms)), 0) as stddev_duration,
+                    COALESCE(AVG(cell_cost) FILTER (WHERE isFinite(cell_cost)), 0) as avg_cost,
+                    COALESCE(stddev_pop(cell_cost) FILTER (WHERE isFinite(cell_cost)), 0) as stddev_cost,
+                    COALESCE(AVG(cell_duration_ms) FILTER (WHERE isFinite(cell_duration_ms)), 0) as avg_duration,
+                    COALESCE(stddev_pop(cell_duration_ms) FILTER (WHERE isFinite(cell_duration_ms)), 0) as stddev_duration,
                     COUNT(*) as run_count
                 FROM cell_analytics
                 WHERE species_hash = '{species_hash}'
