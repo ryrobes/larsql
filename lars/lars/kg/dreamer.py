@@ -18,6 +18,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import time
 import uuid
 from datetime import datetime, timezone
@@ -856,6 +857,11 @@ def dream_tier2(
             for i, entity in enumerate(candidates):
                 entity_id = entity["entity_id"]
                 entity_name = entity.get("name", "?")
+
+                # Update cascade context per-entity for Studio traceability
+                _safe_name = re.sub(r'[^a-zA-Z0-9_.]', '_', entity.get("qualified_name", entity_name))[:60]
+                set_current_cascade_id(f"kg_dream:{_safe_name}")
+                set_current_session_id(f"kg_dream_{dream_session_id[:8]}:{_safe_name}")
                 progress.update(
                     task,
                     description=f"Dreaming [bold white]{entity_name}[/bold white]",

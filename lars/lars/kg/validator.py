@@ -21,6 +21,7 @@ Writes:
 import hashlib
 import json
 import logging
+import re
 import time
 import uuid
 from datetime import datetime, timezone
@@ -299,6 +300,12 @@ def validate_contracts(
             obs_id = obs["observation_id"]
             entity_name = obs.get("entity_name", "?")
             contract_type = obs.get("contract_type", "snapshot")
+
+            # Update cascade context per-entity for Studio traceability
+            _qname = obs.get("qualified_name", entity_name)
+            _safe_name = re.sub(r'[^a-zA-Z0-9_.]', '_', _qname)[:60]
+            set_current_cascade_id(f"kg_validate:{_safe_name}")
+            set_current_session_id(f"kg_validate_{session_id[:8]}:{_safe_name}")
             progress.update(
                 task,
                 description=f"Validating [bold white]{entity_name}[/bold white]",

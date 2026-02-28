@@ -23,7 +23,6 @@ sql_function:
   operators:
     - "{{ text }} MEANS {{ criterion }}"
     - "{{ text }} MATCHES {{ criterion }}"
-    - "{{ text }} ~ {{ criterion }}"
   cache: true
   test_cases:
     # MEANS infix operator
@@ -32,12 +31,6 @@ sql_function:
         type: contains
         value: apple pie
       description: "Infix MEANS: matches related content"
-    # Tilde operator (short form)
-    - sql: WITH t AS (SELECT 'quantum physics' AS topic) SELECT * FROM t WHERE topic ~ 'science'
-      expect:
-        type: contains
-        value: quantum
-      description: "Infix ~: matches semantic content"
     # MATCHES infix operator
     - sql: WITH t AS (SELECT 'customer complaint about shipping delay' AS msg) SELECT * FROM t WHERE msg MATCHES 'delivery issues'
       expect:
