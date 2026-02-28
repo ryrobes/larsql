@@ -402,6 +402,11 @@ def _execute_internal_sql(sql: str, timeout_seconds: int = 300) -> tuple:
         return None, "DuckDB executor not initialized"
 
     def _run_sql():
+        # Set context so any Agent.run() calls during SQL rewriting are logged
+        from lars.skills.state_tools import set_current_session_id, set_current_cascade_id
+        set_current_session_id(f"_tests_api_{threading.current_thread().ident}")
+        set_current_cascade_id("_tests_api")
+
         print(f"[TestsAPI] DEBUG _run_sql: rewriting SQL", flush=True)
         rewritten_sql = rewriter_func(sql, duckdb_conn=conn)
         print(f"[TestsAPI] DEBUG _run_sql: executing SQL", flush=True)

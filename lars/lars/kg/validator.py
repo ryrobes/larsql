@@ -56,13 +56,20 @@ def _run_evidence(sql: str, connection: str) -> Optional[Dict[str, Any]]:
             sql=sql,
             connection=connection,
             row_limit=100,
-            text_max_chars=2000,
+            text_max_chars=500,
         )
         result = json.loads(result_json)
         if result.get("error"):
             log.debug("Evidence SQL error: %s", result["error"])
             return None
-        result_hash = hashlib.sha256(result_json.encode()).hexdigest()[:16]
+        # Hash only the data (results array) — must match dreamer's
+        # hashing logic for stable comparison across runs.
+        hash_payload = json.dumps(
+            result.get("results", []),
+            sort_keys=True,
+            default=str,
+        )
+        result_hash = hashlib.sha256(hash_payload.encode()).hexdigest()[:16]
         return {
             "result_json": result_json,
             "hash": result_hash,
@@ -207,10 +214,16 @@ def validate_contracts(
 
     from ..db_adapter import get_db_adapter
 
+    from ..skills.state_tools import set_current_session_id, set_current_cascade_id
+
     console = Console()
     db = get_db_adapter()
     now = _now()
     session_id = str(uuid.uuid4())
+
+    # Set context so Agent.run() calls are logged under this session in unified_logs
+    set_current_session_id(f"kg_validate_{session_id[:8]}")
+    set_current_cascade_id("kg_validate")
 
     # Build filter clause
     type_filter = ""
@@ -251,6 +264,10 @@ def validate_contracts(
             "breaches": 0,
             "summary": "No evidence contracts found",
         }
+
+    # Progress tracker for UI polling
+    from .progress import ProgressTracker
+    progress_tracker = ProgressTracker("validate", session_id, total=len(candidates))
 
     # Track results
     checked = 0
@@ -296,6 +313,11 @@ def validate_contracts(
 
             if new_result is None:
                 errors += 1
+                progress_tracker.step(
+                    checked + errors, entity_name=entity_name,
+                    observations=unchanged, breaches=len(breaches),
+                    errors=errors, cost=total_cost,
+                )
                 progress.advance(task)
                 continue
 
@@ -305,6 +327,11 @@ def validate_contracts(
             if new_result["hash"] == old_hash:
                 # Contract holds — no change
                 unchanged += 1
+                progress_tracker.step(
+                    checked + errors, entity_name=entity_name,
+                    observations=unchanged, breaches=len(breaches),
+                    errors=errors, cost=total_cost,
+                )
                 progress.advance(task)
                 continue
 
@@ -323,9 +350,9 @@ def validate_contracts(
                 "new_observation": None,
             }
 
-            # Investigate if enabled and not a low-priority snapshot
+            # Investigate if enabled — ALL contract types including snapshots
             if investigate and not dry_run:
-                should_investigate = contract_type in ("invariant", "trend")
+                should_investigate = True  # Always investigate breaches
                 if should_investigate:
                     entity_info = {
                         "qualified_name": obs.get("qualified_name"),
@@ -454,6 +481,11 @@ def validate_contracts(
                     breach_info["finding"] = "Snapshot updated (expected drift)"
 
             breaches.append(breach_info)
+            progress_tracker.step(
+                checked + errors, entity_name=entity_name,
+                observations=unchanged, breaches=len(breaches),
+                errors=errors, cost=total_cost,
+            )
             progress.advance(task)
 
         progress.update(
@@ -463,6 +495,14 @@ def validate_contracts(
         )
 
     # ── Summary ──────────────────────────────────────────────────────
+    progress_tracker.complete(
+        observations=unchanged,
+        breaches=len(breaches),
+        errors=errors,
+        cost=total_cost,
+        detail={"checked": checked, "unchanged": unchanged},
+    )
+
     invariant_breaches = [b for b in breaches if b["contract_type"] == "invariant"]
     trend_breaches = [b for b in breaches if b["contract_type"] == "trend"]
     snapshot_changes = [b for b in breaches if b["contract_type"] == "snapshot"]

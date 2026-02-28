@@ -60,7 +60,8 @@ Return ONLY a JSON object with these keys:
       "content":  "One clear observation a data analyst would find useful.",
       "confidence": 0.0-1.0,
       "evidence_sql": "SELECT ... FROM table ... -- a SQL query that validates this observation",
-      "contract_type": "invariant|trend|snapshot"
+      "contract_type": "invariant|trend|snapshot",
+      "related_tables": ["qualified.name.of.other.table"]
     }
   ]
 }
@@ -104,6 +105,32 @@ Guidelines:
 - Do NOT repeat observations that are already provided as "existing".
 - Be concrete and specific.  Reference actual values you see in the data.
 - If sample data is provided, your observations MUST reference it.
+- **Prioritize DATA CONTENT over structure.**  Observations about actual
+  business entities, real values, and what the data MEANS are far more
+  valuable than observations about row counts, column types, or table
+  structure.  Structural observations (e.g. "table has 3 rows") become
+  stale quickly and don't help analysts.  Focus on what a data analyst
+  would actually want to know: who are these customers, what do these
+  transactions represent, what patterns exist in the real values.
+- **Cross-table analysis**: If related tables are provided, make observations
+  about the RELATIONSHIPS between tables.  Look for:
+  • Join quality: Do FK values in this table all exist in the related table?
+    Are there orphaned records?
+  • Data consistency: Do shared columns (e.g. dates, categories) have
+    consistent value ranges across tables?
+  • Business insights: What does the JOIN tell you that neither table says alone?
+    (e.g. "3 customers have no orders", "revenue per category shows electronics
+    dominates at 60%")
+  • Anomalies visible only through joins (e.g. orders referencing a deleted
+    product, timestamps that don't align)
+  Cross-table observations are the MOST valuable — prioritize them when
+  related table context is available.  Use "relationship" as the category
+  for cross-table observations.
+  When writing evidence_sql for cross-table observations, use JOIN queries
+  that reference both tables by their qualified names.
+- related_tables: For cross-table observations, list the qualified names
+  of the OTHER tables involved (not the primary table). This links the
+  observation to all relevant entities.  Omit for single-table observations.
 
 Return ONLY the JSON object, no markdown fences or commentary.
 """
@@ -243,6 +270,198 @@ def _load_crawl_yaml(samples_dir: str, entity: Dict[str, Any]) -> Optional[Dict]
     return None
 
 
+def _sample_join_data(
+    entity: Dict[str, Any],
+    related_table: Dict[str, Any],
+    join_column: str,
+) -> Optional[str]:
+    """Run a sample join between two tables to show cross-table relationships.
+
+    Returns a formatted text block or None on failure.
+    """
+    try:
+        from ..sql_tools.tools import safe_sql_run
+    except ImportError:
+        return None
+
+    src_ref = entity.get("qualified_name", "")
+    tgt_ref = related_table.get("qualified_name", "")
+    conn = entity.get("source_connection", "")
+
+    if not src_ref or not tgt_ref or not conn:
+        return None
+
+    # Try a sample join showing a few rows
+    sql = (
+        f"SELECT a.*, b.* FROM {src_ref} a "
+        f"JOIN {tgt_ref} b ON a.{join_column} = b.{join_column} "
+        f"LIMIT 3"
+    )
+
+    try:
+        result_json = safe_sql_run(
+            sql=sql,
+            connection=conn,
+            row_limit=3,
+            text_max_chars=300,
+        )
+        result = json.loads(result_json)
+        if result.get("error"):
+            return None
+
+        results_list = result.get("results", [])
+        col_names = result.get("columns", [])
+        if not results_list or not col_names:
+            return None
+
+        lines = [f"### Sample join: {src_ref} ⟷ {tgt_ref} ON {join_column} ({len(results_list)} rows)"]
+        lines.append("| " + " | ".join(col_names[:15]) + " |")
+        lines.append("| " + " | ".join(["---"] * min(len(col_names), 15)) + " |")
+        for row in results_list:
+            vals = [str(row.get(cn, ""))[:50] for cn in col_names[:15]]
+            lines.append("| " + " | ".join(vals) + " |")
+
+        return "\n".join(lines)
+    except Exception:
+        return None
+
+
+def _get_related_table_context(
+    query_fn,
+    related_entities: List[Dict[str, Any]],
+    samples_dir: str,
+    source_entity: Dict[str, Any],
+) -> str:
+    """Build rich context for related tables.
+
+    For each related table, includes: description, key columns,
+    observations, and optionally a sample join result.
+    """
+    lines: List[str] = []
+
+    # Group related by actual table entities (skip columns for now,
+    # but use FK column info to know what to join on)
+    seen_tables = set()
+    related_tables = []
+    fk_columns = {}  # target_table_id -> source_column_name
+
+    for rel in related_entities:
+        # For likely_fk edges, the source is a column in our table,
+        # and the target is the related table
+        if rel.get("rel_type") == "likely_fk" and rel.get("entity_type") == "table":
+            if rel["entity_id"] not in seen_tables:
+                seen_tables.add(rel["entity_id"])
+                related_tables.append(rel)
+                # Extract column name from evidence
+                evidence = rel.get("evidence", "")
+                if "column '" in evidence:
+                    col = evidence.split("column '")[1].split("'")[0]
+                    fk_columns[rel["entity_id"]] = col
+
+        # For same_name edges between columns, resolve to parent table
+        elif rel.get("rel_type") == "same_name" and rel.get("entity_type") == "column":
+            # The related column's parent table
+            qname = rel.get("qualified_name", "")
+            parts = qname.rsplit(".", 1)
+            if len(parts) > 1:
+                table_qname = parts[0]
+                # Find the table entity
+                table_rows = query_fn(f"""
+                    SELECT entity_id, entity_type, name, qualified_name,
+                           description, properties_json, source_connection
+                    FROM kg_entities
+                    WHERE qualified_name = '{table_qname.replace("'", "''")}'
+                      AND entity_type = 'table'
+                    LIMIT 1
+                """)
+                if table_rows and table_rows[0]["entity_id"] not in seen_tables:
+                    seen_tables.add(table_rows[0]["entity_id"])
+                    related_tables.append(table_rows[0])
+                    fk_columns[table_rows[0]["entity_id"]] = rel.get("name", "")
+
+    if not related_tables:
+        return ""
+
+    lines.append("### Related tables (explore cross-table patterns!)")
+    lines.append("")
+
+    for rel_table in related_tables[:5]:  # Cap at 5 to avoid token explosion
+        rel_eid = rel_table["entity_id"]
+        rel_eid_safe = rel_eid.replace("'", "''")
+
+        lines.append(f"#### {rel_table.get('qualified_name', rel_table.get('name', '?'))}")
+
+        # Description
+        desc = rel_table.get("description", "")
+        if desc:
+            lines.append(f"Description: {desc}")
+
+        # Row count
+        try:
+            rprops = json.loads(rel_table.get("properties_json") or "{}")
+            if rprops.get("row_count"):
+                lines.append(f"Row count: {rprops['row_count']:,}")
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+        # Key columns (compact)
+        rel_children = query_fn(f"""
+            SELECT e.name, e.properties_json
+            FROM kg_edges ed
+            JOIN kg_entities e ON e.entity_id = ed.target_id
+            WHERE ed.source_id = '{rel_eid_safe}' AND ed.rel_type = 'contains'
+              AND e.entity_type = 'column'
+            ORDER BY e.name
+        """)
+        if rel_children:
+            col_parts = []
+            for ch in rel_children[:20]:
+                cp = {}
+                try:
+                    cp = json.loads(ch.get("properties_json") or "{}")
+                except (json.JSONDecodeError, TypeError):
+                    pass
+                dtype = cp.get("data_type", "?")
+                dc = cp.get("distinct_count")
+                col_str = f"{ch['name']} ({dtype})"
+                if dc is not None:
+                    col_str += f" [{dc} distinct]"
+                col_parts.append(col_str)
+            lines.append(f"Columns: {', '.join(col_parts)}")
+
+        # Observations from related table
+        rel_obs = query_fn(f"""
+            SELECT category, content
+            FROM kg_observations
+            WHERE (entity_id = '{rel_eid_safe}'
+                   OR entity_ids_json LIKE '%{rel_eid_safe}%')
+              AND superseded_by IS NULL
+              AND tier >= 2
+            ORDER BY confidence DESC
+            LIMIT 5
+        """)
+        if rel_obs:
+            lines.append("Key observations:")
+            for o in rel_obs:
+                lines.append(f"  - [{o.get('category', '?')}] {o.get('content', '')[:200]}")
+
+        # Sample data from related table
+        rel_sample = _sample_table_data(rel_table, _load_crawl_yaml(samples_dir, rel_table))
+        if rel_sample:
+            lines.append(rel_sample)
+
+        # Sample join if we know the join column
+        join_col = fk_columns.get(rel_eid)
+        if join_col:
+            join_sample = _sample_join_data(source_entity, rel_table, join_col)
+            if join_sample:
+                lines.append(join_sample)
+
+        lines.append("")
+
+    return "\n".join(lines)
+
+
 def _build_table_prompt(
     entity: Dict[str, Any],
     children: List[Dict[str, Any]],
@@ -250,6 +469,7 @@ def _build_table_prompt(
     related: List[Dict[str, Any]],
     crawl_data: Optional[Dict],
     sample_data: Optional[str] = None,
+    related_context: Optional[str] = None,
 ) -> str:
     """Build the user prompt for enriching a table entity."""
     lines: List[str] = []
@@ -307,14 +527,19 @@ def _build_table_prompt(
             lines.append(f"- [{obs.get('category', '?')}] {obs.get('content', '')}")
         lines.append("")
 
-    # Related entities
+    # Related entities (brief list)
     if related:
-        lines.append("### Related entities")
+        lines.append("### Related entities (graph edges)")
         for rel in related[:10]:
             lines.append(
                 f"- {rel.get('rel_type', '?')}: {rel.get('name', '?')} "
                 f"({rel.get('entity_type', '?')}) — {rel.get('evidence', '')}"
             )
+        lines.append("")
+
+    # Rich related table context (descriptions, columns, observations, sample joins)
+    if related_context:
+        lines.append(related_context)
         lines.append("")
 
     return "\n".join(lines)
@@ -437,6 +662,8 @@ def _get_entity_context(query_fn, entity_id: str) -> Dict[str, Any]:
         ORDER BY confidence DESC
     """)
 
+    # Get relationships: direct edges from/to this entity PLUS
+    # edges from this table's child columns (e.g. orders.customer_id → customers)
     related = query_fn(f"""
         SELECT e.entity_id, e.entity_type, e.name, e.qualified_name,
                ed.rel_type, ed.confidence, ed.evidence
@@ -449,6 +676,17 @@ def _get_entity_context(query_fn, entity_id: str) -> Dict[str, Any]:
         FROM kg_edges ed
         JOIN kg_entities e ON e.entity_id = ed.source_id
         WHERE ed.target_id = '{eid_safe}' AND ed.rel_type != 'contains'
+        UNION ALL
+        SELECT e.entity_id, e.entity_type, e.name, e.qualified_name,
+               ed.rel_type, ed.confidence, ed.evidence
+        FROM kg_edges ed
+        JOIN kg_entities e ON e.entity_id = ed.target_id
+        WHERE ed.source_id IN (
+            SELECT child.entity_id FROM kg_edges ce
+            JOIN kg_entities child ON child.entity_id = ce.target_id
+            WHERE ce.source_id = '{eid_safe}' AND ce.rel_type = 'contains'
+              AND child.entity_type = 'column'
+        ) AND ed.rel_type != 'contains'
     """)
 
     return {"children": children, "observations": observations, "related": related}
@@ -506,8 +744,14 @@ def dream_tier2(
     if samples_dir is None:
         samples_dir = os.path.join(cfg.root_dir, "sql_connections", "samples")
 
+    from ..skills.state_tools import set_current_session_id, set_current_cascade_id
+
     model_name = get_model_for_tier(model_tier)
     dream_session_id = str(uuid.uuid4())
+
+    # Set context so Agent.run() calls are logged under this session in unified_logs
+    set_current_session_id(f"kg_dream_{dream_session_id[:8]}")
+    set_current_cascade_id("kg_dream")
     now = _now()
     scope_label = f"tier2:all:model={model_tier}" if max_entities == 0 else f"tier2:max={max_entities}:model={model_tier}"
 
@@ -540,6 +784,10 @@ def dream_tier2(
         candidates = _find_candidates(kg_query, _ENRICHMENT_PRIORITY, max_entities, force=force)
         log.info("Tier 2 dreaming: %d candidates found", len(candidates))
 
+        # Progress tracker for UI visibility
+        from .progress import ProgressTracker
+        progress_tracker = ProgressTracker("dream", dream_session_id, total=len(candidates))
+
         if not candidates:
             summary = "Tier 2: no candidates — all entities already enriched"
             db.insert_rows("kg_dream_sessions", [{
@@ -568,14 +816,18 @@ def dream_tier2(
                     ctx = _get_entity_context(kg_query, entity["entity_id"])
                     crawl = _load_crawl_yaml(samples_dir, entity)
                     sample_data = _sample_table_data(entity, crawl)
+                    related_ctx = _get_related_table_context(
+                        kg_query, ctx["related"], samples_dir, entity,
+                    )
                     prompt = _build_table_prompt(
                         entity, ctx["children"], ctx["observations"], ctx["related"],
-                        crawl, sample_data=sample_data,
+                        crawl, sample_data=sample_data, related_context=related_ctx,
                     )
                     prompts.append({
                         "entity_id": entity["entity_id"],
                         "prompt_length": len(prompt),
                         "has_sample_data": sample_data is not None,
+                        "has_related_context": bool(related_ctx),
                         "prompt": prompt[:1000],
                     })
                     progress.advance(task)
@@ -619,9 +871,15 @@ def dream_tier2(
                     if sample_data:
                         sampled_count += 1
 
+                    # Build rich context from related tables (descriptions,
+                    # columns, observations, sample joins)
+                    related_ctx = _get_related_table_context(
+                        kg_query, ctx["related"], samples_dir, entity,
+                    )
+
                     prompt = _build_table_prompt(
                         entity, ctx["children"], ctx["observations"], ctx["related"],
-                        crawl, sample_data=sample_data,
+                        crawl, sample_data=sample_data, related_context=related_ctx,
                     )
 
                     agent = Agent(model=model_name, system_prompt=_SYSTEM_PROMPT)
@@ -690,8 +948,17 @@ def dream_tier2(
                                     row_limit=100,
                                     text_max_chars=500,
                                 )
+                                # Hash only the data (results array), not the
+                                # full envelope — keeps hashes stable regardless
+                                # of text_max_chars or other safe_sql_run params.
+                                ev_parsed = json.loads(ev_result)
+                                hash_payload = json.dumps(
+                                    ev_parsed.get("results", []),
+                                    sort_keys=True,
+                                    default=str,
+                                )
                                 evidence_hash = hashlib.sha256(
-                                    ev_result.encode()
+                                    hash_payload.encode()
                                 ).hexdigest()[:16]
                             except Exception as e:
                                 log.debug(
@@ -700,11 +967,28 @@ def dream_tier2(
                                 )
                                 # Keep the SQL but no hash — validator can retry
 
+                        # Resolve related_tables to entity IDs for cross-linking
+                        entity_ids_list = [entity_id]
+                        related_tables = obs_data.get("related_tables") or []
+                        if related_tables and isinstance(related_tables, list):
+                            for rt_name in related_tables[:5]:
+                                rt_safe = str(rt_name).replace("'", "''")
+                                rt_rows = kg_query(f"""
+                                    SELECT entity_id FROM kg_entities
+                                    WHERE qualified_name = '{rt_safe}'
+                                      AND entity_type = 'table'
+                                    LIMIT 1
+                                """)
+                                if rt_rows:
+                                    entity_ids_list.append(rt_rows[0]["entity_id"])
+
+                        obs_level = "cross_table" if len(entity_ids_list) > 1 else entity["entity_type"]
+
                         obs_rows.append({
                             "observation_id": _obs_id(entity_id, cat, content),
                             "entity_id": entity_id,
-                            "entity_ids_json": json.dumps([entity_id]),
-                            "level": entity["entity_type"],
+                            "entity_ids_json": json.dumps(entity_ids_list),
+                            "level": obs_level,
                             "tier": 2,
                             "category": cat,
                             "content": content,
@@ -751,6 +1035,15 @@ def dream_tier2(
                     log.warning("Tier 2: failed to enrich %s: %s", entity_id, e)
                     errors += 1
 
+                # Emit progress for UI polling
+                progress_tracker.step(
+                    i + 1,
+                    entity_id=entity_id,
+                    entity_name=entity_name,
+                    observations=total_observations,
+                    errors=errors,
+                    cost=total_cost,
+                )
                 progress.advance(task)
 
             # Final status update on the progress bar
@@ -797,6 +1090,12 @@ def dream_tier2(
             "completed_at": _now(),
         }])
 
+        progress_tracker.complete(
+            observations=total_observations,
+            errors=errors,
+            cost=total_cost,
+            detail={"summary": summary},
+        )
         log.info("KG Tier 2: %s", summary)
         return {
             "session_id": dream_session_id,

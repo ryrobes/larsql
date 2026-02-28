@@ -1,5 +1,6 @@
 import json
 import os
+import threading
 from typing import Any, List, Dict, Optional, Tuple
 import litellm
 import logging
@@ -888,6 +889,67 @@ class Agent:
                     # TOON telemetry (if any)
                     "toon_telemetry": toon_telemetry if toon_telemetry else None,
                 })
+
+                # Log to unified system so Agent.run() calls are visible in Studio
+                # (KG tools, test validation, and any other direct Agent usage)
+                # Always logs — generates a deterministic synthetic cascade_id if none set
+                try:
+                    from .unified_logs import log_unified
+                    from .skills.state_tools import get_current_session_id, get_current_cascade_id
+                    from .caller_context import get_caller_id
+                    import inspect
+
+                    _ul_session = get_current_session_id()
+                    _ul_cascade = get_current_cascade_id()
+                    _ul_caller = get_caller_id()
+                    _ul_model = response.model if hasattr(response, 'model') else self.model
+
+                    # Synthesize a deterministic cascade_id from caller context if none set
+                    # Walk the call stack to find the meaningful caller (skip agent.py, litellm, etc.)
+                    if not _ul_cascade:
+                        _caller_frame = None
+                        for _fi in inspect.stack()[1:6]:  # Check up to 5 frames
+                            _mod = _fi.frame.f_globals.get('__name__', '')
+                            if _mod and not any(skip in _mod for skip in ('agent', 'litellm', 'openai')):
+                                _caller_frame = _fi
+                                break
+                        if _caller_frame:
+                            _mod_name = _caller_frame.frame.f_globals.get('__name__', 'unknown')
+                            # e.g. "lars.kg.dreamer" → "kg_dreamer", "lars.semantic_sql.registry" → "semantic_sql_registry"
+                            _short = _mod_name.replace('lars.', '').replace('.', '_')
+                            _ul_cascade = f"_agent_{_short}"
+                        else:
+                            _ul_cascade = "_agent_direct"
+
+                    # Synthesize session_id if none set — deterministic per cascade_id + thread
+                    if not _ul_session:
+                        import hashlib
+                        _thread_id = threading.current_thread().ident or 0
+                        _session_hash = hashlib.md5(f"{_ul_cascade}:{_thread_id}".encode()).hexdigest()[:8]
+                        _ul_session = f"{_ul_cascade}_{_session_hash}"
+
+                    log_unified(
+                        session_id=_ul_session,
+                        role="assistant",
+                        content=parsed_content[:500] if isinstance(parsed_content, str) else raw_content[:500],
+                        node_type="agent",
+                        depth=0,
+                        model=_ul_model,
+                        provider=provider,
+                        request_id=response.id,
+                        tokens_in=tokens_in,
+                        tokens_out=tokens_out,
+                        cost=cost,
+                        cascade_id=_ul_cascade,
+                        caller_id=_ul_caller,
+                        metadata={
+                            "source": "Agent.run",
+                            "duration_ms": duration_ms,
+                            "tokens_reasoning": tokens_reasoning,
+                        },
+                    )
+                except Exception:
+                    pass  # Never fail the main path for logging
 
                 return msg_dict
                 
