@@ -263,29 +263,17 @@ def create_sql_file():
 
         db = get_db()
         file_id = str(uuid.uuid4())
-
-        # Escape values for SQL (including % for DuckDB driver)
-        safe_id = escape_for_clickhouse(file_id)
-        safe_name = escape_for_clickhouse(name)
-        safe_sql = escape_for_clickhouse(sql)
-        safe_desc = escape_for_clickhouse(description) if description else ''
-        safe_database = escape_for_clickhouse(database)
-
-        insert_query = f"""
-            INSERT INTO hyper_sql_files (id, name, sql, description, database, is_favorite, created_at, updated_at)
-            VALUES (
-                '{safe_id}',
-                '{safe_name}',
-                '{safe_sql}',
-                {f"'{safe_desc}'" if description else 'NULL'},
-                '{safe_database}',
-                {1 if is_favorite else 0},
-                current_timestamp,
-                current_timestamp
-            )
-        """
-
-        db.execute(insert_query)
+        now_ts = datetime.utcnow()
+        db.insert_rows("hyper_sql_files", [{
+            "id": file_id,
+            "name": name,
+            "sql": sql,
+            "description": description,
+            "database": database,
+            "is_favorite": is_favorite,
+            "created_at": now_ts,
+            "updated_at": now_ts,
+        }])
 
         return jsonify({
             'id': file_id,
@@ -342,32 +330,16 @@ def update_sql_file(file_id: str):
         database = database.strip()
         is_favorite = data.get('is_favorite') if 'is_favorite' in data else current.get('is_favorite', False)
 
-        # For ReplacingMergeTree, we insert a new row with the same id
-        # The merge process will keep only the row with the latest updated_at
-        safe_name = escape_for_clickhouse(name)
-        safe_sql = escape_for_clickhouse(sql)
-        safe_desc = escape_for_clickhouse(description) if description else ''
-        safe_database = escape_for_clickhouse(database)
-
-        # Preserve original created_at
-        created_at = current.get('created_at')
-        created_at_sql = f"'{created_at.isoformat()}'::TIMESTAMP" if hasattr(created_at, 'isoformat') else 'current_timestamp'
-
-        update_query = f"""
-            INSERT INTO hyper_sql_files (id, name, sql, description, database, is_favorite, created_at, updated_at)
-            VALUES (
-                '{safe_id}',
-                '{safe_name}',
-                '{safe_sql}',
-                {f"'{safe_desc}'" if description else 'NULL'},
-                '{safe_database}',
-                {1 if is_favorite else 0},
-                {created_at_sql},
-                current_timestamp
-            )
-        """
-
-        db.execute(update_query)
+        db.insert_rows("hyper_sql_files", [{
+            "id": file_id,
+            "name": name,
+            "sql": sql,
+            "description": description,
+            "database": database,
+            "is_favorite": bool(is_favorite),
+            "created_at": current.get('created_at') or datetime.utcnow(),
+            "updated_at": datetime.utcnow(),
+        }])
 
         return jsonify({
             'id': file_id,
@@ -402,8 +374,11 @@ def delete_sql_file(file_id: str):
         if not existing:
             return jsonify({'error': 'File not found'}), 404
 
-        delete_query = f"DELETE FROM hyper_sql_files WHERE id = '{safe_id}'"
-        db.execute(delete_query)
+        db.delete_rows_by_keys(
+            "hyper_sql_files",
+            ["id"],
+            [{"id": file_id}],
+        )
 
         return jsonify({
             'id': file_id,
@@ -438,33 +413,16 @@ def toggle_favorite(file_id: str):
         current = existing[0]
         new_favorite = not bool(current.get('is_favorite', False))
 
-        # Escape values (including % for DuckDB driver)
-        safe_name = escape_for_clickhouse(current.get('name', ''))
-        safe_sql = escape_for_clickhouse(current.get('sql', ''))
-        desc = current.get('description', '')
-        safe_desc = escape_for_clickhouse(desc) if desc else ''
-        safe_database = escape_for_clickhouse(current.get('database', 'memory'))
-
-        # Preserve original created_at
-        created_at = current.get('created_at')
-        created_at_sql = f"'{created_at.isoformat()}'::TIMESTAMP" if hasattr(created_at, 'isoformat') else 'current_timestamp'
-
-        # Insert new row with toggled favorite
-        update_query = f"""
-            INSERT INTO hyper_sql_files (id, name, sql, description, database, is_favorite, created_at, updated_at)
-            VALUES (
-                '{safe_id}',
-                '{safe_name}',
-                '{safe_sql}',
-                {f"'{safe_desc}'" if desc else 'NULL'},
-                '{safe_database}',
-                {1 if new_favorite else 0},
-                {created_at_sql},
-                current_timestamp
-            )
-        """
-
-        db.execute(update_query)
+        db.insert_rows("hyper_sql_files", [{
+            "id": file_id,
+            "name": current.get('name', ''),
+            "sql": current.get('sql', ''),
+            "description": current.get('description'),
+            "database": current.get('database', 'memory'),
+            "is_favorite": bool(new_favorite),
+            "created_at": current.get('created_at') or datetime.utcnow(),
+            "updated_at": datetime.utcnow(),
+        }])
 
         return jsonify({
             'id': file_id,

@@ -20,5 +20,12 @@ Tier 2+ (LLM): Runs during dreaming (scheduled cascades).
 from .extractor import extract_kg_from_crawl
 from .dreamer import dream_tier2
 from .embedder import embed_kg_entities, embed_kg_observations
+from .validator import validate_contracts
 
-__all__ = ["extract_kg_from_crawl", "dream_tier2", "embed_kg_entities", "embed_kg_observations"]
+__all__ = [
+    "extract_kg_from_crawl",
+    "dream_tier2",
+    "embed_kg_entities",
+    "embed_kg_observations",
+    "validate_contracts",
+]

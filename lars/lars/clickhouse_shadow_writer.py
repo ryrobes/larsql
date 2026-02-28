@@ -405,6 +405,73 @@ class ClickHouseShadowWriter:
             log.warning("[CH Shadow] truncate failed for %s: %s", table, e)
             return False
 
+    def delete_by_keys(
+        self,
+        table: str,
+        key_columns: Sequence[str],
+        key_rows: Sequence[Dict[str, Any]],
+    ) -> int:
+        """
+        Best-effort key-based delete for mirrored mutation paths.
+
+        Returns number of unique key tuples targeted for deletion.
+        """
+        if not self.enabled or not self.allows_table(table):
+            return 0
+
+        normalized_cols = [str(col).strip() for col in key_columns if str(col).strip()]
+        if not normalized_cols or not key_rows:
+            return 0
+
+        client = self._get_client()
+        if client is None:
+            return 0
+
+        try:
+            # Drain pending inserts first so delete ordering is deterministic.
+            self.flush_now()
+            sample_rows = [row for row in key_rows if isinstance(row, dict)]
+            self._ensure_table(table, sample_rows=sample_rows)
+
+            schema = self._table_schema(table, sample_rows)
+            schema_cols = {name for name, _dtype in schema}
+            key_cols = [col for col in normalized_cols if col in schema_cols]
+            if not key_cols:
+                return 0
+
+            col_types = {name: dtype for name, dtype in schema}
+            key_tuples: List[Tuple[Any, ...]] = []
+            seen: set[Tuple[Any, ...]] = set()
+
+            for row in key_rows:
+                if not isinstance(row, dict):
+                    continue
+                values: List[Any] = []
+                missing_key = False
+                for key_col in key_cols:
+                    key_value = row.get(key_col)
+                    if key_value is None:
+                        missing_key = True
+                        break
+                    values.append(_coerce_value(key_value, col_types.get(key_col, "VARCHAR")))
+                if missing_key:
+                    continue
+                key_tuple = tuple(values)
+                if key_tuple in seen:
+                    continue
+                seen.add(key_tuple)
+                key_tuples.append(key_tuple)
+
+            if not key_tuples:
+                return 0
+
+            self._delete_existing_keys(table, key_cols, key_tuples, client)
+            return len(key_tuples)
+        except Exception as e:
+            self._record_error(e)
+            log.warning("[CH Shadow] key delete failed for %s: %s", table, e)
+            return 0
+
     def backfill_parquet_glob(
         self,
         table: str,

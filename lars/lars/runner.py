@@ -5281,7 +5281,10 @@ Refinement directive: {reforge_config.honing_prompt}
             # Trigger analytics worker (async, non-blocking)
             # Pre-computes context-aware insights, Z-scores, and anomaly detection
             # Skip if LARS_DISABLE_ANALYTICS is set (e.g., during tests)
-            if os.getenv("LARS_DISABLE_ANALYTICS", "").lower() not in ("true", "1", "yes"):
+            # Also skip for internal cascades — they are excluded from meta-analysis
+            # (the analytics_worker also checks, but gating here avoids the thread pool
+            # submission entirely and prevents shutdown race conditions in CLI context)
+            if not self.config.internal and os.getenv("LARS_DISABLE_ANALYTICS", "").lower() not in ("true", "1", "yes"):
                 try:
                     from .analytics_worker import analyze_cascade_execution
                     from .session_state import _get_tracking_executor

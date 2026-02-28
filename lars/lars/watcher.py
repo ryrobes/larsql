@@ -200,7 +200,11 @@ def delete_watch(name: str) -> bool:
         return False
 
     try:
-        db.execute(f"DELETE FROM watches WHERE name = '{name}'")
+        db.delete_rows_by_keys(
+            "watches",
+            ["name"],
+            [{"name": name}],
+        )
         return True
     except Exception as e:
         log.error(f"[watcher] Failed to delete watch '{name}': {e}")

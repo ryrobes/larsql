@@ -1,0 +1,96 @@
+# kg_search — Knowledge Graph 2-stage semantic search cascade
+#
+# 1) vector_search       -> embed query, find entities, rank observations  (Python)
+# 2) filter_observations  -> LLM condenses relevant observations           (Model)
+# 3) assemble_result      -> merge filtered obs with entity context        (Python)
+
+cascade_id: kg_search
+description: |
+  2-stage semantic schema discovery with observation ranking.
+  Embeds query, vector-searches entities and observations, then
+  uses a fast model to filter/condense observations by relevance.
+
+inputs_schema:
+  query: "Natural language search query"
+  k: "Max tables to return (default 5)"
+  obs_per_table: "Max observations to rank per table (default 15)"
+
+internal: true
+
+cells:
+  - name: vector_search
+    deterministic: true
+    tool: "python:lars.kg.skills._kg_search_vector_stages"
+    inputs:
+      query: "{{ input.query }}"
+      k: "{{ input.k | default(5) }}"
+      obs_per_table: "{{ input.obs_per_table | default(15) }}"
+    handoffs:
+      - filter_observations
+
+  - name: filter_observations
+    model: "{{ models.fast }}"
+    instructions: |
+      You are a data analyst assistant. Given a search query and observations
+      about database tables, select and summarize ONLY the observations relevant
+      to the query.
+
+      Return a JSON object: {"tables": [{"entity_id": "...", "observations": ["line1", ...]}]}
+
+      Rules:
+      - Each observation string should be 1-2 sentences max, condensed to its essence.
+      - Include ONLY observations that help answer or contextualize the query.
+      - Drop irrelevant observations entirely.
+      - If ALL observations for a table are irrelevant, include the table with empty observations array.
+      - If no tables or observations are provided, return {"tables": []}.
+      - Return ONLY valid JSON, no markdown fences or commentary.
+
+      ---
+
+      Query: {{ input.query }}
+
+      {{ outputs.vector_search.tables_for_filtering }}
+
+      Filter and condense the observations above. Keep only those relevant to the query.
+    rules:
+      max_attempts: 3
+      max_turns: 1
+      loop_until:
+        python: |
+          import json
+          # Polyglot validators inject: content, response_content,
+          # content_with_tool_outputs, tool_outputs, original_input,
+          # validation_context.  Use 'content' for the raw LLM response.
+          text = (content or "").strip()
+          if not text:
+              result = {"valid": False, "reason": "No model output"}
+          else:
+              if text.startswith("```"):
+                  lines = text.split("\n")
+                  if lines[0].startswith("```"):
+                      lines = lines[1:]
+                  if lines and lines[-1].strip() == "```":
+                      lines = lines[:-1]
+                  text = "\n".join(lines)
+              try:
+                  data = json.loads(text)
+                  if isinstance(data, dict) and "tables" in data:
+                      result = {"valid": True}
+                  else:
+                      result = {"valid": False, "reason": "Missing 'tables' key"}
+              except json.JSONDecodeError as e:
+                  result = {"valid": False, "reason": f"Invalid JSON: {e}"}
+      retry_instructions: |
+        {{ validation_reason }}
+        Return ONLY a JSON object: {"tables": [{"entity_id": "...", "observations": ["line 1", ...]}]}
+        No markdown fences or commentary.
+    handoffs:
+      - assemble_result
+
+  - name: assemble_result
+    deterministic: true
+    tool: "python:lars.kg.skills._kg_search_assemble"
+    inputs:
+      vector_data_json: "{{ outputs.vector_search | tojson }}"
+      filtered_json: "{{ outputs.filter_observations }}"
+      query: "{{ input.query }}"

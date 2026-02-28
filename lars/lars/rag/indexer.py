@@ -483,7 +483,12 @@ def ensure_rag_index(
             # DuckDB tables are views over parquet (append-only) - skip DELETE
             # DuckDB VSS is the source of truth for RAG vectors
             try:
-                db.execute(f"DELETE FROM rag_chunks WHERE rag_id = '{rag_id}' AND doc_id = '{prev['doc_id']}'")
+                db.delete_rows_by_keys(
+                    "rag_chunks",
+                    ["rag_id", "doc_id"],
+                    [{"rag_id": rag_id, "doc_id": str(prev["doc_id"])}],
+                    log_query=False,
+                )
             except Exception:
                 pass  # Parquet-backed views don't support DELETE
             if embedding_dim_used:
@@ -553,11 +558,21 @@ def ensure_rag_index(
             prev = prev_by_path[rel_path]
             # DuckDB tables are views over parquet (append-only) - skip DELETE
             try:
-                db.execute(f"DELETE FROM rag_chunks WHERE rag_id = '{rag_id}' AND doc_id = '{prev['doc_id']}'")
+                db.delete_rows_by_keys(
+                    "rag_chunks",
+                    ["rag_id", "doc_id"],
+                    [{"rag_id": rag_id, "doc_id": str(prev["doc_id"])}],
+                    log_query=False,
+                )
             except Exception:
                 pass
             try:
-                db.execute(f"DELETE FROM rag_manifests WHERE rag_id = '{rag_id}' AND doc_id = '{prev['doc_id']}'")
+                db.delete_rows_by_keys(
+                    "rag_manifests",
+                    ["rag_id", "doc_id"],
+                    [{"rag_id": rag_id, "doc_id": str(prev["doc_id"])}],
+                    log_query=False,
+                )
             except Exception:
                 pass
             if expected_dim:
@@ -636,11 +651,21 @@ def delete_rag_index(rag_id: str):
         pass
     # DuckDB tables are views over parquet (append-only) - skip DELETE
     try:
-        db.execute(f"DELETE FROM rag_chunks WHERE rag_id = '{rag_id}'")
+        db.delete_rows_by_keys(
+            "rag_chunks",
+            ["rag_id"],
+            [{"rag_id": rag_id}],
+            log_query=False,
+        )
     except Exception:
         pass
     try:
-        db.execute(f"DELETE FROM rag_manifests WHERE rag_id = '{rag_id}'")
+        db.delete_rows_by_keys(
+            "rag_manifests",
+            ["rag_id"],
+            [{"rag_id": rag_id}],
+            log_query=False,
+        )
     except Exception:
         pass
     console.print(f"[yellow]Deleted RAG index: {rag_id}[/yellow]")

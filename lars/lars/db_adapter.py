@@ -23,7 +23,7 @@ import copy
 import random
 import hashlib
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import pandas as pd
 
@@ -2021,6 +2021,160 @@ class DuckDBAdapter:
         
         rows = df.to_dict(orient='records')
         self.insert_rows(table, rows, columns, log_query)
+
+    def _quote_identifier(self, identifier: str) -> str:
+        """Quote an identifier for SQL generation."""
+        return '"' + str(identifier).replace('"', '""') + '"'
+
+    def _sql_literal(self, value: Any) -> str:
+        """Serialize Python value as a SQL literal."""
+        if value is None:
+            return "NULL"
+        if isinstance(value, bool):
+            return "true" if value else "false"
+        if isinstance(value, (int, float)):
+            return str(value)
+        if isinstance(value, datetime):
+            if value.tzinfo is not None:
+                value = value.astimezone(timezone.utc).replace(tzinfo=None)
+            return f"'{value.strftime('%Y-%m-%d %H:%M:%S.%f')}'"
+        text = str(value).replace("\\", "\\\\").replace("'", "''")
+        return f"'{text}'"
+
+    def _build_delete_where_clause(
+        self,
+        key_columns: Sequence[str],
+        key_tuples: Sequence[Tuple[Any, ...]],
+    ) -> str:
+        """Build SQL predicate matching one or more key tuples."""
+        if not key_columns or not key_tuples:
+            return "1 = 0"
+
+        if len(key_columns) == 1:
+            col_sql = self._quote_identifier(key_columns[0])
+            literals = ", ".join(self._sql_literal(key_tuple[0]) for key_tuple in key_tuples)
+            return f"{col_sql} IN ({literals})"
+
+        cols_sql = ", ".join(self._quote_identifier(col) for col in key_columns)
+        tuples_sql = ", ".join(
+            "(" + ", ".join(self._sql_literal(v) for v in key_tuple) + ")"
+            for key_tuple in key_tuples
+        )
+        return f"({cols_sql}) IN ({tuples_sql})"
+
+    def delete_rows_by_keys(
+        self,
+        table: str,
+        key_columns: Sequence[str],
+        key_rows: Sequence[Dict[str, Any] | Any],
+        *,
+        batch_size: int = 500,
+        log_query: bool = True,
+    ) -> int:
+        """
+        Delete rows by key columns with optional ClickHouse shadow mirroring.
+
+        This keeps turnkey DuckDB/parquet behavior as default while allowing
+        strict ClickHouse modes to apply equivalent deletes when enabled.
+        """
+        if not key_columns or not key_rows:
+            return 0
+
+        normalized_cols = [str(col).strip() for col in key_columns if str(col).strip()]
+        if not normalized_cols:
+            return 0
+
+        start_time = time.time()
+        success = True
+        error_msg = None
+        deleted_keys = 0
+
+        try:
+            key_tuples: List[Tuple[Any, ...]] = []
+            seen: set[Tuple[Any, ...]] = set()
+            for row in key_rows:
+                if isinstance(row, dict):
+                    values: List[Any] = []
+                    missing = False
+                    for col in normalized_cols:
+                        value = row.get(col)
+                        if value is None:
+                            missing = True
+                            break
+                        values.append(value)
+                    if missing:
+                        continue
+                    key_tuple = tuple(values)
+                elif len(normalized_cols) == 1 and row is not None:
+                    key_tuple = (row,)
+                else:
+                    continue
+
+                if key_tuple in seen:
+                    continue
+                seen.add(key_tuple)
+                key_tuples.append(key_tuple)
+
+            if not key_tuples:
+                return 0
+
+            batch_size = max(1, int(batch_size))
+            write_duck_primary = self._should_write_duck_primary(table)
+            writer = self._get_clickhouse_shadow_writer()
+            shadow_accepts_table = False
+            if writer is not None:
+                if hasattr(writer, "allows_table"):
+                    shadow_accepts_table = bool(writer.allows_table(table))
+                else:
+                    shadow_accepts_table = table in getattr(writer, "tables", set())
+
+            if not write_duck_primary and not shadow_accepts_table:
+                raise RuntimeError(
+                    f"Duck primary deletes are disabled for '{table}', "
+                    f"but no alternate sink is configured for that table."
+                )
+
+            if write_duck_primary:
+                for i in range(0, len(key_tuples), batch_size):
+                    batch = key_tuples[i : i + batch_size]
+                    where_clause = self._build_delete_where_clause(normalized_cols, batch)
+                    delete_sql = f"DELETE FROM {table} WHERE {where_clause}"
+                    self._db.execute(delete_sql)
+                    deleted_keys += len(batch)
+            else:
+                deleted_keys = len(key_tuples)
+
+            if shadow_accepts_table and writer is not None and hasattr(writer, "delete_by_keys"):
+                key_dict_rows = [
+                    {col: value for col, value in zip(normalized_cols, key_tuple)}
+                    for key_tuple in key_tuples
+                ]
+                writer.delete_by_keys(table, normalized_cols, key_dict_rows)
+            elif not write_duck_primary and shadow_accepts_table:
+                raise RuntimeError(
+                    f"Shadow sink for '{table}' does not support key-based deletes."
+                )
+
+            self._invalidate_read_cache()
+            return deleted_keys
+        except Exception as e:
+            success = False
+            error_msg = str(e)
+            print(f"[DuckDB Error] delete_rows_by_keys failed: {e}")
+            raise
+        finally:
+            if log_query:
+                duration_ms = (time.time() - start_time) * 1000
+                logger = get_query_logger()
+                if logger:
+                    logger.log_query(
+                        query_type='delete_rows_by_keys',
+                        sql_preview=f"DELETE {table} ({deleted_keys} keys)",
+                        duration_ms=duration_ms,
+                        rows_affected=deleted_keys,
+                        success=success,
+                        error_message=error_msg
+                    )
 
     # =========================================================================
     # Update Operations (Append-Only Pattern)

@@ -299,7 +299,7 @@ def _kg_observation_vector_search(
             WITH scored AS (
                 SELECT
                     observation_id, entity_id, category, content,
-                    confidence, tier,
+                    confidence, tier, contract_type,
                     array_cosine_similarity(
                         embedding::FLOAT[{embed_dim}],
                         ?::FLOAT[{embed_dim}]
@@ -317,7 +317,7 @@ def _kg_observation_vector_search(
                 FROM scored
             )
             SELECT observation_id, entity_id, category, content,
-                   confidence, tier, obs_match_score
+                   confidence, tier, obs_match_score, contract_type
             FROM ranked
             WHERE rn <= {int(top_k_per_entity)}
             ORDER BY entity_id, obs_match_score DESC
@@ -506,15 +506,43 @@ def _assemble_table_context(
         col_lines.append(" | ".join(parts))
 
     # ── Observations ────────────────────────────────────────────────
+    contracts = []
     if pre_ranked_observations is not None:
         # Stage 2+3 provided relevance-ranked (and optionally filtered)
         # observation lines — use them directly.
         obs_lines = pre_ranked_observations
+
+        # Also fetch contracts for this entity (evidence-backed observations)
+        contract_rows = _query(f"""
+            SELECT category, content, evidence_sql, evidence_hash,
+                   contract_type, confidence, tier
+            FROM kg_observations
+            WHERE (entity_id = '{eid}' OR entity_ids_json LIKE '%{eid}%')
+              AND superseded_by IS NULL
+              AND evidence_sql IS NOT NULL
+              AND contract_type IS NOT NULL
+            ORDER BY
+                CASE contract_type
+                    WHEN 'invariant' THEN 1
+                    WHEN 'trend' THEN 2
+                    WHEN 'snapshot' THEN 3
+                END,
+                confidence DESC
+            LIMIT 10
+        """)
+        for c in contract_rows:
+            contracts.append({
+                "content": (c.get("content") or "")[:200],
+                "contract_type": c.get("contract_type"),
+                "evidence_sql": c.get("evidence_sql"),
+                "verified": c.get("evidence_hash") is not None,
+            })
     else:
         # Fallback: grab top 8 by tier/confidence (lexical path or
         # when observation embeddings aren't available yet).
         observations = _query(f"""
-            SELECT category, content, confidence, tier
+            SELECT category, content, confidence, tier,
+                   evidence_sql, evidence_hash, contract_type
             FROM kg_observations
             WHERE (entity_id = '{eid}' OR entity_ids_json LIKE '%{eid}%')
               AND superseded_by IS NULL
@@ -525,11 +553,33 @@ def _assemble_table_context(
         for o in observations:
             text = (o.get("content") or "")[:200]
             obs_lines.append(f"[{o['category']}] {text}")
+            # Collect contracts
+            if o.get("evidence_sql") and o.get("contract_type"):
+                contracts.append({
+                    "content": text,
+                    "contract_type": o.get("contract_type"),
+                    "evidence_sql": o.get("evidence_sql"),
+                    "verified": o.get("evidence_hash") is not None,
+                })
+
+    # ── Breach observations (Tier 3) ─────────────────────────────────
+    breach_rows = _query(f"""
+        SELECT content, confidence, created_at
+        FROM kg_observations
+        WHERE (entity_id = '{eid}' OR entity_ids_json LIKE '%{eid}%')
+          AND category = 'breach'
+          AND superseded_by IS NULL
+        ORDER BY created_at DESC
+        LIMIT 5
+    """)
+    breaches = []
+    for b in breach_rows:
+        breaches.append((b.get("content") or "")[:300])
 
     # ── Description ──────────────────────────────────────────────────
     desc = entity.get("description") or ""
 
-    return {
+    result = {
         "qualified_name": entity.get("qualified_name"),
         "sql_table_ref": props.get("sql_table_ref", entity.get("qualified_name")),
         "connection": entity.get("source_connection"),
@@ -540,6 +590,261 @@ def _assemble_table_context(
         "observations": obs_lines,
     }
 
+    # Only include contracts/breaches if they exist (keeps output clean)
+    if contracts:
+        result["contracts"] = contracts
+    if breaches:
+        result["breaches"] = breaches
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Cascade cell functions (called by builtin_cascades/kg_search.yaml)
+# ---------------------------------------------------------------------------
+
+def _kg_search_vector_stages(
+    query: str,
+    k: int = 5,
+    obs_per_table: int = 15,
+) -> Dict[str, Any]:
+    """Cascade cell 1: Embed query + Stage 1 entity search + Stage 2 observation ranking.
+
+    Called as ``tool: python:lars.kg.skills._kg_search_vector_stages``
+    from the kg_search cascade.  Returns structured intermediate data
+    that feeds both the LLM filter cell (prompt text) and the assembly
+    cell (entity + observation dicts).
+    """
+    k, obs_per_table = int(k), int(obs_per_table)
+
+    query_vec, embed_dim = _embed_query(query)
+    log.info("kg_search: query_vec=%s, embed_dim=%d", "OK" if query_vec else "NONE", embed_dim)
+
+    # ── Stage 1: Entity search ───────────────────────────────────────
+    if query_vec:
+        matches = _kg_vector_search(query, k=k, query_vec=query_vec, embed_dim=embed_dim)
+        search_mode = "vector"
+    else:
+        matches = []
+        search_mode = "lexical"
+
+    if not matches:
+        if search_mode == "vector":
+            log.info("kg_search: vector returned 0 — trying lexical")
+        matches = _kg_lexical_search(query, k=k)
+        search_mode = "lexical"
+
+    log.info("kg_search: Stage 1 → %s, %d matches", search_mode, len(matches))
+
+    # ── Stage 2: Observation vector ranking ──────────────────────────
+    obs_by_entity: Dict[str, List[Dict[str, Any]]] = {}
+    stage2_status = "skipped"
+    if query_vec and matches:
+        entity_ids = [m["entity_id"] for m in matches]
+        obs_by_entity = _kg_observation_vector_search(
+            query_vec=query_vec,
+            entity_ids=entity_ids,
+            top_k_per_entity=obs_per_table,
+            embed_dim=embed_dim,
+        )
+        if obs_by_entity:
+            total_obs = sum(len(v) for v in obs_by_entity.values())
+            stage2_status = f"ranked ({total_obs} obs across {len(obs_by_entity)} tables)"
+        else:
+            stage2_status = "empty (fallback to tier/confidence)"
+    elif not query_vec:
+        stage2_status = "skipped (no query vector)"
+
+    log.info("kg_search: Stage 2 → %s", stage2_status)
+
+    # ── Format prompt block for LLM filter cell ──────────────────────
+    filter_blocks = []
+    for entity in matches:
+        eid = entity["entity_id"]
+        ranked_obs = obs_by_entity.get(eid, [])
+        if not ranked_obs:
+            continue
+        obs_lines = "\n".join(
+            f"- [{o.get('category', 'general')}] {o.get('content', '')} "
+            f"(similarity: {o.get('obs_match_score', 0):.3f})"
+            for o in ranked_obs
+        )
+        desc = entity.get("description") or ""
+        block = (
+            f"## Table: {entity.get('qualified_name', '')} "
+            f"(entity_id: {eid})\n"
+            f"Description: {desc}\n"
+            f"Observations:\n{obs_lines}"
+        )
+        filter_blocks.append(block)
+
+    if filter_blocks:
+        tables_for_filtering = (
+            "Tables with ranked observations to filter:\n\n"
+            + "\n\n".join(filter_blocks)
+        )
+    else:
+        tables_for_filtering = (
+            'No ranked observations available. Return {"tables": []}.'
+        )
+
+    # ── Serialize entities for assembly cell ──────────────────────────
+    entities_ser = []
+    for e in matches:
+        entities_ser.append({
+            "entity_id": e.get("entity_id"),
+            "entity_type": e.get("entity_type"),
+            "name": e.get("name"),
+            "qualified_name": e.get("qualified_name"),
+            "description": e.get("description"),
+            "properties_json": e.get("properties_json"),
+            "source_connection": e.get("source_connection"),
+            "tier": e.get("tier"),
+            "match_score": float(e.get("match_score", 0)),
+        })
+
+    obs_ser: Dict[str, List[Dict[str, Any]]] = {}
+    for eid, obs_list in obs_by_entity.items():
+        obs_ser[eid] = [
+            {
+                "category": o.get("category", "general"),
+                "content": o.get("content", ""),
+                "obs_match_score": float(o.get("obs_match_score", 0)),
+                "contract_type": o.get("contract_type"),
+            }
+            for o in obs_list
+        ]
+
+    return {
+        "search_mode": search_mode,
+        "query_vec_ok": query_vec is not None,
+        "stage2_status": stage2_status,
+        "entities": entities_ser,
+        "obs_by_entity": obs_ser,
+        "has_ranked_obs": bool(obs_by_entity),
+        "tables_for_filtering": tables_for_filtering,
+    }
+
+
+def _kg_search_assemble(
+    vector_data_json: str,
+    filtered_json: str = "",
+    query: str = "",
+) -> str:
+    """Cascade cell 3: Merge vector search results with LLM-filtered observations.
+
+    Called as ``tool: python:lars.kg.skills._kg_search_assemble``
+    from the kg_search cascade.  Returns the final kg_search JSON
+    response string.
+    """
+    # ── Parse vector data ────────────────────────────────────────────
+    if isinstance(vector_data_json, dict):
+        vd = vector_data_json
+    else:
+        vd = json.loads(vector_data_json)
+
+    search_mode = vd.get("search_mode", "vector")
+    entities = vd.get("entities", [])
+    obs_by_entity = vd.get("obs_by_entity", {})
+
+    # ── Parse LLM-filtered observations ──────────────────────────────
+    # NativeEnvironment may deliver filtered_json as a Python dict (when
+    # the LLM output looks like a valid Python literal) OR as a plain
+    # JSON string.  Handle both.
+    filtered_tables: Dict[str, List[str]] = {}
+    if filtered_json:
+        data = None
+        if isinstance(filtered_json, dict):
+            # NativeEnvironment already parsed to dict
+            data = filtered_json
+        elif isinstance(filtered_json, list):
+            # Unlikely but handle list wrapper
+            data = {"tables": filtered_json}
+        else:
+            text = str(filtered_json).strip()
+            # Strip markdown fences
+            if text.startswith("```"):
+                lines = text.split("\n")
+                if lines[0].startswith("```"):
+                    lines = lines[1:]
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]
+                text = "\n".join(lines)
+            try:
+                data = json.loads(text)
+            except (json.JSONDecodeError, TypeError):
+                log.warning("kg_search: assembly could not parse filtered observations: %s", text[:200])
+
+        if data and isinstance(data, dict):
+            for t in data.get("tables", []):
+                eid = t.get("entity_id", "")
+                obs = t.get("observations", [])
+                if eid:
+                    filtered_tables[eid] = [str(o) for o in obs]
+
+    # ── Assemble per-entity context ──────────────────────────────────
+    tables = []
+    obs_path_counts = {"fast_filter": 0, "vector_ranked": 0, "tier_fallback": 0}
+
+    for entity in entities:
+        eid = entity["entity_id"]
+
+        if eid in filtered_tables:
+            # Use LLM-filtered observations
+            ctx = _assemble_table_context(
+                entity, pre_ranked_observations=filtered_tables[eid],
+            )
+            obs_path_counts["fast_filter"] += 1
+        elif eid in obs_by_entity and obs_by_entity[eid]:
+            # Use vector-ranked observations (LLM filter didn't cover this table)
+            obs_lines = [
+                f"[{o.get('category', 'general')}] {o.get('content', '')}"
+                for o in obs_by_entity[eid]
+            ]
+            ctx = _assemble_table_context(entity, pre_ranked_observations=obs_lines)
+            obs_path_counts["vector_ranked"] += 1
+        else:
+            # Fallback: tier/confidence from DB
+            ctx = _assemble_table_context(entity)
+            obs_path_counts["tier_fallback"] += 1
+
+        tables.append(ctx)
+
+    # ── Determine stage statuses for _meta ────────────────────────────
+    if obs_path_counts["fast_filter"]:
+        stage3_status = f"filtered {obs_path_counts['fast_filter']} tables"
+    elif obs_path_counts["vector_ranked"]:
+        stage3_status = "vector-ranked only"
+    else:
+        stage3_status = "tier/confidence fallback"
+
+    log.info(
+        "kg_search: Assembly → %s | paths: %s",
+        stage3_status, obs_path_counts,
+    )
+
+    return json.dumps({
+        "query": query,
+        "source": f"kg:{search_mode}",
+        "table_count": len(tables),
+        "tables": tables,
+        "_meta": {
+            "stages": {
+                "embed_query": "ok" if vd.get("query_vec_ok") else "failed",
+                "entity_search": search_mode,
+                "entity_matches": len(entities),
+                "obs_ranking": vd.get("stage2_status", "unknown"),
+                "fast_filter": stage3_status,
+            },
+            "obs_paths": obs_path_counts,
+            "execution": "cascade",
+        },
+    }, default=str, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# kg_search — skill entry point (invokes cascade or direct fallback)
+# ---------------------------------------------------------------------------
 
 @register_skill("kg_search")
 def kg_search(
@@ -586,105 +891,56 @@ def kg_search(
             - columns: Compact column schema lines
             - observations: Relevance-ranked insights about the data
     """
-    # Embed query once — reused for entity search + observation search
-    query_vec, embed_dim = _embed_query(query)
-    log.info("kg_search: query_vec=%s, embed_dim=%d", "OK" if query_vec else "NONE", embed_dim)
+    k, obs_per_table = int(k), int(obs_per_table)
 
-    # ── Stage 1: Entity search ───────────────────────────────────────
-    if query_vec:
-        matches = _kg_vector_search(query, k=k, query_vec=query_vec, embed_dim=embed_dim)
-        search_mode = "vector"
-    else:
-        matches = []
-        search_mode = "lexical"
+    # ── Cascade path: full 3-stage pipeline with tracked LLM filter ──
+    if use_fast_filter:
+        try:
+            import os
+            from ..runner import run_cascade
 
-    if not matches:
-        if search_mode == "vector":
-            log.info("kg_search: vector search returned 0 results for %r — trying lexical", query)
-        matches = _kg_lexical_search(query, k=k)
-        search_mode = "lexical"
-        if not matches:
-            log.warning("kg_search: lexical search also returned 0 results for %r", query)
-
-    log.info("kg_search: Stage 1 → %s, %d matches", search_mode, len(matches))
-
-    # ── Stage 2: Observation vector ranking ──────────────────────────
-    obs_by_entity: Dict[str, List[Dict[str, Any]]] = {}
-    stage2_status = "skipped"
-    if query_vec and matches:
-        entity_ids = [m["entity_id"] for m in matches]
-        obs_by_entity = _kg_observation_vector_search(
-            query_vec=query_vec,
-            entity_ids=entity_ids,
-            top_k_per_entity=int(obs_per_table),
-            embed_dim=embed_dim,
-        )
-        if obs_by_entity:
-            stage2_status = f"ranked ({sum(len(v) for v in obs_by_entity.values())} obs across {len(obs_by_entity)} tables)"
-        else:
-            stage2_status = "empty (fallback to tier/confidence)"
-    elif not query_vec:
-        stage2_status = "skipped (no query vector)"
-
-    log.info("kg_search: Stage 2 → %s", stage2_status)
-
-    # ── Stage 3 + Assembly ───────────────────────────────────────────
-    tables = []
-    stage3_status = "skipped"
-    obs_path_counts = {"fast_filter": 0, "vector_ranked": 0, "tier_fallback": 0}
-
-    for entity in matches:
-        eid = entity["entity_id"]
-        ranked_obs = obs_by_entity.get(eid)
-
-        if ranked_obs and use_fast_filter:
-            # Stage 3: fast model filter/summary
-            filtered_lines = _fast_model_filter_observations(
-                query=query,
-                table_name=entity.get("qualified_name", ""),
-                observations=ranked_obs,
-                table_description=entity.get("description") or "",
+            cascade_path = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                "builtin_cascades", "kg_search.yaml",
             )
-            ctx = _assemble_table_context(entity, pre_ranked_observations=filtered_lines)
-            obs_path_counts["fast_filter"] += 1
-        elif ranked_obs:
-            # Stage 2 only: use vector-ranked observations without LLM filter
-            obs_lines = [
-                f"[{o.get('category', 'general')}] {o.get('content', '')}"
-                for o in ranked_obs
-            ]
-            ctx = _assemble_table_context(entity, pre_ranked_observations=obs_lines)
-            obs_path_counts["vector_ranked"] += 1
-        else:
-            # Fallback: original tier/confidence ranking
-            ctx = _assemble_table_context(entity)
-            obs_path_counts["tier_fallback"] += 1
+            log.info("kg_search: launching cascade from %s", cascade_path)
 
-        tables.append(ctx)
+            result = run_cascade(
+                config_path=cascade_path,
+                input_data={
+                    "query": query,
+                    "k": k,
+                    "obs_per_table": obs_per_table,
+                },
+                session_id=f"kg_search_{uuid.uuid4().hex[:8]}",
+            )
 
-    if obs_path_counts["fast_filter"]:
-        stage3_status = f"filtered {obs_path_counts['fast_filter']} tables"
-    elif obs_path_counts["vector_ranked"]:
-        stage3_status = "vector-ranked only (no fast filter)"
+            # Extract final cell output from cascade lineage
+            if result and result.get("lineage"):
+                final = result["lineage"][-1].get("output")
+                if final:
+                    log.info("kg_search: cascade completed (%d cells)", len(result["lineage"]))
+                    return final if isinstance(final, str) else json.dumps(
+                        final, default=str, indent=2,
+                    )
 
-    log.info("kg_search: Stage 3 → %s | paths: %s", stage3_status, obs_path_counts)
+            log.warning("kg_search: cascade returned no output — falling back to direct")
+            if result:
+                log.warning("kg_search: cascade result keys=%s, lineage_len=%d, errors=%s",
+                            list(result.keys()),
+                            len(result.get("lineage", [])),
+                            result.get("errors", []))
+        except Exception as e:
+            import sys, traceback
+            tb = traceback.format_exc()
+            log.warning("kg_search: cascade failed — falling back to direct\n%s", tb)
+            # Also print to stderr so it's visible from CLI even without logging
+            print(f"[kg_search] cascade failed, falling back to direct: {e}", file=sys.stderr)
+            print(tb, file=sys.stderr)
 
-    return json.dumps({
-        "query": query,
-        "source": f"kg:{search_mode}",
-        "table_count": len(tables),
-        "tables": tables,
-        "_meta": {
-            "stages": {
-                "embed_query": "ok" if query_vec else "failed",
-                "entity_search": search_mode,
-                "entity_matches": len(matches),
-                "obs_ranking": stage2_status,
-                "fast_filter": stage3_status,
-            },
-            "obs_paths": obs_path_counts,
-        },
-    }, default=str, indent=2)
+    # ── Direct path: stages 1+2 only (no LLM filter) ────────────────
+    vector_data = _kg_search_vector_stages(query, k=k, obs_per_table=obs_per_table)
+    return _kg_search_assemble(json.dumps(vector_data, default=str), None, query)
 
 
 # ---------------------------------------------------------------------------
@@ -975,6 +1231,7 @@ def kg_dream(
     max_entities: int = 0,
     model_tier: str = "standard",
     dry_run: bool = False,
+    force: bool = False,
 ) -> str:
     """
     Run Tier 2 LLM enrichment over the knowledge graph ("dreaming").
@@ -987,6 +1244,7 @@ def kg_dream(
         max_entities: Max entities to enrich (0 = all, default).
         model_tier: LLM tier — "fast", "standard", "quality" (default "standard").
         dry_run: If True, show what would be enriched without calling the LLM.
+        force: Re-enrich all entities, even those with existing Tier 2 observations.
 
     Returns:
         JSON summary with counts, cost, and timing.
@@ -996,6 +1254,7 @@ def kg_dream(
         max_entities=int(max_entities),
         model_tier=model_tier,
         dry_run=bool(dry_run),
+        force=bool(force),
     )
     return json.dumps(result, default=str, indent=2)
 
@@ -1048,3 +1307,51 @@ def kg_embed(
         "entities": entity_result,
         "observations": obs_result,
     }, default=str, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# kg_validate
+# ---------------------------------------------------------------------------
+
+@register_skill("kg_validate")
+def kg_validate(
+    contract_types: str = "",
+    max_observations: int = 0,
+    investigate: bool = True,
+    model_tier: str = "fast",
+    dry_run: bool = False,
+) -> str:
+    """
+    Validate observation contracts by re-running evidence SQL.
+
+    Finds observations with evidence_sql and evidence_hash, re-runs
+    the queries, and detects changes.  For invariant and trend breaches,
+    runs an LLM investigation to explain what changed and why it matters.
+
+    This is the "semantic CDC" — not just what changed, but what it MEANS.
+
+    Args:
+        contract_types: Comma-separated types to check (default: all).
+            Options: "invariant", "trend", "snapshot"
+        max_observations: Max observations to validate (0 = all, default).
+        investigate: Run LLM investigation on breaches (default True).
+        model_tier: Model tier for investigation — "fast" or "standard".
+        dry_run: If True, detect breaches but don't write findings.
+
+    Returns:
+        JSON summary with breach counts, findings, and costs.
+    """
+    from .validator import validate_contracts
+
+    types_list = None
+    if contract_types:
+        types_list = [t.strip() for t in contract_types.split(",") if t.strip()]
+
+    result = validate_contracts(
+        contract_types=types_list,
+        max_observations=int(max_observations),
+        investigate=bool(investigate),
+        model_tier=model_tier,
+        dry_run=bool(dry_run),
+    )
+    return json.dumps(result, default=str, indent=2)

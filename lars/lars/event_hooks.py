@@ -350,7 +350,11 @@ Return ONLY the title, nothing else."""
                 # Update existing - use simple UPDATE (ALTER TABLE is DuckDB-specific)
                 try:
                     # Delete old record and insert new one (safer than ALTER TABLE)
-                    db.execute(f"DELETE FROM research_sessions WHERE original_session_id = '{session_id}'")
+                    db.delete_rows_by_keys(
+                        "research_sessions",
+                        ["original_session_id"],
+                        [{"original_session_id": session_id}],
+                    )
 
                     db.insert_rows('research_sessions', [{
                         'id': research_id,

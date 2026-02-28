@@ -58,7 +58,9 @@ Return ONLY a JSON object with these keys:
     {
       "category": "domain|quality|relationship|pattern|usage",
       "content":  "One clear observation a data analyst would find useful.",
-      "confidence": 0.0-1.0
+      "confidence": 0.0-1.0,
+      "evidence_sql": "SELECT ... FROM table ... -- a SQL query that validates this observation",
+      "contract_type": "invariant|trend|snapshot"
     }
   ]
 }
@@ -81,6 +83,24 @@ Guidelines:
   • Anything surprising or noteworthy in the sample rows
 - confidence: How sure you are (0.6 = educated guess, 0.8 = likely,
   0.95 = very confident).
+- evidence_sql: A SQL query against the table (use the qualified table name
+  from the header) that proves or validates the observation.  The query result
+  should make the observation verifiable.  For example, if you observe
+  "Class field has 3 distinct values", write:
+  SELECT class, COUNT(*) FROM csv_files.bigfoot_sightings GROUP BY class
+  Use simple, efficient SQL.  Omit if the observation can't be validated
+  by a single query (e.g. domain tag observations).
+- contract_type: How this observation should be monitored over time:
+  • "invariant" — you expect this to always be true (e.g. "all values in
+    column X are positive", "table has exactly 3 distinct classes").
+    A change means something significant happened.
+  • "trend" — this describes a directional pattern (e.g. "row count grows
+    ~5% monthly", "average order value has been increasing").
+    A reversal means the trend broke.
+  • "snapshot" — this is a point-in-time fact (e.g. "table has 5,035 rows",
+    "date range is 1968-2022").  Changes are expected and low-priority.
+  Default to "snapshot" if unsure.  Use "invariant" sparingly — only for
+  things that would genuinely surprise a data analyst if they changed.
 - Do NOT repeat observations that are already provided as "existing".
 - Be concrete and specific.  Reference actual values you see in the data.
 - If sample data is provided, your observations MUST reference it.
@@ -330,6 +350,7 @@ def _find_candidates(
     query_fn,
     entity_types: List[str],
     max_entities: int = 0,
+    force: bool = False,
 ) -> List[Dict[str, Any]]:
     """Find entities that need Tier 2 enrichment.
 
@@ -338,6 +359,7 @@ def _find_candidates(
 
     Args:
         max_entities: 0 = unlimited (all candidates), >0 = cap.
+        force: If True, return ALL entities regardless of existing observations.
     """
     candidates: List[Dict[str, Any]] = []
 
@@ -350,31 +372,42 @@ def _find_candidates(
             remaining = max_entities - len(candidates)
             limit_clause = f"LIMIT {int(remaining)}"
 
-        # Find entities that need enrichment:
-        #  1) Never enriched (no Tier 2 observations), OR
-        #  2) Description was clobbered by re-crawl (still generic Tier 1 pattern
-        #     like "Table 'X' with N columns..." but has Tier 2 observations)
-        sql = f"""
-            SELECT e.entity_id, e.entity_type, e.name, e.qualified_name,
-                   e.description, e.properties_json, e.source_connection
-            FROM kg_entities e
-            WHERE e.entity_type = '{etype}'
-              AND (
-                  e.entity_id NOT IN (
-                      SELECT DISTINCT entity_id FROM kg_observations
-                      WHERE tier >= 2
-                  )
-                  OR (
-                      e.description LIKE 'Table ''%'' with %% columns%%'
-                      AND e.entity_id IN (
+        if force:
+            # Force mode: return all entities of this type
+            sql = f"""
+                SELECT e.entity_id, e.entity_type, e.name, e.qualified_name,
+                       e.description, e.properties_json, e.source_connection
+                FROM kg_entities e
+                WHERE e.entity_type = '{etype}'
+                ORDER BY e.name
+                {limit_clause}
+            """
+        else:
+            # Find entities that need enrichment:
+            #  1) Never enriched (no Tier 2 observations), OR
+            #  2) Description was clobbered by re-crawl (still generic Tier 1 pattern
+            #     like "Table 'X' with N columns..." but has Tier 2 observations)
+            sql = f"""
+                SELECT e.entity_id, e.entity_type, e.name, e.qualified_name,
+                       e.description, e.properties_json, e.source_connection
+                FROM kg_entities e
+                WHERE e.entity_type = '{etype}'
+                  AND (
+                      e.entity_id NOT IN (
                           SELECT DISTINCT entity_id FROM kg_observations
                           WHERE tier >= 2
                       )
+                      OR (
+                          e.description LIKE 'Table ''%'' with %% columns%%'
+                          AND e.entity_id IN (
+                              SELECT DISTINCT entity_id FROM kg_observations
+                              WHERE tier >= 2
+                          )
+                      )
                   )
-              )
-            ORDER BY e.name
-            {limit_clause}
-        """
+                ORDER BY e.name
+                {limit_clause}
+            """
         rows = query_fn(sql)
         candidates.extend(rows)
 
@@ -426,6 +459,7 @@ def dream_tier2(
     model_tier: str = "standard",
     samples_dir: Optional[str] = None,
     dry_run: bool = False,
+    force: bool = False,
 ) -> Dict[str, Any]:
     """
     Run Tier 2 LLM enrichment over the knowledge graph.
@@ -436,6 +470,7 @@ def dream_tier2(
 
     Args:
         max_entities: Max entities to enrich (0 = all, default).
+        force: Re-enrich ALL entities, even those with existing Tier 2 observations.
         model_tier: LLM tier — "fast", "standard", "quality" (default "standard").
         samples_dir: Path to crawl samples. Auto-detected if None.
         dry_run: If True, build prompts but don't call the LLM.
@@ -502,7 +537,7 @@ def dream_tier2(
 
     try:
         # Find candidates
-        candidates = _find_candidates(kg_query, _ENRICHMENT_PRIORITY, max_entities)
+        candidates = _find_candidates(kg_query, _ENRICHMENT_PRIORITY, max_entities, force=force)
         log.info("Tier 2 dreaming: %d candidates found", len(candidates))
 
         if not candidates:
@@ -620,6 +655,9 @@ def dream_tier2(
                             "category": "domain",
                             "content": domain_content,
                             "confidence": 0.8,
+                            "evidence_sql": None,
+                            "evidence_hash": None,
+                            "contract_type": None,
                             "embedding": None,
                             "embedding_model": None,
                             "superseded_by": None,
@@ -634,6 +672,34 @@ def dream_tier2(
                         conf = min(max(float(obs_data.get("confidence", 0.7)), 0.0), 1.0)
                         if not content:
                             continue
+
+                        # Evidence SQL and contract type (new: observation contracts)
+                        evidence_sql = obs_data.get("evidence_sql") or None
+                        contract_type = obs_data.get("contract_type") or None
+                        if contract_type and contract_type not in ("invariant", "trend", "snapshot"):
+                            contract_type = "snapshot"
+
+                        # Compute evidence hash if we have SQL
+                        evidence_hash = None
+                        if evidence_sql:
+                            try:
+                                from ..sql_tools.tools import safe_sql_run
+                                ev_result = safe_sql_run(
+                                    sql=evidence_sql,
+                                    connection=entity.get("source_connection", ""),
+                                    row_limit=100,
+                                    text_max_chars=500,
+                                )
+                                evidence_hash = hashlib.sha256(
+                                    ev_result.encode()
+                                ).hexdigest()[:16]
+                            except Exception as e:
+                                log.debug(
+                                    "Tier 2: evidence SQL failed for %s: %s",
+                                    entity_id, e,
+                                )
+                                # Keep the SQL but no hash — validator can retry
+
                         obs_rows.append({
                             "observation_id": _obs_id(entity_id, cat, content),
                             "entity_id": entity_id,
@@ -643,6 +709,9 @@ def dream_tier2(
                             "category": cat,
                             "content": content,
                             "confidence": conf,
+                            "evidence_sql": evidence_sql,
+                            "evidence_hash": evidence_hash,
+                            "contract_type": contract_type,
                             "embedding": None,
                             "embedding_model": None,
                             "superseded_by": None,

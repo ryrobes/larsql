@@ -1893,6 +1893,9 @@ SYSTEM_TABLES = {
             ("confidence", "FLOAT"),             # how sure
             ("embedding", "FLOAT[]"),            # vector for RAG
             ("embedding_model", "VARCHAR"),
+            ("evidence_sql", "VARCHAR"),          # SQL query that validates this observation
+            ("evidence_hash", "VARCHAR"),        # hash of last evidence result (for change detection)
+            ("contract_type", "VARCHAR"),        # invariant, trend, snapshot, or null
             ("superseded_by", "VARCHAR"),        # observation_id that replaces this
             ("dream_session_id", "VARCHAR"),     # which dream session produced this
             ("created_at", "TIMESTAMP"),

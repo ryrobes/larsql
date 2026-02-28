@@ -431,6 +431,7 @@ def main():
     kg_dream_parser.add_argument('--max', type=int, default=0, help='Max entities to enrich (0 = all)')
     kg_dream_parser.add_argument('--model-tier', default='standard', choices=['fast', 'standard', 'quality'], help='LLM tier (default: standard)')
     kg_dream_parser.add_argument('--dry-run', action='store_true', help='Show what would be enriched without calling LLM')
+    kg_dream_parser.add_argument('--force', action='store_true', help='Re-enrich all entities (even those with existing Tier 2 observations)')
 
     # kg embed
     kg_embed_parser = kg_subparsers.add_parser(
@@ -440,6 +441,17 @@ def main():
     kg_embed_parser.add_argument('--force', action='store_true', help='Re-embed all even if already embedded')
     kg_embed_parser.add_argument('--max-entities', type=int, default=0, help='Max entities to embed (0 = all)')
     kg_embed_parser.add_argument('--max-observations', type=int, default=0, help='Max observations to embed (0 = all)')
+
+    # kg validate
+    kg_validate_parser = kg_subparsers.add_parser(
+        'validate',
+        help='Validate observation contracts (semantic CDC — detect what changed and what it means)'
+    )
+    kg_validate_parser.add_argument('--types', default='', help='Comma-separated contract types: invariant,trend,snapshot (default: all)')
+    kg_validate_parser.add_argument('--max', type=int, default=0, help='Max observations to check (0 = all)')
+    kg_validate_parser.add_argument('--model-tier', default='fast', choices=['fast', 'standard', 'quality'], help='LLM tier for investigation (default: fast)')
+    kg_validate_parser.add_argument('--no-investigate', action='store_true', help='Skip LLM investigation (just detect breaches)')
+    kg_validate_parser.add_argument('--dry-run', action='store_true', help='Detect breaches but don\'t write findings')
 
     # kg stats
     kg_subparsers.add_parser('stats', help='Show knowledge graph statistics')
@@ -1735,6 +1747,8 @@ def main():
             cmd_kg_stats(args)
         elif args.kg_command == 'context':
             cmd_kg_context(args)
+        elif args.kg_command == 'validate':
+            cmd_kg_validate(args)
         else:
             kg_parser.print_help()
             sys.exit(1)
@@ -8106,6 +8120,7 @@ def cmd_kg_dream(args):
         max_entities=args.max,
         model_tier=args.model_tier,
         dry_run=args.dry_run,
+        force=getattr(args, 'force', False),
     )
     print(result)
 
@@ -8133,6 +8148,23 @@ def cmd_kg_context(args):
     from lars.kg.skills import kg_context
     result = kg_context(name=args.name)
     print(result)
+
+
+def cmd_kg_validate(args):
+    """Validate observation contracts — semantic CDC."""
+    from lars.kg.validator import validate_contracts
+    types_list = [t.strip() for t in args.types.split(",") if t.strip()] if args.types else None
+    result = validate_contracts(
+        contract_types=types_list,
+        max_observations=args.max,
+        investigate=not args.no_investigate,
+        model_tier=args.model_tier,
+        dry_run=args.dry_run,
+    )
+    # Print findings JSON for programmatic use
+    if result.get("findings"):
+        import json
+        print(json.dumps(result["findings"], indent=2, default=str))
 
 
 # =============================================================================

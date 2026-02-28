@@ -101,10 +101,14 @@ def _build_internal_cascade_lookup() -> Dict[str, bool]:
     lookup = {}
 
     # Directories to scan for cascades
+    # Include both LARS_ROOT user cascades AND package-level builtin cascades
+    package_dir = os.path.dirname(os.path.abspath(__file__))
     scan_dirs = [
         os.path.join(LARS_ROOT, 'cascades', 'semantic_sql'),
         os.path.join(LARS_ROOT, 'cascades'),
         os.path.join(LARS_ROOT, 'skills'),
+        os.path.join(package_dir, 'builtin_cascades'),
+        os.path.join(package_dir, 'builtin_cascades', 'internal'),
     ]
 
     for scan_dir in scan_dirs:

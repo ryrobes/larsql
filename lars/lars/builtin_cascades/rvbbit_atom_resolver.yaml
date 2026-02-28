@@ -305,29 +305,33 @@ cells:
       Display type selection:
       - Top N by category → `barChart`
       - Trend over time → `lineChart` or `areaChart`
+      - Multi-series trend → `lineChart` with color encoding
+      - Proportional breakdown → `pieChart`
+      - Correlation / xy → `scatterPlot`
       - Single KPI → `number`
       - Record-level detail → `table`
 
-      Chart spec contract:
-      For chart displayTypes, put a Vega-Lite spec object in `displayHints.spec`.
+      MANDATORY: Every chart displayType MUST include `displayHints.spec`.
+      Without a spec, the chart renderer cannot map your SQL columns to visual axes.
       The `spec` value is a JSON object (not a string). SQL must do ALL data shaping.
 
-      SUPPORTED keys only (everything else is silently dropped):
-        marks:     bar, line, area, point, rule, rect
-        encoding:  x, y, x2, y2, color, detail
+      Vega-Lite subset — SUPPORTED keys (everything else is silently dropped):
+        marks:     bar, line, area, point, rule, rect, arc (pie/donut)
+        encoding:  x, y, x2, y2, color, detail, theta (arc/pie only)
         channel:   field, type (nominal/quantitative/temporal/ordinal), timeUnit, axis, scale, stack
         axis:      title, grid, tickCount, format, orient, timeZone, weekStart, fillMissing
         scale:     domain ([min,max])
-        mark obj:  type, opacity, strokeWidth, interpolate, size, cornerRadius, color, fill, stroke, strokeDash
-        layer:     array of {mark, encoding} for multi-mark charts
+        mark obj:  type, opacity, strokeWidth, interpolate, size, cornerRadius, color, fill, stroke, strokeDash, innerRadius
+        layer:     array of {mark, encoding} for multi-mark overlay charts
+        legend:    true/false, or {orient: "top"/"bottom"/"left"/"right"}
 
       NOT SUPPORTED (silently ignored — do not use):
         transform, aggregate, calculate, filter, selection, condition, params,
         facet, repeat, concat, resolve, data, datasets, projection, window, lookup
 
-      Every `field` value must exactly match a SELECT alias from the SQL.
+      Every `field` value MUST exactly match a SELECT alias from the SQL.
 
-      Example A — Bar chart:
+      Example A — Vertical bar chart:
       SQL: SELECT state, COUNT(*) AS sightings FROM t GROUP BY state ORDER BY sightings DESC LIMIT 10
       {
         "displayType": "barChart",
@@ -342,26 +346,128 @@ cells:
         }
       }
 
-      Example B — Time series:
+      Example B — Horizontal bar chart (swap x/y so categories are on y-axis):
+      SQL: SELECT category, total FROM t ORDER BY total DESC LIMIT 10
+      {
+        "displayType": "barChart",
+        "displayHints": {
+          "spec": {
+            "mark": "bar",
+            "encoding": {
+              "x": {"field": "total", "type": "quantitative"},
+              "y": {"field": "category", "type": "nominal"}
+            }
+          }
+        }
+      }
+
+      Example C — Time-series line chart:
       SQL: SELECT month, SUM(revenue) AS total_revenue FROM t GROUP BY month ORDER BY month
       {
         "displayType": "lineChart",
         "displayHints": {
           "spec": {
-            "mark": "line",
+            "mark": {"type": "line", "interpolate": "monotone"},
             "encoding": {
-              "x": {"field": "month", "type": "temporal", "timeUnit": "month"},
+              "x": {"field": "month", "type": "temporal"},
               "y": {"field": "total_revenue", "type": "quantitative"}
             }
           }
         }
       }
 
-      Example C — Number KPI:
+      Example D — Multi-series line chart (color = series dimension):
+      SQL: SELECT year, region, SUM(sales) AS sales FROM t GROUP BY year, region ORDER BY year
+      {
+        "displayType": "lineChart",
+        "displayHints": {
+          "spec": {
+            "mark": "line",
+            "encoding": {
+              "x": {"field": "year", "type": "temporal"},
+              "y": {"field": "sales", "type": "quantitative"},
+              "color": {"field": "region", "type": "nominal"}
+            }
+          }
+        }
+      }
+
+      Example E — Area chart with opacity:
+      SQL: SELECT date, cumulative_total FROM t ORDER BY date
+      {
+        "displayType": "areaChart",
+        "displayHints": {
+          "spec": {
+            "mark": {"type": "area", "opacity": 0.4},
+            "encoding": {
+              "x": {"field": "date", "type": "temporal"},
+              "y": {"field": "cumulative_total", "type": "quantitative"}
+            }
+          }
+        }
+      }
+
+      Example F — Pie chart (use mark "arc" + theta encoding):
+      SQL: SELECT category, SUM(amount) AS total FROM t GROUP BY category
+      {
+        "displayType": "pieChart",
+        "displayHints": {
+          "spec": {
+            "mark": "arc",
+            "encoding": {
+              "theta": {"field": "total", "type": "quantitative"},
+              "color": {"field": "category", "type": "nominal"}
+            }
+          }
+        }
+      }
+
+      Example G — Scatter plot:
+      SQL: SELECT height, weight, species FROM t
+      {
+        "displayType": "scatterPlot",
+        "displayHints": {
+          "spec": {
+            "mark": "point",
+            "encoding": {
+              "x": {"field": "height", "type": "quantitative"},
+              "y": {"field": "weight", "type": "quantitative"},
+              "color": {"field": "species", "type": "nominal"}
+            }
+          }
+        }
+      }
+
+      Example H — Layered chart (line + rule threshold):
+      SQL: SELECT month, value FROM t ORDER BY month
+      {
+        "displayType": "lineChart",
+        "displayHints": {
+          "spec": {
+            "layer": [
+              {
+                "mark": "line",
+                "encoding": {
+                  "x": {"field": "month", "type": "temporal"},
+                  "y": {"field": "value", "type": "quantitative"}
+                }
+              },
+              {
+                "mark": {"type": "rule", "color": "#ff4040", "strokeDash": [4, 4]},
+                "encoding": {
+                  "y": {"datum": 100}
+                }
+              }
+            ]
+          }
+        }
+      }
+
+      Example I — Number KPI:
       {"displayType": "number", "displayHints": {"value": "total_count", "format": "integer"}}
 
-      Example D — Table:
-      {"displayType": "table", "displayHints": {"columns": ["id", "status", "amount"]}}
+      Example J — Table:
+      {"displayType": "table"}
 
       DuckDB rules:
       - Use discovered table refs exactly; do not invent schema segments.
@@ -490,11 +596,14 @@ cells:
       3. Return final atoms with executable SQL and verified display metadata.
 
       Spec quality checks:
+      - Every chart displayType (barChart, lineChart, areaChart, scatterPlot, pieChart) MUST have `displayHints.spec`. If the draft is missing it, ADD one now.
       - Every `field` in `displayHints.spec.encoding` must match a SELECT alias from the final SQL.
-      - `mark` must be one of: bar, line, area, point, rule, rect.
+      - `mark` must be one of: bar, line, area, point, rule, rect, arc.
+      - For pieChart, use mark "arc" with encoding.theta (value) and encoding.color (category).
       - Do NOT use transform, aggregate, data, selection, condition, or params keys in the spec.
       - For chart atoms, `displayHints.spec` must be a JSON object (not a string).
       - For time-series intents, ensure `encoding.x.type` is `"temporal"`.
+      - For multi-series charts, use `encoding.color` with `type: "nominal"` to define the series dimension.
       - If user asked for a chart and SQL supports it, do not fall back to table.
       - Keep titles short and specific; summaries factual and concise.
 

@@ -10,6 +10,7 @@ import json
 import math
 import os
 import sys
+import uuid
 from flask import Blueprint, jsonify, request
 from datetime import datetime
 
@@ -965,60 +966,69 @@ def add_tag():
         db = get_db()
 
         # Check if tag definition already exists
-        existing_tag_query = f"""
+        existing_tag_query = """
             SELECT tag_name, tag_color FROM tag_definitions
-            WHERE tag_name = '{tag_name}'
+            WHERE tag_name = %(tag_name)s
             LIMIT 1
         """
-        existing_tag = db.query(existing_tag_query)
+        existing_tag = db.query(existing_tag_query, {"tag_name": tag_name})
 
         # Only create tag definition if it doesn't exist (for new tags)
         if not existing_tag:
-            tag_def_query = f"""
-                INSERT INTO tag_definitions (tag_name, tag_color, description, updated_at)
-                VALUES ('{tag_name}', '{tag_color}', NULL, now64(3))
-            """
             try:
-                db.execute(tag_def_query)
+                now_ts = datetime.utcnow()
+                db.insert_rows("tag_definitions", [{
+                    "tag_name": tag_name,
+                    "tag_color": tag_color,
+                    "description": None,
+                    "created_at": now_ts,
+                    "updated_at": now_ts,
+                }], log_query=False)
             except:
                 pass  # Ignore if somehow already exists
 
         # Check for duplicate tag assignment
         if tag_mode == 'instance':
-            dup_check = f"""
+            dup_check = """
                 SELECT tag_id FROM output_tags
-                WHERE tag_name = '{tag_name}'
+                WHERE tag_name = %(tag_name)s
                   AND tag_mode = 'instance'
-                  AND message_id = '{message_id}'
+                  AND message_id = %(message_id)s
                 LIMIT 1
             """
+            dup_params = {"tag_name": tag_name, "message_id": message_id}
         else:
-            dup_check = f"""
+            dup_check = """
                 SELECT tag_id FROM output_tags
-                WHERE tag_name = '{tag_name}'
+                WHERE tag_name = %(tag_name)s
                   AND tag_mode = 'dynamic'
-                  AND cascade_id = '{cascade_id}'
-                  AND cell_name = '{cell_name}'
+                  AND cascade_id = %(cascade_id)s
+                  AND cell_name = %(cell_name)s
                 LIMIT 1
             """
+            dup_params = {
+                "tag_name": tag_name,
+                "cascade_id": cascade_id,
+                "cell_name": cell_name,
+            }
 
-        existing = db.query(dup_check)
+        existing = db.query(dup_check, dup_params)
         if existing:
             return jsonify({"error": "Tag already exists for this output"}), 409
 
         # Insert the tag assignment
-        if tag_mode == 'instance':
-            insert_query = f"""
-                INSERT INTO output_tags (tag_name, tag_mode, message_id, note)
-                VALUES ('{tag_name}', 'instance', '{message_id}', {f"'{note}'" if note else 'NULL'})
-            """
-        else:
-            insert_query = f"""
-                INSERT INTO output_tags (tag_name, tag_mode, cascade_id, cell_name, note)
-                VALUES ('{tag_name}', 'dynamic', '{cascade_id}', '{cell_name}', {f"'{note}'" if note else 'NULL'})
-            """
-
-        db.execute(insert_query)
+        insert_row = {
+            "tag_id": str(uuid.uuid4()),
+            "tag_name": tag_name,
+            "tag_mode": tag_mode,
+            "message_id": message_id if tag_mode == "instance" else None,
+            "cascade_id": cascade_id if tag_mode == "dynamic" else None,
+            "cell_name": cell_name if tag_mode == "dynamic" else None,
+            "created_at": datetime.utcnow(),
+            "created_by": "studio",
+            "note": note,
+        }
+        db.insert_rows("output_tags", [insert_row])
 
         return jsonify({"success": True, "tag_name": tag_name, "tag_mode": tag_mode})
 
@@ -1040,12 +1050,11 @@ def remove_tag(tag_id):
 
     try:
         db = get_db()
-
-        # Delete the tag assignment
-        delete_query = f"""
-            DELETE FROM output_tags WHERE tag_id = '{tag_id}'
-        """
-        db.execute(delete_query)
+        db.delete_rows_by_keys(
+            "output_tags",
+            ["tag_id"],
+            [{"tag_id": tag_id}],
+        )
 
         return jsonify({"success": True, "deleted_tag_id": tag_id})
 

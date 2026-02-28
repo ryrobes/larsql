@@ -199,6 +199,9 @@ def _make_obs(
     confidence: float,
     dream_session_id: str,
     now: datetime,
+    evidence_sql: Optional[str] = None,
+    evidence_hash: Optional[str] = None,
+    contract_type: Optional[str] = None,
 ) -> Dict[str, Any]:
     return {
         "observation_id": _obs_id(entity_id, category, content),
@@ -209,6 +212,9 @@ def _make_obs(
         "category": category,
         "content": content,
         "confidence": confidence,
+        "evidence_sql": evidence_sql,
+        "evidence_hash": evidence_hash,
+        "contract_type": contract_type,
         "embedding": None,
         "embedding_model": None,
         "superseded_by": None,

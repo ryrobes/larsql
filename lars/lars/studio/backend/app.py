@@ -6047,20 +6047,26 @@ def cancel_cascade():
         db = get_db()
         checkpoints_deleted = 0
         try:
-            # Count pending checkpoints first
-            count_query = f"""
-                SELECT count() as cnt FROM checkpoints
+            # Collect pending checkpoint ids first, then delete by key.
+            pending_query = f"""
+                SELECT id FROM checkpoints
                 WHERE session_id = '{session_id}' AND status = 'pending'
             """
-            count_result = db.query(count_query)
-            checkpoints_deleted = int(count_result[0]['cnt']) if count_result else 0
+            pending_rows = db.query(pending_query)
+            checkpoint_ids = [
+                row.get("id")
+                for row in (pending_rows or [])
+                if row.get("id")
+            ]
+            checkpoints_deleted = len(checkpoint_ids)
 
             if checkpoints_deleted > 0:
                 print(f"[cancel-cascade] Deleting {checkpoints_deleted} pending checkpoint(s)")
-                db.execute(f"""
-                    DELETE FROM checkpoints
-                    WHERE session_id = '{session_id}' AND status = 'pending'
-                """)
+                db.delete_rows_by_keys(
+                    "checkpoints",
+                    ["id"],
+                    [{"id": checkpoint_id} for checkpoint_id in checkpoint_ids],
+                )
                 print(f"[cancel-cascade] Checkpoints deletion initiated")
         except Exception as cp_err:
             print(f"[cancel-cascade] Warning: Could not delete checkpoints: {cp_err}")

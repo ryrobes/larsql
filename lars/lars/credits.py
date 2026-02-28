@@ -176,24 +176,20 @@ def log_credit_snapshot(
 
         db = get_db()
 
-        # Insert using raw SQL for simplicity
         now = datetime.utcnow()
-
-        db.execute(f"""
-            INSERT INTO credit_snapshots (
-                timestamp, total_credits, total_usage, balance,
-                delta, source, cascade_id, session_id
-            ) VALUES (
-                '{now.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}',
-                {total_credits},
-                {total_usage},
-                {balance},
-                {delta},
-                '{source}',
-                {'NULL' if cascade_id is None else f"'{cascade_id}'"},
-                {'NULL' if session_id is None else f"'{session_id}'"}
-            )
-        """)
+        db.insert_rows("credit_snapshots", [{
+            "timestamp": now,
+            "total_credits": total_credits,
+            "total_usage": total_usage,
+            "balance": balance,
+            "delta": delta,
+            "source": source,
+            "cascade_id": cascade_id,
+            "session_id": session_id,
+            "burn_rate_1h": None,
+            "burn_rate_24h": None,
+            "burn_rate_7d": None,
+        }], log_query=False)
 
         return True
     except Exception as e:
