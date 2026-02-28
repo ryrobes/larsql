@@ -784,22 +784,30 @@ def dream_tier2(
     sampled_count = 0
 
     try:
-        # Fresh mode: wipe existing Tier 2 observations for a clean slate
+        # Fresh mode: supersede existing Tier 2 observations for a clean slate
+        # (Can't DELETE from dedup views — re-insert with superseded_by set instead)
         if fresh:
             force = True  # fresh implies force
             existing = db.query("""
-                SELECT observation_id FROM kg_observations
+                SELECT * FROM kg_observations
                 WHERE tier = 2 AND superseded_by IS NULL
             """)
             if existing and not dry_run:
-                console.print(f"[bold yellow]🧹 Fresh mode: deleting {len(existing)} Tier 2 observations[/bold yellow]")
-                db.delete_rows_by_keys(
-                    "kg_observations",
-                    key_columns=["observation_id"],
-                    key_rows=existing,
-                )
+                console.print(f"[bold yellow]🧹 Fresh mode: superseding {len(existing)} Tier 2 observations[/bold yellow]")
+                fresh_marker = f"fresh_{dream_session_id[:8]}"
+                superseded_rows = []
+                for row in existing:
+                    row_copy = dict(row)
+                    row_copy["superseded_by"] = fresh_marker
+                    row_copy["created_at"] = _now()  # newer timestamp wins in dedup
+                    superseded_rows.append(row_copy)
+                # Batch insert in chunks to avoid huge single inserts
+                chunk_size = 500
+                for i in range(0, len(superseded_rows), chunk_size):
+                    db.insert_rows("kg_observations", superseded_rows[i:i + chunk_size])
+                console.print(f"[dim]  ✓ {len(existing)} observations superseded[/dim]")
             elif existing:
-                console.print(f"[dim]  Fresh mode (dry-run): would delete {len(existing)} Tier 2 observations[/dim]")
+                console.print(f"[dim]  Fresh mode (dry-run): would supersede {len(existing)} Tier 2 observations[/dim]")
 
         # Find candidates
         candidates = _find_candidates(kg_query, _ENRICHMENT_PRIORITY, max_entities, force=force)
