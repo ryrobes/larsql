@@ -1577,16 +1577,8 @@ def get_semantic_operators_info() -> Dict[str, Any]:
                 'rewrites_to': "score('criteria', col) <= threshold",
                 'description': 'Negated semantic score (excludes matches above threshold)'
             },
-            '~': {
-                'syntax': "a ~ b [AS 'relationship']",
-                'rewrites_to': "match_pair(a, b, 'relationship')",
-                'description': 'Semantic equality for JOINs'
-            },
-            '!~': {
-                'syntax': "a !~ b [AS 'relationship']",
-                'rewrites_to': "NOT match_pair(a, b, 'relationship')",
-                'description': 'Negated semantic equality'
-            },
+            # NOTE: ~ removed as infix alias — conflicts with DuckDB's native regex operator.
+            # Use MEANS or MATCHES instead. ~ is still supported inside SEMANTIC JOIN ... ON syntax.
             'RELEVANCE TO': {
                 'syntax': "ORDER BY col RELEVANCE TO 'query'",
                 'rewrites_to': "ORDER BY score('query', col) DESC",

@@ -3,12 +3,12 @@ SQL Rewriter for LARS Extended SQL Syntax.
 
 Handles:
 - LARS MAP/RUN syntax for cascade execution
-- Semantic SQL operators (MEANS, ABOUT, ~, SEMANTIC JOIN, RELEVANCE TO)
+- Semantic SQL operators (MEANS, ABOUT, SEMANTIC JOIN, RELEVANCE TO)
 - LLM aggregate functions (LLM_SUMMARIZE, LLM_CLASSIFY, etc.)
 
 Processing order:
 1. LARS MAP/RUN statements
-2. Semantic operators (MEANS, ABOUT, ~, etc.)
+2. Semantic operators (MEANS, ABOUT, etc.)
 3. LLM aggregates (SUMMARIZE, CLASSIFY, etc.)
 
 All stages support -- @ annotation hints for model selection and prompt customization.
@@ -145,7 +145,7 @@ def rewrite_lars_syntax(query: str, duckdb_conn=None) -> str:
     1. Arrow alias syntax (-> table_name) for result persistence
     2. LARS MAP/RUN statements
     3. Dimension functions in GROUP BY (TOPICS, SENTIMENT, etc.)
-    4. Semantic SQL operators (MEANS, ABOUT, ~, etc.)
+    4. Semantic SQL operators (MEANS, ABOUT, etc.)
     5. LLM aggregate functions (LLM_SUMMARIZE, LLM_CLASSIFY, etc.)
 
     These can be combined - a query can have multiple features.
@@ -267,7 +267,7 @@ def rewrite_lars_syntax(query: str, duckdb_conn=None) -> str:
     # Single entry point that handles ALL semantic SQL operators:
     # - Block operators (SEMANTIC_CASE...END)
     # - Dimension functions (GROUP BY topics(...))
-    # - Infix operators (MEANS, ABOUT, ~)
+    # - Infix operators (MEANS, ABOUT)
     # - Aggregate functions (SUMMARIZE, CLASSIFY)
     # All patterns loaded from cascades - no hardcoded lists!
     before_unified = result
@@ -597,8 +597,8 @@ def _is_lars_statement(query: str) -> bool:
         r'\bNOT\s+MEANS\s+\'',       # col NOT MEANS 'x'
         r'\bABOUT\s+\'',             # col ABOUT 'x'
         r'\bNOT\s+ABOUT\s+\'',       # col NOT ABOUT 'x'
-        r'\w+\s*~\s*[\'\w]',         # a ~ b or a ~ 'x' (tilde operator)
-        r'\w+\s*!~\s*[\'\w]',        # a !~ b (negated tilde)
+        # NOTE: bare ~ removed — conflicts with DuckDB's native regex operator.
+        # ~ is still supported inside SEMANTIC JOIN ... ON syntax (matched by SEMANTIC JOIN pattern below).
         r'\bSEMANTIC\s+JOIN\b',      # SEMANTIC JOIN
         r'\bRELEVANCE\s+TO\s+\'',    # ORDER BY col RELEVANCE TO 'x'
         r'\bSEMANTIC\s+DISTINCT\b',  # SEMANTIC DISTINCT
