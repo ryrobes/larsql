@@ -1281,6 +1281,7 @@ def kg_dream(
     model_tier: str = "standard",
     dry_run: bool = False,
     force: bool = False,
+    fresh: bool = False,
     parallel: int = 3,
 ) -> str:
     """
@@ -1295,6 +1296,7 @@ def kg_dream(
         model_tier: LLM tier — "fast", "standard", "quality" (default "standard").
         dry_run: If True, show what would be enriched without calling the LLM.
         force: Re-enrich all entities, even those with existing Tier 2 observations.
+        fresh: Delete all existing Tier 2 observations before dreaming (clean slate).
         parallel: Number of parallel LLM calls (default: 3).
 
     Returns:
@@ -1306,6 +1308,7 @@ def kg_dream(
         model_tier=model_tier,
         dry_run=bool(dry_run),
         force=bool(force),
+        fresh=bool(fresh),
         parallel=int(parallel),
     )
     return json.dumps(result, default=str, indent=2)

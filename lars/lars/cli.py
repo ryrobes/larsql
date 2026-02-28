@@ -432,6 +432,7 @@ def main():
     kg_dream_parser.add_argument('--model-tier', default='standard', choices=['fast', 'standard', 'quality'], help='LLM tier (default: standard)')
     kg_dream_parser.add_argument('--dry-run', action='store_true', help='Show what would be enriched without calling LLM')
     kg_dream_parser.add_argument('--force', action='store_true', help='Re-enrich all entities (even those with existing Tier 2 observations)')
+    kg_dream_parser.add_argument('--fresh', action='store_true', help='Delete all existing Tier 2 observations before dreaming (clean slate)')
     kg_dream_parser.add_argument('--parallel', type=int, default=3, help='Number of parallel LLM calls (default: 3)')
 
     # kg embed
@@ -8134,6 +8135,7 @@ def cmd_kg_dream(args):
         model_tier=args.model_tier,
         dry_run=args.dry_run,
         force=getattr(args, 'force', False),
+        fresh=getattr(args, 'fresh', False),
         parallel=args.parallel,
     )
     print(result)

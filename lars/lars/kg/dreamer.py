@@ -699,6 +699,7 @@ def dream_tier2(
     samples_dir: Optional[str] = None,
     dry_run: bool = False,
     force: bool = False,
+    fresh: bool = False,
     parallel: int = 1,
 ) -> Dict[str, Any]:
     """
@@ -711,6 +712,7 @@ def dream_tier2(
     Args:
         max_entities: Max entities to enrich (0 = all, default).
         force: Re-enrich ALL entities, even those with existing Tier 2 observations.
+        fresh: Delete all existing Tier 2 observations before dreaming (clean slate).
         model_tier: LLM tier — "fast", "standard", "quality" (default "standard").
         samples_dir: Path to crawl samples. Auto-detected if None.
         dry_run: If True, build prompts but don't call the LLM.
@@ -782,6 +784,23 @@ def dream_tier2(
     sampled_count = 0
 
     try:
+        # Fresh mode: wipe existing Tier 2 observations for a clean slate
+        if fresh:
+            force = True  # fresh implies force
+            existing = db.query("""
+                SELECT observation_id FROM kg_observations
+                WHERE tier = 2 AND superseded_by IS NULL
+            """)
+            if existing and not dry_run:
+                console.print(f"[bold yellow]🧹 Fresh mode: deleting {len(existing)} Tier 2 observations[/bold yellow]")
+                db.delete_rows_by_keys(
+                    "kg_observations",
+                    key_columns=["observation_id"],
+                    key_rows=existing,
+                )
+            elif existing:
+                console.print(f"[dim]  Fresh mode (dry-run): would delete {len(existing)} Tier 2 observations[/dim]")
+
         # Find candidates
         candidates = _find_candidates(kg_query, _ENRICHMENT_PRIORITY, max_entities, force=force)
         log.info("Tier 2 dreaming: %d candidates found", len(candidates))
