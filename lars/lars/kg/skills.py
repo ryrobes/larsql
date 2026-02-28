@@ -562,6 +562,53 @@ def _assemble_table_context(
                     "verified": o.get("evidence_hash") is not None,
                 })
 
+    # ── Join hints (from FK edges and same-name columns) ────────────
+    join_rows = _query(f"""
+        SELECT
+            ed.rel_type,
+            ed.confidence,
+            ed.evidence,
+            src_e.name AS source_col,
+            src_e.qualified_name AS source_col_qname,
+            tgt_e.name AS target_name,
+            tgt_e.qualified_name AS target_qname,
+            tgt_e.entity_type AS target_type
+        FROM kg_edges ed
+        JOIN kg_entities src_e ON src_e.entity_id = ed.source_id
+        JOIN kg_entities tgt_e ON tgt_e.entity_id = ed.target_id
+        WHERE (ed.source_id IN (
+                SELECT e2.entity_id FROM kg_edges ed2
+                JOIN kg_entities e2 ON e2.entity_id = ed2.target_id
+                WHERE ed2.source_id = '{eid}' AND ed2.rel_type = 'contains'
+                  AND e2.entity_type = 'column'
+              )
+              OR ed.source_id = '{eid}')
+          AND ed.rel_type IN ('likely_fk', 'same_name')
+        ORDER BY ed.confidence DESC
+        LIMIT 10
+    """)
+    joins = []
+    for j in join_rows:
+        if j.get("rel_type") == "likely_fk":
+            joins.append({
+                "type": "fk",
+                "from_column": j.get("source_col"),
+                "to_table": j.get("target_qname"),
+                "confidence": round(float(j.get("confidence", 0)), 2),
+                "evidence": j.get("evidence"),
+            })
+        elif j.get("rel_type") == "same_name" and j.get("target_type") == "column":
+            # same_name is column-to-column, resolve target's parent table
+            target_qname = j.get("target_qname", "")
+            parts = target_qname.rsplit(".", 1)
+            target_table = parts[0] if len(parts) > 1 else target_qname
+            joins.append({
+                "type": "same_column",
+                "column": j.get("source_col"),
+                "also_in": target_table,
+                "confidence": round(float(j.get("confidence", 0)), 2),
+            })
+
     # ── Breach observations (Tier 3) ─────────────────────────────────
     breach_rows = _query(f"""
         SELECT content, confidence, created_at
@@ -590,11 +637,13 @@ def _assemble_table_context(
         "observations": obs_lines,
     }
 
-    # Only include contracts/breaches if they exist (keeps output clean)
+    # Only include contracts/breaches/joins if they exist (keeps output clean)
     if contracts:
         result["contracts"] = contracts
     if breaches:
         result["breaches"] = breaches
+    if joins:
+        result["joins"] = joins
 
     return result
 
@@ -1232,6 +1281,7 @@ def kg_dream(
     model_tier: str = "standard",
     dry_run: bool = False,
     force: bool = False,
+    parallel: int = 3,
 ) -> str:
     """
     Run Tier 2 LLM enrichment over the knowledge graph ("dreaming").
@@ -1245,6 +1295,7 @@ def kg_dream(
         model_tier: LLM tier — "fast", "standard", "quality" (default "standard").
         dry_run: If True, show what would be enriched without calling the LLM.
         force: Re-enrich all entities, even those with existing Tier 2 observations.
+        parallel: Number of parallel LLM calls (default: 3).
 
     Returns:
         JSON summary with counts, cost, and timing.
@@ -1255,6 +1306,7 @@ def kg_dream(
         model_tier=model_tier,
         dry_run=bool(dry_run),
         force=bool(force),
+        parallel=int(parallel),
     )
     return json.dumps(result, default=str, indent=2)
 
@@ -1354,4 +1406,119 @@ def kg_validate(
         model_tier=model_tier,
         dry_run=bool(dry_run),
     )
+    return json.dumps(result, default=str, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# kg_fingerprint
+# ---------------------------------------------------------------------------
+
+@register_skill("kg_fingerprint")
+def kg_fingerprint(
+    max_tables: int = 0,
+    connections: str = "",
+    force: bool = False,
+) -> str:
+    """
+    Generate dimensional fingerprint observations for tables.
+
+    Creates evidence-backed observations that capture the exact state
+    of each table's dimensions — row counts, distinct value sets for
+    low-cardinality columns, date ranges, NULL patterns, and recent
+    activity.
+
+    These are the observations that catch "a new student was added"
+    or "a new status value appeared." No LLM needed — purely SQL.
+
+    Run after crawl, before dreaming. Very fast and cheap.
+
+    Args:
+        max_tables: Max tables to fingerprint (0 = all, default).
+        connections: Comma-separated connection names (default: all).
+        force: Regenerate even if fingerprints already exist.
+
+    Returns:
+        JSON summary with counts.
+    """
+    from .fingerprinter import fingerprint_tables
+
+    conn_list = None
+    if connections:
+        conn_list = [c.strip() for c in connections.split(",") if c.strip()]
+
+    result = fingerprint_tables(
+        max_tables=int(max_tables),
+        connections=conn_list,
+        force=bool(force),
+    )
+    return json.dumps(result, default=str, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# kg_progress
+# ---------------------------------------------------------------------------
+
+@register_skill("kg_progress")
+def kg_progress(session_id: str = "", run_type: str = "") -> str:
+    """
+    Get the latest progress for KG runs (dream, validate, embed).
+
+    Shows what's currently running or the most recent completed run.
+    Designed for UI polling — lightweight query against kg_run_progress.
+
+    Args:
+        session_id: Specific session to check (default: latest).
+        run_type: Filter by run type — "dream", "validate", "embed" (default: any).
+
+    Returns:
+        JSON with current step, total, status, and running counts.
+    """
+    filters = ["1=1"]
+    if session_id:
+        filters.append(f"session_id = '{_esc(session_id)}'")
+    if run_type:
+        filters.append(f"run_type = '{_esc(run_type)}'")
+
+    where = " AND ".join(filters)
+
+    # Get the latest progress row (most recent update)
+    rows = _query(f"""
+        SELECT session_id, run_type, status, entity_name,
+               step, total_steps, observations_so_far,
+               breaches_so_far, errors_so_far, cost_so_far,
+               detail_json, updated_at
+        FROM kg_run_progress
+        WHERE {where}
+        ORDER BY updated_at DESC
+        LIMIT 1
+    """)
+
+    if not rows:
+        return json.dumps({"status": "idle", "message": "No runs found"})
+
+    row = rows[0]
+    result = {
+        "session_id": row.get("session_id"),
+        "run_type": row.get("run_type"),
+        "status": row.get("status"),
+        "entity_name": row.get("entity_name"),
+        "step": row.get("step", 0),
+        "total_steps": row.get("total_steps", 0),
+        "percent": round(
+            (row.get("step", 0) / row["total_steps"] * 100)
+            if row.get("total_steps") else 0, 1
+        ),
+        "observations": row.get("observations_so_far", 0),
+        "breaches": row.get("breaches_so_far", 0),
+        "errors": row.get("errors_so_far", 0),
+        "cost_usd": row.get("cost_so_far", 0),
+        "updated_at": row.get("updated_at"),
+    }
+
+    if row.get("detail_json"):
+        try:
+            result["detail"] = json.loads(row["detail_json"])
+        except (json.JSONDecodeError, TypeError):
+            pass
+
     return json.dumps(result, default=str, indent=2)

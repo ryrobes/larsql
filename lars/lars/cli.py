@@ -432,6 +432,7 @@ def main():
     kg_dream_parser.add_argument('--model-tier', default='standard', choices=['fast', 'standard', 'quality'], help='LLM tier (default: standard)')
     kg_dream_parser.add_argument('--dry-run', action='store_true', help='Show what would be enriched without calling LLM')
     kg_dream_parser.add_argument('--force', action='store_true', help='Re-enrich all entities (even those with existing Tier 2 observations)')
+    kg_dream_parser.add_argument('--parallel', type=int, default=3, help='Number of parallel LLM calls (default: 3)')
 
     # kg embed
     kg_embed_parser = kg_subparsers.add_parser(
@@ -441,6 +442,15 @@ def main():
     kg_embed_parser.add_argument('--force', action='store_true', help='Re-embed all even if already embedded')
     kg_embed_parser.add_argument('--max-entities', type=int, default=0, help='Max entities to embed (0 = all)')
     kg_embed_parser.add_argument('--max-observations', type=int, default=0, help='Max observations to embed (0 = all)')
+
+    # kg fingerprint
+    kg_fingerprint_parser = kg_subparsers.add_parser(
+        'fingerprint',
+        help='Generate dimensional fingerprints (row counts, value sets, date ranges — no LLM)'
+    )
+    kg_fingerprint_parser.add_argument('--max', type=int, default=0, help='Max tables to fingerprint (0 = all)')
+    kg_fingerprint_parser.add_argument('--connections', default='', help='Comma-separated connection names (default: all)')
+    kg_fingerprint_parser.add_argument('--force', action='store_true', help='Regenerate even if fingerprints exist')
 
     # kg validate
     kg_validate_parser = kg_subparsers.add_parser(
@@ -452,6 +462,7 @@ def main():
     kg_validate_parser.add_argument('--model-tier', default='fast', choices=['fast', 'standard', 'quality'], help='LLM tier for investigation (default: fast)')
     kg_validate_parser.add_argument('--no-investigate', action='store_true', help='Skip LLM investigation (just detect breaches)')
     kg_validate_parser.add_argument('--dry-run', action='store_true', help='Detect breaches but don\'t write findings')
+    kg_validate_parser.add_argument('--parallel', type=int, default=3, help='Number of parallel LLM calls (default: 3)')
 
     # kg stats
     kg_subparsers.add_parser('stats', help='Show knowledge graph statistics')
@@ -1747,6 +1758,8 @@ def main():
             cmd_kg_stats(args)
         elif args.kg_command == 'context':
             cmd_kg_context(args)
+        elif args.kg_command == 'fingerprint':
+            cmd_kg_fingerprint(args)
         elif args.kg_command == 'validate':
             cmd_kg_validate(args)
         else:
@@ -8121,6 +8134,7 @@ def cmd_kg_dream(args):
         model_tier=args.model_tier,
         dry_run=args.dry_run,
         force=getattr(args, 'force', False),
+        parallel=args.parallel,
     )
     print(result)
 
@@ -8150,6 +8164,19 @@ def cmd_kg_context(args):
     print(result)
 
 
+def cmd_kg_fingerprint(args):
+    """Generate dimensional fingerprints for tables."""
+    from lars.kg.fingerprinter import fingerprint_tables
+    conn_list = [c.strip() for c in args.connections.split(",") if c.strip()] if args.connections else None
+    result = fingerprint_tables(
+        max_tables=args.max,
+        connections=conn_list,
+        force=args.force,
+    )
+    import json
+    print(json.dumps(result, indent=2, default=str))
+
+
 def cmd_kg_validate(args):
     """Validate observation contracts — semantic CDC."""
     from lars.kg.validator import validate_contracts
@@ -8160,6 +8187,7 @@ def cmd_kg_validate(args):
         investigate=not args.no_investigate,
         model_tier=args.model_tier,
         dry_run=args.dry_run,
+        parallel=args.parallel,
     )
     # Print findings JSON for programmatic use
     if result.get("findings"):

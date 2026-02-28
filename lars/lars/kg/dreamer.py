@@ -699,6 +699,7 @@ def dream_tier2(
     samples_dir: Optional[str] = None,
     dry_run: bool = False,
     force: bool = False,
+    parallel: int = 1,
 ) -> Dict[str, Any]:
     """
     Run Tier 2 LLM enrichment over the knowledge graph.
@@ -854,7 +855,16 @@ def dream_tier2(
                 status="starting...",
             )
 
-            for i, entity in enumerate(candidates):
+            import threading
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+
+            _counters_lock = threading.Lock()
+
+            def _dream_one_entity(i, entity):
+                """Process a single entity — called from thread pool or sequentially."""
+                nonlocal total_observations, total_descriptions_updated, total_tokens_in
+                nonlocal total_tokens_out, total_cost, errors, sampled_count
+
                 entity_id = entity["entity_id"]
                 entity_name = entity.get("name", "?")
 
@@ -862,11 +872,6 @@ def dream_tier2(
                 _safe_name = re.sub(r'[^a-zA-Z0-9_.]', '_', entity.get("qualified_name", entity_name))[:60]
                 set_current_cascade_id(f"kg_dream:{_safe_name}")
                 set_current_session_id(f"kg_dream_{dream_session_id[:8]}:{_safe_name}")
-                progress.update(
-                    task,
-                    description=f"Dreaming [bold white]{entity_name}[/bold white]",
-                    status=f"obs={total_observations} desc={total_descriptions_updated} err={errors} ${total_cost:.4f}",
-                )
 
                 try:
                     ctx = _get_entity_context(kg_query, entity_id)
@@ -874,11 +879,8 @@ def dream_tier2(
 
                     # Sample real data from the actual database via pgwire pipeline
                     sample_data = _sample_table_data(entity, crawl)
-                    if sample_data:
-                        sampled_count += 1
 
-                    # Build rich context from related tables (descriptions,
-                    # columns, observations, sample joins)
+                    # Build rich context from related tables
                     related_ctx = _get_related_table_context(
                         kg_query, ctx["related"], samples_dir, entity,
                     )
@@ -891,16 +893,12 @@ def dream_tier2(
                     agent = Agent(model=model_name, system_prompt=_SYSTEM_PROMPT)
                     response = agent.run(input_message=prompt)
 
-                    total_tokens_in += response.get("tokens_in") or 0
-                    total_tokens_out += response.get("tokens_out") or 0
-                    total_cost += response.get("cost") or 0.0
-
                     enrichment = _parse_llm_response(response.get("content", ""))
                     if not enrichment:
                         log.warning("Tier 2: failed to parse enrichment for %s", entity_id)
-                        errors += 1
-                        progress.advance(task)
-                        continue
+                        with _counters_lock:
+                            errors += 1
+                        return entity_id, entity_name, False
 
                     # Persist enrichments
                     obs_rows = []
@@ -937,13 +935,11 @@ def dream_tier2(
                         if not content:
                             continue
 
-                        # Evidence SQL and contract type (new: observation contracts)
                         evidence_sql = obs_data.get("evidence_sql") or None
                         contract_type = obs_data.get("contract_type") or None
                         if contract_type and contract_type not in ("invariant", "trend", "snapshot"):
                             contract_type = "snapshot"
 
-                        # Compute evidence hash if we have SQL
                         evidence_hash = None
                         if evidence_sql:
                             try:
@@ -954,9 +950,6 @@ def dream_tier2(
                                     row_limit=100,
                                     text_max_chars=500,
                                 )
-                                # Hash only the data (results array), not the
-                                # full envelope — keeps hashes stable regardless
-                                # of text_max_chars or other safe_sql_run params.
                                 ev_parsed = json.loads(ev_result)
                                 hash_payload = json.dumps(
                                     ev_parsed.get("results", []),
@@ -971,9 +964,7 @@ def dream_tier2(
                                     "Tier 2: evidence SQL failed for %s: %s",
                                     entity_id, e,
                                 )
-                                # Keep the SQL but no hash — validator can retry
 
-                        # Resolve related_tables to entity IDs for cross-linking
                         entity_ids_list = [entity_id]
                         related_tables = obs_data.get("related_tables") or []
                         if related_tables and isinstance(related_tables, list):
@@ -1011,10 +1002,9 @@ def dream_tier2(
 
                     if obs_rows:
                         db.insert_rows("kg_observations", obs_rows)
-                        total_observations += len(obs_rows)
 
-                    # Update entity description if the LLM produced a better one
                     new_desc = enrichment.get("description", "")
+                    desc_updated = False
                     if new_desc and new_desc != entity.get("description", ""):
                         db.insert_rows("kg_entities", [{
                             "entity_id": entity_id,
@@ -1030,27 +1020,80 @@ def dream_tier2(
                             "discovered_at": enrich_now,
                             "updated_at": enrich_now,
                         }])
-                        total_descriptions_updated += 1
+                        desc_updated = True
 
                     log.debug(
                         "Tier 2: enriched %s — %d observations, desc=%s",
                         entity_id, len(obs_rows), bool(new_desc),
                     )
 
+                    with _counters_lock:
+                        total_tokens_in += response.get("tokens_in") or 0
+                        total_tokens_out += response.get("tokens_out") or 0
+                        total_cost += response.get("cost") or 0.0
+                        total_observations += len(obs_rows)
+                        if desc_updated:
+                            total_descriptions_updated += 1
+                        if sample_data:
+                            sampled_count += 1
+
+                    return entity_id, entity_name, True
+
                 except Exception as e:
                     log.warning("Tier 2: failed to enrich %s: %s", entity_id, e)
-                    errors += 1
+                    with _counters_lock:
+                        errors += 1
+                    return entity_id, entity_name, False
 
-                # Emit progress for UI polling
-                progress_tracker.step(
-                    i + 1,
-                    entity_id=entity_id,
-                    entity_name=entity_name,
-                    observations=total_observations,
-                    errors=errors,
-                    cost=total_cost,
-                )
-                progress.advance(task)
+            # Run entities — parallel or sequential
+            effective_parallel = max(1, min(parallel, len(candidates)))
+            if effective_parallel > 1:
+                log.info("Tier 2: running %d entities with parallelism=%d", len(candidates), effective_parallel)
+                futures = {}
+                with ThreadPoolExecutor(max_workers=effective_parallel) as pool:
+                    for i, entity in enumerate(candidates):
+                        fut = pool.submit(_dream_one_entity, i, entity)
+                        futures[fut] = (i, entity)
+
+                    for fut in as_completed(futures):
+                        i, entity = futures[fut]
+                        entity_name = entity.get("name", "?")
+                        try:
+                            fut.result()
+                        except Exception:
+                            pass
+                        progress.update(
+                            task,
+                            description=f"Dreaming [bold white]{entity_name}[/bold white]",
+                            status=f"obs={total_observations} desc={total_descriptions_updated} err={errors} ${total_cost:.4f}",
+                        )
+                        progress_tracker.step(
+                            sum(1 for f in futures if f.done()),
+                            entity_id=entity.get("entity_id", ""),
+                            entity_name=entity_name,
+                            observations=total_observations,
+                            errors=errors,
+                            cost=total_cost,
+                        )
+                        progress.advance(task)
+            else:
+                for i, entity in enumerate(candidates):
+                    entity_name = entity.get("name", "?")
+                    progress.update(
+                        task,
+                        description=f"Dreaming [bold white]{entity_name}[/bold white]",
+                        status=f"obs={total_observations} desc={total_descriptions_updated} err={errors} ${total_cost:.4f}",
+                    )
+                    _dream_one_entity(i, entity)
+                    progress_tracker.step(
+                        i + 1,
+                        entity_id=entity.get("entity_id", ""),
+                        entity_name=entity_name,
+                        observations=total_observations,
+                        errors=errors,
+                        cost=total_cost,
+                    )
+                    progress.advance(task)
 
             # Final status update on the progress bar
             progress.update(

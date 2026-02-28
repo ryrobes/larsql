@@ -182,6 +182,7 @@ def validate_contracts(
     investigate: bool = True,
     model_tier: str = "fast",
     dry_run: bool = False,
+    parallel: int = 1,
 ) -> Dict[str, Any]:
     """
     Validate observation contracts by re-running evidence SQL.
@@ -296,7 +297,15 @@ def validate_contracts(
             status="starting...",
         )
 
-        for obs in candidates:
+        import threading
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        _counters_lock = threading.Lock()
+
+        def _validate_one_obs(obs):
+            """Validate a single observation — called from pool or sequentially."""
+            nonlocal checked, unchanged, errors, total_cost, total_tokens_in, total_tokens_out
+
             obs_id = obs["observation_id"]
             entity_name = obs.get("entity_name", "?")
             contract_type = obs.get("contract_type", "snapshot")
@@ -306,11 +315,6 @@ def validate_contracts(
             _safe_name = re.sub(r'[^a-zA-Z0-9_.]', '_', _qname)[:60]
             set_current_cascade_id(f"kg_validate:{_safe_name}")
             set_current_session_id(f"kg_validate_{session_id[:8]}:{_safe_name}")
-            progress.update(
-                task,
-                description=f"Validating [bold white]{entity_name}[/bold white]",
-                status=f"ok={unchanged} breach={len(breaches)} err={errors}",
-            )
 
             # Re-run evidence SQL
             new_result = _run_evidence(
@@ -319,28 +323,19 @@ def validate_contracts(
             )
 
             if new_result is None:
-                errors += 1
-                progress_tracker.step(
-                    checked + errors, entity_name=entity_name,
-                    observations=unchanged, breaches=len(breaches),
-                    errors=errors, cost=total_cost,
-                )
-                progress.advance(task)
-                continue
+                with _counters_lock:
+                    errors += 1
+                return None  # Signal: error
 
-            checked += 1
+            with _counters_lock:
+                checked += 1
+
             old_hash = obs.get("evidence_hash", "")
 
             if new_result["hash"] == old_hash:
-                # Contract holds — no change
-                unchanged += 1
-                progress_tracker.step(
-                    checked + errors, entity_name=entity_name,
-                    observations=unchanged, breaches=len(breaches),
-                    errors=errors, cost=total_cost,
-                )
-                progress.advance(task)
-                continue
+                with _counters_lock:
+                    unchanged += 1
+                return None  # Signal: unchanged
 
             # ── CONTRACT BREACH ──
             breach_info = {
@@ -359,41 +354,69 @@ def validate_contracts(
 
             # Investigate if enabled — ALL contract types including snapshots
             if investigate and not dry_run:
-                should_investigate = True  # Always investigate breaches
-                if should_investigate:
-                    entity_info = {
-                        "qualified_name": obs.get("qualified_name"),
-                        "name": entity_name,
-                        "source_connection": obs.get("source_connection"),
-                    }
-                    finding = _investigate_breach(
-                        obs, old_hash, new_result, entity_info, model_tier,
-                    )
-                    if finding:
-                        breach_info["finding"] = finding["finding"]
-                        breach_info["severity"] = finding["severity"]
-                        breach_info["new_observation"] = finding["new_observation"]
+                entity_info = {
+                    "qualified_name": obs.get("qualified_name"),
+                    "name": entity_name,
+                    "source_connection": obs.get("source_connection"),
+                }
+                finding = _investigate_breach(
+                    obs, old_hash, new_result, entity_info, model_tier,
+                )
+                if finding:
+                    breach_info["finding"] = finding["finding"]
+                    breach_info["severity"] = finding["severity"]
+                    breach_info["new_observation"] = finding["new_observation"]
+                    with _counters_lock:
                         total_cost += finding.get("cost", 0)
                         total_tokens_in += finding.get("tokens_in", 0)
                         total_tokens_out += finding.get("tokens_out", 0)
 
-                        # Write breach observation
-                        breach_content = (
-                            f"⚠️ CONTRACT BREACH ({contract_type}): "
-                            f"{finding['finding']}"
-                        )
-                        breach_obs_id = _obs_id(
-                            obs["entity_id"], "breach", breach_content,
+                    # Write breach observation
+                    breach_content = (
+                        f"⚠️ CONTRACT BREACH ({contract_type}): "
+                        f"{finding['finding']}"
+                    )
+                    breach_obs_id = _obs_id(
+                        obs["entity_id"], "breach", breach_content,
+                    )
+                    db.insert_rows("kg_observations", [{
+                        "observation_id": breach_obs_id,
+                        "entity_id": obs["entity_id"],
+                        "entity_ids_json": json.dumps([obs["entity_id"]]),
+                        "level": "table",
+                        "tier": 3,
+                        "category": "breach",
+                        "content": breach_content,
+                        "confidence": 0.95,
+                        "evidence_sql": obs["evidence_sql"],
+                        "evidence_hash": new_result["hash"],
+                        "contract_type": contract_type,
+                        "embedding": None,
+                        "embedding_model": None,
+                        "superseded_by": None,
+                        "dream_session_id": session_id,
+                        "created_at": now,
+                    }])
+
+                    # Write updated observation if provided
+                    if finding.get("new_observation"):
+                        updated_obs_id = _obs_id(
+                            obs["entity_id"],
+                            obs["category"],
+                            finding["new_observation"],
                         )
                         db.insert_rows("kg_observations", [{
-                            "observation_id": breach_obs_id,
+                            "observation_id": updated_obs_id,
                             "entity_id": obs["entity_id"],
-                            "entity_ids_json": json.dumps([obs["entity_id"]]),
+                            "entity_ids_json": obs.get(
+                                "entity_ids_json",
+                                json.dumps([obs["entity_id"]]),
+                            ),
                             "level": "table",
                             "tier": 3,
-                            "category": "breach",
-                            "content": breach_content,
-                            "confidence": 0.95,
+                            "category": obs["category"],
+                            "content": finding["new_observation"],
+                            "confidence": obs.get("confidence", 0.8),
                             "evidence_sql": obs["evidence_sql"],
                             "evidence_hash": new_result["hash"],
                             "contract_type": contract_type,
@@ -404,63 +427,34 @@ def validate_contracts(
                             "created_at": now,
                         }])
 
-                        # Write updated observation if provided
-                        if finding.get("new_observation"):
-                            updated_obs_id = _obs_id(
-                                obs["entity_id"],
-                                obs["category"],
-                                finding["new_observation"],
-                            )
-                            db.insert_rows("kg_observations", [{
-                                "observation_id": updated_obs_id,
-                                "entity_id": obs["entity_id"],
-                                "entity_ids_json": obs.get(
-                                    "entity_ids_json",
-                                    json.dumps([obs["entity_id"]]),
-                                ),
-                                "level": "table",
-                                "tier": 3,
-                                "category": obs["category"],
-                                "content": finding["new_observation"],
-                                "confidence": obs.get("confidence", 0.8),
-                                "evidence_sql": obs["evidence_sql"],
-                                "evidence_hash": new_result["hash"],
-                                "contract_type": contract_type,
-                                "embedding": None,
-                                "embedding_model": None,
-                                "superseded_by": None,
-                                "dream_session_id": session_id,
-                                "created_at": now,
-                            }])
-
-                            # Supersede the old observation
-                            # (write a new row with superseded_by set)
-                            db.insert_rows("kg_observations", [{
-                                "observation_id": obs_id,
-                                "entity_id": obs["entity_id"],
-                                "entity_ids_json": obs.get(
-                                    "entity_ids_json",
-                                    json.dumps([obs["entity_id"]]),
-                                ),
-                                "level": obs.get("level", "table"),
-                                "tier": obs.get("tier", 2),
-                                "category": obs["category"],
-                                "content": obs["content"],
-                                "confidence": obs.get("confidence", 0.8),
-                                "evidence_sql": obs["evidence_sql"],
-                                "evidence_hash": old_hash,
-                                "contract_type": contract_type,
-                                "embedding": None,
-                                "embedding_model": None,
-                                "superseded_by": updated_obs_id,
-                                "dream_session_id": obs.get(
-                                    "dream_session_id", session_id,
-                                ),
-                                "created_at": now,
-                            }])
-
+                        # Supersede the old observation
+                        db.insert_rows("kg_observations", [{
+                            "observation_id": obs_id,
+                            "entity_id": obs["entity_id"],
+                            "entity_ids_json": obs.get(
+                                "entity_ids_json",
+                                json.dumps([obs["entity_id"]]),
+                            ),
+                            "level": obs.get("level", "table"),
+                            "tier": obs.get("tier", 2),
+                            "category": obs["category"],
+                            "content": obs["content"],
+                            "confidence": obs.get("confidence", 0.8),
+                            "evidence_sql": obs["evidence_sql"],
+                            "evidence_hash": old_hash,
+                            "contract_type": contract_type,
+                            "embedding": None,
+                            "embedding_model": None,
+                            "superseded_by": updated_obs_id,
+                            "dream_session_id": obs.get(
+                                "dream_session_id", session_id,
+                            ),
+                            "created_at": now,
+                        }])
                 else:
-                    # Snapshot: just update the hash quietly
+                    # No finding from investigation — just update hash
+                    breach_info["severity"] = "minor"
+                    breach_info["finding"] = "Snapshot updated (expected drift)"
                     db.insert_rows("kg_observations", [{
                         "observation_id": obs_id,
                         "entity_id": obs["entity_id"],
@@ -484,16 +478,58 @@ def validate_contracts(
                         ),
                         "created_at": now,
                     }])
-                    breach_info["severity"] = "minor"
-                    breach_info["finding"] = "Snapshot updated (expected drift)"
 
-            breaches.append(breach_info)
-            progress_tracker.step(
-                checked + errors, entity_name=entity_name,
-                observations=unchanged, breaches=len(breaches),
-                errors=errors, cost=total_cost,
-            )
-            progress.advance(task)
+            return breach_info
+
+        # Run observations — parallel or sequential
+        effective_parallel = max(1, min(parallel, len(candidates)))
+        if effective_parallel > 1:
+            log.info("Validate: running %d observations with parallelism=%d", len(candidates), effective_parallel)
+            futures = {}
+            with ThreadPoolExecutor(max_workers=effective_parallel) as pool:
+                for obs in candidates:
+                    fut = pool.submit(_validate_one_obs, obs)
+                    futures[fut] = obs
+
+                for fut in as_completed(futures):
+                    obs = futures[fut]
+                    entity_name = obs.get("entity_name", "?")
+                    try:
+                        result = fut.result()
+                        if result is not None:
+                            breaches.append(result)
+                    except Exception as e:
+                        log.warning("Validate: exception for %s: %s", entity_name, e)
+                        with _counters_lock:
+                            errors += 1
+                    progress.update(
+                        task,
+                        description=f"Validating [bold white]{entity_name}[/bold white]",
+                        status=f"ok={unchanged} breach={len(breaches)} err={errors}",
+                    )
+                    progress_tracker.step(
+                        checked + errors, entity_name=entity_name,
+                        observations=unchanged, breaches=len(breaches),
+                        errors=errors, cost=total_cost,
+                    )
+                    progress.advance(task)
+        else:
+            for obs in candidates:
+                entity_name = obs.get("entity_name", "?")
+                progress.update(
+                    task,
+                    description=f"Validating [bold white]{entity_name}[/bold white]",
+                    status=f"ok={unchanged} breach={len(breaches)} err={errors}",
+                )
+                result = _validate_one_obs(obs)
+                if result is not None:
+                    breaches.append(result)
+                progress_tracker.step(
+                    checked + errors, entity_name=entity_name,
+                    observations=unchanged, breaches=len(breaches),
+                    errors=errors, cost=total_cost,
+                )
+                progress.advance(task)
 
         progress.update(
             task,
