@@ -106,13 +106,18 @@ Guidelines:
 - Do NOT repeat observations that are already provided as "existing".
 - Be concrete and specific.  Reference actual values you see in the data.
 - If sample data is provided, your observations MUST reference it.
-- **Prioritize DATA CONTENT over structure.**  Observations about actual
-  business entities, real values, and what the data MEANS are far more
-  valuable than observations about row counts, column types, or table
-  structure.  Structural observations (e.g. "table has 3 rows") become
-  stale quickly and don't help analysts.  Focus on what a data analyst
-  would actually want to know: who are these customers, what do these
-  transactions represent, what patterns exist in the real values.
+- **NEVER make observations about row counts, column counts, table structure,
+  cardinality, nullability, or data types.**  These are metadata facts that
+  are already captured elsewhere and become stale instantly.  BAD examples:
+  "table has 3 rows", "column X has 5 distinct values", "student_id is
+  nullable", "date range spans 5 years".  GOOD examples: "Students Bobby
+  Bouchard and Sammy Sort share the yeye.com email domain, suggesting test
+  accounts", "Ledger entries show a $500 payment followed by a $500 refund
+  for enrollment E-001, which may indicate a billing correction", "The
+  Austin campus handles 80% of enrollments despite being one of three
+  locations".  Focus on what a data analyst would actually want to know:
+  who are these entities, what do the values mean, what business patterns
+  exist in the ACTUAL DATA.
 - **Cross-table analysis**: If related tables are provided, make observations
   about the RELATIONSHIPS between tables.  Look for:
   • Join quality: Do FK values in this table all exist in the related table?
@@ -790,10 +795,10 @@ def dream_tier2(
             force = True  # fresh implies force
             existing = db.query("""
                 SELECT * FROM kg_observations
-                WHERE tier = 2 AND superseded_by IS NULL
+                WHERE tier IN (2, 3) AND superseded_by IS NULL
             """)
             if existing and not dry_run:
-                console.print(f"[bold yellow]🧹 Fresh mode: superseding {len(existing)} Tier 2 observations[/bold yellow]")
+                console.print(f"[bold yellow]🧹 Fresh mode: superseding {len(existing)} Tier 2+3 observations[/bold yellow]")
                 fresh_marker = f"fresh_{dream_session_id[:8]}"
                 superseded_rows = []
                 for row in existing:
