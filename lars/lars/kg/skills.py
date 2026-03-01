@@ -948,27 +948,39 @@ def _run_evidence_sql(table_context: Dict[str, Any]) -> List[Dict[str, str]]:
         if sq not in seen_sql:
             seen_sql.add(sq)
 
-    # Cap at 10 queries
+    # Budget: ~8000 "cells" (row × col) total across all queries.
+    # Per-query: adaptive row limit based on column count.
+    # Narrow tables (2-3 cols) get up to 50 rows, wide tables (20+) get 5 minimum.
+    CELL_BUDGET_PER_QUERY = 800   # max cells per single query result
+    CHAR_BUDGET_PER_CELL = 200    # max chars per cell value
+    MIN_ROWS = 5
+    MAX_ROWS = 50
+
     for sql in list(seen_sql)[:10]:
         try:
             result_json = safe_sql_run(
                 sql=sql,
                 connection=connection,
-                row_limit=25,
-                text_max_chars=500,
+                row_limit=MAX_ROWS,
+                text_max_chars=CHAR_BUDGET_PER_CELL,
             )
             result = json.loads(result_json)
             if result.get("error"):
                 evidence_results.append({"sql": sql, "result": f"ERROR: {result['error']}"})
             else:
-                # Format compactly
                 rows = result.get("results", [])
                 cols = result.get("columns", [])
                 if rows and cols:
+                    # Adaptive row limit: budget ÷ columns, clamped
+                    num_cols = len(cols)
+                    row_limit = max(MIN_ROWS, min(MAX_ROWS, CELL_BUDGET_PER_QUERY // max(num_cols, 1)))
+                    # Also scale cell char limit: narrow = generous, wide = tighter
+                    cell_chars = max(60, min(CHAR_BUDGET_PER_CELL, 1200 // max(num_cols, 1)))
+
                     lines = []
                     lines.append(" | ".join(cols))
-                    for row in rows[:25]:
-                        lines.append(" | ".join(str(row.get(c, ""))[:150] for c in cols))
+                    for row in rows[:row_limit]:
+                        lines.append(" | ".join(str(row.get(c, ""))[:cell_chars] for c in cols))
                     evidence_results.append({"sql": sql, "result": "\n".join(lines)})
                 else:
                     evidence_results.append({"sql": sql, "result": "(no rows)"})
