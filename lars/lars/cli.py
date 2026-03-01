@@ -452,6 +452,7 @@ def main():
     kg_fingerprint_parser.add_argument('--max', type=int, default=0, help='Max tables to fingerprint (0 = all)')
     kg_fingerprint_parser.add_argument('--connections', default='', help='Comma-separated connection names (default: all)')
     kg_fingerprint_parser.add_argument('--force', action='store_true', help='Regenerate even if fingerprints exist')
+    kg_fingerprint_parser.add_argument('--parallel', type=int, default=3, help='Number of parallel workers (default: 3)')
 
     # kg validate
     kg_validate_parser = kg_subparsers.add_parser(
@@ -8174,6 +8175,7 @@ def cmd_kg_fingerprint(args):
         max_tables=args.max,
         connections=conn_list,
         force=args.force,
+        parallel=args.parallel,
     )
     import json
     print(json.dumps(result, indent=2, default=str))
