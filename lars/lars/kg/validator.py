@@ -367,9 +367,9 @@ def validate_contracts(
                     breach_info["severity"] = finding["severity"]
                     breach_info["new_observation"] = finding["new_observation"]
                     with _counters_lock:
-                        total_cost += finding.get("cost", 0)
-                        total_tokens_in += finding.get("tokens_in", 0)
-                        total_tokens_out += finding.get("tokens_out", 0)
+                        total_cost += finding.get("cost") or 0
+                        total_tokens_in += finding.get("tokens_in") or 0
+                        total_tokens_out += finding.get("tokens_out") or 0
 
                     # Write breach observation
                     breach_content = (
