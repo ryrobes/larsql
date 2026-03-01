@@ -1928,6 +1928,54 @@ SYSTEM_TABLES = {
         },
     },
 
+    "kg_run_progress": {
+        "columns": [
+            ("session_id", "VARCHAR"),           # links to kg_dream_sessions
+            ("run_type", "VARCHAR"),             # dream, validate, embed, crawl, extract
+            ("status", "VARCHAR"),               # running, completed, failed
+            ("entity_id", "VARCHAR"),            # current/last entity processed (null for overall)
+            ("entity_name", "VARCHAR"),          # human-readable name
+            ("step", "UINTEGER"),               # current step number (1-indexed)
+            ("total_steps", "UINTEGER"),         # total entities to process
+            ("observations_so_far", "UINTEGER"), # running count
+            ("breaches_so_far", "UINTEGER"),     # running breach count (validate only)
+            ("errors_so_far", "UINTEGER"),       # running error count
+            ("cost_so_far", "DOUBLE"),           # running cost in USD
+            ("detail_json", "VARCHAR"),          # extra context (last finding, current phase, etc.)
+            ("updated_at", "TIMESTAMP"),         # when this row was written
+        ],
+        "partition_by": None,
+        "dedup": {
+            "pk": ["session_id", "step"],
+            "order_by": "updated_at",
+        },
+    },
+
+    "kg_search_investigations": {
+        "columns": [
+            ("investigation_id", "VARCHAR"),      # UUID
+            ("search_id", "VARCHAR"),             # groups all investigations for one search
+            ("entity_id", "VARCHAR"),             # which table entity was investigated
+            ("qualified_name", "VARCHAR"),        # table qualified name (for easy lookup)
+            ("query", "VARCHAR"),                 # original search query
+            ("status", "VARCHAR"),               # pending, running, completed, failed
+            ("synthesis", "VARCHAR"),             # LLM-generated summary
+            ("evidence_queries", "VARCHAR"),      # JSON array of {sql, result_summary} objects
+            ("model_used", "VARCHAR"),            # which model ran the investigation
+            ("cost_usd", "DOUBLE"),              # cost of this investigation
+            ("tokens_in", "UINTEGER"),           # input tokens
+            ("tokens_out", "UINTEGER"),          # output tokens
+            ("started_at", "TIMESTAMP"),
+            ("completed_at", "TIMESTAMP"),
+            ("created_at", "TIMESTAMP"),
+        ],
+        "partition_by": None,
+        "dedup": {
+            "pk": "investigation_id",
+            "order_by": "completed_at",
+        },
+    },
+
 }
 
 

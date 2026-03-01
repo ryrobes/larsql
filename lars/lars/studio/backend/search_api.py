@@ -5,6 +5,8 @@ Provides endpoints for:
 - /api/search/rag - Semantic search over indexed documents
 - /api/search/rag/sources - List available RAG indices and documents
 - /api/search/sql - Semantic search over SQL schemas
+- /api/search/kg - Semantic search over KG table understanding
+- /api/search/kg/stats - KG summary statistics
 - /api/search/memory - Search conversational memory banks
 - /api/search/memory/banks - List available memory banks
 
@@ -25,6 +27,7 @@ from lars.rag.context import RagContext
 from lars.rag.store import search_chunks, list_sources
 from lars.sql_tools.tools import sql_search
 from lars.memory import get_memory_system
+from lars.kg.skills import kg_search, kg_stats
 import math
 
 search_bp = Blueprint('search', __name__, url_prefix='/api/search')
@@ -44,6 +47,41 @@ def sanitize_for_json(obj):
     elif isinstance(obj, list):
         return [sanitize_for_json(item) for item in obj]
     return obj
+
+
+def _parse_skill_json(payload: str):
+    """Parse JSON skill output that may include leading log text."""
+    if not isinstance(payload, str):
+        raise ValueError("Skill output is not a string")
+
+    text = payload.strip()
+    if not text:
+        raise ValueError("Skill output is empty")
+
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        # Skills normally return JSON, but some code paths can include log text.
+        json_start = text.find("{")
+        if json_start == -1:
+            raise
+        return json.loads(text[json_start:])
+
+
+def _coerce_bool(value, default: bool) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        norm = value.strip().lower()
+        if norm in {"1", "true", "yes", "on"}:
+            return True
+        if norm in {"0", "false", "no", "off"}:
+            return False
+    return default
 
 
 @search_bp.route('/rag', methods=['POST'])
@@ -358,6 +396,111 @@ def sql_schema_search():
 
     except Exception as e:
         return jsonify({"error": f"SQL search failed: {str(e)}"}), 500
+
+
+@search_bp.route('/kg', methods=['POST'])
+def kg_search_endpoint():
+    """
+    Semantic search over KG entities/tables.
+
+    Request body:
+        {
+            "query": str,                 # required
+            "k": int,                     # optional, default 5
+            "obs_per_table": int,         # optional, default 15
+            "use_fast_filter": bool       # optional, default true
+        }
+    """
+    try:
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            return jsonify({"error": "Request body must be JSON"}), 400
+
+        query = data.get("query")
+        if not isinstance(query, str) or not query.strip():
+            return jsonify({"error": "query is required"}), 400
+
+        k = int(data.get("k", 5))
+        obs_per_table = int(data.get("obs_per_table", 15))
+        use_fast_filter = _coerce_bool(data.get("use_fast_filter"), True)
+
+        if k < 1 or k > 100:
+            return jsonify({"error": "k must be between 1 and 100"}), 400
+
+        if obs_per_table < 1 or obs_per_table > 200:
+            return jsonify({"error": "obs_per_table must be between 1 and 200"}), 400
+
+        result_json = kg_search(
+            query=query.strip(),
+            k=k,
+            obs_per_table=obs_per_table,
+            use_fast_filter=use_fast_filter,
+        )
+        parsed = _parse_skill_json(result_json)
+        return jsonify(sanitize_for_json(parsed))
+    except ValueError as e:
+        return jsonify({"error": f"KG search failed: {str(e)}"}), 400
+    except json.JSONDecodeError as e:
+        return jsonify({"error": f"KG search returned invalid JSON: {str(e)}"}), 500
+    except Exception as e:
+        return jsonify({"error": f"KG search failed: {str(e)}"}), 500
+
+
+@search_bp.route('/kg/stats', methods=['GET'])
+def kg_stats_endpoint():
+    """Return high-level KG statistics."""
+    try:
+        result_json = kg_stats()
+        parsed = _parse_skill_json(result_json)
+        return jsonify(sanitize_for_json(parsed))
+    except ValueError as e:
+        return jsonify({"error": f"KG stats failed: {str(e)}"}), 400
+    except json.JSONDecodeError as e:
+        return jsonify({"error": f"KG stats returned invalid JSON: {str(e)}"}), 500
+    except Exception as e:
+        return jsonify({"error": f"KG stats failed: {str(e)}"}), 500
+
+
+@search_bp.route('/kg/investigation/<search_id>', methods=['GET'])
+def kg_investigation_endpoint(search_id):
+    """
+    Poll for async KG search investigation results.
+
+    Returns investigation status and synthesis for each table
+    that was investigated as part of a kg_search call.
+
+    Path parameters:
+        search_id: The search_id returned by the /api/search/kg endpoint.
+
+    Returns:
+        {
+            "search_id": str,
+            "investigations": [{
+                "investigation_id": str,
+                "entity_id": str,
+                "qualified_name": str,
+                "status": "pending" | "running" | "completed" | "failed",
+                "synthesis": str | null,
+                "evidence_queries": {...} | null,
+                "model_used": str | null,
+                "cost_usd": float,
+                "started_at": str,
+                "completed_at": str | null
+            }],
+            "all_complete": bool
+        }
+    """
+    try:
+        from lars.kg.skills import kg_search_investigation
+        result_json = kg_search_investigation(search_id=search_id)
+        parsed = _parse_skill_json(result_json)
+        return jsonify(sanitize_for_json(parsed))
+    except ValueError as e:
+        return jsonify({"error": f"Investigation lookup failed: {str(e)}"}), 400
+    except json.JSONDecodeError as e:
+        return jsonify({"error": f"Investigation returned invalid JSON: {str(e)}"}), 500
+    except Exception as e:
+        return jsonify({"error": f"Investigation lookup failed: {str(e)}"}), 500
 
 
 @search_bp.route('/memory', methods=['POST'])

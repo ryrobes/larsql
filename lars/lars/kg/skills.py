@@ -635,6 +635,7 @@ def _assemble_table_context(
         "match_score": round(float(entity.get("match_score", 0)), 4),
         "columns": col_lines,
         "observations": obs_lines,
+        "_entity_id": entity.get("entity_id"),  # internal: used by investigation
     }
 
     # Only include contracts/breaches/joins if they exist (keeps output clean)
@@ -892,6 +893,310 @@ def _kg_search_assemble(
 
 
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Async search investigation
+# ---------------------------------------------------------------------------
+
+_INVESTIGATE_SYSTEM_PROMPT = """\
+You are a data investigation analyst. Given a search query and rich context \
+about a database table (schema, observations, contract status, and live SQL \
+query results), synthesize a clear, actionable summary.
+
+Your goal: Answer the user's implicit question based on the evidence. Be \
+specific — cite actual values, counts, dates, and patterns from the SQL results.
+
+Format your response as JSON:
+{
+  "synthesis": "A 2-4 sentence summary answering what this data tells us about the search query. Be specific with numbers and dates.",
+  "key_findings": ["finding 1", "finding 2", ...],
+  "evidence_queries": [
+    {"sql": "the query that was run", "finding": "what it revealed"}
+  ]
+}
+
+Return ONLY valid JSON, no markdown fences or commentary.\
+"""
+
+
+def _run_evidence_sql(table_context: Dict[str, Any]) -> List[Dict[str, str]]:
+    """Run evidence SQL from contracts/breaches + standard queries.
+
+    Returns list of {"sql": ..., "result": ...} dicts.
+    """
+    from ..sql_tools.tools import safe_sql_run
+
+    sql_table_ref = table_context.get("sql_table_ref", table_context.get("qualified_name", ""))
+    connection = table_context.get("connection", "")
+    if not sql_table_ref or not connection:
+        return []
+
+    evidence_results = []
+    seen_sql = set()
+
+    # Collect evidence SQL from contracts
+    for contract in table_context.get("contracts", []):
+        sql = contract.get("evidence_sql")
+        if sql and sql not in seen_sql:
+            seen_sql.add(sql)
+
+    # Standard exploratory queries
+    standard_queries = [
+        f"SELECT COUNT(*) as total_rows FROM {sql_table_ref}",
+        f"SELECT * FROM {sql_table_ref} ORDER BY created_at DESC LIMIT 5",
+    ]
+    for sq in standard_queries:
+        if sq not in seen_sql:
+            seen_sql.add(sq)
+
+    # Cap at 10 queries
+    for sql in list(seen_sql)[:10]:
+        try:
+            result_json = safe_sql_run(
+                sql=sql,
+                connection=connection,
+                row_limit=10,
+                text_max_chars=200,
+            )
+            result = json.loads(result_json)
+            if result.get("error"):
+                evidence_results.append({"sql": sql, "result": f"ERROR: {result['error']}"})
+            else:
+                # Format compactly
+                rows = result.get("results", [])
+                cols = result.get("columns", [])
+                if rows and cols:
+                    lines = []
+                    lines.append(" | ".join(cols))
+                    for row in rows[:10]:
+                        lines.append(" | ".join(str(row.get(c, ""))[:80] for c in cols))
+                    evidence_results.append({"sql": sql, "result": "\n".join(lines)})
+                else:
+                    evidence_results.append({"sql": sql, "result": "(no rows)"})
+        except Exception as e:
+            evidence_results.append({"sql": sql, "result": f"ERROR: {e}"})
+
+    return evidence_results
+
+
+def _investigate_table(
+    search_id: str,
+    investigation_id: str,
+    query: str,
+    table_context: Dict[str, Any],
+) -> None:
+    """Investigate a single table: run evidence SQL, call LLM, write results."""
+    from ..agent import Agent
+    from ..models import get_model_for_tier
+
+    db = _get_db()
+    now = datetime.now(timezone.utc)
+
+    # Update status to running
+    db.insert_rows("kg_search_investigations", [{
+        "investigation_id": investigation_id,
+        "search_id": search_id,
+        "entity_id": table_context.get("_entity_id", ""),
+        "qualified_name": table_context.get("qualified_name", ""),
+        "query": query,
+        "status": "running",
+        "synthesis": None,
+        "evidence_queries": None,
+        "model_used": None,
+        "cost_usd": 0,
+        "tokens_in": 0,
+        "tokens_out": 0,
+        "started_at": now,
+        "completed_at": None,
+        "created_at": now,
+    }])
+
+    try:
+        # Run evidence SQL
+        evidence = _run_evidence_sql(table_context)
+
+        # Build prompt
+        obs_block = "\n".join(f"- {o}" for o in table_context.get("observations", []))
+        breach_block = "\n".join(f"- {b}" for b in table_context.get("breaches", []))
+        col_block = "\n".join(f"- {c}" for c in table_context.get("columns", []))
+
+        evidence_block = ""
+        for ev in evidence:
+            evidence_block += f"\nQuery: {ev['sql']}\nResult:\n{ev['result']}\n"
+
+        user_prompt = (
+            f'Search query: "{query}"\n\n'
+            f"Table: {table_context.get('qualified_name', '')}\n"
+            f"Description: {table_context.get('description', '')}\n"
+            f"Row count: {table_context.get('row_count', 'unknown')}\n\n"
+            f"Columns:\n{col_block}\n\n"
+            f"Observations:\n{obs_block or '(none)'}\n\n"
+            f"Contract breaches:\n{breach_block or '(none)'}\n\n"
+            f"--- Live SQL Evidence ---\n{evidence_block or '(none)'}\n\n"
+            f'Based on all this evidence, what does this table tell us about "{query}"?'
+        )
+
+        model_name = get_model_for_tier("standard")
+        agent = Agent(model=model_name, system_prompt=_INVESTIGATE_SYSTEM_PROMPT)
+        response = agent.run(input_message=user_prompt)
+
+        content = response.get("content", "")
+        cost = response.get("cost", 0) or 0
+        tokens_in = response.get("tokens_in", 0) or 0
+        tokens_out = response.get("tokens_out", 0) or 0
+
+        # Parse response
+        synthesis = ""
+        key_findings = []
+        evidence_queries_parsed = []
+
+        text = content.strip()
+        if text.startswith("```"):
+            lines = text.split("\n")
+            if lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            text = "\n".join(lines)
+
+        try:
+            data = json.loads(text)
+            synthesis = data.get("synthesis", text)
+            key_findings = data.get("key_findings", [])
+            evidence_queries_parsed = data.get("evidence_queries", [])
+        except (json.JSONDecodeError, TypeError):
+            # If not valid JSON, use raw content as synthesis
+            synthesis = content
+
+        # Merge pre-run evidence with LLM-cited evidence
+        all_evidence = []
+        for ev in evidence:
+            all_evidence.append({"sql": ev["sql"], "finding": ev.get("result", "")[:500]})
+        for eq in evidence_queries_parsed:
+            if eq.get("sql") not in {e["sql"] for e in all_evidence}:
+                all_evidence.append(eq)
+
+        # Write completed result
+        db.insert_rows("kg_search_investigations", [{
+            "investigation_id": investigation_id,
+            "search_id": search_id,
+            "entity_id": table_context.get("_entity_id", ""),
+            "qualified_name": table_context.get("qualified_name", ""),
+            "query": query,
+            "status": "completed",
+            "synthesis": synthesis,
+            "evidence_queries": json.dumps({
+                "key_findings": key_findings,
+                "evidence": all_evidence,
+            }, default=str),
+            "model_used": model_name,
+            "cost_usd": cost,
+            "tokens_in": tokens_in,
+            "tokens_out": tokens_out,
+            "started_at": now,
+            "completed_at": datetime.now(timezone.utc),
+            "created_at": now,
+        }])
+
+        log.info("kg_investigate: completed %s for search %s (cost=$%.4f)",
+                 table_context.get("qualified_name", ""), search_id, cost)
+
+    except Exception as e:
+        log.warning("kg_investigate: failed for %s: %s",
+                    table_context.get("qualified_name", ""), e)
+        try:
+            db.insert_rows("kg_search_investigations", [{
+                "investigation_id": investigation_id,
+                "search_id": search_id,
+                "entity_id": table_context.get("_entity_id", ""),
+                "qualified_name": table_context.get("qualified_name", ""),
+                "query": query,
+                "status": "failed",
+                "synthesis": f"Investigation failed: {e}",
+                "evidence_queries": None,
+                "model_used": None,
+                "cost_usd": 0,
+                "tokens_in": 0,
+                "tokens_out": 0,
+                "started_at": now,
+                "completed_at": datetime.now(timezone.utc),
+                "created_at": now,
+            }])
+        except Exception:
+            pass
+
+
+def _launch_investigation(search_id: str, query: str, tables_data: List[Dict[str, Any]]) -> None:
+    """Fire off async investigation for top search results.
+
+    Runs in a daemon thread with a ThreadPoolExecutor for parallelism.
+    """
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    # Limit to top 5 tables by match_score
+    top_tables = sorted(tables_data, key=lambda t: t.get("match_score", 0), reverse=True)[:5]
+    if not top_tables:
+        return
+
+    def _run():
+        try:
+            with ThreadPoolExecutor(max_workers=3) as executor:
+                futures = []
+                for table in top_tables:
+                    inv_id = uuid.uuid4().hex[:16]
+                    futures.append(executor.submit(
+                        _investigate_table, search_id, inv_id, query, table,
+                    ))
+                # Wait for all to complete
+                for f in futures:
+                    try:
+                        f.result(timeout=120)
+                    except Exception as e:
+                        log.warning("kg_investigate: thread error: %s", e)
+            log.info("kg_investigate: all investigations complete for search %s", search_id)
+        except Exception as e:
+            log.warning("kg_investigate: launcher error: %s", e)
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    log.info("kg_investigate: launched background investigation for search %s (%d tables)",
+             search_id, len(top_tables))
+
+
+# ---------------------------------------------------------------------------
+# kg_search_investigation — polling skill
+# ---------------------------------------------------------------------------
+
+@register_skill("kg_search_investigation")
+def kg_search_investigation(search_id: str) -> str:
+    """
+    Poll investigation results for a kg_search search_id.
+
+    Returns the status and synthesis for each table that was investigated.
+    Use this to check if async investigations have completed.
+
+    Args:
+        search_id: The search_id returned by kg_search.
+
+    Returns:
+        JSON with investigations array and all_complete flag.
+    """
+    rows = _query(f"""
+        SELECT investigation_id, entity_id, qualified_name, query,
+               status, synthesis, evidence_queries, model_used,
+               cost_usd, started_at, completed_at
+        FROM kg_search_investigations
+        WHERE search_id = '{_esc(search_id)}'
+        ORDER BY created_at
+    """)
+    return json.dumps({
+        "search_id": search_id,
+        "investigations": rows,
+        "all_complete": all(r["status"] in ("completed", "failed") for r in rows) if rows else False,
+    }, default=str, indent=2)
+
+
+# ---------------------------------------------------------------------------
 # kg_search — skill entry point (invokes cascade or direct fallback)
 # ---------------------------------------------------------------------------
 
@@ -941,6 +1246,22 @@ def kg_search(
             - observations: Relevance-ranked insights about the data
     """
     k, obs_per_table = int(k), int(obs_per_table)
+    search_id = uuid.uuid4().hex[:12]
+
+    def _inject_search_id_and_investigate(result_str: str) -> str:
+        """Add search_id to result JSON and launch async investigation."""
+        try:
+            data = json.loads(result_str)
+            data["search_id"] = search_id
+
+            # Launch async investigation with entity_ids attached to table contexts
+            tables = data.get("tables", [])
+            # Attach _entity_id from entity search for internal use
+            _launch_investigation(search_id, query, tables)
+
+            return json.dumps(data, default=str, indent=2)
+        except (json.JSONDecodeError, TypeError):
+            return result_str
 
     # ── Cascade path: full 3-stage pipeline with tracked LLM filter ──
     if use_fast_filter:
@@ -969,9 +1290,10 @@ def kg_search(
                 final = result["lineage"][-1].get("output")
                 if final:
                     log.info("kg_search: cascade completed (%d cells)", len(result["lineage"]))
-                    return final if isinstance(final, str) else json.dumps(
+                    raw = final if isinstance(final, str) else json.dumps(
                         final, default=str, indent=2,
                     )
+                    return _inject_search_id_and_investigate(raw)
 
             log.warning("kg_search: cascade returned no output — falling back to direct")
             if result:
@@ -989,7 +1311,8 @@ def kg_search(
 
     # ── Direct path: stages 1+2 only (no LLM filter) ────────────────
     vector_data = _kg_search_vector_stages(query, k=k, obs_per_table=obs_per_table)
-    return _kg_search_assemble(json.dumps(vector_data, default=str), None, query)
+    raw = _kg_search_assemble(json.dumps(vector_data, default=str), None, query)
+    return _inject_search_id_and_investigate(raw)
 
 
 # ---------------------------------------------------------------------------
