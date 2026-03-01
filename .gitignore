@@ -7,13 +7,14 @@ logs
 .code
 .vscode
 studio/backend/__pycache__/
+docs/design/
 images
 memories
 browsers
 audio
 kits
 /data/
-playground_scratchpad 
+playground_scratchpad
 research_dbs
 rabbitize-runs
 session_dbs
@@ -27,7 +28,7 @@ studio/backend/workshop_temp/
 node_modules
 marimo/docs
 research_dbs/market_research.duckdb.wal
-*.log 
+*.log
 .tmp_*
 .playwright-mcp
 chdb

@@ -12,7 +12,7 @@ These are registered as LARS tools so any cascade can call them:
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set, Tuple
 import uuid
 
 from ..skill_registry import register_skill
@@ -39,6 +39,50 @@ def _get_duck_conn():
 def _esc(val: str) -> str:
     """Escape a string value for SQL interpolation."""
     return str(val).replace("'", "''")
+
+
+def _parse_entity_ids_json(raw_value: Any) -> List[str]:
+    """Parse entity_ids_json safely into a list of entity IDs."""
+    if raw_value is None:
+        return []
+    if isinstance(raw_value, list):
+        return [str(v) for v in raw_value if v is not None]
+    if isinstance(raw_value, str):
+        text = raw_value.strip()
+        if not text:
+            return []
+        try:
+            parsed = json.loads(text)
+            if isinstance(parsed, list):
+                return [str(v) for v in parsed if v is not None]
+        except (json.JSONDecodeError, TypeError):
+            return []
+    return []
+
+
+def _observation_entity_refs(row: Dict[str, Any]) -> Set[str]:
+    """Return all entity IDs referenced by an observation row."""
+    refs: Set[str] = set()
+    entity_id = row.get("entity_id")
+    if entity_id:
+        refs.add(str(entity_id))
+    for ref in _parse_entity_ids_json(row.get("entity_ids_json")):
+        if ref:
+            refs.add(str(ref))
+    return refs
+
+
+def _build_observation_entity_where(entity_ids: List[str]) -> str:
+    """Build SQL predicate that matches observations referencing any entity ID."""
+    safe_ids = [str(eid) for eid in entity_ids if str(eid).strip()]
+    if not safe_ids:
+        return "1=0"
+
+    in_list = ", ".join(f"'{_esc(eid)}'" for eid in safe_ids)
+    like_clauses = " OR ".join(
+        f"entity_ids_json LIKE '%{_esc(eid)}%'" for eid in safe_ids
+    )
+    return f"(entity_id IN ({in_list}) OR ({like_clauses}))"
 
 
 def _query(sql: str, params: list = None) -> List[Dict[str, Any]]:
@@ -241,7 +285,7 @@ def _kg_observation_vector_search(
     entity_ids: List[str],
     top_k_per_entity: int = 15,
     embed_dim: int = 0,
-) -> Dict[str, List[Dict[str, Any]]]:
+) -> Tuple[Dict[str, List[Dict[str, Any]]], Dict[str, Any]]:
     """Stage 2: Vector-rank observations within matched entities.
 
     For each entity_id, finds the observations most relevant to the
@@ -255,11 +299,17 @@ def _kg_observation_vector_search(
         embed_dim: Embedding dimension.
 
     Returns:
-        Dict mapping entity_id → sorted list of observation dicts
-        (with obs_match_score), or empty dict on failure.
+        (obs_by_entity, meta):
+          - obs_by_entity: entity_id -> ranked observation dicts.
+          - meta: summary counts for direct vs linked observation paths.
     """
     if not query_vec or not entity_ids:
-        return {}
+        return {}, {
+            "mode": "none",
+            "direct_count": 0,
+            "linked_count": 0,
+            "candidate_rows": 0,
+        }
 
     # All embedding checks use DuckDB directly — embeddings are stored in
     # parquet and array_cosine_similarity is a DuckDB function.  Going
@@ -275,7 +325,12 @@ def _kg_observation_vector_search(
         obs_embed_cnt = 0
     if obs_embed_cnt == 0:
         log.info("kg_search: no embedded observations (cnt=0 in DuckDB) — falling back to tier/confidence ranking")
-        return {}
+        return {}, {
+            "mode": "no_observation_embeddings",
+            "direct_count": 0,
+            "linked_count": 0,
+            "candidate_rows": 0,
+        }
 
     # Get observation embedding dimension
     if not embed_dim:
@@ -286,41 +341,43 @@ def _kg_observation_vector_search(
             log.warning("kg_search: observation dim check failed: %s", e)
             embed_dim = 0
         if not embed_dim:
-            return {}
+            return {}, {
+                "mode": "bad_observation_embedding_dim",
+                "direct_count": 0,
+                "linked_count": 0,
+                "candidate_rows": 0,
+            }
 
     log.debug("kg_search: Stage 2 — %d embedded observations available, searching within %d entities", obs_embed_cnt, len(entity_ids))
 
-    # Build entity_id IN-list
-    eid_list = ", ".join(f"'{_esc(eid)}'" for eid in entity_ids)
+    # Observation graph matching:
+    # Include observations that reference matched entities either as primary
+    # entity_id OR via entity_ids_json (cross-table observations).
+    match_predicate = _build_observation_entity_where(entity_ids)
+    candidate_limit = max(200, int(len(entity_ids) * max(1, top_k_per_entity) * 8))
 
     try:
         rows = conn.execute(
             f"""
-            WITH scored AS (
-                SELECT
-                    observation_id, entity_id, category, content,
-                    confidence, tier, contract_type,
-                    array_cosine_similarity(
-                        embedding::FLOAT[{embed_dim}],
-                        ?::FLOAT[{embed_dim}]
-                    ) AS obs_match_score
-                FROM kg_observations
-                WHERE embedding IS NOT NULL
-                  AND superseded_by IS NULL
-                  AND entity_id IN ({eid_list})
-            ),
-            ranked AS (
-                SELECT *, ROW_NUMBER() OVER (
-                    PARTITION BY entity_id
-                    ORDER BY obs_match_score DESC
-                ) AS rn
-                FROM scored
-            )
-            SELECT observation_id, entity_id, category, content,
-                   confidence, tier, obs_match_score, contract_type
-            FROM ranked
-            WHERE rn <= {int(top_k_per_entity)}
-            ORDER BY entity_id, obs_match_score DESC
+            SELECT
+                observation_id,
+                entity_id,
+                entity_ids_json,
+                category,
+                content,
+                confidence,
+                tier,
+                contract_type,
+                array_cosine_similarity(
+                    embedding::FLOAT[{embed_dim}],
+                    ?::FLOAT[{embed_dim}]
+                ) AS obs_match_score
+            FROM kg_observations
+            WHERE embedding IS NOT NULL
+              AND superseded_by IS NULL
+              AND {match_predicate}
+            ORDER BY obs_match_score DESC
+            LIMIT {candidate_limit}
             """,
             [[float(x) for x in query_vec]],
         ).fetchall()
@@ -328,17 +385,65 @@ def _kg_observation_vector_search(
         obs_rows = [dict(zip(columns, row)) for row in rows]
     except Exception as e:
         log.warning("kg_search: observation vector search failed (%s: %s)", type(e).__name__, e)
-        return {}
+        return {}, {
+            "mode": "query_failed",
+            "direct_count": 0,
+            "linked_count": 0,
+            "candidate_rows": 0,
+        }
 
-    # Group by entity_id
-    result: Dict[str, List[Dict[str, Any]]] = {}
+    # Group + rank per matched entity.
+    # A single cross-table observation can contribute to multiple matched tables.
+    result: Dict[str, List[Dict[str, Any]]] = {str(eid): [] for eid in entity_ids}
+    seen_by_entity: Dict[str, Set[str]] = {str(eid): set() for eid in entity_ids}
+
     for row in obs_rows:
-        eid = row["entity_id"]
-        if eid not in result:
-            result[eid] = []
-        result[eid].append(row)
+        refs = _observation_entity_refs(row)
+        if not refs:
+            continue
 
-    return result
+        obs_id = str(row.get("observation_id", ""))
+        primary_eid = str(row.get("entity_id", ""))
+        base_score = float(row.get("obs_match_score", 0.0))
+
+        for target_eid in result.keys():
+            if target_eid not in refs:
+                continue
+            if obs_id in seen_by_entity[target_eid]:
+                continue
+
+            path = "direct" if primary_eid == target_eid else "linked"
+            rank_score = base_score + (0.03 if path == "direct" else 0.0)
+
+            ranked_row = dict(row)
+            ranked_row["obs_path"] = path
+            ranked_row["_rank_score"] = rank_score
+            result[target_eid].append(ranked_row)
+            seen_by_entity[target_eid].add(obs_id)
+
+    # Per-entity top-k trim
+    direct_count = 0
+    linked_count = 0
+    for target_eid, rows_for_entity in result.items():
+        rows_for_entity.sort(
+            key=lambda r: (float(r.get("_rank_score", 0.0)), float(r.get("obs_match_score", 0.0))),
+            reverse=True,
+        )
+        trimmed = rows_for_entity[: int(top_k_per_entity)]
+        for item in trimmed:
+            item.pop("_rank_score", None)
+            if item.get("obs_path") == "direct":
+                direct_count += 1
+            else:
+                linked_count += 1
+        result[target_eid] = trimmed
+
+    return result, {
+        "mode": "vector_observation_graph",
+        "direct_count": direct_count,
+        "linked_count": linked_count,
+        "candidate_rows": len(obs_rows),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -688,10 +793,16 @@ def _kg_search_vector_stages(
 
     # ── Stage 2: Observation vector ranking ──────────────────────────
     obs_by_entity: Dict[str, List[Dict[str, Any]]] = {}
+    obs_graph_meta: Dict[str, Any] = {
+        "mode": "skipped",
+        "direct_count": 0,
+        "linked_count": 0,
+        "candidate_rows": 0,
+    }
     stage2_status = "skipped"
     if query_vec and matches:
         entity_ids = [m["entity_id"] for m in matches]
-        obs_by_entity = _kg_observation_vector_search(
+        obs_by_entity, obs_graph_meta = _kg_observation_vector_search(
             query_vec=query_vec,
             entity_ids=entity_ids,
             top_k_per_entity=obs_per_table,
@@ -699,7 +810,11 @@ def _kg_search_vector_stages(
         )
         if obs_by_entity:
             total_obs = sum(len(v) for v in obs_by_entity.values())
-            stage2_status = f"ranked ({total_obs} obs across {len(obs_by_entity)} tables)"
+            stage2_status = (
+                f"ranked ({total_obs} obs across {len(obs_by_entity)} tables; "
+                f"direct={obs_graph_meta.get('direct_count', 0)}, "
+                f"linked={obs_graph_meta.get('linked_count', 0)})"
+            )
         else:
             stage2_status = "empty (fallback to tier/confidence)"
     elif not query_vec:
@@ -715,7 +830,7 @@ def _kg_search_vector_stages(
         if not ranked_obs:
             continue
         obs_lines = "\n".join(
-            f"- [{o.get('category', 'general')}] {o.get('content', '')} "
+            f"- [{o.get('category', 'general')}] ({o.get('obs_path', 'direct')}) {o.get('content', '')} "
             f"(similarity: {o.get('obs_match_score', 0):.3f})"
             for o in ranked_obs
         )
@@ -761,6 +876,7 @@ def _kg_search_vector_stages(
                 "content": o.get("content", ""),
                 "obs_match_score": float(o.get("obs_match_score", 0)),
                 "contract_type": o.get("contract_type"),
+                "obs_path": o.get("obs_path", "direct"),
             }
             for o in obs_list
         ]
@@ -769,6 +885,7 @@ def _kg_search_vector_stages(
         "search_mode": search_mode,
         "query_vec_ok": query_vec is not None,
         "stage2_status": stage2_status,
+        "obs_graph": obs_graph_meta,
         "entities": entities_ser,
         "obs_by_entity": obs_ser,
         "has_ranked_obs": bool(obs_by_entity),
@@ -887,6 +1004,7 @@ def _kg_search_assemble(
                 "fast_filter": stage3_status,
             },
             "obs_paths": obs_path_counts,
+            "obs_graph": vd.get("obs_graph", {}),
             "execution": "cascade",
         },
     }, default=str, indent=2)

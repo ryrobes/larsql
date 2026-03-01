@@ -167,6 +167,12 @@ def embed_kg_entities(
         console.print("[dim]  ✓ All table entities already embedded[/dim]")
         return {"embedded": 0, "skipped": True}
 
+    # Progress tracker
+    from .progress import ProgressTracker
+    import uuid as _uuid
+    embed_session_id = str(_uuid.uuid4())
+    progress_tracker = ProgressTracker("embed_entities", embed_session_id, total=len(candidates))
+
     # Build search documents
     t0 = time.monotonic()
     entity_ids: List[str] = []
@@ -213,6 +219,12 @@ def embed_kg_entities(
             entity_ids.append(eid)
             search_docs.append(doc)
             entities_data.append(entity)
+            progress_tracker.step(
+                len(entity_ids),
+                entity_id=eid,
+                entity_name=entity.get("name", "?"),
+                detail={"phase": "building_docs"},
+            )
             progress.advance(task)
 
     # Batch embed
@@ -266,6 +278,11 @@ def embed_kg_entities(
     table.add_row("Dimensions", str(embed_dim))
     table.add_row("Time", f"{elapsed:.1f}s")
     console.print(Panel(table, title="[bold cyan]🔮 KG Embedding Summary", border_style="cyan", expand=False))
+
+    progress_tracker.complete(
+        observations=len(entity_ids),
+        detail={"phase": "done", "dim": embed_dim, "model": embed_model},
+    )
 
     return {
         "embedded": len(entity_ids),
@@ -336,7 +353,8 @@ def embed_kg_observations(
 
     candidates = kg_query(f"""
         SELECT observation_id, entity_id, entity_ids_json, level, tier,
-               category, content, confidence, superseded_by, dream_session_id
+               category, content, confidence, evidence_sql, evidence_hash,
+               contract_type, superseded_by, dream_session_id
         FROM kg_observations
         WHERE superseded_by IS NULL
           AND {where_clause}
@@ -365,6 +383,12 @@ def embed_kg_observations(
     if not observation_texts:
         console.print("[dim]  ✓ No observations with content to embed[/dim]")
         return {"embedded": 0, "skipped": True}
+
+    # Progress tracker
+    from .progress import ProgressTracker
+    import uuid as _uuid
+    obs_embed_session_id = str(_uuid.uuid4())
+    obs_progress_tracker = ProgressTracker("embed_observations", obs_embed_session_id, total=len(observation_texts))
 
     # Batch embed using parallel pipeline
     console.print(f"[bold cyan]Embedding {len(observation_texts)} observations...[/bold cyan]")
@@ -401,12 +425,22 @@ def embed_kg_observations(
             "category": obs.get("category"),
             "content": obs.get("content"),
             "confidence": obs.get("confidence"),
+            "evidence_sql": obs.get("evidence_sql"),
+            "evidence_hash": obs.get("evidence_hash"),
+            "contract_type": obs.get("contract_type"),
             "embedding": [float(x) for x in embedding],
             "embedding_model": embed_model,
             "superseded_by": obs.get("superseded_by"),
             "dream_session_id": obs.get("dream_session_id"),
             "created_at": now,
         }])
+        if (i + 1) % 50 == 0 or i == len(observation_ids) - 1:
+            obs_progress_tracker.step(
+                i + 1,
+                entity_name=obs.get("entity_id", ""),
+                observations=i + 1,
+                detail={"phase": "persisting"},
+            )
 
     elapsed = time.monotonic() - t0
 
@@ -418,6 +452,11 @@ def embed_kg_observations(
     table.add_row("Dimensions", str(embed_dim))
     table.add_row("Time", f"{elapsed:.1f}s")
     console.print(Panel(table, title="[bold cyan]🔮 KG Observation Embedding Summary", border_style="cyan", expand=False))
+
+    obs_progress_tracker.complete(
+        observations=len(observation_ids),
+        detail={"phase": "done", "dim": embed_dim, "model": embed_model},
+    )
 
     return {
         "embedded": len(observation_ids),

@@ -62,7 +62,7 @@ console = Console()
 
 
 _KG_TIER2_AUTO = os.getenv(
-    "LARS_KG_TIER2_AUTO", "1",
+    "LARS_KG_TIER2_AUTO", "0",
 ).strip().lower() in {"1", "true", "yes", "on"}
 
 _KG_TIER2_MAX_ENTITIES = int(os.getenv("LARS_KG_TIER2_MAX_ENTITIES", "0"))  # 0 = all
@@ -70,9 +70,9 @@ _KG_TIER2_MODEL_TIER = os.getenv("LARS_KG_TIER2_MODEL_TIER", "fast")
 
 
 def _run_kg_extraction(samples_dir: str, session_id: str | None = None):
-    """Run Tier 1 KG extraction, then optionally Tier 2 LLM enrichment.
+    """Run Tier 1 KG extraction, then KG embeddings.
 
-    Tier 2 is controlled by LARS_KG_TIER2_AUTO (default on).
+    Tier 2 is controlled by LARS_KG_TIER2_AUTO (default off).
     Non-fatal: logs warnings on failure.
     """
     try:
@@ -91,7 +91,7 @@ def _run_kg_extraction(samples_dir: str, session_id: str | None = None):
         console.print("[dim]  Schema discovery and RAG index are unaffected.[/dim]")
         return  # Skip Tier 2 if Tier 1 failed
 
-    # Tier 2: LLM enrichment (runs after Tier 1 completes)
+    # Tier 2: optional LLM enrichment (manual by default)
     if _KG_TIER2_AUTO:
         try:
             from ..kg.dreamer import dream_tier2
@@ -109,24 +109,26 @@ def _run_kg_extraction(samples_dir: str, session_id: str | None = None):
         except Exception as e:
             console.print(f"[yellow][WARN] Tier 2 enrichment failed: {e}[/yellow]")
             console.print("[dim]  Tier 1 data is unaffected. You can run kg_dream manually.[/dim]")
+    else:
+        console.print("[dim]Tier 2 dreaming skipped (manual). Run 'lars kg dream' when ready.[/dim]")
 
-        # Tier 2.5: Embed entities for kg_search (runs after dreaming)
-        try:
-            from ..kg.embedder import embed_kg_entities
-            console.print(f"[bold cyan]🔮 Embedding KG entities for semantic search...[/bold cyan]")
-            embed_result = embed_kg_entities()
-        except Exception as e:
-            console.print(f"[yellow][WARN] KG entity embedding failed: {e}[/yellow]")
-            console.print("[dim]  KG data is unaffected. You can run kg_embed manually.[/dim]")
+    # Tier 2.5: Embed entities for kg_search (runs after Tier 1 / optional Tier 2)
+    try:
+        from ..kg.embedder import embed_kg_entities
+        console.print(f"[bold cyan]🔮 Embedding KG entities for semantic search...[/bold cyan]")
+        _ = embed_kg_entities()
+    except Exception as e:
+        console.print(f"[yellow][WARN] KG entity embedding failed: {e}[/yellow]")
+        console.print("[dim]  KG data is unaffected. You can run kg_embed manually.[/dim]")
 
-        # Tier 2.5b: Embed observations for observation-level relevance ranking
-        try:
-            from ..kg.embedder import embed_kg_observations
-            console.print(f"[bold cyan]🔮 Embedding KG observations for relevance ranking...[/bold cyan]")
-            obs_embed_result = embed_kg_observations()
-        except Exception as e:
-            console.print(f"[yellow][WARN] KG observation embedding failed: {e}[/yellow]")
-            console.print("[dim]  kg_search will fall back to tier/confidence ranking for observations.[/dim]")
+    # Tier 2.5b: Embed observations for observation-level relevance ranking
+    try:
+        from ..kg.embedder import embed_kg_observations
+        console.print(f"[bold cyan]🔮 Embedding KG observations for relevance ranking...[/bold cyan]")
+        _ = embed_kg_observations()
+    except Exception as e:
+        console.print(f"[yellow][WARN] KG observation embedding failed: {e}[/yellow]")
+        console.print("[dim]  kg_search will fall back to tier/confidence ranking for observations.[/dim]")
 
 
 _SQL_FIELD_INDEX_INCLUDE_TEXT_SAMPLES = os.getenv(

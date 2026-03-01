@@ -26,11 +26,18 @@ if _LARS_DIR not in sys.path:
 # SQL Query imports
 try:
     from lars.config import get_config
-    from lars.sql_tools.config import load_sql_connections, load_discovery_metadata
+    from lars.sql_tools.config import (
+        load_sql_connections,
+        load_discovery_metadata,
+        SqlConnectionConfig,
+        validate_connection_config,
+    )
 except ImportError as e:
     print(f"Warning: Could not import lars SQL modules: {e}")
     load_sql_connections = None
     load_discovery_metadata = None
+    SqlConnectionConfig = None
+    validate_connection_config = None
     get_config = None
 
 # Notebook imports
@@ -235,6 +242,159 @@ def list_connections():
             "error": str(e),
             "traceback": traceback.format_exc()
         }), 500
+
+
+def _get_sql_connections_dir() -> str:
+    cfg = get_config() if get_config else None
+    return os.path.join(cfg.root_dir if cfg else LARS_ROOT, "sql_connections")
+
+
+def _sanitize_connection_name(name: str) -> str:
+    safe = "".join(ch if ch.isalnum() or ch in ("_", "-", ".") else "_" for ch in name.strip().lower())
+    safe = safe.strip("_")
+    while "__" in safe:
+        safe = safe.replace("__", "_")
+    return safe or "source"
+
+
+@studio_bp.route('/connections/raw', methods=['GET'])
+def list_connections_raw():
+    """
+    List raw SQL connection configs from sql_connections/*.yaml|*.yml|*.json.
+
+    Unlike /connections, this returns the file-backed config fields used by
+    LarSQL and excludes auto-generated virtual connections.
+    """
+    try:
+        sql_dir = _get_sql_connections_dir()
+        result = []
+
+        if os.path.exists(sql_dir):
+            for path in sorted(Path(sql_dir).iterdir()):
+                if not path.is_file():
+                    continue
+                if path.name.startswith("discovery_metadata."):
+                    continue
+                if path.suffix.lower() not in (".yaml", ".yml", ".json"):
+                    continue
+
+                cfg = load_json_with_nan(str(path))
+                if not isinstance(cfg, dict):
+                    continue
+
+                cfg = dict(cfg)
+                cfg.pop("password", None)
+                cfg["connection_name"] = cfg.get("connection_name") or path.stem
+                result.append(cfg)
+
+        return jsonify({"connections": result})
+    except Exception as e:
+        import traceback
+        return jsonify({
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }), 500
+
+
+@studio_bp.route('/connections', methods=['POST'])
+def upsert_connection():
+    """
+    Create or update a SQL connection config file in sql_connections/.
+    """
+    if not SqlConnectionConfig or not validate_connection_config:
+        return jsonify({"error": "SQL tools not available"}), 500
+
+    payload = request.get_json(silent=True) or {}
+    if not isinstance(payload, dict):
+        return jsonify({"error": "Invalid JSON payload"}), 400
+
+    raw = payload.get("connection")
+    if isinstance(raw, dict):
+        payload = raw
+
+    raw_name = payload.get("connection_name") or payload.get("name")
+    if not isinstance(raw_name, str) or not raw_name.strip():
+        return jsonify({"error": "Missing connection_name"}), 400
+
+    connection_name = _sanitize_connection_name(raw_name)
+    payload = dict(payload)
+    payload["connection_name"] = connection_name
+    payload.pop("name", None)
+
+    try:
+        config_model = SqlConnectionConfig(**payload)
+    except Exception as e:
+        return jsonify({
+            "error": "Invalid connection config",
+            "details": str(e)
+        }), 422
+
+    errors = validate_connection_config(config_model)
+    if errors:
+        return jsonify({
+            "error": "Connection config validation failed",
+            "details": errors
+        }), 422
+
+    sql_dir = _get_sql_connections_dir()
+    os.makedirs(sql_dir, exist_ok=True)
+
+    target_path = os.path.join(sql_dir, f"{connection_name}.yaml")
+    temp_path = os.path.join(sql_dir, f".{connection_name}.{uuid.uuid4().hex}.tmp")
+    to_save = config_model.model_dump(exclude_none=True, exclude={"password"})
+
+    with open(temp_path, "w") as f:
+        yaml.safe_dump(to_save, f, default_flow_style=False, sort_keys=False)
+    os.replace(temp_path, target_path)
+
+    return jsonify({
+        "ok": True,
+        "connection_name": connection_name,
+        "path": target_path
+    })
+
+
+@studio_bp.route('/connections/<connection>', methods=['DELETE'])
+def delete_connection(connection):
+    """
+    Delete a SQL connection config file from sql_connections/.
+    """
+    connection_name = _sanitize_connection_name(connection)
+    sql_dir = _get_sql_connections_dir()
+    if not os.path.exists(sql_dir):
+        return jsonify({"error": "Connection not found"}), 404
+
+    candidates = []
+    for path in Path(sql_dir).iterdir():
+        if not path.is_file():
+            continue
+        if path.name.startswith("discovery_metadata."):
+            continue
+        if path.suffix.lower() not in (".yaml", ".yml", ".json"):
+            continue
+
+        if _sanitize_connection_name(path.stem) == connection_name:
+            candidates.append(path)
+            continue
+
+        cfg = load_json_with_nan(str(path))
+        if isinstance(cfg, dict):
+            cfg_name = cfg.get("connection_name")
+            if isinstance(cfg_name, str) and _sanitize_connection_name(cfg_name) == connection_name:
+                candidates.append(path)
+
+    if not candidates:
+        return jsonify({"error": "Connection not found"}), 404
+
+    # Delete the first matching config file.
+    target = candidates[0]
+    target.unlink()
+
+    return jsonify({
+        "ok": True,
+        "connection_name": connection_name,
+        "deleted_file": str(target)
+    })
 
 
 @studio_bp.route('/schema/<connection>', methods=['GET'])
