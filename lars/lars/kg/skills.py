@@ -942,7 +942,7 @@ def _run_evidence_sql(table_context: Dict[str, Any]) -> List[Dict[str, str]]:
     # Standard exploratory queries
     standard_queries = [
         f"SELECT COUNT(*) as total_rows FROM {sql_table_ref}",
-        f"SELECT * FROM {sql_table_ref} ORDER BY created_at DESC LIMIT 5",
+        f"SELECT * FROM {sql_table_ref} ORDER BY created_at DESC LIMIT 10",
     ]
     for sq in standard_queries:
         if sq not in seen_sql:
@@ -954,8 +954,8 @@ def _run_evidence_sql(table_context: Dict[str, Any]) -> List[Dict[str, str]]:
             result_json = safe_sql_run(
                 sql=sql,
                 connection=connection,
-                row_limit=10,
-                text_max_chars=200,
+                row_limit=25,
+                text_max_chars=500,
             )
             result = json.loads(result_json)
             if result.get("error"):
@@ -967,8 +967,8 @@ def _run_evidence_sql(table_context: Dict[str, Any]) -> List[Dict[str, str]]:
                 if rows and cols:
                     lines = []
                     lines.append(" | ".join(cols))
-                    for row in rows[:10]:
-                        lines.append(" | ".join(str(row.get(c, ""))[:80] for c in cols))
+                    for row in rows[:25]:
+                        lines.append(" | ".join(str(row.get(c, ""))[:150] for c in cols))
                     evidence_results.append({"sql": sql, "result": "\n".join(lines)})
                 else:
                     evidence_results.append({"sql": sql, "result": "(no rows)"})
